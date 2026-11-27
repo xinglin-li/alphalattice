@@ -486,6 +486,7 @@ moves into the catalog."""
 def _portfolio_results(copy: Path) -> list[tuple[str, str, str]]:
     """The Portfolio results `copy`'s files name: kind, digest and table, in a fixed order."""
     from alphalattice.foundation.data_layer.upgrade import workspace_files  # lazy: a copy's only
+    from alphalattice.kernel.identity import blake3_from_filename
 
     found = set()
     for path in workspace_files(copy):
@@ -493,7 +494,10 @@ def _portfolio_results(copy: Path) -> list[tuple[str, str, str]]:
         named = PORTFOLIO_RESULTS.get((path.parents[depth].name, path.parent.name))
         if path.suffix == ".json" and named is not None:
             kind, table = named
-            found.add((kind, path.stem, table))
+            digest = blake3_from_filename(path.stem)
+            if digest is None:
+                raise ValueError(f"Portfolio copy has an invalid result filename: {path}")
+            found.add((kind, digest, table))
     return sorted(found)
 
 

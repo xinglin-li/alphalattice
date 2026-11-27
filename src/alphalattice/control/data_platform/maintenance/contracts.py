@@ -20,6 +20,7 @@ from alphalattice.foundation.feature_engine.contracts import canonical_hash
 from alphalattice.foundation.feature_engine.inputs.contracts import FeatureCandidateRecheck
 from alphalattice.foundation.market_data_ops.sources.contracts import CandidateDataRecheck
 from alphalattice.foundation.market_data_ops.sources.manifest import UniverseManifest
+from alphalattice.kernel.identity import BLAKE3_PATTERN, is_blake3
 
 
 class MaintenanceTrigger(StrEnum):
@@ -907,7 +908,7 @@ class MaintenanceFreshnessProjection:
 
 class _SealedDataUpdate(BaseModel):  # type: ignore[misc]
     model_config = ConfigDict(extra="forbid", frozen=True)
-    content_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
+    content_hash: str = Field(pattern=BLAKE3_PATTERN)
 
     @classmethod
     def seal(cls, **values: object) -> Self:
@@ -936,9 +937,9 @@ class WorkspaceDataUpdateBinding(_SealedDataUpdate):
 
     kind: Literal["WorkspaceDataUpdateBinding"] = "WorkspaceDataUpdateBinding"
     market_profile_id: Literal["us-current-index-research"] = "us-current-index-research"
-    profile_file_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
-    data_policy_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
-    feature_catalog_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
+    profile_file_hash: str = Field(pattern=BLAKE3_PATTERN)
+    data_policy_hash: str = Field(pattern=BLAKE3_PATTERN)
+    feature_catalog_hash: str = Field(pattern=BLAKE3_PATTERN)
 
 
 class WorkspaceInputStatus(_SealedDataUpdate):
@@ -1145,15 +1146,15 @@ class RemovedMemberTail(_SealedDataUpdate):
 
     listing_id: str = Field(min_length=1)
     symbol: str = Field(min_length=1)
-    maintenance_id: str = Field(pattern=r"^[0-9a-f]{64}$")
-    formation_manifest_revision: str = Field(pattern=r"^[0-9a-f]{64}$")
+    maintenance_id: str = Field(pattern=BLAKE3_PATTERN)
+    formation_manifest_revision: str = Field(pattern=BLAKE3_PATTERN)
     last_verified_session: date
     target_session: date
     missing_sessions: tuple[date, ...]
     missing_session_count: int = Field(ge=0)
-    session_authority_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
+    session_authority_hash: str = Field(pattern=BLAKE3_PATTERN)
     retained_audit_receipt_hashes: tuple[str, ...] = Field(min_length=1)
-    rejection_receipt_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
+    rejection_receipt_hash: str = Field(pattern=BLAKE3_PATTERN)
     sanitizer_code: Literal["INVALID_OHLC", "INVALID_VOLUME", "DUPLICATE_SESSION", "STALE_PAYLOAD"]
 
     @model_validator(mode="after")  # type: ignore[untyped-decorator]
@@ -1167,10 +1168,7 @@ class RemovedMemberTail(_SealedDataUpdate):
                 not self.last_verified_session < session <= self.target_session
                 for session in self.missing_sessions
             )
-            or any(
-                not re.fullmatch(r"[0-9a-f]{64}", value)
-                for value in self.retained_audit_receipt_hashes
-            )
+            or any(not is_blake3(value) for value in self.retained_audit_receipt_hashes)
         ):
             raise ValueError("removed member tail does not match its retained source scope")
         return self

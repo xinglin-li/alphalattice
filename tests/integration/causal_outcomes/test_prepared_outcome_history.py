@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import hashlib
 import json
 import math
 import os
@@ -42,6 +41,8 @@ from alphalattice.foundation.market_data_ops.sources.contracts import (
     CorporateActionEvent,
     RawDailyBar,
 )
+from alphalattice.kernel.identity import blake3_digest, blake3_filename
+from tests._support.identity_fixtures import fixture_digest
 
 
 def _source(
@@ -79,7 +80,7 @@ def _source(
             for v in bars
         )
     return LocalQAMarketSnapshot.create(
-        source_hash="a" * 64,
+        source_hash=fixture_digest("local-qa-source"),
         through=days[-1],
         ordered_listing_ids=listing_ids,
         schedule=schedule,
@@ -103,7 +104,7 @@ def _encoded(table):
 
 def _files(root):
     return {
-        path.relative_to(root).as_posix(): hashlib.sha256(path.read_bytes()).hexdigest()
+        path.relative_to(root).as_posix(): blake3_digest(path.read_bytes())
         for path in root.rglob("*")
         if path.is_file()
     }
@@ -113,7 +114,7 @@ def _head(root, inventory):
     path = (
         root
         / "data-operations/execution-outcomes/local-qa-preparation/heads"
-        / f"{inventory.current_head_hash}.json"
+        / f"{blake3_filename(inventory.current_head_hash)}.json"
     )
     return LocalQAOutcomePreparationHead.model_validate_json(path.read_bytes())
 
@@ -167,7 +168,7 @@ def test_artifact_preparation_refuses_a_changed_source_after_the_owners_first_lo
     source = _source()
     store = ContentAddressedStore(tmp_path / "source", uri_prefix="qa-source")
     store.publish_model(category="market-inputs", value=source, identity_field="content_hash")
-    path = store.root / "market-inputs" / f"{source.content_hash}.json"
+    path = store.artifact_path(category="market-inputs", content_hash=source.content_hash)
     original_stat = path.stat()
     with verified_model_read_scope():
         store.load_model(
@@ -290,7 +291,7 @@ def test_prepared_arrow_buffers_match_the_row_builders_exact_ipc(tmp_path, lengt
     part = LocalQAOutcomePreparationPart.create(
         **{
             **head.part.model_dump(mode="python", exclude={"content_hash"}),
-            "file_hash": hashlib.sha256(content).hexdigest(),
+            "file_hash": blake3_digest(content),
             "byte_count": len(content),
         },
     )
@@ -305,9 +306,9 @@ def test_prepared_arrow_buffers_match_the_row_builders_exact_ipc(tmp_path, lengt
         current_head_hash=replacement.content_hash, previous_head_hash=None
     )
     preparation = root / "data-operations/execution-outcomes/local-qa-preparation"
-    (preparation / "parts" / f"{part.file_hash}.parquet").write_bytes(content)
+    (preparation / "parts" / f"{blake3_filename(part.file_hash)}.parquet").write_bytes(content)
     for path, value in (
-        (preparation / "heads" / f"{replacement.content_hash}.json", replacement),
+        (preparation / "heads" / f"{blake3_filename(replacement.content_hash)}.json", replacement),
         (preparation / "markers/current.json", marker),
     ):
         path.write_text(
@@ -352,7 +353,9 @@ def test_captured_market_snapshot_refuses_outside_or_noncanonical_axes(damage, m
             assert LocalQAMarketSnapshot.model_validate(raw) == source
             assert seen == [1]
             with pytest.raises(ValueError, match=r"causal_outcomes\.qa_market_snapshot_invalid"):
-                LocalQAMarketSnapshot.model_validate(raw | {"source_hash": "f" * 64})
+                LocalQAMarketSnapshot.model_validate(
+                    raw | {"source_hash": fixture_digest("changed-local-qa-source")}
+                )
             assert seen == [1, 1]
         seen.clear()
         with stage_digests():
@@ -449,7 +452,7 @@ def test_durable_qa_rows_append_only_new_points_and_keep_cold_warm_fresh_ipc(
     for cutoff in days[3:7]:
         captured = local_qa_prefix(source, through=cutoff)
         captured = LocalQAMarketSnapshot.create(
-            source_hash=hashlib.sha256(cutoff.isoformat().encode()).hexdigest(),
+            source_hash=fixture_digest(cutoff.isoformat()),
             through=captured.through,
             ordered_listing_ids=captured.ordered_listing_ids,
             schedule=captured.schedule,
@@ -703,13 +706,13 @@ def test_qa_retention_inventory_protects_explicit_old_head_and_reports_exact_can
     for value in (*inventory.protected_files, *inventory.candidate_files):
         content = (root / value.relative_path).read_bytes()
         assert len(content) == value.byte_count
-        assert hashlib.sha256(content).hexdigest() == value.file_hash
+        assert blake3_digest(content) == value.file_hash
     with pytest.raises(ValueError, match="qa_preparation_reference_invalid"):
         local_qa_preparation_retention_inventory(root, referenced_heads=("../outside",))
     oldest = next(
         value.relative_path
         for value in protected.protected_files
-        if value.relative_path.endswith(f"/{heads[0]}.json")
+        if value.relative_path.endswith(f"/{blake3_filename(heads[0])}.json")
     )
     (root / oldest).unlink()
     with pytest.raises(ValueError, match="qa_preparation_missing"):
@@ -784,9 +787,7 @@ def test_durable_qa_requires_capacity_and_keeps_marker_last_on_admission_failure
     marker = next(value for value in original.protected_files if "/markers/" in value.relative_path)
     with pytest.raises(ValueError, match=r"storage\.managed_capacity_exceeded"):
         prepared.rows(sessions=days[:6], through=days[5])
-    assert (
-        hashlib.sha256((root / marker.relative_path).read_bytes()).hexdigest() == marker.file_hash
-    )
+    assert blake3_digest((root / marker.relative_path).read_bytes()) == marker.file_hash
     inventory = local_qa_preparation_retention_inventory(root)
     assert inventory.current_head_hash == original.current_head_hash
     assert len(inventory.candidate_files) == 2
@@ -833,7 +834,7 @@ def test_historical_qa_publication_keeps_latest_roots_and_next_day_append(tmp_pa
         (root / orphan_path).read_bytes()
     )
     assert historical_head.through == date(2026, 9, 8)
-    assert historical_head.ipc_hash == hashlib.sha256(_encoded(historical)).hexdigest()
+    assert historical_head.ipc_hash == blake3_digest(_encoded(historical))
 
     rows_at(date(2026, 9, 11))
     next_day = local_qa_preparation_retention_inventory(root)

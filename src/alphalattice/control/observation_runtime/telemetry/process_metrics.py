@@ -30,6 +30,7 @@ from pydantic import BaseModel, ConfigDict, Field, model_validator
 from alphalattice.capabilities.domain_contracts.identity import canonical_hash
 from alphalattice.capabilities.domain_contracts.waits import pause
 from alphalattice.kernel.config import Change, declare
+from alphalattice.kernel.identity import BLAKE3_PATTERN
 from alphalattice.kernel.resources import logical_cpu_count
 
 _metric_lock = threading.RLock()
@@ -694,7 +695,7 @@ class ResolvedRuntimeCapacityPlan(_CapacityContract):
     refusal_code: str | None = None
     process_tree_peak_cpu_measurement: Literal["NOT_MEASURED"] = "NOT_MEASURED"
     process_tree_peak_rss_measurement: Literal["NOT_MEASURED"] = "NOT_MEASURED"
-    plan_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
+    plan_hash: str = Field(pattern=BLAKE3_PATTERN)
 
     @staticmethod
     def _identity_payload(values: dict[str, object]) -> dict[str, object]:

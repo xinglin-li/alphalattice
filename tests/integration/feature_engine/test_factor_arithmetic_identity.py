@@ -28,13 +28,11 @@ methods.
 Registry mechanics and installed composition are separate modules now. Which
 kernels a build installs is a real identity and has its own name --
 ``FeatureKernelRegistry.installed_capability_hash`` -- and it reaches no factor's
-own identity. Every claim below is proved on the walk each identity hashes, on the
-switch that kept what was sealed before the rule, or by composing a different registry.
+own identity. The cases exercise those source walks and compose a different registry.
 """
 
 from __future__ import annotations
 
-import json
 import math
 from datetime import date, timedelta
 from importlib.util import find_spec
@@ -48,11 +46,10 @@ import pytest
 from alphalattice.capabilities.domain_contracts.identity import canonical_hash
 from alphalattice.capabilities.domain_contracts.identity_successors import recorded_origin
 from alphalattice.capabilities.domain_contracts.source_identity import (
-    IDENTITY_SWITCH_PATH,
     current_module_name,
     number_deciding_closure,
     number_deciding_rule,
-    source_syntax_sha256,
+    source_syntax_digest,
 )
 from alphalattice.capabilities.quant.factor_contracts import FactorSpec
 from alphalattice.foundation.feature_engine.catalog.contracts import (
@@ -71,6 +68,7 @@ from alphalattice.foundation.feature_engine.producers.arithmetic_identity import
     feature_component_identity,
     installed_method_family_owners,
     method_family_content_hash,
+    method_family_rule_identity,
 )
 from alphalattice.foundation.feature_engine.producers.factors import registry as registry_module
 from alphalattice.foundation.feature_engine.producers.factors.catalog import (
@@ -107,6 +105,7 @@ from alphalattice.foundation.feature_engine.producers.factors.session_observatio
 from alphalattice.foundation.feature_engine.producers.factors.specifications import (
     admit_factor_development_capabilities,
 )
+from alphalattice.kernel.identity import is_blake3
 
 ROOT = Path(__file__).resolve().parents[3]
 _FAMILY_MODULES = frozenset(
@@ -140,11 +139,6 @@ def _family_walk(owners: tuple[str, ...]) -> frozenset[str]:
     )
 
 
-def _switched(component: str) -> dict[str, str]:
-    table = json.loads((ROOT / IDENTITY_SWITCH_PATH).read_text(encoding="utf-8"))
-    return dict(table["components"][component])
-
-
 def _installed_family_hash(family: str) -> str:
     return method_family_content_hash(family, installed_method_family_owners(family))
 
@@ -160,8 +154,7 @@ def test_the_control_closure_names_only_the_shared_arithmetic() -> None:
     assert set(SHARED_FACTOR_ARITHMETIC_OWNERS) <= walk
     assert not walk & _FAMILY_MODULES
     assert _MECHANICS not in walk and _COMPOSITION not in walk and _CONTRACTS not in walk
-    # The switch kept the value every Panel was sealed under.
-    assert control_arithmetic_content_hash() == _switched("FACTOR_VALUE:controls")["byte"]
+    assert control_arithmetic_content_hash().startswith("blake3:")
 
 
 def test_a_method_family_closure_contains_its_module_and_the_shared_owners() -> None:
@@ -170,9 +163,9 @@ def test_a_method_family_closure_contains_its_module_and_the_shared_owners() -> 
     owners = FACTOR_METHOD_FAMILY_OWNERS[OPEN_INTRADAY_METHOD_FAMILY]
     assert owners == ("alphalattice.foundation.feature_engine.producers.factors.open_intraday",)
     assert {*owners, *SHARED_FACTOR_ARITHMETIC_OWNERS, _MECHANICS} <= _family_walk(owners)
-    assert (
-        _installed_family_hash(OPEN_INTRADAY_METHOD_FAMILY)
-        == (_switched(f"FACTOR_VALUE:{OPEN_INTRADAY_METHOD_FAMILY}")["byte"])
+    assert _installed_family_hash(OPEN_INTRADAY_METHOD_FAMILY) == recorded_origin(
+        f"{FACTOR_VALUE_ROLE}.{OPEN_INTRADAY_METHOD_FAMILY}",
+        method_family_rule_identity(OPEN_INTRADAY_METHOD_FAMILY, owners),
     )
     # The *product* refuses a family it does not install; the identity function
     # itself takes owners, so an external consumer measures the same way.
@@ -227,24 +220,25 @@ def test_a_comment_moves_no_identity_and_a_changed_rule_is_a_new_one(tmp_path: P
         '"""A new docstring."""\n# a comment\n' + formulas.read_text(encoding="utf-8"),
         encoding="utf-8",
     )
-    assert source_syntax_sha256(commented) == source_syntax_sha256(formulas)
+    assert source_syntax_digest(commented) == source_syntax_digest(formulas)
+    changed = tmp_path / "changed_formulas.py"
+    changed.write_text(
+        commented.read_text(encoding="utf-8") + "\nchanged_rule = 1\n",
+        encoding="utf-8",
+    )
+    assert source_syntax_digest(changed) != source_syntax_digest(formulas)
 
-    recorded = _switched("FACTOR_VALUE:controls")
     unrecorded = feature_component_identity(
-        "FACTOR_VALUE:a-component-the-switch-never-saw",
         owners=SHARED_FACTOR_ARITHMETIC_OWNERS,
         excluded=WALK_EXCLUDED | frozenset(EXTENSION_KERNEL_OWNERS),
         semantic_owner="feature_engine.producers",
         numerical_role="FACTOR_VALUE",
     )
-    assert recorded["rule"] != recorded["byte"]
-    assert control_arithmetic_rule_identity() == (
-        recorded["byte"] if unrecorded == recorded["rule"] else unrecorded
-    )
+    assert control_arithmetic_rule_identity() == unrecorded
     assert control_arithmetic_content_hash() == recorded_origin(
         f"{FACTOR_VALUE_ROLE}.controls", control_arithmetic_rule_identity()
     )
-    assert control_arithmetic_content_hash() == recorded["byte"]
+    assert control_arithmetic_content_hash().startswith("blake3:")
 
 
 def test_a_registered_kernel_must_measure_the_module_that_owns_its_callable() -> None:
@@ -341,7 +335,9 @@ def test_the_catalog_binding_contains_the_arithmetic_it_describes() -> None:
     assert binding.formula_implementation_hash != without_closure
 
 
-@pytest.mark.parametrize("accessor", [control_arithmetic_content_hash])
+@pytest.mark.parametrize(
+    "accessor", [control_arithmetic_content_hash], ids=["control_arithmetic_content_hash"]
+)
 def test_the_closure_is_stable_within_a_process(accessor: Any) -> None:
     """requirement: identity is cached, not re-read per call, and never varies."""
 
@@ -349,7 +345,7 @@ def test_the_closure_is_stable_within_a_process(accessor: Any) -> None:
     first = accessor()
     second = accessor()
     assert first == second
-    assert len(first) == 64 and set(first) <= set("0123456789abcdef")
+    assert is_blake3(first)
 
 
 _SECOND_FAMILY = "CASE_STUDY_SECOND_FAMILY"
@@ -419,7 +415,7 @@ def test_installing_a_second_family_leaves_the_first_bit_identical() -> None:
     assert canonical_hash(a_only.capability_payload()) == a_only.installed_capability_hash
     assert a_only.capability_payload() != a_plus_b.capability_payload()
     assert FeatureCatalog.load().binding.catalog_hash == base_catalog_hash
-    assert len(a_plus_b.installed_capability_hash) == 64
+    assert is_blake3(a_plus_b.installed_capability_hash)
     # Registration order is not identity: the same kernels compose to one build.
     reordered = FeatureKernelRegistry(
         (

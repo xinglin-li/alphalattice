@@ -34,6 +34,7 @@ from alphalattice.foundation.feature_engine.panels.closure_artifacts import (
 from alphalattice.foundation.feature_engine.producers.factors.catalog import (
     default_extension_kernel_registry,
 )
+from alphalattice.kernel.identity import blake3_filename
 
 CATEGORY = "research-feature-plans"
 
@@ -174,7 +175,7 @@ class ResearchFeatureDefinitions:
             ),
         )
         payload = plan.model_dump(mode="json")
-        path = self.store.root / CATEGORY / f"{plan.plan_hash}.json"
+        path = self.store.root / CATEGORY / f"{blake3_filename(plan.plan_hash)}.json"
         if not path.exists():
             require_storage_capacity(
                 self.workspace,

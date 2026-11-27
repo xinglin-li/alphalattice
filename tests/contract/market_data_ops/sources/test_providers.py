@@ -10,7 +10,6 @@ from __future__ import annotations
 
 import json
 import math
-import re
 from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass
 from datetime import UTC, date, datetime
@@ -37,6 +36,7 @@ from alphalattice.foundation.market_data_ops.sources.providers import (
     SectorObservation,
     YFinanceMarketDataProvider,
 )
+from alphalattice.kernel.identity import is_blake3
 from tests._support.market_research_laws import assert_provider_research_laws
 from tests.feature_engine.panel_workspace import FixtureProvider
 from tests.researcher_methodology_surface.real_workspace import SeededWalkProvider
@@ -55,7 +55,6 @@ FIELDS = (
     *("split_ratio", "cash_dividend", "capital_gain"),
 )
 """The daily row the port promises: the adapter's own row, field for field."""
-HEX64 = re.compile(r"[0-9a-f]{64}")
 REPLAY_START, REPLAY_THROUGH, REPLAY_PAID = date(2025, 10, 1), date(2026, 8, 3), date(2026, 1, 15)
 SESSIONS = tuple(pd.bdate_range("2026-01-02", "2026-02-27").date)
 
@@ -408,7 +407,7 @@ def test_every_daily_provider_supplies_replayable_point_in_time_bars(
 
 
 @pytest.mark.proves("market_data_ops.hydration_provider_conformance")
-@pytest.mark.parametrize("implementation", HYDRATION)
+@pytest.mark.parametrize("implementation", HYDRATION, ids=tuple(HYDRATION))
 def test_every_hydration_provider_answers_one_consistent_history(
     tmp_path, monkeypatch, implementation
 ):
@@ -426,7 +425,7 @@ def test_every_hydration_provider_answers_one_consistent_history(
     assert set(_closes(evidence.adjusted_closes, provider, window)) <= set(sessions)
     assert set(evidence.repaired_sessions) <= set(sessions)
     hashed = evidence.provider_policy_hash
-    assert hashed is None or HEX64.fullmatch(hashed)
+    assert hashed is None or is_blake3(hashed)
     with pytest.raises(ValueError, match="start is after end"):
         provider.fetch_hydration(
             listing_id=window.listing_id, provider_symbol=symbol, start=window.end, end=window.start
@@ -434,7 +433,7 @@ def test_every_hydration_provider_answers_one_consistent_history(
 
 
 @pytest.mark.proves("market_data_ops.sector_provider_conformance")
-@pytest.mark.parametrize("implementation", SECTOR)
+@pytest.mark.parametrize("implementation", SECTOR, ids=tuple(SECTOR))
 def test_every_sector_provider_answers_one_named_current_sector(
     tmp_path, monkeypatch, implementation
 ):
@@ -446,7 +445,7 @@ def test_every_sector_provider_answers_one_named_current_sector(
     assert (observed.provider, observed.provider_symbol) == (provider.name, symbol)
     assert observed.sector_name and observed.sector_name == observed.sector_name.strip()
     assert observed.sector_key is None or isinstance(observed.sector_key, str)
-    assert HEX64.fullmatch(observed.payload_hash)
+    assert is_blake3(observed.payload_hash)
     assert provider.fetch_current_sector(provider_symbol=symbol) == observed
     with pytest.raises(ProviderFetchError) as refused:
         provider.fetch_current_sector(provider_symbol="NO-SUCH-SYMBOL")

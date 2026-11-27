@@ -10,6 +10,7 @@ from pydantic import BaseModel, ConfigDict, Field, TypeAdapter, model_validator
 
 from alphalattice.capabilities.domain_contracts.identity import canonical_hash
 from alphalattice.capabilities.domain_contracts.sealing import seal_model_from_dump
+from alphalattice.kernel.identity import BLAKE3_PATTERN, blake3_hex, is_blake3
 
 from ..evaluation.contracts import AlphaMetricPolicy as _AlphaMetricPolicy
 from ..targets.execution_outcome import AlphaTargetLane, AlphaTargetPolicy
@@ -85,7 +86,7 @@ class ResolvedRegularizedLinearSpec(_Contract):
     alpha_max_multiplier: float | None = Field(default=None, ge=0.01, le=1.0, allow_inf_nan=False)
     l1_ratio: float | None = Field(default=None, ge=0.25, le=0.75, allow_inf_nan=False)
     target_lane: AlphaTargetLane | None = None
-    spec_hash: Hash = Field(pattern=r"^[0-9a-f]{64}$")
+    spec_hash: Hash = Field(pattern=BLAKE3_PATTERN)
 
     @model_validator(mode="after")  # type: ignore[untyped-decorator]
     def validate_spec(self) -> Self:
@@ -148,32 +149,35 @@ type StoredModelSpec = Annotated[
 
 
 def candidate_id_for_spec(spec: StoredModelSpec) -> str:
+    """Derive a candidate name from its model family and the spec digest."""
     prefix = "alpha-candidate" if isinstance(spec, AlphaResearchModelRecipe) else "agent-linear"
-    return f"{prefix}-{spec.spec_hash[:16]}"
+    return f"{prefix}-{blake3_hex(spec.spec_hash)[:16]}"
 
 
 class AlphaResearchProgram(_Contract):
+    """Bind the research program to its foundation, target lanes and evaluation policies."""
+
     kind: Literal["AlphaResearchProgram"] = "AlphaResearchProgram"
-    foundation_hash: Hash = Field(pattern=r"^[0-9a-f]{64}$")
-    logical_panel_hash: Hash = Field(pattern=r"^[0-9a-f]{64}$")
-    logical_semantic_index_hash: Hash = Field(pattern=r"^[0-9a-f]{64}$")
-    causal_outcome_snapshot_hash: Hash = Field(pattern=r"^[0-9a-f]{64}$")
-    pm_plan_hash: Hash = Field(pattern=r"^[0-9a-f]{64}$")
-    ordered_listing_ids_hash: Hash = Field(pattern=r"^[0-9a-f]{64}$")
-    ordered_factor_ids_hash: Hash = Field(pattern=r"^[0-9a-f]{64}$")
-    split_policy_hash: Hash = Field(pattern=r"^[0-9a-f]{64}$")
-    metric_policy_hash: Hash = Field(pattern=r"^[0-9a-f]{64}$")
-    package_identity_hash: Hash = Field(pattern=r"^[0-9a-f]{64}$")
-    stability_policy_hash: Hash = Field(pattern=r"^[0-9a-f]{64}$")
-    goal_criteria_hash: Hash = Field(pattern=r"^[0-9a-f]{64}$")
-    user_authorization_hash: Hash = Field(pattern=r"^[0-9a-f]{64}$")
-    research_goal_hash: Hash = Field(pattern=r"^[0-9a-f]{64}$")
-    model_mandate_hash: Hash | None = Field(default=None, pattern=r"^[0-9a-f]{64}$")
-    model_catalog_hash: Hash | None = Field(default=None, pattern=r"^[0-9a-f]{64}$")
+    foundation_hash: Hash = Field(pattern=BLAKE3_PATTERN)
+    logical_panel_hash: Hash = Field(pattern=BLAKE3_PATTERN)
+    logical_semantic_index_hash: Hash = Field(pattern=BLAKE3_PATTERN)
+    causal_outcome_snapshot_hash: Hash = Field(pattern=BLAKE3_PATTERN)
+    pm_plan_hash: Hash = Field(pattern=BLAKE3_PATTERN)
+    ordered_listing_ids_hash: Hash = Field(pattern=BLAKE3_PATTERN)
+    ordered_factor_ids_hash: Hash = Field(pattern=BLAKE3_PATTERN)
+    split_policy_hash: Hash = Field(pattern=BLAKE3_PATTERN)
+    metric_policy_hash: Hash = Field(pattern=BLAKE3_PATTERN)
+    package_identity_hash: Hash = Field(pattern=BLAKE3_PATTERN)
+    stability_policy_hash: Hash = Field(pattern=BLAKE3_PATTERN)
+    goal_criteria_hash: Hash = Field(pattern=BLAKE3_PATTERN)
+    user_authorization_hash: Hash = Field(pattern=BLAKE3_PATTERN)
+    research_goal_hash: Hash = Field(pattern=BLAKE3_PATTERN)
+    model_mandate_hash: Hash | None = Field(default=None, pattern=BLAKE3_PATTERN)
+    model_catalog_hash: Hash | None = Field(default=None, pattern=BLAKE3_PATTERN)
     target_policy_hashes: tuple[Hash, ...] | None = None
-    sector_ema_policy_hash: Hash | None = Field(default=None, pattern=r"^[0-9a-f]{64}$")
-    sector_context_policy_hash: Hash | None = Field(default=None, pattern=r"^[0-9a-f]{64}$")
-    program_hash: Hash = Field(pattern=r"^[0-9a-f]{64}$")
+    sector_ema_policy_hash: Hash | None = Field(default=None, pattern=BLAKE3_PATTERN)
+    sector_context_policy_hash: Hash | None = Field(default=None, pattern=BLAKE3_PATTERN)
+    program_hash: Hash = Field(pattern=BLAKE3_PATTERN)
 
     @property
     def ordered_feature_ids_hash(self) -> str:
@@ -183,6 +187,8 @@ class AlphaResearchProgram(_Contract):
 
     @model_validator(mode="after")  # type: ignore[untyped-decorator]
     def validate_program(self) -> Self:
+        """Verify that the program's target lanes, comparison policies and identity agree."""
+
         target_count = len(self.target_policy_hashes or ())
         if (
             (
@@ -207,7 +213,7 @@ class AlphaResearchProgram(_Contract):
         if self.target_policy_hashes is not None and (
             len(self.target_policy_hashes) not in {1, 2, 4}
             or len(set(self.target_policy_hashes)) != len(self.target_policy_hashes)
-            or any(len(value) != 64 for value in self.target_policy_hashes)
+            or any(not is_blake3(value) for value in self.target_policy_hashes)
         ):
             raise ValueError("Alpha research target policy axis is invalid")
         _validate_hash_compatible(
@@ -225,12 +231,14 @@ class AlphaResearchProgram(_Contract):
 
 
 class AlphaExperimentBatch(_Contract):
+    """Bind an ordered batch of candidate specifications to its program and predecessor."""
+
     kind: Literal["AlphaExperimentBatch"] = "AlphaExperimentBatch"
-    program_hash: Hash = Field(pattern=r"^[0-9a-f]{64}$")
+    program_hash: Hash = Field(pattern=BLAKE3_PATTERN)
     batch_index: int = Field(ge=1)
     specs: tuple[StoredModelSpec, ...] = Field(min_length=1)
-    predecessor_batch_hash: Hash | None = Field(default=None, pattern=r"^[0-9a-f]{64}$")
-    batch_hash: Hash = Field(pattern=r"^[0-9a-f]{64}$")
+    predecessor_batch_hash: Hash | None = Field(default=None, pattern=BLAKE3_PATTERN)
+    batch_hash: Hash = Field(pattern=BLAKE3_PATTERN)
 
     @model_validator(mode="after")  # type: ignore[untyped-decorator]
     def validate_batch(self) -> Self:
@@ -244,11 +252,13 @@ class AlphaExperimentBatch(_Contract):
 
 
 class AlphaExperimentCandidateResult(_Contract):
+    """Record a candidate's measured fold outcomes and referenced numerical artifacts."""
+
     kind: Literal["AlphaExperimentCandidateResult"] = "AlphaExperimentCandidateResult"
     candidate_id: str = Field(pattern=r"^(?:agent-linear|alpha-candidate)-[0-9a-f]{16}$")
-    spec_hash: Hash = Field(pattern=r"^[0-9a-f]{64}$")
-    development_report_hash: Hash = Field(pattern=r"^[0-9a-f]{64}$")
-    inference_evidence_hash: Hash = Field(pattern=r"^[0-9a-f]{64}$")
+    spec_hash: Hash = Field(pattern=BLAKE3_PATTERN)
+    development_report_hash: Hash = Field(pattern=BLAKE3_PATTERN)
+    inference_evidence_hash: Hash = Field(pattern=BLAKE3_PATTERN)
     numerical_result_hashes: tuple[Hash, ...] = Field(min_length=1)
     estimator_state_hashes: tuple[Hash, ...] = Field(min_length=1)
     pooled_oos_r2: float | None = Field(default=None, allow_inf_nan=False)
@@ -256,12 +266,12 @@ class AlphaExperimentCandidateResult(_Contract):
     mean_gross_decile_spread: float | None = Field(default=None, allow_inf_nan=False)
     fold_coverage_mean: float | None = Field(default=None, ge=0, le=1, allow_inf_nan=False)
     target_lane: AlphaTargetLane | None = None
-    development_surface_hash: Hash | None = Field(default=None, pattern=r"^[0-9a-f]{64}$")
-    development_surface_binding_hash: Hash | None = Field(default=None, pattern=r"^[0-9a-f]{64}$")
+    development_surface_hash: Hash | None = Field(default=None, pattern=BLAKE3_PATTERN)
+    development_surface_binding_hash: Hash | None = Field(default=None, pattern=BLAKE3_PATTERN)
     fold_surface_hashes: tuple[Hash, ...] | None = None
     status: Literal["DEVELOPMENT_EVALUATED", "DEVELOPMENT_FAILED"]
     failure_codes: tuple[str, ...] = ()
-    result_hash: Hash = Field(pattern=r"^[0-9a-f]{64}$")
+    result_hash: Hash = Field(pattern=BLAKE3_PATTERN)
 
     @model_validator(mode="after")  # type: ignore[untyped-decorator]
     def validate_result(self) -> Self:
@@ -290,17 +300,19 @@ class AlphaExperimentCandidateResult(_Contract):
 
 
 class AlphaExperimentBatchResult(_Contract):
+    """Collect candidate results and work counts for one development surface and batch."""
+
     kind: Literal["AlphaExperimentBatchResult"] = "AlphaExperimentBatchResult"
-    program_hash: Hash = Field(pattern=r"^[0-9a-f]{64}$")
-    batch_hash: Hash = Field(pattern=r"^[0-9a-f]{64}$")
-    development_surface_hash: Hash = Field(pattern=r"^[0-9a-f]{64}$")
-    development_surface_binding_hash: Hash = Field(pattern=r"^[0-9a-f]{64}$")
+    program_hash: Hash = Field(pattern=BLAKE3_PATTERN)
+    batch_hash: Hash = Field(pattern=BLAKE3_PATTERN)
+    development_surface_hash: Hash = Field(pattern=BLAKE3_PATTERN)
+    development_surface_binding_hash: Hash = Field(pattern=BLAKE3_PATTERN)
     fold_surface_hashes: tuple[Hash, ...] = Field(min_length=1)
     candidates: tuple[AlphaExperimentCandidateResult, ...] = Field(min_length=1)
     fit_call_count: int = Field(ge=0)
     predict_call_count: int = Field(ge=0)
     metric_call_count: int = Field(ge=0)
-    result_hash: Hash = Field(pattern=r"^[0-9a-f]{64}$")
+    result_hash: Hash = Field(pattern=BLAKE3_PATTERN)
 
     @model_validator(mode="after")  # type: ignore[untyped-decorator]
     def validate_batch_result(self) -> Self:
@@ -315,30 +327,30 @@ class AlphaDevelopmentFitEvidence(_Contract):
     """Model-neutral binding from one fold operation to estimator evidence."""
 
     kind: Literal["AlphaDevelopmentFitEvidence"] = "AlphaDevelopmentFitEvidence"
-    execution_binding_hash: Hash = Field(pattern=r"^[0-9a-f]{64}$")
+    execution_binding_hash: Hash = Field(pattern=BLAKE3_PATTERN)
     candidate_id: str
     fold_index: int = Field(ge=0)
     adapter_id: str = Field(min_length=1, max_length=96)
-    recipe_hash: Hash = Field(pattern=r"^[0-9a-f]{64}$")
-    training_binding_hash: Hash = Field(pattern=r"^[0-9a-f]{64}$")
+    recipe_hash: Hash = Field(pattern=BLAKE3_PATTERN)
+    training_binding_hash: Hash = Field(pattern=BLAKE3_PATTERN)
     fit_plan_hash: Hash | None = Field(
         default=None,
-        pattern=r"^[0-9a-f]{64}$",
+        pattern=BLAKE3_PATTERN,
         exclude_if=lambda value: value is None,
     )
-    numerical_binding_hash: Hash = Field(pattern=r"^[0-9a-f]{64}$")
+    numerical_binding_hash: Hash = Field(pattern=BLAKE3_PATTERN)
     numerical_environment_hash: Hash | None = Field(
         default=None,
-        pattern=r"^[0-9a-f]{64}$",
+        pattern=BLAKE3_PATTERN,
         exclude_if=lambda value: value is None,
     )
-    estimator_content_hash: Hash = Field(pattern=r"^[0-9a-f]{64}$")
-    fit_provenance_hash: Hash = Field(pattern=r"^[0-9a-f]{64}$")
-    state_projection_hash: Hash = Field(pattern=r"^[0-9a-f]{64}$")
-    score_evidence_hash: Hash = Field(pattern=r"^[0-9a-f]{64}$")
+    estimator_content_hash: Hash = Field(pattern=BLAKE3_PATTERN)
+    fit_provenance_hash: Hash = Field(pattern=BLAKE3_PATTERN)
+    state_projection_hash: Hash = Field(pattern=BLAKE3_PATTERN)
+    score_evidence_hash: Hash = Field(pattern=BLAKE3_PATTERN)
     fit_call_count: int = Field(ge=0)
     predict_call_count: int = Field(ge=0)
-    evidence_hash: Hash = Field(pattern=r"^[0-9a-f]{64}$")
+    evidence_hash: Hash = Field(pattern=BLAKE3_PATTERN)
 
     @model_validator(mode="after")  # type: ignore[untyped-decorator]
     def validate_identity(self) -> Self:
@@ -375,9 +387,11 @@ class AlphaFailureStage(StrEnum):
 
 
 class AlphaExperimentCard(_Contract):
+    """Describe one candidate's feature shape, model family and training settings."""
+
     kind: Literal["AlphaExperimentCard"] = "AlphaExperimentCard"
     candidate_id: str = Field(min_length=1, max_length=120)
-    source_card_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
+    source_card_hash: str = Field(pattern=BLAKE3_PATTERN)
     family_id: Literal[
         "zero_forecast",
         "historical_mean",
@@ -408,7 +422,7 @@ class AlphaExperimentCard(_Contract):
     deterministic_seed: int | None = None
     secondary_feature_preprocessing: Literal[False] = False
     package_identity: str = Field(min_length=1, max_length=160)
-    card_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
+    card_hash: str = Field(pattern=BLAKE3_PATTERN)
 
     @model_validator(mode="after")  # type: ignore[untyped-decorator]
     def validate_card(self) -> AlphaExperimentCard:
@@ -507,6 +521,8 @@ class AlphaExperimentCard(_Contract):
 
 
 class AlphaSplitPolicy(_Contract):
+    """Declare the training, purge, validation and embargo windows for an Alpha evaluation."""
+
     kind: Literal["AlphaSplitPolicy"] = "AlphaSplitPolicy"
     frequency: Literal["DAILY"] = "DAILY"
     mode: Literal["ROLLING"] = "ROLLING"
@@ -521,7 +537,7 @@ class AlphaSplitPolicy(_Contract):
     split_owner: Literal["alphalattice.kernel.validation.splitting.build_research_split"] = (
         "alphalattice.kernel.validation.splitting.build_research_split"
     )
-    policy_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
+    policy_hash: str = Field(pattern=BLAKE3_PATTERN)
 
     @model_validator(mode="after")  # type: ignore[untyped-decorator]
     def validate_identity(self) -> AlphaSplitPolicy:
@@ -549,7 +565,7 @@ class AlphaDevelopmentSplitPolicy(_Contract):
     split_owner: Literal["alphalattice.kernel.validation.splitting.build_research_split"] = (
         "alphalattice.kernel.validation.splitting.build_research_split"
     )
-    policy_hash: Hash = Field(pattern=r"^[0-9a-f]{64}$")
+    policy_hash: Hash = Field(pattern=BLAKE3_PATTERN)
 
     @model_validator(mode="after")  # type: ignore[untyped-decorator]
     def validate_identity(self) -> Self:
@@ -561,11 +577,13 @@ class AlphaDevelopmentSplitPolicy(_Contract):
 
 
 class AlphaPackageIdentity(_Contract):
+    """Identify the numerical library versions and float representation used by a candidate."""
+
     numpy: Literal["numpy==2.5.1"] = "numpy==2.5.1"
     pyarrow: Literal["pyarrow==25.0.0"] = "pyarrow==25.0.0"
     scikit_learn: Literal["scikit-learn==1.9.0"] = "scikit-learn==1.9.0"
     float_identity: Literal["IEEE754_FLOAT64"] = "IEEE754_FLOAT64"
-    package_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
+    package_hash: str = Field(pattern=BLAKE3_PATTERN)
 
     @model_validator(mode="after")  # type: ignore[untyped-decorator]
     def validate_identity(self) -> AlphaPackageIdentity:
@@ -580,17 +598,17 @@ class AlphaDevelopmentProgram(_Contract):
     """Standalone deterministic development authority without Goal/current policy."""
 
     kind: Literal["AlphaDevelopmentProgram"] = "AlphaDevelopmentProgram"
-    foundation_hash: Hash = Field(pattern=r"^[0-9a-f]{64}$")
-    logical_panel_hash: Hash = Field(pattern=r"^[0-9a-f]{64}$")
-    logical_semantic_index_hash: Hash = Field(pattern=r"^[0-9a-f]{64}$")
-    causal_outcome_snapshot_hash: Hash = Field(pattern=r"^[0-9a-f]{64}$")
-    ordered_listing_ids_hash: Hash = Field(pattern=r"^[0-9a-f]{64}$")
-    ordered_feature_ids_hash: Hash = Field(pattern=r"^[0-9a-f]{64}$")
+    foundation_hash: Hash = Field(pattern=BLAKE3_PATTERN)
+    logical_panel_hash: Hash = Field(pattern=BLAKE3_PATTERN)
+    logical_semantic_index_hash: Hash = Field(pattern=BLAKE3_PATTERN)
+    causal_outcome_snapshot_hash: Hash = Field(pattern=BLAKE3_PATTERN)
+    ordered_listing_ids_hash: Hash = Field(pattern=BLAKE3_PATTERN)
+    ordered_feature_ids_hash: Hash = Field(pattern=BLAKE3_PATTERN)
     split_policy: AlphaDevelopmentSplitPolicy
-    split_hash: Hash = Field(pattern=r"^[0-9a-f]{64}$")
+    split_hash: Hash = Field(pattern=BLAKE3_PATTERN)
     fold_commitment_hashes: tuple[Hash, ...] = Field(min_length=1)
     target_policy: AlphaTargetPolicy | None = None
-    target_method_hash: Hash | None = Field(default=None, pattern=r"^[0-9a-f]{64}$")
+    target_method_hash: Hash | None = Field(default=None, pattern=BLAKE3_PATTERN)
     """The resolved target method's own identity.
 
     ``target_policy`` cannot stand in for it. A method whose composition is not
@@ -603,9 +621,9 @@ class AlphaDevelopmentProgram(_Contract):
 
     metric_policy: _AlphaMetricPolicy
     package_identity: AlphaPackageIdentity
-    model_mandate_hash: Hash = Field(pattern=r"^[0-9a-f]{64}$")
-    model_catalog_hash: Hash = Field(pattern=r"^[0-9a-f]{64}$")
-    program_hash: Hash = Field(pattern=r"^[0-9a-f]{64}$")
+    model_mandate_hash: Hash = Field(pattern=BLAKE3_PATTERN)
+    model_catalog_hash: Hash = Field(pattern=BLAKE3_PATTERN)
+    program_hash: Hash = Field(pattern=BLAKE3_PATTERN)
 
     @property
     def split_policy_hash(self) -> str:
@@ -680,22 +698,24 @@ class AlphaDevelopmentProgramAuthority(Protocol):
 
 
 class AlphaExperimentRequest(_Contract):
+    """Bind the candidate inventory and split policy to the requested research inputs."""
+
     kind: Literal["AlphaExperimentRequest"] = "AlphaExperimentRequest"
-    foundation_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
-    feature_panel_snapshot_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
-    logical_panel_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
-    logical_semantic_index_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
-    causal_outcome_snapshot_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
-    listing_set_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
+    foundation_hash: str = Field(pattern=BLAKE3_PATTERN)
+    feature_panel_snapshot_hash: str = Field(pattern=BLAKE3_PATTERN)
+    logical_panel_hash: str = Field(pattern=BLAKE3_PATTERN)
+    logical_semantic_index_hash: str = Field(pattern=BLAKE3_PATTERN)
+    causal_outcome_snapshot_hash: str = Field(pattern=BLAKE3_PATTERN)
+    listing_set_hash: str = Field(pattern=BLAKE3_PATTERN)
     ordered_listing_ids: tuple[str, ...] = Field(min_length=1)
     ordered_factor_ids: tuple[str, ...] = Field(min_length=1, max_length=55)
-    inventory_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
+    inventory_hash: str = Field(pattern=BLAKE3_PATTERN)
     candidate_ids: tuple[str, ...] = Field(min_length=1)
     candidate_card_hashes: tuple[str, ...] = Field(min_length=1)
     split_policy: AlphaSplitPolicy
     metric_policy: _AlphaMetricPolicy
     package_identity: AlphaPackageIdentity
-    request_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
+    request_hash: str = Field(pattern=BLAKE3_PATTERN)
 
     @model_validator(mode="after")  # type: ignore[untyped-decorator]
     def validate_identity(self) -> AlphaExperimentRequest:
@@ -719,6 +739,8 @@ class AlphaExperimentRequest(_Contract):
 
 
 class AlphaFoldCommitment(_Contract):
+    """Seal the exact training and validation sessions of an admitted fold."""
+
     fold_index: int = Field(ge=0)
     train_first: date
     train_last: date
@@ -726,9 +748,9 @@ class AlphaFoldCommitment(_Contract):
     validation_last: date
     train_session_count: int = Field(ge=1)
     validation_session_count: int = Field(ge=1)
-    train_sessions_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
-    validation_sessions_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
-    commitment_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
+    train_sessions_hash: str = Field(pattern=BLAKE3_PATTERN)
+    validation_sessions_hash: str = Field(pattern=BLAKE3_PATTERN)
+    commitment_hash: str = Field(pattern=BLAKE3_PATTERN)
 
     @model_validator(mode="after")  # type: ignore[untyped-decorator]
     def validate_identity(self) -> AlphaFoldCommitment:
@@ -744,14 +766,16 @@ class AlphaFoldCommitment(_Contract):
 
 
 class AlphaFitLedgerEntry(_Contract):
+    """Record the resulting estimator or named failure for one candidate fold."""
+
     candidate_id: str
     fold_index: int = Field(ge=0)
     training_row_count: int = Field(ge=0)
     prediction_row_count: int = Field(ge=0)
-    estimator_state_hash: str | None = Field(default=None, pattern=r"^[0-9a-f]{64}$")
+    estimator_state_hash: str | None = Field(default=None, pattern=BLAKE3_PATTERN)
     status: Literal["COMPLETED", "FAILED", "NOT_APPLICABLE"]
     failure_code: str | None = Field(default=None, max_length=120)
-    ledger_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
+    ledger_hash: str = Field(pattern=BLAKE3_PATTERN)
 
     @model_validator(mode="after")  # type: ignore[untyped-decorator]
     def validate_identity(self) -> AlphaFitLedgerEntry:
@@ -765,12 +789,14 @@ class AlphaFitLedgerEntry(_Contract):
 
 
 class AlphaCandidateFailure(_Contract):
+    """Record a candidate failure by stage, stable code and affected fold."""
+
     candidate_id: str
     stage: AlphaFailureStage
     code: str = Field(min_length=1, max_length=120)
     safe_detail: str = Field(min_length=1, max_length=500)
     fold_index: int | None = Field(default=None, ge=0)
-    failure_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
+    failure_hash: str = Field(pattern=BLAKE3_PATTERN)
 
     @model_validator(mode="after")  # type: ignore[untyped-decorator]
     def validate_identity(self) -> AlphaCandidateFailure:

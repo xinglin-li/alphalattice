@@ -9,7 +9,6 @@ surface (card C, 2026-09-25): it reads the application; the application never re
 from __future__ import annotations
 
 import json
-import re
 from collections.abc import Callable, Mapping, Sequence
 from dataclasses import fields, replace
 from datetime import datetime
@@ -33,6 +32,7 @@ from alphalattice.evidence.alternative_evidence.publication.contracts import (
 from alphalattice.interface.local_application.cli_contract import join, shell
 from alphalattice.interface.local_application.dispatcher import LocalBackgroundDispatcher
 from alphalattice.interface.local_application.questions import person_question
+from alphalattice.kernel.identity import is_blake3
 from alphalattice.oversight.chief_risk_officer.decision.book_evidence import (
     BookSelector,
     PortfolioEvidenceReviewError,
@@ -449,8 +449,9 @@ class EvidenceReviewBundles:
         references = [str(task_id), task.record_hash, task.input.input_hash]
         for reference in projection.artifact_refs:
             references.append(reference)
-            digest = reference.rsplit(":", 1)[-1]
-            if re.fullmatch(r"[0-9a-f]{64}", digest):
+            _, tag, payload = reference.rpartition("blake3:")
+            digest = tag + payload
+            if is_blake3(digest):
                 references.append(digest)
         allowed = tuple(dict.fromkeys(references))
         if len(allowed) > SPECIALIST_REFERENCE_COUNT or any(

@@ -388,9 +388,9 @@ class ModelTrainingInputApplication:
 
     def _publication(self, plan_hash: str) -> ModelTrainingInputPublication | None:
         matches = []
-        for path in (self.store.root / "current" / PUBLICATIONS).glob("*.json"):
+        for digest in self.store.development_category_identities(PUBLICATIONS):
             value = self.store._load(
-                PUBLICATIONS, path.stem, "publication_hash", ModelTrainingInputPublication
+                PUBLICATIONS, digest, "publication_hash", ModelTrainingInputPublication
             )
             if value.plan_hash == plan_hash:
                 matches.append(value)
@@ -409,10 +409,10 @@ class ModelTrainingInputApplication:
         """
         return any(
             self.store._load(
-                PUBLICATIONS, path.stem, "publication_hash", ModelTrainingInputPublication
+                PUBLICATIONS, digest, "publication_hash", ModelTrainingInputPublication
             ).result_manifest_hash
             == identity
-            for path in (self.store.root / "current" / PUBLICATIONS).glob("*.json")
+            for digest in self.store.development_category_identities(PUBLICATIONS)
         )
 
     def replan_requests(self, plan_hash: str) -> dict[str, object]:

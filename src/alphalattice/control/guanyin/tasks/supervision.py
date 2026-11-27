@@ -25,6 +25,7 @@ from pydantic import BaseModel, ConfigDict, Field, model_serializer, model_valid
 from alphalattice.capabilities.domain_contracts.identity import canonical_hash
 from alphalattice.capabilities.domain_contracts.sealing import seal_model_from_dump
 from alphalattice.control.observation_runtime.guardian import RuntimeIncident
+from alphalattice.kernel.identity import BLAKE3_PATTERN, blake3_filename
 
 INCIDENTS_DIRECTORY = Path("runtime") / "guanyin" / "incidents"
 """Under a workspace: one record per incident, named by its key."""
@@ -143,7 +144,7 @@ class RecoveryAttempt(_Record):
     ordinal: int = Field(ge=1)
     action: Literal["CANCEL", "RECOVER", "REPLAN"]
     selected_by: Literal["USER_COMMAND", "AGENT_PROPOSAL", "HOST_SUPERVISOR"]
-    expected_task_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
+    expected_task_hash: str = Field(pattern=BLAKE3_PATTERN)
     requested_at: datetime
     disposition: str = Field(min_length=1, max_length=120)
     lifecycle_after: str | None = None
@@ -155,7 +156,7 @@ class IncidentRecord(_Record):
     """An incident: its first detection, when it was last seen, its remedies and attempts."""
 
     schema_version: Literal[1] = 1
-    key: str = Field(pattern=r"^[0-9a-f]{64}$")
+    key: str = Field(pattern=BLAKE3_PATTERN)
     task_id: str
     task_kind: str
     execution_id: str | None
@@ -166,12 +167,12 @@ class IncidentRecord(_Record):
     resolved_at: datetime | None = None
     resolved_task_record_hash: str | None = Field(
         default=None,
-        pattern=r"^[0-9a-f]{64}$",
+        pattern=BLAKE3_PATTERN,
         description="The canonical Task record observed when this incident was resolved.",
     )
     remedies: tuple[OfferedRemedy, ...]
     attempts: tuple[RecoveryAttempt, ...] = ()
-    record_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
+    record_hash: str = Field(pattern=BLAKE3_PATTERN)
 
     @model_serializer(mode="wrap")
     def omit_unbound_resolution(self, handler):  # type: ignore[no-untyped-def]
@@ -224,7 +225,7 @@ class IncidentStore:
 
     def get(self, key: str) -> IncidentRecord | None:
         """One record, or none; a record that does not read as sealed is refused by name."""
-        path = self.root / f"{key}.json"
+        path = self.root / f"{blake3_filename(key)}.json"
         if not path.is_file():
             return None
         try:
@@ -255,7 +256,7 @@ class IncidentStore:
     def put(self, record: IncidentRecord) -> None:
         """Write a record whole, atomically."""
         self.root.mkdir(parents=True, exist_ok=True)
-        path = self.root / f"{record.key}.json"
+        path = self.root / f"{blake3_filename(record.key)}.json"
         staged = path.with_name(f"{path.name}.partial")
         staged.write_text(json.dumps(record.model_dump(mode="json"), sort_keys=True), "utf-8")
         os.replace(staged, path)

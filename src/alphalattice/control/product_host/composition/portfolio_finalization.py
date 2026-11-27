@@ -104,6 +104,7 @@ from alphalattice.investment.risk_research.surfaces.returns import (
     RiskReturnArtifactStore,
 )
 from alphalattice.kernel.clock import utc_now
+from alphalattice.kernel.identity import canonical_hash
 from alphalattice.oversight.model_validation.protected_gate import (
     ProtectedValidationGate,
     ProtectedValidationStore,
@@ -119,7 +120,7 @@ class AlphaEvidenceClosureReader(Protocol):
     """
 
     def __call__(
-        self, *, root: Path, expected_manifest_sha256: str
+        self, *, root: Path, expected_manifest_digest: str
     ) -> tuple[str, str, int] | None: ...
 
 
@@ -174,8 +175,7 @@ class HostCompletedDevelopmentTasks:
             # rejects its kind first. They merely satisfy the cross-package
             # projection without pretending the foreign input follows Portfolio's
             # typed schema.
-            spec_hash = "0" * 64
-            program_hash = "0" * 64
+            spec_hash = program_hash = canonical_hash(None)
             authorities_hash = None
         return CompletedDevelopmentRun.create(
             task_id=str(record.task_id),
@@ -531,7 +531,7 @@ class HostUpstreamEvidence:
             # circular: what comes back is the assertion that a file with that
             # sha256 exists and describes this build's Alpha.
             return self.alpha_evidence_closure(
-                root=self.alpha_evidence_root, expected_manifest_sha256=identity_hash
+                root=self.alpha_evidence_root, expected_manifest_digest=identity_hash
             )
         if role == "RISK_RETURN_SURFACE":
             try:

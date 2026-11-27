@@ -38,6 +38,7 @@ from alphalattice.protocols.research_authoring.contracts import (
     AuthoringError,
     ResolvedResearchAuthority,
 )
+from tests._support.identity_fixtures import fixture_digest
 
 _LISTINGS = tuple(f"L{i:03d}" for i in range(300))
 _SECTORS = {
@@ -68,9 +69,9 @@ def test_a_sample_takes_each_sectors_share_and_the_same_names_each_time():
 
 def _spec(**extra: object) -> FactorResearchProgramSpec:
     return build_factor_research_program_spec(
-        feature_panel_snapshot_hash="a" * 64,
+        feature_panel_snapshot_hash=fixture_digest("a"),
         feature_panel_manifest_ref="artifacts/panel.json",
-        causal_outcome_snapshot_hash="b" * 64,
+        causal_outcome_snapshot_hash=fixture_digest("b"),
         causal_outcome_manifest_ref="artifacts/outcome.json",
         factor_ids=("f1", "f2"),
         frozen_at=datetime(2026, 7, 31, tzinfo=UTC),
@@ -97,14 +98,14 @@ def test_a_whole_panel_factor_program_keeps_its_identity_and_a_sample_enters_it(
 
 def _authority(**extra: object) -> ResolvedResearchAuthority:
     return ResolvedResearchAuthority.create(
-        data_snapshot_handle="a" * 64,
+        data_snapshot_handle=fixture_digest("a"),
         universe_handle="us-current-index-research.sample-110",
-        panel_snapshot_hash="a" * 64,
+        panel_snapshot_hash=fixture_digest("a"),
         panel_manifest_ref="artifacts/panel.json",
-        universe_revision_sha256="c" * 64,
+        universe_revision_sha256=fixture_digest("c"),
         ordered_listing_ids=("L001", "L002"),
         sessions=(datetime(2026, 7, 31).date(),),
-        source_watermark_hash="d" * 64,
+        source_watermark_hash=fixture_digest("d"),
         **extra,
     )
 
@@ -126,26 +127,30 @@ def test_a_study_sampled_before_sector_shares_reads_back_not_current():
 
 def _subject(features: list[str], values: str, materialization: str) -> dict[str, object]:
     return {
-        "input_binding_hash": "i" * 64,
-        "target_recipe_binding_hash": "r" * 64,
+        "input_binding_hash": fixture_digest("i"),
+        "target_recipe_binding_hash": fixture_digest("r"),
         "target_materialization_binding_hash": materialization,
         "target_values": {"transformed_target_value_hash": values},
         "ordered_feature_ids": features,
-        "metric_policy_hash": "m" * 64,
-        "split_policy_hash": "s" * 64,
+        "metric_policy_hash": fixture_digest("m"),
+        "split_policy_hash": fixture_digest("s"),
     }
 
 
 def test_the_alpha_owner_compares_a_feature_addition_over_the_same_target_values():
-    base = _subject(["a", "b"], "v", "x" * 64)
+    base = _subject(["a", "b"], "v", fixture_digest("x"))
 
-    assert _relation(base, _subject(["a", "b"], "v", "x" * 64)) == "PARAMETERS"
-    assert _relation(base, _subject(["a", "b", "c"], "v", "y" * 64)) == "FEATURE_ADDITION"
-    assert _relation(_subject(["a", "b", "c"], "v", "y" * 64), base) == "FEATURE_ADDITION"
+    assert _relation(base, _subject(["a", "b"], "v", fixture_digest("x"))) == "PARAMETERS"
+    assert (
+        _relation(base, _subject(["a", "b", "c"], "v", fixture_digest("y"))) == "FEATURE_ADDITION"
+    )
+    assert (
+        _relation(_subject(["a", "b", "c"], "v", fixture_digest("y")), base) == "FEATURE_ADDITION"
+    )
     for other, code in (
-        (_subject(["a", "b"], "v", "y" * 64), "target_materialization_binding_hash"),
-        (_subject(["a", "c"], "v", "y" * 64), "ordered_feature_ids"),
-        (_subject(["a", "b", "c"], "w", "y" * 64), "target_values"),
+        (_subject(["a", "b"], "v", fixture_digest("y")), "target_materialization_binding_hash"),
+        (_subject(["a", "c"], "v", fixture_digest("y")), "ordered_feature_ids"),
+        (_subject(["a", "b", "c"], "w", fixture_digest("y")), "target_values"),
     ):
         with pytest.raises(AuthoringError, match=f"saved_comparison_{code}_mismatch"):
             _relation(base, other)

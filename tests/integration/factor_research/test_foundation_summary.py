@@ -16,27 +16,29 @@ from alphalattice.foundation.research_foundation.contracts import (
     ResearchFoundationAdmission,
     ResearchFoundationBinding,
 )
+from alphalattice.kernel.identity import blake3_filename
 from alphalattice.protocols.research_authoring.contracts import AuthoringError
+from tests._support.identity_fixtures import fixture_digest
 
 
 def _sealed_metadata(workspace):
     outcome = ResearchDeskExecutionOutcomeRef(
         research_cadence="DAILY",
-        snapshot_hash="1" * 64,
-        schedule_hash="2" * 64,
-        development_content_hash="3" * 64,
-        sealed_holdout_content_hash="4" * 64,
-        marker_hash="5" * 64,
+        snapshot_hash=fixture_digest("snapshot"),
+        schedule_hash=fixture_digest("schedule"),
+        development_content_hash=fixture_digest("development content"),
+        sealed_holdout_content_hash=fixture_digest("sealed holdout content"),
+        marker_hash=fixture_digest("marker"),
         market_as_of="2024-08-12",
         data_validity_class="CURRENT_UNIVERSE_RESEARCH_ONLY",
     )
     foundation_values = {
         "research_cadence": outcome.research_cadence,
-        "feature_panel_snapshot_hash": "6" * 64,
-        "factor_training_outcome_snapshot_hash": "7" * 64,
-        "factor_screening_result_hash": "8" * 64,
-        "factor_candidate_slate_hash": "9" * 64,
-        "research_desk_factor_input_hash": "a" * 64,
+        "feature_panel_snapshot_hash": fixture_digest("feature panel snapshot"),
+        "factor_training_outcome_snapshot_hash": fixture_digest("factor training outcome snapshot"),
+        "factor_screening_result_hash": fixture_digest("factor screening result"),
+        "factor_candidate_slate_hash": fixture_digest("factor candidate slate"),
+        "research_desk_factor_input_hash": fixture_digest("research desk factor input"),
         "execution_outcome": outcome,
         "ordered_factor_ids": ("fixture-factor",),
     }
@@ -50,11 +52,11 @@ def _sealed_metadata(workspace):
     admission_values = {
         "foundation": foundation,
         "factor_task_id": "11111111-2222-4333-8444-555555555555",
-        "factor_receipt_hash": "b" * 64,
-        "curation_receipt_hash": "c" * 64,
+        "factor_receipt_hash": fixture_digest("factor receipt"),
+        "curation_receipt_hash": fixture_digest("curation receipt"),
         "input_id": "fixture-factor-input",
-        "input_binding_hash": "d" * 64,
-        "factor_input_binding_hash": "e" * 64,
+        "input_binding_hash": fixture_digest("input binding"),
+        "factor_input_binding_hash": fixture_digest("factor input binding"),
     }
     draft = ResearchFoundationAdmission.model_construct(**admission_values, admission_hash="")
     admission = ResearchFoundationAdmission(
@@ -70,8 +72,12 @@ def _sealed_metadata(workspace):
         payload=admission.model_dump(mode="json"), admission_hash=admission.admission_hash
     )
     return admission, (
-        store.root / "research-desk/foundation-admissions" / (admission.admission_hash + ".json"),
-        store.root / "research-desk/foundations" / (foundation.foundation_hash + ".json"),
+        store.root
+        / "research-desk/foundation-admissions"
+        / f"{blake3_filename(admission.admission_hash)}.json",
+        store.root
+        / "research-desk/foundations"
+        / f"{blake3_filename(foundation.foundation_hash)}.json",
     )
 
 
@@ -189,4 +195,4 @@ def test_summary_unknown_exact_hash_never_falls_back_to_existing_admission(tmp_p
     with pytest.raises(
         AuthoringError, match=r"^research_foundation\.admission_artifact_unavailable$"
     ):
-        read_foundation_summary(tmp_path, "f" * 64)
+        read_foundation_summary(tmp_path, fixture_digest("unknown Foundation admission"))

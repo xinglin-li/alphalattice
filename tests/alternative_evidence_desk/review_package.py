@@ -6,7 +6,6 @@ Test support beside its owner; nothing here is product authority or evidence.
 
 from __future__ import annotations
 
-import hashlib
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from typing import Any
@@ -29,6 +28,7 @@ from alphalattice.evidence.alternative_evidence.contracts import (
 from alphalattice.evidence.alternative_evidence.sources.recorded import (
     RecordedEvidenceDocument,
 )
+from alphalattice.kernel.identity import blake3_digest
 from alphalattice.oversight.chief_risk_officer.portfolio_evidence.contracts import (
     AdmittedListingTicker,
     AdmittedListingTickerAuthority,
@@ -37,7 +37,7 @@ from alphalattice.oversight.chief_risk_officer.portfolio_evidence.contracts impo
 
 NOW = datetime(2026, 8, 12, 18, tzinfo=UTC)
 
-CAPABILITY_HASH = "b" * 64
+CAPABILITY_HASH = "blake3:" + "b" * 64
 
 DEEPSEEK_ENVIRONMENT = {
     "DEEPSEEK_API_KEY": "test-only-not-a-real-secret",
@@ -56,7 +56,7 @@ def _write(path: Path, value: Any) -> EvidenceReviewArtifactBinding:
     )
     return EvidenceReviewArtifactBinding(
         relative_path=path.relative_to(path.parent.parent).as_posix(),
-        file_sha256=hashlib.sha256(payload).hexdigest(),
+        file_digest=blake3_digest(payload),
         content_hash=identity,
     )
 
@@ -90,7 +90,7 @@ def _package(
             for ticker, cik, name in issuers
             if ticker in entities
         ),
-        source_content_hash="c" * 64,
+        source_content_hash="blake3:" + "c" * 64,
     )
     listing = seal_portfolio_evidence_contract(
         AdmittedListingTickerAuthority,
@@ -146,7 +146,7 @@ def _package(
     return (
         ResearchWorkspaceEvidenceReview(
             relative_path="authority/evidence-review-authority.json",
-            file_sha256=hashlib.sha256(payload).hexdigest(),
+            file_digest=blake3_digest(payload),
         ),
         authority / "registry.json",
     )

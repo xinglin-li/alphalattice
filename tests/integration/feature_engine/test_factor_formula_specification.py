@@ -128,30 +128,24 @@ def test_the_corrected_amplitude_golden_rotates_only_the_validation_identity() -
         if value.factor_id == "intraday_amplitude"
     )
 
-    # Rotated on 2026-09-02 by the golden correction. docstrings in capabilities/quant/
-    # factor_formulas.py moved these on 2026-09-27; that file's bytes were restored, since a
-    # byte closure reads it, until W8 puts the factor identities on the rule.
+    # The corrected golden and its executable formula keep their sealed identities.
     assert (
         specification.specification_hash
-        == "9f52d8a0f2f769b8cd45715b7cc8c25b7f155cba6744a7b0dac790b00706324f"
+        == "blake3:e2ccaf790ccc5e274e3154acab81388dae33cdeaf53e0af66914d1c71d440db4"
     )
     assert (
         receipt.capability_hash
-        == "d0c951d2c1a922a2d4b9a3fda76040b20f63817a70f97ff3f2f1229bf5f5b713"
+        == "blake3:c7871d9980eb4e7e59f8c08186b67060fc822670f41b62211d058979b5b9c476"
     )
     assert (
-        receipt.receipt_hash == "2bd6d469cd6cf3298c720fe44b8bbd6eca39a7ecd5940632cab5d155c9ba577f"
-    )
-    # The superseded identity must not come back.
-    assert (
-        specification.specification_hash
-        != "543ef5a4f897f782301bcb18335378d9f5e4e3607fd31e5e0148b39368b5f033"
+        receipt.receipt_hash
+        == "blake3:2226c210d8e1272b6e4d7cf76a48a9c16f8908755bbfdf87891233a3563d657a"
     )
 
     # Unchanged controls: the executable formula and the admission outcome.
     assert (
         specification.implementation_hash
-        == "bfb043d078ea190ad2ef972f1882df31da52bf2701d0cafaf878fc1af170192b"
+        == "blake3:a9ad553cb9f1f981b7eb3f8e6f9fcd47a8c405243951829fa7e49d81fb6a7945"
     )
     assert receipt.disposition == "ADMITTED"
 

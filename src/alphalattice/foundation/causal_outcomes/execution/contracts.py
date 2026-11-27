@@ -18,6 +18,7 @@ from alphalattice.foundation.market_data_ops.sources.contracts import (
     CorporateActionEvent,
     RawDailyBar,
 )
+from alphalattice.kernel.identity import BLAKE3_PATTERN
 
 _FORMULA_ID = "formation-close-next-common-open-following-common-open-simple-return"
 _ACTION_ID = "provider-split-adjusted-open-and-period-dividend"
@@ -47,13 +48,13 @@ class LocalQAMarketSnapshot(_Contract):
     purpose: Literal["QA_NOT_FORWARD_AVAILABILITY_AUTHORITY"] = (
         "QA_NOT_FORWARD_AVAILABILITY_AUTHORITY"
     )
-    source_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
+    source_hash: str = Field(pattern=BLAKE3_PATTERN)
     through: date
     ordered_listing_ids: tuple[str, ...]
     schedule: tuple[CausalExecutionSchedulePoint, ...]
     bars: tuple[RawDailyBar, ...]
     actions: tuple[CorporateActionEvent, ...]
-    content_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
+    content_hash: str = Field(pattern=BLAKE3_PATTERN)
 
     @classmethod
     def create(cls, **values: object) -> Self:
@@ -104,7 +105,7 @@ class LocalQAOutcomePreparationSourcePrefix(_Contract):
     )
     through: date
     listing_ids: tuple[str, ...] = Field(min_length=1)
-    recipe_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
+    recipe_hash: str = Field(pattern=BLAKE3_PATTERN)
     schedule: tuple[CausalExecutionSchedulePoint, ...]
     bars: tuple[RawDailyBar, ...]
     actions: tuple[CorporateActionEvent, ...]
@@ -137,7 +138,7 @@ class _LocalQAPreparationRecord(_Contract):
     """Seal only the local QA preparation owner's immutable records."""
 
     model_config = ConfigDict(extra="forbid", frozen=True, strict=True)
-    content_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
+    content_hash: str = Field(pattern=BLAKE3_PATTERN)
 
     @classmethod
     def create(cls, **values: object) -> Self:
@@ -166,8 +167,8 @@ class LocalQAOutcomePreparationPart(_LocalQAPreparationRecord):
     listing_count: int = Field(ge=1)
     point_count: int = Field(ge=0)
     row_count: int = Field(ge=0)
-    ipc_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
-    file_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
+    ipc_hash: str = Field(pattern=BLAKE3_PATTERN)
+    file_hash: str = Field(pattern=BLAKE3_PATTERN)
     byte_count: int = Field(gt=0)
 
     @model_validator(mode="after")  # type: ignore[untyped-decorator]
@@ -186,19 +187,19 @@ class LocalQAOutcomePreparationHead(_LocalQAPreparationRecord):
         "QA_NOT_FORWARD_AVAILABILITY_AUTHORITY"
     )
     schema_id: Literal["desktop-causal-execution-outcome"] = "desktop-causal-execution-outcome"
-    recipe_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
-    listing_axis_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
+    recipe_hash: str = Field(pattern=BLAKE3_PATTERN)
+    listing_axis_hash: str = Field(pattern=BLAKE3_PATTERN)
     listing_count: int = Field(ge=1)
     requested_session_count: int = Field(ge=1)
-    requested_axis_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
+    requested_axis_hash: str = Field(pattern=BLAKE3_PATTERN)
     matured_point_count: int = Field(ge=0)
-    matured_points_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
-    source_prefix_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
+    matured_points_hash: str = Field(pattern=BLAKE3_PATTERN)
+    source_prefix_hash: str = Field(pattern=BLAKE3_PATTERN)
     through: date
-    previous_head_hash: str | None = Field(default=None, pattern=r"^[0-9a-f]{64}$")
+    previous_head_hash: str | None = Field(default=None, pattern=BLAKE3_PATTERN)
     parts: tuple[LocalQAOutcomePreparationPart, ...] = Field(min_length=1)
     part: LocalQAOutcomePreparationPart | None = None
-    ipc_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
+    ipc_hash: str = Field(pattern=BLAKE3_PATTERN)
 
     @model_validator(mode="after")  # type: ignore[untyped-decorator]
     def validate_head_shape(self) -> Self:
@@ -240,8 +241,8 @@ class LocalQAOutcomePreparationMarker(_LocalQAPreparationRecord):
     purpose: Literal["QA_NOT_FORWARD_AVAILABILITY_AUTHORITY"] = (
         "QA_NOT_FORWARD_AVAILABILITY_AUTHORITY"
     )
-    current_head_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
-    previous_head_hash: str | None = Field(default=None, pattern=r"^[0-9a-f]{64}$")
+    current_head_hash: str = Field(pattern=BLAKE3_PATTERN)
+    previous_head_hash: str | None = Field(default=None, pattern=BLAKE3_PATTERN)
 
 
 class LocalQAOutcomePreparationFile(_Contract):
@@ -250,7 +251,7 @@ class LocalQAOutcomePreparationFile(_Contract):
     model_config = ConfigDict(extra="forbid", frozen=True, strict=True)
     relative_path: str
     byte_count: int = Field(ge=0)
-    file_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
+    file_hash: str = Field(pattern=BLAKE3_PATTERN)
 
 
 class LocalQAOutcomePreparationRetentionInventory(_LocalQAPreparationRecord):
@@ -259,8 +260,8 @@ class LocalQAOutcomePreparationRetentionInventory(_LocalQAPreparationRecord):
     kind: Literal["LocalQAOutcomePreparationRetentionInventory"] = (
         "LocalQAOutcomePreparationRetentionInventory"
     )
-    current_head_hash: str | None = Field(default=None, pattern=r"^[0-9a-f]{64}$")
-    previous_head_hash: str | None = Field(default=None, pattern=r"^[0-9a-f]{64}$")
+    current_head_hash: str | None = Field(default=None, pattern=BLAKE3_PATTERN)
+    previous_head_hash: str | None = Field(default=None, pattern=BLAKE3_PATTERN)
     referenced_heads: tuple[str, ...] = ()
     protected_files: tuple[LocalQAOutcomePreparationFile, ...]
     candidate_files: tuple[LocalQAOutcomePreparationFile, ...]
@@ -274,8 +275,8 @@ class CausalExecutionOutcomeChunk(_Contract):
     row_count: int = Field(ge=1)
     first_formation_session: date
     last_formation_session: date
-    content_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
-    metadata_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
+    content_hash: str = Field(pattern=BLAKE3_PATTERN)
+    metadata_hash: str = Field(pattern=BLAKE3_PATTERN)
     uri: str
 
 
@@ -286,10 +287,10 @@ class CausalExecutionOutcomeManifest(_Contract):
     research_cadence: Literal[RebalanceFrequency.DAILY]  # type: ignore[valid-type]
     market_as_of: date
     listing_ids: tuple[str, ...] = Field(min_length=1)
-    listing_set_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
-    schedule_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
-    ordered_session_triples_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
-    source_rows_semantic_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
+    listing_set_hash: str = Field(pattern=BLAKE3_PATTERN)
+    schedule_hash: str = Field(pattern=BLAKE3_PATTERN)
+    ordered_session_triples_hash: str = Field(pattern=BLAKE3_PATTERN)
+    source_rows_semantic_hash: str = Field(pattern=BLAKE3_PATTERN)
     price_basis: Literal["open_split_adjusted"] = "open_split_adjusted"
     return_formula_identity: Literal[
         "formation-close-next-common-open-following-common-open-simple-return"
@@ -304,7 +305,7 @@ class CausalExecutionOutcomeManifest(_Contract):
     development_formation_count: int = Field(ge=1)
     sealed_holdout_formation_count: int = Field(ge=1)
     limitations: tuple[str, ...]
-    snapshot_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
+    snapshot_hash: str = Field(pattern=BLAKE3_PATTERN)
 
     @model_validator(mode="after")  # type: ignore[untyped-decorator]
     def validate_identity(self) -> CausalExecutionOutcomeManifest:
@@ -365,10 +366,10 @@ class DevelopmentOnlyExecutionOutcomeManifest(_Contract):
     research_cadence: Literal[RebalanceFrequency.DAILY]  # type: ignore[valid-type]
     market_as_of: date
     listing_ids: tuple[str, ...] = Field(min_length=1)
-    listing_set_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
-    schedule_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
-    ordered_session_triples_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
-    source_rows_semantic_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
+    listing_set_hash: str = Field(pattern=BLAKE3_PATTERN)
+    schedule_hash: str = Field(pattern=BLAKE3_PATTERN)
+    ordered_session_triples_hash: str = Field(pattern=BLAKE3_PATTERN)
+    source_rows_semantic_hash: str = Field(pattern=BLAKE3_PATTERN)
     price_basis: Literal["open_split_adjusted"] = "open_split_adjusted"
     return_formula_identity: str = Field(min_length=1, max_length=128)
     """Stated, not enumerated. Which formula was actually installed is fixed by
@@ -389,7 +390,7 @@ class DevelopmentOnlyExecutionOutcomeManifest(_Contract):
     development_formation_count: int = Field(ge=1)
     maturity_lag_sessions: int = Field(ge=2)
     limitations: tuple[str, ...]
-    snapshot_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
+    snapshot_hash: str = Field(pattern=BLAKE3_PATTERN)
 
     @model_validator(mode="after")  # type: ignore[untyped-decorator]
     def validate_identity(self) -> Self:
@@ -462,11 +463,11 @@ class PolicyHoldoutExecutionOutcomeRelease(_Contract):
     """Claim-bound release of one exact Portfolio Policy Holdout outcome axis."""
 
     kind: Literal["PolicyHoldoutExecutionOutcomeRelease"] = "PolicyHoldoutExecutionOutcomeRelease"
-    claim_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
-    source_snapshot_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
-    source_listing_set_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
-    universe_manifest_revision: str = Field(pattern=r"^[0-9a-f]{64}$")
-    source_watermark_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
+    claim_hash: str = Field(pattern=BLAKE3_PATTERN)
+    source_snapshot_hash: str = Field(pattern=BLAKE3_PATTERN)
+    source_listing_set_hash: str = Field(pattern=BLAKE3_PATTERN)
+    universe_manifest_revision: str = Field(pattern=BLAKE3_PATTERN)
+    source_watermark_hash: str = Field(pattern=BLAKE3_PATTERN)
     embargo_session: date
     formation_sessions: tuple[date, ...] = Field(min_length=252, max_length=252)
     extension_chunk: CausalExecutionOutcomeChunk
@@ -474,7 +475,7 @@ class PolicyHoldoutExecutionOutcomeRelease(_Contract):
         "USER_AUTHORIZED_ONE_TIME_POLICY_HOLDOUT"
     )
     system_holdout_state: Literal["UNREAD"] = "UNREAD"
-    release_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
+    release_hash: str = Field(pattern=BLAKE3_PATTERN)
 
     @model_validator(mode="after")  # type: ignore[untyped-decorator]
     def validate_release(self) -> Self:
@@ -497,14 +498,14 @@ class PolicyHoldoutExecutionOutcomeAuthority(_Contract):
     kind: Literal["PolicyHoldoutExecutionOutcomeAuthority"] = (
         "PolicyHoldoutExecutionOutcomeAuthority"
     )
-    claim_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
-    mandate_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
-    slate_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
+    claim_hash: str = Field(pattern=BLAKE3_PATTERN)
+    mandate_hash: str = Field(pattern=BLAKE3_PATTERN)
+    slate_hash: str = Field(pattern=BLAKE3_PATTERN)
     task_id: str = Field(min_length=1, max_length=120)
     source_manifest_ref: str = Field(min_length=1)
-    source_snapshot_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
+    source_snapshot_hash: str = Field(pattern=BLAKE3_PATTERN)
     alpha_program_hashes: tuple[str, ...] = Field(min_length=1, max_length=2)
-    validation_numerical_binding_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
+    validation_numerical_binding_hash: str = Field(pattern=BLAKE3_PATTERN)
     embargo_session: date
     formation_sessions: tuple[date, ...] = Field(min_length=252, max_length=252)
     claimed_at: datetime
@@ -512,7 +513,7 @@ class PolicyHoldoutExecutionOutcomeAuthority(_Contract):
         "USER_AUTHORIZED_ONE_TIME_POLICY_HOLDOUT"
     )
     system_holdout_state: Literal["UNREAD"] = "UNREAD"
-    authority_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
+    authority_hash: str = Field(pattern=BLAKE3_PATTERN)
 
     @model_validator(mode="after")  # type: ignore[untyped-decorator]
     def validate_authority(self) -> Self:

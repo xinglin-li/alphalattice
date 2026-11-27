@@ -103,6 +103,7 @@ from alphalattice.investment.risk_research.surfaces.decomposition import (
     FactorIdiosyncraticRiskSurface,
     RiskAttributionProjection,
 )
+from alphalattice.kernel.identity import blake3_filename
 from tests.portfolio_strategy_lab.host_requests import _json
 from tests.portfolio_strategy_lab.local_web_support import admit_market_fixture
 
@@ -230,7 +231,7 @@ class _ActivationReviewResolver:
             workspace
             / "artifacts/research-strategy-inputs/synthetic/portfolio-strategy-lab"
             / CATEGORY
-            / f"{authority.authority_hash}.json"
+            / f"{blake3_filename(authority.authority_hash)}.json"
         )
         self.source = LifecycleResearchScoreSource(
             manifest_path=artifact, recipe=REBOUND_RETURN_BOOK_RECIPE
@@ -491,7 +492,7 @@ def _sealed_score_source(workspace: Path):
     )
     admission_path = _write_contract(
         workspace,
-        f"artifacts/alpha-research/current/lifecycle-admissions/{admission.content_hash}.json",
+        f"artifacts/alpha-research/current/lifecycle-admissions/{blake3_filename(admission.content_hash)}.json",
         admission,
     )
     training_binding = ResearchWorkspaceModelTrainingInput(
@@ -646,7 +647,7 @@ def activation_review_host(
         ) = _sealed_score_source(root)
         artifact_path = (
             f"artifacts/research-strategy-inputs/synthetic/portfolio-strategy-lab/"
-            f"{CATEGORY}/{authority.authority_hash}.json"
+            f"{CATEGORY}/{blake3_filename(authority.authority_hash)}.json"
         )
         manifest = ResearchWorkspaceManifest.create(
             workspace_id="synthetic-activation-review",

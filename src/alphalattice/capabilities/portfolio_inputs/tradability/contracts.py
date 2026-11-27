@@ -14,9 +14,10 @@ from alphalattice.capabilities.causal_inputs.contracts import (
 )
 from alphalattice.capabilities.domain_contracts.identity import canonical_hash
 from alphalattice.capabilities.domain_contracts.sealing import seal_model_from_dump
+from alphalattice.kernel.identity import BLAKE3_PATTERN
 
 Hash = str
-_HASH = r"^[0-9a-f]{64}$"
+_HASH = BLAKE3_PATTERN
 
 
 class TradabilityContract(BaseModel):  # type: ignore[misc]
@@ -66,7 +67,7 @@ class TradabilitySurfaceChunk(TradabilityContract):
         surface_kind: DECISION for planned eligibility or EXECUTION for observed availability.
         formation_sessions: Sorted unique nonempty formation labels, at most 21 per chunk.
         row_count: Positive number of records committed by the chunk.
-        payload_sha256: SHA-256 commitment to the exact Parquet payload.
+        payload_digest: BLAKE3 commitment to the exact Parquet payload.
         metadata_hash: Commitment to canonical serialized Arrow metadata.
         content_hash: Canonical identity of kind, sessions, count and byte/metadata commitments.
         uri: Exact content-addressed playpen URI derived from kind and identity.
@@ -75,7 +76,7 @@ class TradabilitySurfaceChunk(TradabilityContract):
     surface_kind: Literal["DECISION", "EXECUTION"]
     formation_sessions: tuple[date, ...] = Field(min_length=1, max_length=21)
     row_count: int = Field(ge=1)
-    payload_sha256: Hash = Field(pattern=_HASH)
+    payload_digest: Hash = Field(pattern=_HASH)
     metadata_hash: Hash = Field(pattern=_HASH)
     content_hash: Hash = Field(pattern=_HASH)
     uri: str = Field(min_length=1)
@@ -96,7 +97,7 @@ class TradabilitySurfaceChunk(TradabilityContract):
             surface_kind=self.surface_kind,
             formation_sessions=self.formation_sessions,
             row_count=self.row_count,
-            payload_sha256=self.payload_sha256,
+            payload_digest=self.payload_digest,
             metadata_hash=self.metadata_hash,
         )
         if self.content_hash != canonical_hash(identity):
@@ -470,7 +471,7 @@ def tradability_chunk_identity(
     surface_kind: Literal["DECISION", "EXECUTION"],
     formation_sessions: tuple[date, ...],
     row_count: int,
-    payload_sha256: str,
+    payload_digest: str,
     metadata_hash: str,
 ) -> dict[str, object]:
     """Return the sole canonical identity preimage for a Parquet chunk."""
@@ -478,7 +479,7 @@ def tradability_chunk_identity(
         "surface_kind": surface_kind,
         "formation_sessions": formation_sessions,
         "row_count": row_count,
-        "payload_sha256": payload_sha256,
+        "payload_digest": payload_digest,
         "metadata_hash": metadata_hash,
     }
 

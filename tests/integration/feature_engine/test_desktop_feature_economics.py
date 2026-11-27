@@ -567,7 +567,7 @@ def test_panel_binding_change_rebuilds_panel_without_base_feature_work() -> None
     expected_range = (PanelInvalidationRange(sessions[0], sessions[-1]),)
     assert all(item.ranges == expected_range for item in rebuilt.items)
 
-    sector = FeatureInvalidation("sector_revision_change", source_receipt_hash="c" * 64)
+    sector = FeatureInvalidation("sector_revision_change", source_receipt_hash="blake3:" + "c" * 64)
     arguments = dict(
         catalog=catalog,
         request=request,
@@ -580,7 +580,7 @@ def test_panel_binding_change_rebuilds_panel_without_base_feature_work() -> None
     assert all(item.ranges == expected_range for item in legacy.items)
     unchanged = compile_panel_plan(**arguments, row_identity_basis="SESSION_CROSS_SECTION")
     assert unchanged.items == ()
-    assert unchanged.source_receipt_hashes == ("c" * 64,)
+    assert unchanged.source_receipt_hashes == ("blake3:" + "c" * 64,)
     changed = compile_panel_plan(
         **arguments, row_identity_basis="SESSION_CROSS_SECTION", forced_sessions=sessions[-2:]
     )
@@ -599,7 +599,7 @@ def test_full_catalog_plan_keeps_exact_dense_identity_and_targets(monkeypatch) -
         invalidations=(
             FeatureInvalidation(
                 "catalog_binding_change",
-                source_receipt_hash="c" * 64,
+                source_receipt_hash="blake3:" + "c" * 64,
             ),
         ),
     )
@@ -626,7 +626,7 @@ def test_full_catalog_plan_keeps_exact_dense_identity_and_targets(monkeypatch) -
         items=tuple(
             FactorSessionInvalidation(factor_id, full_range) for factor_id in catalog.factor_ids
         ),
-        source_receipt_hashes=("c" * 64,),
+        source_receipt_hashes=("blake3:" + "c" * 64,),
     )
     with stage_digests(), monkeypatch.context() as count:
         count.setattr(contracts, "canonical_hash", counted_hash)

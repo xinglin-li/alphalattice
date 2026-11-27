@@ -997,6 +997,10 @@
   "detail": "The workspace's manifest does not read as its contract says (`{subject}`: each field refused and its rule), so nothing in it runs; restore the workspace from a backup that holds a readable manifest (`alphalattice backup list`, then `alphalattice backup restore --dir <new directory> --generation <verified generation hash> --workspace-id <workspace id> --root <backup root>` into a new folder) and work there.",
   "next_action": "RESTORE_THE_WORKSPACE_FROM_A_BACKUP"
  },
+ "research_workspace.manifest_before_blake3": {
+  "detail": "This workspace uses the earlier format. To use this release, start a fresh data root and research workspace.",
+  "next_action": "START_A_NEW_WORKSPACE"
+ },
  "research_workspace.manifest_unreadable": {
   "detail": "The directory holds no readable AlphaLattice workspace manifest; name the workspace's own directory (`--workspace`), or restore it from a backup.",
   "next_action": "NAME_THE_WORKSPACE_OR_RESTORE_IT"

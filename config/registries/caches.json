@@ -702,26 +702,6 @@
       "source_commit": "a31a8dfb41cccaaea75de370781874053b6b488e",
       "description": "Reuses the canonical module input across roles that reach the same file."
     },
-    "src/alphalattice/capabilities/domain_contracts/source_identity.py::identity_switch::module-identity-switch": {
-      "owner": "alphalattice.capabilities.domain_contracts",
-      "defined_by": [
-        "src/alphalattice/capabilities/domain_contracts/source_identity.py::identity_switch"
-      ],
-      "definition_line": 498,
-      "key": "root",
-      "dependency_coverage": "No external resource digest in key; fixed-install/process assumption",
-      "invalidation_rule": "none; restart or explicit cache_clear (no production cache_clear caller found)",
-      "size_bound": "unbounded",
-      "bound_scope": "unbounded",
-      "eviction": "none; process/closure end",
-      "safe_to_drop": "Yes: recompute from identical retained inputs; close users before clearing",
-      "location": {
-        "scope": "process",
-        "path_expression": "In-memory identity_switch in its module, instance, or call namespace"
-      },
-      "source_commit": "4e29de787036643360b3448d9cddba114f06d739",
-      "description": "Caches each checkout root's recorded source-identity switch table until process restart."
-    },
     "src/alphalattice/protocols/actor_execution/projections.py::_cl100k::module-cl100k": {
       "owner": "alphalattice.protocols.actor_execution",
       "defined_by": [

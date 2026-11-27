@@ -75,7 +75,14 @@ from alphalattice.investment.risk_research.experiments.development_artifacts imp
 from alphalattice.kernel.clock import utc_now
 from alphalattice.kernel.config import current as process_config
 from alphalattice.kernel.door import DECISIONS_DATABASE
-from alphalattice.kernel.identity import integrity_sha256
+from alphalattice.kernel.identity import (
+    BLAKE3_PATTERN,
+    blake3_filename,
+    blake3_from_filename,
+    blake3_hex,
+    integrity_blake3,
+    tagged_blake3,
+)
 
 MARKET_DATABASE: Final = "market-data.duckdb"
 TASK_CONTROL_DATABASE: Final = Path("runtime") / TASK_CONTROL_DATABASE_FILENAME
@@ -151,7 +158,7 @@ BYTE_ADDRESSED: Final[frozenset[tuple[str, ...]]] = frozenset(
     }
 )
 """The Alpha development store's packed arrays among the copied records: it names each by the
-SHA-256 of its bytes (`AlphaDevelopmentArtifactStore._publish_packed_bytes`) and its loaders
+BLAKE3 of its bytes (`AlphaDevelopmentArtifactStore._publish_packed_bytes`) and its loaders
 re-hash it on every read. A backup that already holds that object records the file by its name
 without reading it again; one it does not hold yet is read and stored as any other file."""
 GENERATIONS_KEPT: Final = 7
@@ -179,7 +186,7 @@ class BackupEntry(BaseModel):  # type: ignore[misc]
     model_config = ConfigDict(extra="forbid", frozen=True)
     kind: Literal["FILE", "TABLE", "LISTED"]
     path: str = Field(description="The workspace-relative path; for a table, `<store>/<table>`.")
-    digest: str = Field(pattern=r"^[0-9a-f]{64}$", description="SHA-256 of the stored bytes.")
+    digest: str = Field(pattern=BLAKE3_PATTERN, description="Tagged BLAKE3 of the stored bytes.")
     size: int = Field(ge=0, description="The stored bytes; a listed entry's bytes on disk.")
     rows: int | None = Field(default=None, ge=0, description="A table's rows.")
 
@@ -206,7 +213,7 @@ class BackupGeneration(BaseModel):  # type: ignore[misc]
         description="The market store's format mark when backed up; none in a generation "
         "written before the mark was kept, and absent from its sealed body.",
     )
-    generation_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
+    generation_hash: str = Field(pattern=BLAKE3_PATTERN)
 
     @classmethod
     def seal(cls, **values: Any) -> Self:
@@ -295,14 +302,14 @@ def _copy_file(source: Path, destination: Path, *, kind: _ReadKind = "source") -
 
 
 def _digest_file(path: Path, *, kind: _ReadKind = "source") -> str:
-    sha = integrity_sha256()
+    digest = integrity_blake3()
     try:
         with path.open("rb") as handle:
             for block in iter(lambda: _read_block(handle, kind), b""):
-                sha.update(block)
+                digest.update(block)
     except OSError as error:
         raise _unreadable(kind) from error
-    return sha.hexdigest()
+    return tagged_blake3(digest)
 
 
 def _files(root: Path) -> Iterator[Path]:
@@ -322,23 +329,22 @@ class _Objects:
         self.root = root / "objects"
 
     def path(self, digest: str) -> Path:
-        return self.root / digest[:2] / digest
+        return self.root / blake3_hex(digest)[:2] / blake3_filename(digest)
 
     def held(self, source: Path) -> tuple[str, int] | None:
         """A byte-addressed file's object this store already holds, found by its name alone."""
-        name = source.stem
+        digest = blake3_from_filename(source.stem)
         if (
             source.suffix != ".bin"
             or source.parent.parts[-3:] not in BYTE_ADDRESSED
-            or len(name) != 64
-            or not set(name) <= _HEX
+            or digest is None
         ):
             return None
-        target = self.path(name)
+        target = self.path(digest)
         size = source.stat().st_size
         if not target.is_file() or target.stat().st_size != size:
             return None
-        return name, size
+        return digest, size
 
     def put_file(self, source: Path) -> tuple[str, int]:
         """Store a file's bytes under their digest, once."""
@@ -490,7 +496,7 @@ class WorkspaceBackups:
         generations = self.root / "generations"
         generations.mkdir(parents=True, exist_ok=True)
         stamp = generation.created_at.strftime("%Y%m%dT%H%M%S%fZ")
-        path = generations / f"{stamp}-{generation.generation_hash[:16]}.json"
+        path = generations / f"{stamp}-{blake3_hex(generation.generation_hash)[:16]}.json"
         staged = path.with_suffix(".partial")
         staged.write_text(generation.model_dump_json(indent=1), encoding="utf-8")
         os.replace(staged, path)
@@ -640,14 +646,15 @@ class WorkspaceBackups:
         for child in sorted(source.iterdir()):
             size = sum(path.stat().st_size for path in _files(child))
             relative = child.relative_to(self.workspace).as_posix()
-            if child.is_dir() and len(child.name) == 64 and set(child.name) <= _HEX:
-                yield BackupEntry(kind="LISTED", path=relative, digest=child.name, size=size)
+            name_digest = blake3_from_filename(child.name)
+            if child.is_dir() and name_digest is not None:
+                yield BackupEntry(kind="LISTED", path=relative, digest=name_digest, size=size)
                 continue
-            sha = integrity_sha256()
+            digest = integrity_blake3()
             for path in _files(child):
-                sha.update(path.relative_to(child).as_posix().encode("utf-8") + b"\0")
-                sha.update(_digest_file(path).encode("ascii"))
-            yield BackupEntry(kind="LISTED", path=relative, digest=sha.hexdigest(), size=size)
+                digest.update(path.relative_to(child).as_posix().encode("utf-8") + b"\0")
+                digest.update(_digest_file(path).encode("ascii"))
+            yield BackupEntry(kind="LISTED", path=relative, digest=tagged_blake3(digest), size=size)
 
     def generations(self) -> tuple[BackupGeneration, ...]:
         """This workspace directory's kept generations, the newest first.
@@ -718,7 +725,7 @@ class WorkspaceBackups:
         stem = Path(name).stem
         suffix = stem.rsplit("-", 1)[-1]
         if len(suffix) == 16 and all(character in "0123456789abcdef" for character in suffix):
-            row["generation_hash"] = suffix
+            row["generation_hash"] = f"blake3:{suffix}"
         return row
 
     def _all(self) -> list[tuple[Path, BackupGeneration]]:
@@ -737,7 +744,7 @@ class WorkspaceBackups:
         for path, _ in mine[generations_kept:]:
             path.unlink()
         named = {
-            entry.digest
+            blake3_filename(entry.digest)
             for _, generation in self._all()
             for entry in generation.entries
             if entry.kind != "LISTED"
@@ -762,7 +769,10 @@ class WorkspaceBackups:
             paths = sorted(folder.glob("*.json"))
         except OSError as error:
             raise WorkspaceBackupError("workspace_backup.generation_not_found") from error
-        requested_prefix = generation_hash[:16]
+        prefix = generation_hash.removeprefix("blake3:")
+        if prefix == generation_hash or not 1 <= len(prefix) <= 64 or not set(prefix) <= _HEX:
+            raise WorkspaceBackupError("workspace_backup.generation_not_found")
+        requested_prefix = prefix[:16]
         candidates = []
         for path in paths:
             suffix = path.stem.rsplit("-", 1)[-1]

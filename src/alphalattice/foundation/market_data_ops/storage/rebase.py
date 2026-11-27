@@ -24,7 +24,7 @@ from alphalattice.foundation.market_data_ops.sources.contracts import (
     CorporateActionEvent,
     RawDailyBar,
 )
-from alphalattice.kernel.identity import integrity_sha256
+from alphalattice.kernel.identity import integrity_blake3, tagged_blake3
 
 PRICES = ("open", "high", "low", "close")
 """The bar fields a rebase scales by its price factor; volume takes its volume factor."""
@@ -66,7 +66,7 @@ class RawBarRebase:
         """
         declared = {name: getattr(self, name) for name in _RECEIPT}
         payload = json.dumps(declared, sort_keys=True, separators=(",", ":"), default=str)
-        return integrity_sha256(payload.encode("utf-8")).hexdigest()
+        return tagged_blake3(integrity_blake3(payload.encode("utf-8")))
 
     def price(self, value: float) -> float:
         """A stored price after it."""

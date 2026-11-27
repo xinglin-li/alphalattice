@@ -31,6 +31,7 @@ from alphalattice.foundation.factor_research.evaluation.rank_correlation import 
 from alphalattice.foundation.factor_research.inputs.execution_target import FactorTargetSurface
 from alphalattice.foundation.factor_research.programs.sealed import seal_contract
 from alphalattice.foundation.factor_research.programs.walk_forward import FactorWalkForwardPlan
+from alphalattice.kernel.identity import BLAKE3_PATTERN
 
 type FloatArray = npt.NDArray[np.float64]
 type BoolArray = npt.NDArray[np.bool_]
@@ -67,7 +68,7 @@ class FactorEvidencePolicy(_Contract):
     fdr_alpha: float = Field(default=0.05, gt=0.0, lt=1.0)
     minimum_pair_coverage: float = Field(default=0.8, gt=0.0, le=1.0)
     minimum_cross_section_observations: int = Field(default=100, ge=2)
-    policy_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
+    policy_hash: str = Field(pattern=BLAKE3_PATTERN)
 
     @model_validator(mode="after")  # type: ignore[untyped-decorator]
     def validate_policy(self) -> FactorEvidencePolicy:
@@ -99,7 +100,7 @@ class FactorFoldEvidence(_Contract):
     validation_oriented_mean_simple_spread: float | None
     validation_pair_coverage_mean: float
     validation_rank_turnover_mean: float | None
-    fold_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
+    fold_hash: str = Field(pattern=BLAKE3_PATTERN)
 
     @model_validator(mode="after")  # type: ignore[untyped-decorator]
     def validate_evidence(self) -> FactorFoldEvidence:
@@ -150,7 +151,7 @@ class FactorOosEvidenceItem(_Contract):
     validation_rank_turnover_mean: float | None
     classification: FactorEvidenceClassification
     reason_codes: tuple[str, ...]
-    evidence_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
+    evidence_hash: str = Field(pattern=BLAKE3_PATTERN)
 
     @model_validator(mode="after")  # type: ignore[untyped-decorator]
     def validate_evidence(self) -> FactorOosEvidenceItem:
@@ -180,16 +181,16 @@ class FactorOosEvidenceReport(_Contract):
     """Sealed factor-axis report of validation-only evidence."""
 
     kind: Literal["FactorOosEvidenceReport"] = "FactorOosEvidenceReport"
-    feature_panel_snapshot_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
+    feature_panel_snapshot_hash: str = Field(pattern=BLAKE3_PATTERN)
     feature_panel_manifest_ref: str = Field(min_length=1)
-    target_surface_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
-    walk_forward_plan_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
-    evidence_policy_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
+    target_surface_hash: str = Field(pattern=BLAKE3_PATTERN)
+    walk_forward_plan_hash: str = Field(pattern=BLAKE3_PATTERN)
+    evidence_policy_hash: str = Field(pattern=BLAKE3_PATTERN)
     hypothesis_count: int = Field(ge=1)
     factor_ids: tuple[str, ...] = Field(min_length=1)
     items: tuple[FactorOosEvidenceItem, ...] = Field(min_length=1)
     classification_counts: dict[FactorEvidenceClassification, int]
-    report_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
+    report_hash: str = Field(pattern=BLAKE3_PATTERN)
 
     @model_validator(mode="after")  # type: ignore[untyped-decorator]
     def validate_report(self) -> FactorOosEvidenceReport:

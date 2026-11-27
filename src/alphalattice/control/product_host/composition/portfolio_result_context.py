@@ -115,7 +115,7 @@ from alphalattice.investment.risk_research.surfaces.returns import (
     listing_returns,
     listing_sources,
 )
-from alphalattice.kernel.identity import change_xxh3_128_hex
+from alphalattice.kernel.identity import blake3_from_filename, change_xxh3_128_hex
 from alphalattice.oversight.chief_risk_officer.decision.book_evidence import BookSelector
 
 from .research_experiments import review_requests
@@ -254,11 +254,14 @@ def installed_authority(
         or path.parent.parent.name != "portfolio-strategy-lab"
     ):
         raise ValueError("portfolio_application.lifecycle_manifest_path_invalid")
-    if expected is not None and path.stem != expected:
+    digest = blake3_from_filename(path.stem)
+    if digest is None:
+        raise ValueError("portfolio_application.lifecycle_manifest_path_invalid")
+    if expected is not None and digest != expected:
         raise ValueError("portfolio_application.saved_source_not_installed")
     return path.parents[2], PortfolioResearchArtifactStore(path.parents[2]).load(
         category=CATEGORY,
-        content_hash=path.stem,
+        content_hash=digest,
         model=LifecyclePortfolioAuthority,
         identity_field="authority_hash",
     )

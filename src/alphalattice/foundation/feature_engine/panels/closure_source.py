@@ -30,6 +30,7 @@ from alphalattice.foundation.feature_engine.panels.identity import (
 )
 from alphalattice.foundation.market_data_ops.storage import world, world_reads
 from alphalattice.foundation.market_data_ops.storage.duckdb import MarketDataRepository
+from alphalattice.kernel.identity import blake3_from_filename
 
 
 @dataclass(frozen=True)
@@ -111,10 +112,13 @@ class PanelClosureSourceRepository:
         }
         snapshots: list[PanelSnapshotSource] = []
         for path in sorted(manifest_root.glob("*.json")):
-            if self._snapshot_hashes is not None and path.stem not in self._snapshot_hashes:
+            snapshot_hash = blake3_from_filename(path.stem)
+            if snapshot_hash is None:
+                raise ValueError("artifact content hash must be tagged BLAKE3")
+            if self._snapshot_hashes is not None and snapshot_hash not in self._snapshot_hashes:
                 continue
             manifest = self._resolver.load_feature_panel_manifest(
-                self._resolver.feature_panel_manifest_uri(path.stem)
+                self._resolver.feature_panel_manifest_uri(snapshot_hash)
             )
             chunks = manifest.get("chunks")
             if not isinstance(chunks, list) or not chunks:
@@ -190,8 +194,8 @@ class PanelClosureSourceRepository:
                 ordered_listing_ids = member_listing_ids
             snapshots.append(
                 PanelSnapshotSource(
-                    snapshot_hash=path.stem,
-                    lifecycle=lifecycle.get(path.stem, "UNKNOWN"),
+                    snapshot_hash=snapshot_hash,
+                    lifecycle=lifecycle.get(snapshot_hash, "UNKNOWN"),
                     manifest=manifest,
                     factor_ids=factor_ids,
                     listing_ids=ordered_listing_ids,

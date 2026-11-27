@@ -33,7 +33,7 @@ from alphalattice.investment.alpha_research.inputs.frozen_price_volume import (
 from alphalattice.investment.alpha_research.scores.product_replay import (
     HeterogeneousVintageFeatureSurface,
 )
-from alphalattice.kernel.identity import integrity_sha256
+from alphalattice.kernel.identity import integrity_blake3, tagged_blake3
 
 from ..experiments.contracts import AlphaCandidateRole, AlphaCandidateStatus
 from ..experiments.development_artifacts import (
@@ -371,7 +371,7 @@ class AlphaCurrentArtifactStore(AlphaDevelopmentArtifactStore):
         values differ from it only by rounding, else these values' own."""
         packed = _packed_block(payload)
         category = "current/frozen-observation-arrays"
-        digest = integrity_sha256(packed).hexdigest()
+        digest = tagged_blake3(integrity_blake3(packed))
         if earlier is not None and history.alpha_part_body_digest(digest, category) is None:
             block = earlier.block(index)
             if block is not None:
@@ -1139,10 +1139,9 @@ class AlphaCurrentArtifactStore(AlphaDevelopmentArtifactStore):
 
     def marker_hash_for_request(self, request_hash: str) -> str | None:
         """Resolve an exact marker cheaply; authoritative readback remains separate."""
-        marker_root = self.root / "current" / "markers"
         matches: list[str] = []
-        for path in sorted(marker_root.glob("*.json")) if marker_root.is_dir() else ():
-            marker = self.load_marker(path.stem)
+        for digest in self.development_category_identities("markers"):
+            marker = self.load_marker(digest)
             if marker.request_hash == request_hash:
                 matches.append(marker.marker_hash)
         if len(set(matches)) > 1:

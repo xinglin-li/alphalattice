@@ -18,6 +18,7 @@ from alphalattice.evidence.alternative_evidence.contracts import (
     seal_contract,
     validate_contract_identity,
 )
+from alphalattice.kernel.identity import BLAKE3_PATTERN
 from alphalattice.protocols.actor_execution.usage import TokenCoverage
 
 if TYPE_CHECKING:
@@ -26,7 +27,7 @@ if TYPE_CHECKING:
     )
     from alphalattice.protocols.actor_execution.usage import ProviderStageUsage
 
-_HASH = r"^[0-9a-f]{64}$"
+_HASH = BLAKE3_PATTERN
 
 
 class ProviderStageUsageRecord(AlternativeEvidenceContract):

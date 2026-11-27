@@ -111,13 +111,15 @@ from alphalattice.investment.alpha_research.experiments.mandate import (
     AlphaResearchModelRecipe,
     build_current_alpha_research_model_mandate,
 )
+from alphalattice.kernel.identity import blake3_from_filename, blake3_hex
 from alphalattice.protocols.research_authoring.contracts import (
     AuthoringError,
     ResolvedResearchAuthority,
 )
+from tests._support.identity_fixtures import fixture_digest
 from tests.alpha_research.fixtures import qualification_inputs
 
-HASH = "a" * 64
+HASH = fixture_digest("qualification")
 
 
 def _model_mandate() -> AlphaResearchModelMandate:
@@ -156,7 +158,7 @@ def test_adapter_without_current_evaluator_is_scientific_non_admission(
     adapter_id: str,
 ) -> None:
     recipe = AlphaResearchModelRecipe.create(
-        search_domain_hash="1" * 64,
+        search_domain_hash=fixture_digest("search-domain"),
         recipe=AlphaModelRecipeEnvelope.create(
             adapter_id=adapter_id,
             recipe_schema_id="alpha-model.synthetic-mean",
@@ -268,16 +270,17 @@ def test_legacy_batch_codec_preserves_variable_arity_and_rejects_duplicates() ->
 
 
 def test_qualification_family_is_complete_independent_of_batch_readback_order() -> None:
-    def batch_result(candidate_digit: str, batch_digit: str) -> AlphaExperimentBatchResult:
+    def batch_result(label: str) -> AlphaExperimentBatchResult:
+        spec_hash = fixture_digest(("indexed-spec", label))
         candidate = seal_contract(
             AlphaExperimentCandidateResult,
             {
-                "candidate_id": f"agent-linear-{candidate_digit * 16}",
-                "spec_hash": candidate_digit * 64,
-                "development_report_hash": "c" * 64,
-                "inference_evidence_hash": "d" * 64,
-                "numerical_result_hashes": ("e" * 64,),
-                "estimator_state_hashes": ("f" * 64,),
+                "candidate_id": f"agent-linear-{blake3_hex(spec_hash)[:16]}",
+                "spec_hash": spec_hash,
+                "development_report_hash": fixture_digest("development-report"),
+                "inference_evidence_hash": fixture_digest("inference-evidence"),
+                "numerical_result_hashes": (fixture_digest("numerical-result"),),
+                "estimator_state_hashes": (fixture_digest("estimator-state"),),
                 "pooled_oos_r2": 0.01,
                 "mean_rank_ic": 0.02,
                 "mean_gross_decile_spread": 0.03,
@@ -290,11 +293,11 @@ def test_qualification_family_is_complete_independent_of_batch_readback_order() 
         return seal_contract(
             AlphaExperimentBatchResult,
             {
-                "program_hash": "1" * 64,
-                "batch_hash": batch_digit * 64,
-                "development_surface_hash": "2" * 64,
-                "development_surface_binding_hash": "3" * 64,
-                "fold_surface_hashes": ("4" * 64,),
+                "program_hash": fixture_digest("program"),
+                "batch_hash": fixture_digest(("indexed-batch", label)),
+                "development_surface_hash": fixture_digest("development-surface"),
+                "development_surface_binding_hash": fixture_digest("development-surface-binding"),
+                "fold_surface_hashes": (fixture_digest("fold-surface"),),
                 "candidates": (candidate,),
                 "fit_call_count": 1,
                 "predict_call_count": 2,
@@ -303,8 +306,8 @@ def test_qualification_family_is_complete_independent_of_batch_readback_order() 
             "result_hash",
         )
 
-    initial = batch_result("a", "5")
-    refinement = batch_result("b", "6")
+    initial = batch_result("initial")
+    refinement = batch_result("refinement")
     attempted = (initial.candidates[0].candidate_id, refinement.candidates[0].candidate_id)
 
     indexed = _index_attempted_family(
@@ -323,13 +326,13 @@ def test_later_holm_family_preserves_prior_current_stability_rejection() -> None
         AlphaCandidateRecord,
         {
             "spec": spec,
-            "candidate_id": f"agent-linear-{spec.spec_hash[:16]}",
-            "batch_hash": "1" * 64,
+            "candidate_id": candidate_id_for_spec(spec),
+            "batch_hash": fixture_digest("first-batch"),
             "status": AlphaCandidateStatus.CURRENT_STABILITY_REJECTED,
-            "development_result_ref": "2" * 64,
-            "development_candidate_hash": "3" * 64,
-            "current_state_hash": "4" * 64,
-            "stability_assessment_hash": "5" * 64,
+            "development_result_ref": fixture_digest("development-result"),
+            "development_candidate_hash": fixture_digest("development-candidate"),
+            "current_state_hash": fixture_digest("current-state"),
+            "stability_assessment_hash": fixture_digest("stability-assessment"),
             "current_score_child_hash": None,
             "holm_adjusted_p_value": 0.01,
             "stability_failed_check_ids": ("TRAINING_MSE",),
@@ -341,10 +344,11 @@ def test_later_holm_family_preserves_prior_current_stability_rejection() -> None
         "record_hash",
     )
 
+    development_result = fixture_digest("new-development-result")
     carried = _carry_forward_prior_current_rejection(
         record,
-        development_result_ref="6" * 64,
-        development_candidate_hash="7" * 64,
+        development_result_ref=development_result,
+        development_candidate_hash=fixture_digest("new-development-candidate"),
         holm_adjusted_p_value=0.02,
     )
 
@@ -353,7 +357,7 @@ def test_later_holm_family_preserves_prior_current_stability_rejection() -> None
     assert carried.current_state_hash == record.current_state_hash
     assert carried.stability_assessment_hash == record.stability_assessment_hash
     assert carried.stability_failed_check_ids == ("TRAINING_MSE",)
-    assert carried.development_result_ref == "6" * 64
+    assert carried.development_result_ref == development_result
     assert carried.holm_adjusted_p_value == 0.02
 
 
@@ -399,18 +403,18 @@ def test_renominated_prior_rejection_reuses_current_children(monkeypatch, tmp_pa
     """Control: Renominated prior rejection reuses current children."""
     program = _program()
     spec = _research_recipes((3.0,))[0]
-    candidate_id = f"alpha-candidate-{spec.spec_hash[:16]}"
+    candidate_id = candidate_id_for_spec(spec)
     record = seal_contract(
         AlphaCandidateRecord,
         {
             "spec": spec,
             "candidate_id": candidate_id,
-            "batch_hash": "1" * 64,
+            "batch_hash": fixture_digest("first-batch"),
             "status": AlphaCandidateStatus.CURRENT_STABILITY_REJECTED,
-            "development_result_ref": "2" * 64,
-            "development_candidate_hash": "3" * 64,
-            "current_state_hash": "4" * 64,
-            "stability_assessment_hash": "5" * 64,
+            "development_result_ref": fixture_digest("development-result"),
+            "development_candidate_hash": fixture_digest("development-candidate"),
+            "current_state_hash": fixture_digest("current-state"),
+            "stability_assessment_hash": fixture_digest("stability-assessment"),
             "holm_adjusted_p_value": 0.01,
             "stability_failed_check_ids": ("TRAINING_MSE",),
             "current_score_mean": 0.0,
@@ -425,29 +429,29 @@ def test_renominated_prior_rejection_reuses_current_children(monkeypatch, tmp_pa
         {
             "program_hash": program.program_hash,
             "revision": 1,
-            "predecessor_registry_hash": "6" * 64,
+            "predecessor_registry_hash": fixture_digest("predecessor-registry"),
             "candidates": (record,),
-            "latest_hypothesis_family_hash": "7" * 64,
+            "latest_hypothesis_family_hash": fixture_digest("latest-hypothesis-family"),
         },
         "registry_hash",
     )
     candidate_result = SimpleNamespace(
-        result_hash="8" * 64,
-        development_report_hash="b" * 64,
+        result_hash=fixture_digest("renominated-result"),
+        development_report_hash=fixture_digest("development-report"),
         numerical_result_hashes=(),
         estimator_state_hashes=(),
     )
     candidate_viability = SimpleNamespace(
         candidate_id=candidate_id,
         admitted=True,
-        candidate_hash="9" * 64,
+        candidate_hash=fixture_digest("candidate"),
         holm_adjusted_p_value=0.02,
         failure_codes=(),
     )
     viability = SimpleNamespace(
         candidates=(candidate_viability,),
         admissible_candidate_ids=(candidate_id,),
-        assessment_hash="a" * 64,
+        assessment_hash=fixture_digest("assessment"),
     )
 
     store = _qualification_dependencies(
@@ -465,7 +469,7 @@ def test_renominated_prior_rejection_reuses_current_children(monkeypatch, tmp_pa
     result = qualify_alpha_model_candidates(
         program=program,
         registry=registry,
-        batch_results=(SimpleNamespace(result_hash="c" * 64),),
+        batch_results=(SimpleNamespace(result_hash=fixture_digest("renominated-batch-result")),),
         nominated_candidate_ids=(candidate_id,),
         fold_plan=SimpleNamespace(fold_count=5),
         train_session_count=756,
@@ -486,7 +490,7 @@ def test_registry_and_goal_progress_enforce_target_and_budget() -> None:
         AlphaCandidateRecord,
         {
             "spec": spec,
-            "candidate_id": f"agent-linear-{spec.spec_hash[:16]}",
+            "candidate_id": candidate_id_for_spec(spec),
             "batch_hash": HASH,
             "status": AlphaCandidateStatus.PROPOSED,
             "failure_codes": (),
@@ -544,20 +548,20 @@ def _program(model_mandate: AlphaResearchModelMandate | None = None) -> AlphaRes
     return seal_contract(
         AlphaResearchProgram,
         {
-            "foundation_hash": "1" * 64,
-            "logical_panel_hash": "2" * 64,
-            "logical_semantic_index_hash": "3" * 64,
-            "causal_outcome_snapshot_hash": "4" * 64,
-            "pm_plan_hash": "5" * 64,
-            "ordered_listing_ids_hash": "6" * 64,
-            "ordered_factor_ids_hash": "7" * 64,
-            "split_policy_hash": "8" * 64,
-            "metric_policy_hash": "9" * 64,
-            "package_identity_hash": "0" * 64,
-            "stability_policy_hash": "a" * 64,
+            "foundation_hash": fixture_digest("foundation"),
+            "logical_panel_hash": fixture_digest("logical-panel"),
+            "logical_semantic_index_hash": fixture_digest("logical-semantic-index"),
+            "causal_outcome_snapshot_hash": fixture_digest("causal-outcome-snapshot"),
+            "pm_plan_hash": fixture_digest("pm-plan"),
+            "ordered_listing_ids_hash": fixture_digest("ordered-listing-ids"),
+            "ordered_factor_ids_hash": fixture_digest("ordered-factor-ids"),
+            "split_policy_hash": fixture_digest("split-policy"),
+            "metric_policy_hash": fixture_digest("metric-policy"),
+            "package_identity_hash": fixture_digest("package-identity"),
+            "stability_policy_hash": fixture_digest("stability-policy"),
             "goal_criteria_hash": build_goal_criteria(mandate).criteria_hash,
-            "user_authorization_hash": "c" * 64,
-            "research_goal_hash": "d" * 64,
+            "user_authorization_hash": fixture_digest("user-authorization"),
+            "research_goal_hash": fixture_digest("research-goal"),
             "model_mandate_hash": mandate.mandate_hash,
             "model_catalog_hash": mandate.catalog_binding.catalog_hash,
         },
@@ -595,15 +599,15 @@ def test_development_only_adapter_is_recorded_as_scientific_non_admission(
         admitted_target_lanes=None,
     )
     program = _program(mandate)
-    candidate_id = f"alpha-candidate-{recipe.spec_hash[:16]}"
+    candidate_id = candidate_id_for_spec(recipe)
     record = seal_contract(
         AlphaCandidateRecord,
         {
             "spec": recipe,
             "candidate_id": candidate_id,
-            "batch_hash": "1" * 64,
+            "batch_hash": fixture_digest("first-batch"),
             "status": AlphaCandidateStatus.DEVELOPMENT_EVALUATED,
-            "development_result_ref": "2" * 64,
+            "development_result_ref": fixture_digest("development-result"),
             "failure_codes": (),
         },
         "record_hash",
@@ -620,22 +624,22 @@ def test_development_only_adapter_is_recorded_as_scientific_non_admission(
         "registry_hash",
     )
     candidate_result = SimpleNamespace(
-        result_hash="3" * 64,
-        development_report_hash="4" * 64,
+        result_hash=fixture_digest("development-only-result"),
+        development_report_hash=fixture_digest("development-report"),
         numerical_result_hashes=(),
         estimator_state_hashes=(),
     )
     candidate_viability = SimpleNamespace(
         candidate_id=candidate_id,
         admitted=True,
-        candidate_hash="5" * 64,
+        candidate_hash=fixture_digest("candidate"),
         holm_adjusted_p_value=0.01,
         failure_codes=(),
     )
     viability = SimpleNamespace(
         candidates=(candidate_viability,),
         admissible_candidate_ids=(candidate_id,),
-        assessment_hash="6" * 64,
+        assessment_hash=fixture_digest("assessment"),
     )
 
     store = _qualification_dependencies(
@@ -653,7 +657,9 @@ def test_development_only_adapter_is_recorded_as_scientific_non_admission(
     result = qualify_alpha_model_candidates(
         program=program,
         registry=registry,
-        batch_results=(SimpleNamespace(result_hash="7" * 64),),
+        batch_results=(
+            SimpleNamespace(result_hash=fixture_digest("development-only-batch-result")),
+        ),
         nominated_candidate_ids=(candidate_id,),
         fold_plan=SimpleNamespace(fold_count=1, target_policy=None),
         train_session_count=1,
@@ -697,8 +703,8 @@ def _qualified_authority(
                 AlphaCandidateRecord,
                 {
                     "spec": spec,
-                    "candidate_id": f"alpha-candidate-{spec.spec_hash[:16]}",
-                    "batch_hash": "e" * 64,
+                    "candidate_id": candidate_id_for_spec(spec),
+                    "batch_hash": fixture_digest("qualified-batch"),
                     "status": AlphaCandidateStatus.CURRENT_QUALIFIED,
                     "development_result_ref": canonical_hash((index, "development")),
                     "development_candidate_hash": canonical_hash((index, "viability")),
@@ -716,7 +722,7 @@ def _qualified_authority(
         {
             "program_hash": program.program_hash,
             "revision": 1,
-            "predecessor_registry_hash": "f" * 64,
+            "predecessor_registry_hash": fixture_digest("predecessor-registry"),
             "candidates": tuple(records),
             "exhausted_legacy_specs": (),
             "historical_current_stability_rejections": (),
@@ -817,7 +823,7 @@ def test_new_program_cas_supersedes_active_pointer_without_deleting_prior_artifa
         AlphaResearchProgram,
         {
             **first_program.model_dump(mode="python", exclude={"program_hash"}),
-            "stability_policy_hash": "e" * 64,
+            "stability_policy_hash": fixture_digest("second-stability-policy"),
         },
         "program_hash",
     )
@@ -871,7 +877,7 @@ def test_terminal_publication_reuses_projection_after_pre_marker_crash(
         _committer(store).commit(**inputs, clock=first_clock)
     projection_pointers = tuple((store.root / "projection-by-marker").glob("*.json"))
     assert len(projection_pointers) == 1
-    marker_hash = projection_pointers[0].stem
+    marker_hash = blake3_from_filename(projection_pointers[0].stem)
     stranded_projection = store.load_projection_for_marker(marker_hash)
     assert stranded_projection.updated_at == first_clock
     assert store.find_active_marker() is None
@@ -888,6 +894,7 @@ def test_terminal_publication_reuses_projection_after_pre_marker_crash(
 
 OPENED = datetime(2026, 9, 28, 9, tzinfo=UTC)
 TASK = "00000000-0000-0000-0000-00000000000{}"
+QUESTION_HASH = fixture_digest("question")
 
 
 def _study(
@@ -896,10 +903,10 @@ def _study(
     recipe: AlphaResearchModelRecipe,
     *,
     lifecycle: str = "SUCCEEDED",
-    question: str = "a" * 64,
+    question: str = QUESTION_HASH,
 ) -> AlphaStudy:
     def sealed() -> tuple[str, str, str]:
-        return f"out/{task_id}", "1" * 64, "2" * 64
+        return f"out/{task_id}", fixture_digest("study-receipt"), fixture_digest("study-result")
 
     return AlphaStudy(
         task_id=task_id,
@@ -922,11 +929,13 @@ def test_the_family_is_every_study_on_the_question_from_the_goals_opening() -> N
             _study(TASK.format(1), -5, first),  # before the opening
             _study(TASK.format(2), 1, first),
             _study(TASK.format(3), 2, second, lifecycle="CANCELLED"),
-            _study(TASK.format(4), 3, third, question="b" * 64),  # another question
+            _study(
+                TASK.format(4), 3, third, question=fixture_digest("different-question")
+            ),  # another question
             _study(TASK.format(5), 4, first),  # the same recipe again
             _study(TASK.format(6), 5, second),
         ),
-        question_hash="a" * 64,
+        question_hash=QUESTION_HASH,
         goal_id=str(UUID(int=7)),
         opened_at=OPENED,
     )
@@ -936,12 +945,14 @@ def test_the_family_is_every_study_on_the_question_from_the_goals_opening() -> N
     with pytest.raises(AuthoringError, match="family_member_unsettled"):
         alpha_family(
             studies=(_study(TASK.format(8), 1, first, lifecycle="RUNNING"),),
-            question_hash="a" * 64,
+            question_hash=QUESTION_HASH,
             goal_id=str(UUID(int=7)),
             opened_at=OPENED,
         )
     with pytest.raises(AuthoringError, match="family_empty"):
-        alpha_family(studies=(), question_hash="a" * 64, goal_id=str(UUID(int=7)), opened_at=OPENED)
+        alpha_family(
+            studies=(), question_hash=QUESTION_HASH, goal_id=str(UUID(int=7)), opened_at=OPENED
+        )
 
 
 def test_the_question_sets_the_model_aside() -> None:
@@ -973,17 +984,20 @@ def test_the_question_sets_the_model_aside() -> None:
 
 def test_the_family_registry_keeps_each_study_standing() -> None:
     first, second = _research_recipes((1.0, 3.0))
+    program_hash = fixture_digest("family-program")
+    first_batch = fixture_digest("first-family-batch")
+    second_batch = fixture_digest("second-family-batch")
 
-    def result(recipe: AlphaResearchModelRecipe, batch: str, status: str) -> Any:
+    def result(recipe: AlphaResearchModelRecipe, batch_hash: str, status: str) -> Any:
         candidate = seal_contract(
             AlphaExperimentCandidateResult,
             {
                 "candidate_id": candidate_id_for_spec(recipe),
                 "spec_hash": recipe.spec_hash,
-                "development_report_hash": "c" * 64,
-                "inference_evidence_hash": "d" * 64,
-                "numerical_result_hashes": ("e" * 64,),
-                "estimator_state_hashes": ("f" * 64,),
+                "development_report_hash": fixture_digest("development-report"),
+                "inference_evidence_hash": fixture_digest("inference-evidence"),
+                "numerical_result_hashes": (fixture_digest("numerical-result"),),
+                "estimator_state_hashes": (fixture_digest("estimator-state"),),
                 "status": status,
                 "failure_codes": () if status == "DEVELOPMENT_EVALUATED" else ("x.failed",),
             },
@@ -992,11 +1006,11 @@ def test_the_family_registry_keeps_each_study_standing() -> None:
         return seal_contract(
             AlphaExperimentBatchResult,
             {
-                "program_hash": "1" * 64,
-                "batch_hash": batch * 64,
-                "development_surface_hash": "2" * 64,
-                "development_surface_binding_hash": "3" * 64,
-                "fold_surface_hashes": ("4" * 64,),
+                "program_hash": fixture_digest("program"),
+                "batch_hash": batch_hash,
+                "development_surface_hash": fixture_digest("development-surface"),
+                "development_surface_binding_hash": fixture_digest("development-surface-binding"),
+                "fold_surface_hashes": (fixture_digest("fold-surface"),),
                 "candidates": (candidate,),
                 "fit_call_count": 1,
                 "predict_call_count": 1,
@@ -1006,27 +1020,30 @@ def test_the_family_registry_keeps_each_study_standing() -> None:
         )
 
     results = (
-        result(first, "5", "DEVELOPMENT_EVALUATED"),
-        result(second, "6", "DEVELOPMENT_FAILED"),
+        result(first, first_batch, "DEVELOPMENT_EVALUATED"),
+        result(second, second_batch, "DEVELOPMENT_FAILED"),
     )
     recipes = {
-        candidate_id_for_spec(first): (first, "5" * 64),
-        candidate_id_for_spec(second): (second, "6" * 64),
+        candidate_id_for_spec(first): (first, first_batch),
+        candidate_id_for_spec(second): (second, second_batch),
     }
-    registry = family_registry(program_hash="7" * 64, recipes=recipes, batch_results=results)
+    registry = family_registry(program_hash=program_hash, recipes=recipes, batch_results=results)
     assert [value.status for value in registry.candidates] == [
         AlphaCandidateStatus.DEVELOPMENT_EVALUATED,
         AlphaCandidateStatus.DEVELOPMENT_REJECTED,
     ]
-    assert registry.program_hash == "7" * 64
+    assert registry.program_hash == program_hash
     with pytest.raises(ValueError, match="recipe_mismatch"):
         family_registry(
-            program_hash="7" * 64,
-            recipes={**recipes, candidate_id_for_spec(first): (first, "9" * 64)},
+            program_hash=program_hash,
+            recipes={
+                **recipes,
+                candidate_id_for_spec(first): (first, fixture_digest("wrong-family-batch")),
+            },
             batch_results=results,
         )
     with pytest.raises(ValueError, match="repeats_a_candidate"):
-        family_registry(program_hash="7" * 64, recipes=recipes, batch_results=results * 2)
+        family_registry(program_hash=program_hash, recipes=recipes, batch_results=results * 2)
 
 
 def _unprepared_arrays() -> Any:
@@ -1036,7 +1053,7 @@ def _unprepared_arrays() -> Any:
 def _two_study_family(first, second):
     return alpha_family(
         studies=(_study(TASK.format(1), 1, first), _study(TASK.format(2), 2, second)),
-        question_hash="a" * 64,
+        question_hash=QUESTION_HASH,
         goal_id=str(UUID(int=7)),
         opened_at=OPENED,
     )
@@ -1126,7 +1143,7 @@ def test_a_qualification_names_its_goal_and_nominates_from_its_family(
         "nominated_candidate_ids": [candidate_id_for_spec(first)],
     }
     envelope: Any = SimpleNamespace(budget=SimpleNamespace(maximum_numerical_calls=5))
-    authority: Any = SimpleNamespace(authority_hash="8" * 64)
+    authority: Any = SimpleNamespace(authority_hash=fixture_digest("authority"))
     compiled = method.compile_desk_program(
         envelope=envelope, document={"alpha": section}, authority=authority
     )

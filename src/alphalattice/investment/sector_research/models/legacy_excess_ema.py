@@ -23,6 +23,7 @@ import pyarrow as pa
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 from alphalattice.capabilities.domain_contracts.identity import canonical_hash
+from alphalattice.kernel.identity import BLAKE3_PATTERN
 
 
 class _Contract(BaseModel):  # type: ignore[misc]
@@ -37,13 +38,13 @@ class SectorEmaAlphaManifest(_Contract):
     """
 
     kind: Literal["SectorEmaAlphaManifest"] = "SectorEmaAlphaManifest"
-    policy_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
-    source_surface_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
+    policy_hash: str = Field(pattern=BLAKE3_PATTERN)
+    source_surface_hash: str = Field(pattern=BLAKE3_PATTERN)
     session_count: int = Field(ge=1)
     sector_ids: tuple[str, ...] = Field(min_length=1)
     available_value_count: int = Field(ge=0)
-    table_content_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
-    manifest_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
+    table_content_hash: str = Field(pattern=BLAKE3_PATTERN)
+    manifest_hash: str = Field(pattern=BLAKE3_PATTERN)
 
     @model_validator(mode="after")  # type: ignore[untyped-decorator]
     def validate_manifest(self) -> Self:

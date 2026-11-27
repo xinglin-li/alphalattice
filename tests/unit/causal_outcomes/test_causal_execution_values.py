@@ -14,6 +14,7 @@ from alphalattice.foundation.causal_outcomes.execution.contracts import (
     CausalExecutionSchedulePoint,
 )
 from alphalattice.foundation.market_data_ops.sources.contracts import RawDailyBar
+from alphalattice.kernel.identity import is_blake3
 
 
 def _bar(price: float, volume: int) -> RawDailyBar:
@@ -55,6 +56,18 @@ def _bar(price: float, volume: int) -> RawDailyBar:
             False,
         ),
     ],
+    ids=(
+        "unrestricted",
+        "verified",
+        "entry-missing",
+        "exit-missing",
+        "entry-no-volume",
+        "exit-no-volume",
+        "entry-zero-price",
+        "exit-nonfinite-price",
+        "entry-restricted",
+        "exit-restricted",
+    ),
 )
 def test_inference_return_keeps_the_evidence_rows_exact_value_and_eligibility(
     entry, holding, entry_venue, holding_venue, eligible, dividend
@@ -85,8 +98,9 @@ def test_inference_return_keeps_the_evidence_rows_exact_value_and_eligibility(
         assert pack("!d", value) == pack("!d", expected)
     else:
         assert value is None
-    assert len(row["row_hash"]) == len(row["entry_source_row_hash"]) == 64
-    assert len(row["holding_end_source_row_hash"]) == 64
+    assert is_blake3(row["row_hash"])
+    assert is_blake3(row["entry_source_row_hash"])
+    assert is_blake3(row["holding_end_source_row_hash"])
 
 
 @pytest.mark.parametrize("dividend", [-1.0, float("nan"), float("inf")])

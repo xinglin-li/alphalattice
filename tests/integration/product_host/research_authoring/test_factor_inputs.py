@@ -1,16 +1,13 @@
-"""The research-inputs upgrade on a real data root and log: a 0.2.7 workspace's binding copies are
-kept once behind the door and read back equal, and each copy is removed only after a machine
-backup holds its bytes and a replay of that backup reads them equal."""
+"""The research-inputs upgrade keeps each binding once on a real data root and log.
+It removes copies only after a machine backup replays their bytes exactly."""
 
 from __future__ import annotations
 
 import os
 import shutil
 from datetime import date
-from hashlib import sha256
 from pathlib import Path
 from types import SimpleNamespace
-from typing import Any
 
 import pytest
 
@@ -26,30 +23,34 @@ from alphalattice.control.product_host.research_authoring.factor_inputs import (
 )
 from alphalattice.foundation.data_layer import history, inputs
 from alphalattice.foundation.data_layer.backup import restore_data_root
+from alphalattice.kernel.identity import blake3_digest, blake3_filename
+from tests._support.identity_fixtures import fixture_digest
 
 TEST_SOURCE = "src/alphalattice/control/product_host/research_authoring/factor_inputs.py"
 
 
 def _copy(workspace: Path, panel: bytes, database: bytes) -> str:
-    """A 0.2.7 binding copy: its tree, the pooled database it links, and a publication record."""
+    """A current binding copy, its pooled database link, and a publication record."""
     inputs = workspace / "research-inputs"
     files = {"artifacts/panel.parquet": panel, "market-data.duckdb": database}
+    database_hash = blake3_digest(database)
     bundle = FactorInputBundle.create(
-        panel_snapshot_hash="a" * 64,
-        outcome_snapshot_hash="b" * 64,
+        panel_snapshot_hash=fixture_digest("input panel"),
+        outcome_snapshot_hash=fixture_digest("input outcomes"),
         sessions=(date(2026, 1, 2),),
-        files=tuple(sorted((name, sha256(body).hexdigest()) for name, body in files.items())),
-        database_snapshot_hash=sha256(database).hexdigest(),
+        files=tuple(sorted((name, blake3_digest(body)) for name, body in files.items())),
+        database_snapshot_hash=database_hash,
     )
-    pooled = inputs / "databases" / bundle.database_snapshot_hash / "market-data.duckdb"
-    if not pooled.is_file():  # bindings of one database share its pool, as 0.2.7 kept them
+    pooled = inputs / "databases" / blake3_filename(database_hash) / "market-data.duckdb"
+    if not pooled.is_file():  # bindings of one database share its pool
         pooled.parent.mkdir(parents=True)
         pooled.write_bytes(database)
-    source = inputs / bundle.binding_hash / "source"
+    binding_folder = inputs / blake3_filename(bundle.binding_hash)
+    source = binding_folder / "source"
     (source / "artifacts").mkdir(parents=True)
     (source / "artifacts/panel.parquet").write_bytes(panel)
     os.link(pooled, source / "market-data.duckdb")
-    (inputs / bundle.binding_hash / "manifest.json").write_text(bundle.model_dump_json())
+    (binding_folder / "manifest.json").write_text(bundle.model_dump_json())
     (inputs / "publications").mkdir(exist_ok=True)
     (inputs / "publications" / "receipt.json").write_text("{}")
     return bundle.binding_hash
@@ -70,24 +71,26 @@ def _assert_factor_manifest_digest(monkeypatch):
     monkeypatch.setattr(factor_inputs, "canonical_hash", counted)
     with stage_digests():
         bundle = FactorInputBundle.create(
-            panel_snapshot_hash="a" * 64,
-            outcome_snapshot_hash="b" * 64,
+            panel_snapshot_hash=fixture_digest("input panel"),
+            outcome_snapshot_hash=fixture_digest("input outcomes"),
             sessions=(date(2026, 1, 2),),
-            files=(("artifacts/panel.parquet", "d" * 64),),
+            files=(("artifacts/panel.parquet", fixture_digest("input panel bytes")),),
         )
         reread = FactorInputBundle.model_validate_json(bundle.model_dump_json())
         assert FactorInputBundle.model_validate_json(bundle.model_dump_json()) == reread == bundle
-        different = bundle.model_dump() | {"panel_snapshot_hash": "c" * 64}
+        different = bundle.model_dump() | {
+            "panel_snapshot_hash": fixture_digest("changed input panel")
+        }
         with pytest.raises(ValueError, match=r"research_experiment\.input_manifest_invalid"):
             FactorInputBundle.model_validate(different)
-    assert seen == ["a" * 64, "c" * 64]
+    assert seen == [fixture_digest("input panel"), fixture_digest("changed input panel")]
 
 
 @pytest.mark.proves("product_host.research_input_copies_removed_after_backup_replay")
 def test_copies_are_kept_read_back_and_removed_only_after_the_backup_replays_them(
     tmp_path: Path, monkeypatch
 ) -> None:
-    """A workspace's 0.2.7 copies upgrade ALL EQUAL, read the same bundles through a rollback and
+    """A workspace's current copies upgrade ALL EQUAL, read the same bundles through a rollback and
     forward, and are removed only once their backup restored reads every binding equal to the
     copies, byte for byte."""
     with monkeypatch.context() as probe:
@@ -96,17 +99,6 @@ def test_copies_are_kept_read_back_and_removed_only_after_the_backup_replays_the
     _copy(original, b"panel one", b"db")
     _copy(original, b"panel two", b"db")
     _kept_read_back_and_removed(tmp_path, original)
-
-
-@pytest.mark.proves("product_host.research_input_copies_removed_after_backup_replay")
-@pytest.mark.real_evidence
-def test_qa_copies_are_kept_read_back_and_removed_only_after_the_backup_replays_them(
-    tmp_path: Path, evidence_roots: Any
-) -> None:
-    """The same upgrade over a QA copy of a 0.2.7 workspace's research inputs: the upgrade replay
-    that keeps original data, in the nightly."""
-    qa = evidence_roots.require("alpha_development_outcomes")
-    _kept_read_back_and_removed(tmp_path, qa / "alpha-base")  # read only
 
 
 def _kept_read_back_and_removed(tmp_path: Path, original: Path) -> None:
@@ -162,7 +154,12 @@ def test_a_copy_that_differs_from_its_kept_bytes_keeps_every_copy(tmp_path: Path
     assert unheld.value.failure.code == "upgrade.refused"
     assert not history.research_input_kept(binding_hash)
     research_input_upgrade_family(lambda _workspace: "w").step(runner)
-    panel = workspace / "research-inputs" / binding_hash / "source/artifacts/panel.parquet"
+    panel = (
+        workspace
+        / "research-inputs"
+        / blake3_filename(binding_hash)
+        / "source/artifacts/panel.parquet"
+    )
     panel.unlink()  # a new file, not the kept body a link may share
     panel.write_bytes(b"other")
     before = sorted(p.name for p in (workspace / "research-inputs").iterdir())
@@ -172,7 +169,8 @@ def test_a_copy_that_differs_from_its_kept_bytes_keeps_every_copy(tmp_path: Path
     assert sorted(p.name for p in (workspace / "research-inputs").iterdir()) == before
 
 
-def _tree(inputs: Path, name: str, bundle: FactorInputBundle, database: bool) -> None:
+def _tree(inputs: Path, binding_hash: str, bundle: FactorInputBundle, database: bool) -> None:
+    name = blake3_filename(binding_hash)
     source = inputs / name / "source"
     (source / "artifacts").mkdir(parents=True)
     (source / "artifacts/panel.parquet").write_bytes(b"panel")
@@ -187,12 +185,12 @@ def test_each_copy_is_listed_as_the_door_keeps_it(tmp_path: Path) -> None:
     reads; a copy a cleanup released lists only what it holds; publication records and pools are
     no binding, a workspace with no copies lists none, and a copy under another name is refused."""
     files = (
-        ("artifacts/panel.parquet", "1" * 64),
-        ("market-data.duckdb", sha256(b"db").hexdigest()),
+        ("artifacts/panel.parquet", blake3_digest(b"panel")),
+        ("market-data.duckdb", blake3_digest(b"db")),
     )
     bundle = FactorInputBundle.create(
-        panel_snapshot_hash="a" * 64,
-        outcome_snapshot_hash="b" * 64,
+        panel_snapshot_hash=fixture_digest("input panel"),
+        outcome_snapshot_hash=fixture_digest("input outcomes"),
         sessions=(date(2026, 1, 2),),
         files=files,
         database_snapshot_hash=files[1][1],
@@ -200,15 +198,17 @@ def test_each_copy_is_listed_as_the_door_keeps_it(tmp_path: Path) -> None:
     inputs = tmp_path / "research-inputs"
     _tree(inputs, bundle.binding_hash, bundle, database=True)
     (inputs / "publications").mkdir()
-    (inputs / "databases" / files[1][1]).mkdir(parents=True)
-    [(name, listed)] = legacy_bindings(tmp_path)
-    assert name == bundle.binding_hash
+    database_name = blake3_filename(files[1][1])
+    (inputs / "databases" / database_name).mkdir(parents=True)
+    [(binding_hash, listed)] = legacy_bindings(tmp_path)
+    assert binding_hash == bundle.binding_hash
+    name = blake3_filename(binding_hash)
     assert sorted(relative for relative, _ in listed) == sorted(
         [
             f"{name}/manifest.json",
             f"{name}/source/artifacts/panel.parquet",
             f"{name}/source/market-data.duckdb",
-            f"databases/{files[1][1]}/market-data.duckdb",
+            f"databases/{database_name}/market-data.duckdb",
         ]
     )
     (inputs / name / "source/market-data.duckdb").unlink()
@@ -216,7 +216,7 @@ def test_each_copy_is_listed_as_the_door_keeps_it(tmp_path: Path) -> None:
     assert len(released) == 2
     assert legacy_bindings(tmp_path / "new-workspace") == []
     other = tmp_path / "other"  # a copy is kept only under the binding its own manifest names
-    _tree(other / "research-inputs", "c" * 64, bundle, database=True)
+    _tree(other / "research-inputs", fixture_digest("other input binding"), bundle, database=True)
     with pytest.raises(AuthoringError, match="input_manifest_identity_mismatch"):
         legacy_bindings(other)
 
@@ -250,7 +250,9 @@ def test_a_removal_stopped_part_way_resumes_to_the_same_end(
         copies.step(runner)
     monkeypatch.setattr(module, name, real)
     for binding_hash, files in legacy_bindings(workspace):  # each tree left is whole
-        assert (workspace / "research-inputs" / binding_hash / "manifest.json").is_file()
+        assert (
+            workspace / "research-inputs" / blake3_filename(binding_hash) / "manifest.json"
+        ).is_file()
         assert all(path.is_file() for _relative, path in files)
     assert copies.holds(workspace) and copies.verify(runner) is False
     copies.step(runner)

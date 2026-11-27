@@ -31,6 +31,7 @@ from alphalattice.capabilities.portfolio_backtesting.contracts import (
     PortfolioCostPolicy,
     PortfolioWalkForwardError,
 )
+from alphalattice.kernel.identity import is_blake3
 from alphalattice.protocols.research_authoring.contracts import AuthoringError
 from alphalattice.protocols.research_authoring.selection import (
     require_selection_only_document,
@@ -97,7 +98,7 @@ def test_a_second_risk_method_installs_without_a_central_edit() -> None:
         seed=CANONICAL_NO_RANDOMNESS_SEED,
     )
     assert admission.adapter_id == "risk-covariance-diagonal-shrunk-ledoit-wolf"
-    assert len(admission.recipe_hash) == 64
+    assert is_blake3(admission.recipe_hash)
 
 
 def test_the_shrunk_diagonal_reproduces_the_control_at_zero_and_deletes_it_at_one() -> None:
@@ -512,11 +513,11 @@ def test_a_score_producer_cannot_state_an_execution_term() -> None:
             observation_session_offset_sessions=21,
             availability_delay_sessions=0,
             availability_policy_id="p",
-            availability_policy_hash="a" * 64,
-            observation_clock_hash="b" * 64,
+            availability_policy_hash="blake3:" + "a" * 64,
+            observation_clock_hash="blake3:" + "b" * 64,
             formula_observation_semantics="x",
             source_authority_id="y",
-            methodology_identity="c" * 64,
+            methodology_identity="blake3:" + "c" * 64,
             strategy_scope="CONDITIONAL_FIXED_SCORE_NOT_A_STRATEGY_SIGNAL",
             entry_offset_sessions=1,
         )
@@ -535,15 +536,15 @@ def test_the_score_producer_clock_reaches_the_shared_owner_unchanged() -> None:
         observation_session_offset_sessions=21,
         availability_delay_sessions=0,
         availability_policy_id="feature-availability.daily-provider-session-close",
-        availability_policy_hash="a" * 64,
-        observation_clock_hash="b" * 64,
+        availability_policy_hash="blake3:" + "a" * 64,
+        observation_clock_hash="blake3:" + "b" * 64,
         formula_observation_semantics="total-return close at t-21 over [t-252,t-21]",
         source_authority_id="alpha_research.simple_signal:mom_252_21:factor.mom_252_21.v1",
-        methodology_identity="c" * 64,
+        methodology_identity="blake3:" + "c" * 64,
         strategy_scope="CONDITIONAL_FIXED_SCORE_NOT_A_STRATEGY_SIGNAL",
     )
     authority = signed_score.score_input_authority(
-        observation, surface_hash="d" * 64, input_id="alpha_score"
+        observation, surface_hash="blake3:" + "d" * 64, input_id="alpha_score"
     )
     assert isinstance(authority, CausalInputAuthority)
     # The economic skip reaches backwards; the publication delay reaches

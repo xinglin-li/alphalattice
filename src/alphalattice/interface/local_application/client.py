@@ -96,14 +96,15 @@ from alphalattice.interface.local_application.thin_cli import (
 )
 from alphalattice.interface.local_application.wire import _json_value as _json_value
 from alphalattice.interface.local_application.wire import request_body as request_body
-from alphalattice.kernel.identity import integrity_sha256
 
 REFERENCE_LEDGER_NAME = "reference-ledger.txt"
 """Issued hashes and ids beside the connection."""
+_BLAKE3_TAG = "blake3:"
 WHOLE_REFERENCE = re.compile(
-    r"\b(?:[0-9a-f]{64}|[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})\b"
+    rf"\b(?:{_BLAKE3_TAG}[0-9a-f]{{64}}|(?<!{_BLAKE3_TAG})[0-9a-f]{{64}}"
+    r"|[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})\b"
 )
-"""SHA-256 or UUID."""
+"""Tagged BLAKE3 digest, SHA-256 or UUID."""
 
 
 @dataclass(frozen=True, slots=True)
@@ -1389,8 +1390,11 @@ def _write_new(path: Path, payload: bytes, *, replace: bool = False) -> None:
 
 _SHOWN_REFERENCE = re.compile(r"(?<![/\\])" + WHOLE_REFERENCE.pattern + r"(?![/\\]|\.[A-Za-z])")
 """A whole hash or id outside a path: a path keeps its values whole, so it still opens."""
-_SHORT_REFERENCE = re.compile(r"[0-9a-f]{12}|[0-9a-f]{8}-[0-9a-f]{3}")
-"""The first twelve characters of a hash, or of a UUID, as the compact display shows them."""
+_SHORT_REFERENCE = re.compile(
+    rf"{_BLAKE3_TAG}[0-9a-f]{{12}}|(?<!{_BLAKE3_TAG})[0-9a-f]{{12}}"
+    r"|[0-9a-f]{8}-[0-9a-f]{3}"
+)
+"""The first twelve characters of a digest or UUID, with the BLAKE3 tag retained."""
 _REFERENCE_KEYS = ("_id", "_hash", "_ids", "_hashes")
 """The fields that hold a typed reference, by their names' endings: a task, a plan, a hash."""
 _SHOWN_SHORT_REFERENCE = re.compile(
@@ -1427,7 +1431,8 @@ def _shortened(name: str | None) -> bool:
 
 
 def short_references(value: Any, key: str | None = None) -> Any:
-    """The compact display with each typed reference shown by its first twelve characters.
+    """The compact display with the first twelve characters of each typed digest or UUID.
+    BLAKE3 references keep their tag before those twelve characters.
 
     The client reads such a beginning back as the whole value (`whole_references`), so what is
     shown may be sent. Only a field that holds a reference is shortened, its list's items
@@ -1445,7 +1450,12 @@ def short_references(value: Any, key: str | None = None) -> Any:
     if isinstance(value, str):
         if not _shortened(key):
             return value
-        return _SHOWN_REFERENCE.sub(lambda match: match.group(0)[:12], value)
+
+        def shorten(match: re.Match[str]) -> str:
+            full = match.group(0)
+            return full[: 12 + (len(_BLAKE3_TAG) if full.startswith(_BLAKE3_TAG) else 0)]
+
+        return _SHOWN_REFERENCE.sub(shorten, value)
     if isinstance(value, dict):
         return {k: short_references(v, str(k)) for k, v in value.items()}
     if isinstance(value, list):
@@ -1751,7 +1761,6 @@ def _compact(body: Any, budget: int, section: str, omissions: list[str]) -> dict
             omitted = {
                 "_omitted": "text",
                 "utf8_bytes": len(encoded),
-                "text_sha256": integrity_sha256(encoded).hexdigest(),
             }
             if (path == "json" or path.endswith(".json")) and depth < 5 and available:
                 with suppress(ValueError):

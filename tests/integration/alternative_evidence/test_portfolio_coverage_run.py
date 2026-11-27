@@ -52,6 +52,7 @@ from alphalattice.foundation.data_layer import history
 from alphalattice.interface.local_application.cli import main as cli_main
 from alphalattice.interface.local_application.cli_contract import refusal_words
 from alphalattice.investment.portfolio_strategy_lab.reporting.static import format_book_weight
+from alphalattice.kernel.identity import blake3_filename, blake3_hex
 from alphalattice.oversight.chief_risk_officer.decision.book_evidence import BookSelector
 from alphalattice.oversight.chief_risk_officer.decision.portfolio_review import (
     PortfolioReviewDossier,
@@ -487,7 +488,8 @@ def test_a_fifty_name_book_is_prepared_analysed_and_reviewed_as_one_request(
             entity for finding in dossier.findings for entity in finding.affected_entities
         } == set(SMALL_ISSUERS)
         qualifiers = {
-            child.analysis_publication_hash[:8].upper() for child in dossier.evidence_children
+            blake3_hex(child.analysis_publication_hash)[:8].upper()
+            for child in dossier.evidence_children
         }
         assert all(
             finding.finding_handle.split("-")[1].removeprefix("P") in qualifiers
@@ -1557,7 +1559,9 @@ def test_the_book_ledger_refuses_one_unreadable_receipt_and_keeps_healthy_groups
             UUID(task_id), unit_id=unit_id
         )
         receipt_path = (
-            adapter.runtime.artifacts.root / "retrieval-access-receipts" / f"{receipt_hash}.json"
+            adapter.runtime.artifacts.root
+            / "retrieval-access-receipts"
+            / f"{blake3_filename(receipt_hash)}.json"
         )
     finally:
         service.session.stop()

@@ -32,12 +32,12 @@ from typing import Any, Final
 import numpy as np
 import numpy.typing as npt
 
-from alphalattice.kernel.identity import integrity_sha256
+from alphalattice.kernel.identity import integrity_blake3, tagged_blake3
 
 LIGHTGBM_THREAD_CANARIES: Final[dict[str, str]] = {
-    # lightgbm version: SHA-256 of the canary's trees, validation curve and predictions,
+    # lightgbm version: BLAKE3 of the canary's trees, validation curve and predictions,
     # fitted on one thread; 2, 4, 8 and 16 threads gave the same bytes when sealed.
-    "4.7.0": "cfdb82d09be8eb356a80097a631e43adbc7c0e20223d0a115426e02713915337",
+    "4.7.0": "blake3:27f2f037586ef04292ff3ad94a53442ed357b645ed3d1231709f7a6993b88f7b",
 }
 """The sealed canary of each LightGBM version this build has proven."""
 
@@ -173,12 +173,12 @@ def canary_digest(threads: int) -> str:
         ],
     )
     iterations = int(booster.best_iteration)
-    digest = integrity_sha256()
+    digest = integrity_blake3()
     digest.update(model_trees(str(booster.model_to_string(num_iteration=iterations))).encode())
     digest.update(np.asarray(curve["valid_0"]["l2"], dtype=np.float64).tobytes())
     predictions = booster.predict(valid_x, num_iteration=iterations, num_threads=threads)
     digest.update(np.asarray(predictions, dtype=np.float64).tobytes())
-    return digest.hexdigest()
+    return tagged_blake3(digest)
 
 
 def _inherited_canary(installed: str) -> str | None:

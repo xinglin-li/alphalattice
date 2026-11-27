@@ -22,7 +22,7 @@ from alphalattice.foundation.market_data_ops.storage.duckdb import (
     _selected_provider_sql,
     _source_prefix_arrow_hash,
 )
-from alphalattice.kernel.identity import identity_sha256
+from alphalattice.kernel.identity import identity_blake3, tagged_blake3
 
 if TYPE_CHECKING:
     from alphalattice.foundation.market_data_ops.storage.duckdb import MarketDataRepository
@@ -41,13 +41,13 @@ def _listing_arrow_hashes(table: pa.Table) -> dict[str, str]:
     stops: list[int] = np.asarray(np.searchsorted(ids, keys, side="right"), np.int64).tolist()
     hashes: dict[str, str] = {}
     for listing, first, stop in zip(map(str, keys), bounds, stops, strict=True):
-        digest = identity_sha256(table.schema.to_string().encode())
+        digest = identity_blake3(table.schema.to_string().encode())
         for column in columns:
             part = column[first:stop]
             digest.update(
                 "\x1f".join(map(repr, part)).encode() if part.dtype == object else part.tobytes()
             )
-        hashes[listing] = digest.hexdigest()
+        hashes[listing] = tagged_blake3(digest)
     return hashes
 
 

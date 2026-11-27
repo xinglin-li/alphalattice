@@ -21,6 +21,7 @@ from alphalattice.control.task_control.contracts import (
     TaskRecord,
     TaskRecoveryLink,
 )
+from alphalattice.kernel.identity import blake3_filename
 from tests.workspace_task_runner.task_control_support import digest, task_contract
 
 NOW = datetime(2026, 9, 29, 12, tzinfo=UTC)
@@ -62,14 +63,14 @@ def test_a_plan_outlives_the_host_that_answered_it_until_it_expires(tmp_path) ->
     clock[0] = NOW + timedelta(minutes=61)
     assert store().runnable(first.plan_hash) is None
     assert store().get(first.plan_hash) is not None  # expired: readable, never runnable
-    sealed = root / f"{first.plan_hash}.json"
+    sealed = root / f"{blake3_filename(first.plan_hash)}.json"
     sealed.write_text(sealed.read_text(encoding="utf-8").replace('"value": 1', '"value": 3'))
     assert store().get(first.plan_hash) is None  # a record that does not verify
     clock[0] = NOW
     single = store(single=True)
     single.remember(first)
     single.remember(second)
-    assert sorted(path.stem for path in root.glob("*.json")) == [second.plan_hash]
+    assert sorted(path.stem for path in root.glob("*.json")) == [blake3_filename(second.plan_hash)]
     assert store().runnable(first.plan_hash) is None
 
 

@@ -29,10 +29,13 @@ from alphalattice.foundation.causal_outcomes.execution.compile import execution_
 from alphalattice.foundation.market_data_ops.sources.contracts import RawDailyBar
 from alphalattice.foundation.market_data_ops.storage.duckdb import MarketDataRepository
 from alphalattice.kernel.identity import (
+    blake3_filename,
     canonical_hash,
     canonical_json,
-    identity_sha256,
-    integrity_sha256,
+    identity_blake3,
+    integrity_blake3,
+    is_blake3,
+    tagged_blake3,
 )
 
 from .contracts import (
@@ -229,7 +232,7 @@ class TradabilityArtifactStore:
 
     @staticmethod
     def _require_hash(value: str) -> None:
-        if len(value) != 64 or any(char not in "0123456789abcdef" for char in value):
+        if not is_blake3(value):
             raise TradabilitySurfaceError("data_tradability.artifact_identity_invalid")
 
     @staticmethod
@@ -242,7 +245,7 @@ class TradabilityArtifactStore:
 
     def _path(self, category: str, content_hash: str, suffix: str) -> Path:
         self._require_hash(content_hash)
-        return self.root / category / f"{content_hash}.{suffix}"
+        return self.root / category / f"{blake3_filename(content_hash)}.{suffix}"
 
     def publish_chunk(
         self,
@@ -286,36 +289,36 @@ class TradabilityArtifactStore:
         buffer = pa.BufferOutputStream()
         pq.write_table(ordered.replace_schema_metadata(metadata), buffer, compression="zstd")
         content = buffer.getvalue().to_pybytes()
-        payload_sha256 = integrity_sha256(content).hexdigest()
+        payload_digest = tagged_blake3(integrity_blake3(content))
         serialized_metadata = json.dumps(
             {key.decode(): value.decode() for key, value in sorted(metadata.items())},
             sort_keys=True,
             separators=(",", ":"),
         ).encode()
-        metadata_hash = integrity_sha256(serialized_metadata).hexdigest()
+        metadata_hash = tagged_blake3(integrity_blake3(serialized_metadata))
         content_hash = canonical_hash(
             tradability_chunk_identity(
                 surface_kind=surface_kind,
                 formation_sessions=sessions,
                 row_count=ordered.num_rows,
-                payload_sha256=payload_sha256,
+                payload_digest=payload_digest,
                 metadata_hash=metadata_hash,
             )
         )
         target = self._path(f"{surface_kind.lower()}/chunks", content_hash, "parquet")
         target.parent.mkdir(parents=True, exist_ok=True)
         if target.exists():
-            if not sealed_file_holds(target, payload_sha256):
+            if not sealed_file_holds(target, payload_digest):
                 raise TradabilitySurfaceError("data_tradability.chunk_identity_reused")
         else:
             self._capacity(len(content))
             self._atomic_write(target, content)
-            record_sealed_file(target, payload_sha256)  # checked once; reads take it by its stat
+            record_sealed_file(target, payload_digest)  # checked once; reads take it by its stat
         return TradabilitySurfaceChunk(
             surface_kind=surface_kind,
             formation_sessions=sessions,
             row_count=ordered.num_rows,
-            payload_sha256=payload_sha256,
+            payload_digest=payload_digest,
             metadata_hash=metadata_hash,
             content_hash=content_hash,
             uri=self.uri(f"{surface_kind.lower()}/chunks", content_hash),
@@ -340,7 +343,7 @@ class TradabilityArtifactStore:
         if chunk.uri != self.uri(category, chunk.content_hash):
             raise TradabilitySurfaceError("data_tradability.chunk_uri_invalid")
         path = self._path(category, chunk.content_hash, "parquet")
-        if not sealed_file_holds(path, chunk.payload_sha256):
+        if not sealed_file_holds(path, chunk.payload_digest):
             raise TradabilitySurfaceError("data_tradability.chunk_tampered")
         parquet = pq.ParquetFile(path)
         metadata = parquet.schema_arrow.metadata or {}
@@ -349,7 +352,7 @@ class TradabilityArtifactStore:
             sort_keys=True,
             separators=(",", ":"),
         ).encode()
-        if integrity_sha256(serialized).hexdigest() != chunk.metadata_hash:
+        if tagged_blake3(integrity_blake3(serialized)) != chunk.metadata_hash:
             raise TradabilitySurfaceError("data_tradability.chunk_metadata_tampered")
         if parquet.metadata.num_rows != chunk.row_count:
             raise TradabilitySurfaceError("data_tradability.chunk_row_count_invalid")
@@ -391,7 +394,7 @@ class TradabilityArtifactStore:
         return ArtifactDescriptor(
             kind=f"data-tradability-{category.replace('/', '-')}",
             content_hash=content_hash,
-            metadata_hash=integrity_sha256(content).hexdigest(),
+            metadata_hash=tagged_blake3(integrity_blake3(content)),
             uri=self.uri(category, content_hash),
         )
 
@@ -860,7 +863,7 @@ def _history_identity(
             if fragments is not None:
                 fragments[key] = text
         parts.append(text)
-    return identity_sha256(("[" + ",".join(parts) + "]").encode("utf-8")).hexdigest()
+    return tagged_blake3(identity_blake3(("[" + ",".join(parts) + "]").encode("utf-8")))
 
 
 def _decision_row(

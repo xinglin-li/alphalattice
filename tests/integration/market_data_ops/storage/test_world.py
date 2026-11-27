@@ -41,6 +41,8 @@ from alphalattice.foundation.market_data_ops.storage.duckdb import MarketDataRep
 from alphalattice.foundation.market_data_ops.storage.world_upgrade import market_upgrade_family
 from alphalattice.kernel import storage
 from alphalattice.kernel.clock import task_observation
+from alphalattice.kernel.identity import blake3_filename
+from tests._support.identity_fixtures import fixture_digest
 from tests.workspace_maintenance.acquisition_manifest import NOW, acquisition_manifest
 from tests.workspace_maintenance.audit_workspace import audit_one
 
@@ -233,12 +235,12 @@ def _universe_records_follow_their_rows(
         cohort_listing_ids=("listing-aapl", "listing-msft"),
         cohort_hash="",
         manifest_revision=manifest.revision_sha256,
-        candidate_manifest_hash="1" * 64,
-        qualification_policy_hash="2" * 64,
-        feature_input_policy_hash="3" * 64,
+        candidate_manifest_hash=fixture_digest("1"),
+        qualification_policy_hash=fixture_digest("2"),
+        feature_input_policy_hash=fixture_digest("3"),
         source_observed_at=NOW - timedelta(days=1),
         admitted_at=NOW,
-        panel_snapshot_hash="4" * 64,
+        panel_snapshot_hash=fixture_digest("4"),
         derivation="FIRST_QUALIFIED_PUBLICATION",
     )
     # its writer's publish, interrupted inside its snapshot, records nothing it names
@@ -260,7 +262,7 @@ def _universe_records_follow_their_rows(
             observed_at=datetime(2026, 7, 28, 15, tzinfo=UTC),
             decided_at=datetime(2026, 7, 28, 16, tzinfo=UTC),
             authority="fixture",
-            reference_hash="5" * 64,
+            reference_hash=fixture_digest("5"),
             manifest_revision=manifest.revision_sha256,
         ),
     )
@@ -664,12 +666,12 @@ def test_a_workspace_open_admits_its_market_tables_once_and_a_correction_from_it
         cohort_listing_ids=("listing-aapl", "listing-msft"),
         cohort_hash="",
         manifest_revision=manifest.revision_sha256,
-        candidate_manifest_hash="1" * 64,
-        qualification_policy_hash="2" * 64,
-        feature_input_policy_hash="3" * 64,
+        candidate_manifest_hash=fixture_digest("1"),
+        qualification_policy_hash=fixture_digest("2"),
+        feature_input_policy_hash=fixture_digest("3"),
         source_observed_at=NOW - timedelta(days=1),
         admitted_at=NOW,
-        panel_snapshot_hash="4" * 64,
+        panel_snapshot_hash=fixture_digest("4"),
         derivation="FIRST_QUALIFIED_PUBLICATION",
     )
     store.record_universe_bootstrap(bootstrap)
@@ -688,7 +690,7 @@ def test_a_workspace_open_admits_its_market_tables_once_and_a_correction_from_it
         observed_at=datetime(2026, 7, 28, 15, tzinfo=UTC),
         decided_at=datetime(2026, 7, 28, 16, tzinfo=UTC),
         authority="fixture",
-        reference_hash="5" * 64,
+        reference_hash=fixture_digest("5"),
         manifest_revision=manifest.revision_sha256,
     )
     MarketDataRepository(store.workspace).append_membership_events((event,))
@@ -777,7 +779,7 @@ def test_a_workspace_open_admits_its_market_tables_once_and_a_correction_from_it
         effective_session=entry_day,
         observed_at=NOW + timedelta(minutes=30),
         decided_at=NOW + timedelta(hours=1),
-        reference_hash="6" * 64,
+        reference_hash=fixture_digest("6"),
         event_hash="",
     )
     MarketDataRepository(store.workspace).append_membership_events((entry,))
@@ -918,9 +920,9 @@ def test_a_workspace_open_admits_its_market_tables_once_and_a_correction_from_it
                 "AAPL",
                 "Technology",
                 None,
-                "a" * 64,
-                "b" * 64,
-                "c" * 64,
+                fixture_digest("a"),
+                fixture_digest("b"),
+                fixture_digest("c"),
                 NOW,
             ],
         )
@@ -932,9 +934,9 @@ def test_a_workspace_open_admits_its_market_tables_once_and_a_correction_from_it
                 "MSFT",
                 "Technology",
                 None,
-                "a" * 64,
-                "b" * 64,
-                "c" * 64,
+                fixture_digest("a"),
+                fixture_digest("b"),
+                fixture_digest("c"),
                 NOW,
             ],
         )
@@ -966,14 +968,14 @@ def test_a_workspace_open_admits_its_market_tables_once_and_a_correction_from_it
     from tests.integration.feature_engine.test_sector_forward_rule import _map
 
     artifacts = PanelClosureArtifactStore(ArtifactResolver(database.parent / "artifacts"))
-    old_map = _map("1" * 64, {"listing-aapl": "Technology"})
+    old_map = _map(fixture_digest("1"), {"listing-aapl": "Technology"})
     artifacts.publish_json(
         category="sector-maps", content_hash=old_map.map_hash, payload=durable_payload(old_map)
     )
     connection = store._connect()
     try:
         connection.execute(
-            "UPDATE sector_classification_current SET sector_revision = ?", ["d" * 64]
+            "UPDATE sector_classification_current SET sector_revision = ?", [fixture_digest("d")]
         )
         connection.execute(
             "UPDATE sector_classification_current SET sector_name = ? WHERE listing_id = ?",
@@ -1004,7 +1006,7 @@ def test_a_workspace_open_admits_its_market_tables_once_and_a_correction_from_it
         for cutoff in (known - 1, known)
     ] == [{"listing-aapl": "Technology"}, {"listing-aapl": "Energy"}]
     state = feature.current_sector_state(manifest, cutoff_us=known - 1)
-    assert state is not None and state.sector_revision == "d" * 64
+    assert state is not None and state.sector_revision == fixture_digest("d")
     if focus == "identity":
         assert state.sector_by_listing_id["listing-aapl"] == "Energy"
     from alphalattice.foundation.feature_engine.panels.closure_source import (
@@ -1016,7 +1018,9 @@ def test_a_workspace_open_admits_its_market_tables_once_and_a_correction_from_it
     )
     rows = source.read_sector_rows(listing_ids=("listing-aapl",), cutoff_us=known - 1)
     if focus == "identity":
-        assert rows[0]["sector_name"] == "Energy" and rows[0]["sector_revision"] == "d" * 64
+        assert rows[0]["sector_name"] == "Energy" and rows[0]["sector_revision"] == fixture_digest(
+            "d"
+        )
     assert dict(sector_history_as_of(artifacts, old_map.sector_revision)) == {
         "listing-aapl": "Technology"
     }
@@ -1028,12 +1032,12 @@ def test_a_workspace_open_admits_its_market_tables_once_and_a_correction_from_it
             " prior_sector_name, sector_name, effective_session)"
             " VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
             [
-                "d" * 64,
+                fixture_digest("d"),
                 "listing-aapl",
                 "fixture",
-                "a" * 64,
-                "e" * 64,
-                "f" * 64,
+                fixture_digest("a"),
+                fixture_digest("e"),
+                fixture_digest("f"),
                 "CORRECTED",
                 NOW + timedelta(days=1),
                 "Energy",
@@ -1557,8 +1561,8 @@ def test_a_research_copy_reads_world_as_of_its_selection_and_its_own_tables_with
     digest = file_digest(database)
     bundles = [
         FactorInputBundle.create(
-            panel_snapshot_hash=panel * 64,
-            outcome_snapshot_hash="d" * 64,
+            panel_snapshot_hash=fixture_digest(panel),
+            outcome_snapshot_hash=fixture_digest("d"),
             sessions=DAYS,
             files=(("market-data.duckdb", digest),),
             database_snapshot_hash=digest,
@@ -1567,7 +1571,13 @@ def test_a_research_copy_reads_world_as_of_its_selection_and_its_own_tables_with
     ]
     copies = []
     for bundle in bundles:  # both copied before the correction
-        copy = root / "research-inputs" / bundle.binding_hash / "source" / "market-data.duckdb"
+        copy = (
+            root
+            / "research-inputs"
+            / blake3_filename(bundle.binding_hash)
+            / "source"
+            / "market-data.duckdb"
+        )
         copy.parent.mkdir(parents=True)
         shutil.copy2(database, copy)
         copies.append(MarketDataRepository(copy.parent))
@@ -1632,12 +1642,12 @@ def test_a_selection_before_a_first_use_reads_its_members_though_world_saw_them_
                 cohort_listing_ids=listings,
                 cohort_hash="",
                 manifest_revision=manifest.revision_sha256,
-                candidate_manifest_hash="1" * 64,
-                qualification_policy_hash="2" * 64,
-                feature_input_policy_hash="3" * 64,
+                candidate_manifest_hash=fixture_digest("1"),
+                qualification_policy_hash=fixture_digest("2"),
+                feature_input_policy_hash=fixture_digest("3"),
                 source_observed_at=now,
                 admitted_at=now,
-                panel_snapshot_hash="4" * 64,
+                panel_snapshot_hash=fixture_digest("4"),
                 derivation="FIRST_QUALIFIED_PUBLICATION",
             )
         )
@@ -1795,10 +1805,14 @@ def _a_publish_takes_its_exact_keys_each_known_at_its_own_time(
     nvda = ManifestListing(
         listing_id="listing-nvda", symbol="NVDA", mic="XNAS", provider_symbol="NVDA"
     )
-    added = replace(manifest, listings=(*manifest.listings, nvda), revision_sha256="b" * 64)
+    added = replace(
+        manifest, listings=(*manifest.listings, nvda), revision_sha256=fixture_digest("b")
+    )
     later = NOW.date() + timedelta(days=1)  # a second write's mappings, effective a day later
     again = replace(
-        added, profile=replace(added.profile, manifest_as_of=later), revision_sha256="c" * 64
+        added,
+        profile=replace(added.profile, manifest_as_of=later),
+        revision_sha256=fixture_digest("c"),
     )
     with store.writing():
         first = datetime.now(UTC)

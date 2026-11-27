@@ -26,6 +26,7 @@ from alphalattice.protocols.research_authoring.contracts import (
     AuthoringError,
     ResolvedResearchAuthority,
 )
+from tests._support.identity_fixtures import fixture_digest
 from tests.researcher_methodology_surface.real_workspace import RealRiskWorkspace
 
 
@@ -39,7 +40,7 @@ def _authority(workspace: RealRiskWorkspace) -> ResolvedResearchAuthority:
         universe_revision_sha256=surface.epoch.universe_manifest_revision,
         ordered_listing_ids=tuple(surface.epoch.ordered_listing_ids),
         sessions=(surface.last_formation_session,),
-        source_watermark_hash="0" * 64,
+        source_watermark_hash=fixture_digest("0"),
     )
 
 
@@ -69,7 +70,7 @@ def test_the_matching_surface_is_chosen_from_several(
     """requirement: two surfaces coexist and the authority decides, not the order."""
 
     wanted = real_risk_workspace.return_surface
-    other = _variant(wanted, panel_snapshot_hash="a" * 64)
+    other = _variant(wanted, panel_snapshot_hash=fixture_digest("a"))
     authority = _authority(real_risk_workspace)
 
     for surfaces in ((other, wanted), (wanted, other)):
@@ -80,9 +81,10 @@ def test_the_matching_surface_is_chosen_from_several(
 @pytest.mark.parametrize(
     ("field", "value"),
     [
-        ("panel_snapshot_hash", "b" * 64),
-        ("universe_manifest_revision", "c" * 64),
+        ("panel_snapshot_hash", fixture_digest("b")),
+        ("universe_manifest_revision", fixture_digest("c")),
     ],
+    ids=("panel-snapshot", "universe-revision"),
 )
 def test_a_same_shaped_surface_on_another_axis_is_refused(
     real_risk_workspace: RealRiskWorkspace,
@@ -129,7 +131,7 @@ def test_two_exact_matches_are_refused(real_risk_workspace: RealRiskWorkspace) -
     # tie-breaker here, since it is precisely the thing that differs.
     values = surface.model_dump(mode="json")
     values.pop("surface_hash")
-    values["source_watermark_hash"] = "d" * 64
+    values["source_watermark_hash"] = fixture_digest("d")
     twin = seal_contract(CausalRiskReturnSurface, "surface_hash", **values)
 
     assert twin.surface_hash != surface.surface_hash

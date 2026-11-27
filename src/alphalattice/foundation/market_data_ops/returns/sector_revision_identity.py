@@ -5,7 +5,7 @@ from __future__ import annotations
 import json
 from collections.abc import Iterable, Mapping
 
-from alphalattice.kernel.identity import identity_sha256
+from alphalattice.kernel.identity import identity_blake3, tagged_blake3
 
 
 def sector_revision_hash(
@@ -18,7 +18,7 @@ def sector_revision_hash(
         observations: Provider sector records keyed by listing identity.
 
     Returns:
-        Canonical SHA-256 revision of the sorted observations.
+        Tagged BLAKE3 revision of the sorted observations.
 
     """
     safe_records = tuple(
@@ -44,7 +44,7 @@ def sector_revision_hash(
         separators=(",", ":"),
         default=str,
     )
-    return identity_sha256(payload.encode("utf-8")).hexdigest()
+    return tagged_blake3(identity_blake3(payload.encode("utf-8")))
 
 
 __all__ = ["sector_revision_hash"]

@@ -41,12 +41,14 @@ from alphalattice.kernel.execution import (
     interruptible,
     stop_reason,
 )
+from alphalattice.kernel.identity import blake3_from_filename
 from alphalattice.kernel.resources import (
     NATIVE_THREAD_VARIABLES,
     ResourceAmounts,
     ResourceLease,
     use_resource_lease,
 )
+from tests._support.identity_fixtures import fixture_digest
 
 HERE = __spec__.name if __spec__ else __name__
 
@@ -166,8 +168,10 @@ def _check_alpha_child_parts(tmp_path: Path, *, interruption: str | None) -> Non
                 (store.root / "current/candidate-numerical-fold-by-binding").glob("*.json")
             )
             assert len(pointers) == 1
+            binding_hash = blake3_from_filename(pointers[0].stem)
+            assert binding_hash is not None
             try:
-                recovered = store.find_candidate_numerical_fold_result(pointers[0].stem)
+                recovered = store.find_candidate_numerical_fold_result(binding_hash)
             except FileNotFoundError as error:
                 pytest.fail(f"the visible fold has no catalog score: {error}", pytrace=False)
             assert recovered is not None and recovered.score_chunk is not None
@@ -503,13 +507,14 @@ def test_stage_plans_keep_both_consumers_canonical_work_items() -> None:
     )
     from alphalattice.control.task_control.contracts import ResearchPlan, WorkItemDefinition
 
+    goal_hash = fixture_digest("stage plan goal")
     for owner, namespace in (
         (research_experiments, "research_experiment"),
         (strategy_calibration, "portfolio_calibration"),
     ):
         stages = owner.STAGES
         expected = ResearchPlan.create(
-            goal_hash="0" * 64,
+            goal_hash=goal_hash,
             workflow_definition_hash=canonical_hash(stages),
             verifier_catalog_hash=canonical_hash(stages),
             work_items=tuple(
@@ -521,7 +526,7 @@ def test_stage_plans_keep_both_consumers_canonical_work_items() -> None:
         )
         assert (
             ResearchPlan.from_stages(
-                goal_hash="0" * 64, stages=stages, verifier_namespace=namespace
+                goal_hash=goal_hash, stages=stages, verifier_namespace=namespace
             )
             == expected
         )
@@ -654,7 +659,7 @@ threadpoolctl.ThreadpoolController = original
         counts = numerical_thread_counts()
     assert counts and all(isinstance(api, str) and threads >= 1 for api, threads in counts)
     record = {
-        "program_hash": "a" * 64,
+        "program_hash": fixture_digest("fit execution program"),
         "cpu_budget": "auto",
         "cores": 4,
         "lightgbm_threads": 4,

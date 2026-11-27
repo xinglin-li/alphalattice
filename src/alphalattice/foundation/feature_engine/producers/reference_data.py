@@ -43,6 +43,7 @@ from alphalattice.foundation.market_data_ops.storage.duckdb import (
     MarketDataRepository,
 )
 from alphalattice.kernel.execution import execution_port
+from alphalattice.kernel.identity import blake3_filename
 from alphalattice.kernel.resources import worker_width
 
 _REFERENCE_NAMESPACE = UUID("15bf0e17-4d4f-4a5e-8aae-026a01aa7f0d")
@@ -395,7 +396,7 @@ class SectorRefreshStager:
     @property
     def path(self) -> Path:
         """Return the private JSON artifact path for this staging identifier."""
-        return self.artifact_root / f"{self.staging_id}.json"
+        return self.artifact_root / f"{blake3_filename(self.staging_id)}.json"
 
     def acquire(self, *, observed_at: datetime) -> SectorRefreshOutcome:
         """Fetch and validate current-sector evidence into resumable JSON staging.

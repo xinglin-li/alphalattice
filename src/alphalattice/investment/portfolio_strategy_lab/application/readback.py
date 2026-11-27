@@ -80,6 +80,7 @@ from alphalattice.investment.portfolio_strategy_lab.publication.portfolio_ledger
     PortfolioLedgerStore,
     PortfolioLedgerStoreError,
 )
+from alphalattice.kernel.identity import BLAKE3_PATTERN
 
 ReadbackDisposition = Literal[
     "VERIFIED",
@@ -149,7 +150,7 @@ class ReadbackLayer(_Contract):
     kind: Literal["ReadbackLayer"] = "ReadbackLayer"
     layer_id: str = Field(min_length=1, max_length=64)
     disposition: ReadbackDisposition
-    identity_hash: str | None = Field(default=None, pattern=r"^[0-9a-f]{64}$")
+    identity_hash: str | None = Field(default=None, pattern=BLAKE3_PATTERN)
     detail: str = Field(min_length=1, max_length=240)
 
     @model_validator(mode="after")  # type: ignore[untyped-decorator]
@@ -214,10 +215,10 @@ class ExactReadbackReceipt(_Contract):
 
     kind: Literal["ExactReadbackReceipt"] = "ExactReadbackReceipt"
     workspace_id: str = Field(min_length=1, max_length=120)
-    result_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
+    result_hash: str = Field(pattern=BLAKE3_PATTERN)
     layers: tuple[ReadbackLayer, ...] = Field(min_length=1)
     work: ReadbackWork = ReadbackWork()
-    receipt_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
+    receipt_hash: str = Field(pattern=BLAKE3_PATTERN)
 
     @classmethod
     def create(cls, **values: object) -> Self:
@@ -298,12 +299,12 @@ class StrongReplayReceipt(_Contract):
 
     kind: Literal["StrongReplayReceipt"] = "StrongReplayReceipt"
     workspace_id: str = Field(min_length=1, max_length=120)
-    result_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
-    program_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
-    numerical_input_assembly_hash: str | None = Field(default=None, pattern=r"^[0-9a-f]{64}$")
+    result_hash: str = Field(pattern=BLAKE3_PATTERN)
+    program_hash: str = Field(pattern=BLAKE3_PATTERN)
+    numerical_input_assembly_hash: str | None = Field(default=None, pattern=BLAKE3_PATTERN)
     layers: tuple[ReadbackLayer, ...] = Field(min_length=1)
-    rederived_economic_ledger_hash: str | None = Field(default=None, pattern=r"^[0-9a-f]{64}$")
-    sealed_economic_ledger_hash: str | None = Field(default=None, pattern=r"^[0-9a-f]{64}$")
+    rederived_economic_ledger_hash: str | None = Field(default=None, pattern=BLAKE3_PATTERN)
+    sealed_economic_ledger_hash: str | None = Field(default=None, pattern=BLAKE3_PATTERN)
     work: ReadbackWork = ReadbackWork()
     disposition: Literal[
         "REPLAYED_EXACT",
@@ -312,7 +313,7 @@ class StrongReplayReceipt(_Contract):
         "REFUSED_SPEC_MISMATCH",
         "FAILED_MISMATCH",
     ]
-    receipt_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
+    receipt_hash: str = Field(pattern=BLAKE3_PATTERN)
 
     @classmethod
     def create(cls, **values: object) -> Self:
@@ -428,11 +429,11 @@ class OpenedUpstreamArtifact(_Contract):
         "RISK_RECIPE",
         "RISK_RETURN_SURFACE",
     ]
-    identity_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
-    closure_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
+    identity_hash: str = Field(pattern=BLAKE3_PATTERN)
+    closure_hash: str = Field(pattern=BLAKE3_PATTERN)
     child_count: int = Field(ge=0)
     admitted_at: datetime
-    record_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
+    record_hash: str = Field(pattern=BLAKE3_PATTERN)
 
     @classmethod
     def create(cls, **values: object) -> Self:

@@ -248,6 +248,11 @@ def test_the_entry_point_inventory_separates_commands_from_helpers(
             return SimpleNamespace(returncode=0, stdout=value)
 
         monkeypatch.setattr(authority.spawn, "run", fake)
+        monkeypatch.setattr(authority, "POST_OBSERVED_RESEARCH_SHA", "")
+        with pytest.raises(authority.MaterializationError, match="no independently admitted"):
+            authority._repository_root(tmp_path)
+        assert calls == []
+        monkeypatch.setattr(authority, "POST_OBSERVED_RESEARCH_SHA", "1" * 40)
         assert authority._repository_root(tmp_path) == tmp_path.resolve()
         assert len(calls) == 2 and all(call[0][0] == "git" for call in calls)
         return

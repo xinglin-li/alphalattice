@@ -18,6 +18,7 @@ from alphalattice.control.workspace_runtime.artifacts import ArtifactResolver
 from alphalattice.control.workspace_runtime.database import open_workspace_database
 from alphalattice.foundation.feature_engine.contracts import PANEL_ROW_IDENTITY_BY_CROSS_SECTION
 from alphalattice.foundation.feature_engine.panels.artifacts import manifest_partition_origins
+from alphalattice.kernel.identity import BLAKE3_PATTERN, blake3_filename
 
 
 class _Contract(BaseModel):  # type: ignore[misc]
@@ -40,7 +41,7 @@ class PanelAvailabilityGeneration(_Contract):
     policy_hash: str
     panel_binding_hash: str
     row_count: int = Field(ge=0)
-    ordered_availability_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
+    ordered_availability_hash: str = Field(pattern=BLAKE3_PATTERN)
     availability_basis: str | None = None
 
 
@@ -48,14 +49,14 @@ class PanelRetentionResidueReceipt(_Contract):
     """Record retained and retired availability generations after cutover."""
 
     kind: Literal["PanelRetentionResidueReceipt"] = "PanelRetentionResidueReceipt"
-    cutover_acceptance_marker_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
+    cutover_acceptance_marker_hash: str = Field(pattern=BLAKE3_PATTERN)
     protected_panel_snapshot_hashes: tuple[str, ...]
     retained_generations: tuple[PanelAvailabilityGeneration, ...]
     retired_generations: tuple[PanelAvailabilityGeneration, ...]
     snapshot_state_count: int = Field(ge=1)
-    lifecycle_projection_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
+    lifecycle_projection_hash: str = Field(pattern=BLAKE3_PATTERN)
     completed_at: datetime
-    receipt_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
+    receipt_hash: str = Field(pattern=BLAKE3_PATTERN)
 
     @model_validator(mode="after")  # type: ignore[untyped-decorator]
     def validate_receipt(self) -> PanelRetentionResidueReceipt:
@@ -359,17 +360,23 @@ class PanelRetentionResidueOwner:
         manifest_uri: str,
         evicted: dict[Path, str],
     ) -> tuple[str, str | None]:
-        manifest_path = self.artifact_root / "feature-panel" / "manifests" / f"{snapshot_hash}.json"
+        manifest_path = (
+            self.artifact_root
+            / "feature-panel"
+            / "manifests"
+            / f"{blake3_filename(snapshot_hash)}.json"
+        )
         expected_paths = {manifest_path.resolve()}
         if manifest_path.is_file():
             manifest = self.resolver.load_feature_panel_manifest(manifest_uri)
             for item in cast(list[dict[str, object]], manifest.get("chunks", [])):
+                chunk_hash = cast(str, item["chunk_hash"])
                 expected_paths.add(
                     (
                         self.artifact_root
                         / "feature-panel"
                         / "chunks"
-                        / f"{item['chunk_hash']}.parquet"
+                        / f"{blake3_filename(chunk_hash)}.parquet"
                     ).resolve()
                 )
         missing = tuple(path for path in expected_paths if not path.is_file())
@@ -422,7 +429,7 @@ class PanelRetentionResidueOwner:
             self.artifact_root
             / "storage-governance"
             / "panel-residue-receipts"
-            / f"{receipt.receipt_hash}.json"
+            / f"{blake3_filename(receipt.receipt_hash)}.json"
         )
         serialized = json.dumps(
             receipt.model_dump(mode="json"), sort_keys=True, separators=(",", ":")

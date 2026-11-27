@@ -22,6 +22,7 @@ from alphalattice.foundation.factor_research.experiments.development_evidence im
 )
 from alphalattice.investment.alpha_research.experiments.authoring import ALPHA_EXPERIMENT_KIND
 from alphalattice.investment.risk_research.experiments.contracts import RISK_EXPERIMENT_KIND
+from alphalattice.kernel.identity import blake3_from_filename
 
 Flow = Literal["FACTOR_STUDY", "ALPHA_STUDY", "RISK_STUDY", "BOOK", "FEATURE_TRIAL", "BOOK_REVIEW"]
 
@@ -165,8 +166,9 @@ def holdings(
             result = "FACTOR_STUDY"
             folder = workspace / plan.document["experiment"]["output_workspace"]
             row["curation_receipt_hashes"] = sorted(
-                path.stem
+                digest
                 for path in (folder / FACTOR_DEVELOPMENT_CURATION_CATEGORY).rglob("*.json")
+                if (digest := blake3_from_filename(path.stem)) is not None
             )
             if row["curation_receipt_hashes"] and len(held["CURATED_FACTOR_STUDY"]) < _SHOWN:
                 held["CURATED_FACTOR_STUDY"].append(row)

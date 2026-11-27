@@ -16,8 +16,8 @@ import numpy as np
 import pyarrow.parquet as pq
 
 from alphalattice.capabilities.domain_contracts.identity import canonical_hash
-from alphalattice.control.workspace_runtime.verified_facts import file_sha256
-from alphalattice.kernel.identity import integrity_sha256
+from alphalattice.control.workspace_runtime.verified_facts import verified_file_digest
+from alphalattice.kernel.identity import blake3_filename, integrity_blake3, tagged_blake3
 
 from .contracts import SectorContextManifest
 from .surface import SectorContextBoundaryError, SectorContextSurface
@@ -52,16 +52,17 @@ class SectorContextStore:
 
         Args:
             manifest: Validated policy/source/axis and content commitments.
-            payload: Parquet bytes matching manifest.payload_sha256.
+            payload: Parquet bytes matching manifest.payload_digest.
 
         Raises:
             SectorContextBoundaryError: Payload digest is invalid or an existing identity has
                 different bytes.
         """
-        if integrity_sha256(payload).hexdigest() != manifest.payload_sha256:
+        if tagged_blake3(integrity_blake3(payload)) != manifest.payload_digest:
             raise SectorContextBoundaryError("alpha_research.sector_context_payload_invalid")
-        data = self.root / "surfaces" / f"{manifest.manifest_hash}.parquet"
-        meta = self.root / "manifests" / f"{manifest.manifest_hash}.json"
+        name = blake3_filename(manifest.manifest_hash)
+        data = self.root / "surfaces" / f"{name}.parquet"
+        meta = self.root / "manifests" / f"{name}.json"
         serialized = json.dumps(
             manifest.model_dump(mode="json"), sort_keys=True, separators=(",", ":")
         ).encode()
@@ -87,11 +88,12 @@ class SectorContextStore:
             SectorContextBoundaryError: Readback, payload/table identity or tensor reconstruction
                 fails.
         """
-        meta = self.root / "manifests" / f"{manifest_hash}.json"
-        data = self.root / "surfaces" / f"{manifest_hash}.parquet"
         try:
+            name = blake3_filename(manifest_hash)
+            meta = self.root / "manifests" / f"{name}.json"
+            data = self.root / "surfaces" / f"{name}.parquet"
             manifest = SectorContextManifest.model_validate_json(meta.read_bytes())
-            if file_sha256(data) != manifest.payload_sha256:
+            if verified_file_digest(data) != manifest.payload_digest:
                 raise SectorContextBoundaryError("alpha_research.sector_context_payload_tampered")
             table = pq.read_table(data).combine_chunks()
             table_hash = str(

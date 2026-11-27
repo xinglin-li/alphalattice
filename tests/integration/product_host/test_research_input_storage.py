@@ -35,6 +35,8 @@ from alphalattice.control.product_host.research_authoring.factor_inputs import (
 from alphalattice.control.product_host.storage.input_references import ResearchInputStorage
 from alphalattice.foundation.data_layer import history
 from alphalattice.foundation.data_layer.log import uuid7
+from alphalattice.kernel.identity import blake3_digest, blake3_filename
+from tests._support.identity_fixtures import fixture_digest
 from tests.portfolio_strategy_lab.local_web_support import _manifest
 
 if sys.platform == "win32":
@@ -115,7 +117,7 @@ def _counting_reads(monkeypatch: pytest.MonkeyPatch, inject=None) -> list[int]:
 
     import alphalattice.control.product_host.research_authoring.factor_inputs as inputs
 
-    original = inputs.file_sha256
+    original = inputs.verified_file_digest
     reads = [0]
     # The objects are digested on a pool: the first read's inject holds the
     # others until it has run, or a second read also sees a count of zero.
@@ -128,7 +130,7 @@ def _counting_reads(monkeypatch: pytest.MonkeyPatch, inject=None) -> list[int]:
             reads[0] += 1
         return original(path, **keywords)
 
-    monkeypatch.setattr(inputs, "file_sha256", counted)
+    monkeypatch.setattr(inputs, "verified_file_digest", counted)
     return reads
 
 
@@ -268,40 +270,45 @@ def test_bundle_pool_alias_is_verified_as_one_object_and_still_refuses_tamper(
     )
     from alphalattice.protocols.research_authoring.contracts import AuthoringError
 
-    # Old file-bound identities remain readable; new bindings name the catalog artifact and digest.
-    digest = "c" * 64
+    # Current file-bound and catalog-bound inputs name the same outcome through different owners.
+    digest = fixture_digest("c")
     artifact, other_artifact = uuid7(), uuid7()
-    chunk = f"artifacts/data-operations/execution-outcomes/development/chunks/{digest}.parquet"
+    chunk = (
+        "artifacts/data-operations/execution-outcomes/development/chunks/"
+        f"{blake3_filename(digest)}.parquet"
+    )
     common = {
-        "panel_snapshot_hash": "a" * 64,
-        "outcome_snapshot_hash": "b" * 64,
+        "panel_snapshot_hash": fixture_digest("a"),
+        "outcome_snapshot_hash": fixture_digest("b"),
         "sessions": (date(2024, 1, 2),),
     }
-    old = FactorInputBundle.create(**common, files=((chunk, "d" * 64), ("panel", "e" * 64)))
+    old = FactorInputBundle.create(
+        **common, files=((chunk, fixture_digest("d")), ("panel", fixture_digest("e")))
+    )
     new = FactorInputBundle.create(
         **common,
-        files=(("panel", "e" * 64),),
+        files=(("panel", fixture_digest("e")),),
         binding_version=2,
         outcomes=((artifact, digest),),
     )
     changed = FactorInputBundle.create(
         **common,
-        files=(("panel", "e" * 64),),
+        files=(("panel", fixture_digest("e")),),
         binding_version=2,
-        outcomes=((other_artifact, "f" * 64),),
+        outcomes=((other_artifact, fixture_digest("f")),),
     )
     different_artifact = FactorInputBundle.create(
         **common,
-        files=(("panel", "e" * 64),),
+        files=(("panel", fixture_digest("e")),),
         binding_version=2,
         outcomes=((other_artifact, digest),),
     )
     with pytest.raises(ValueError, match="input_manifest_invalid"):
         FactorInputBundle.create(
             **common,
-            files=(("panel", "e" * 64),),
+            files=(("panel", fixture_digest("e")),),
             binding_version=2,
-            outcomes=(("sha256:" + digest, digest),),
+            outcomes=((digest, digest),),
         )
     import pyarrow as pa
 
@@ -330,8 +337,8 @@ def test_bundle_pool_alias_is_verified_as_one_object_and_still_refuses_tamper(
     selected = at_snapshot(7)
     assert "market_selection_id" not in new.model_dump()
     assert FactorInputBundle.model_validate_json(selected.model_dump_json()) == selected
-    assert selected.binding_hash == at_snapshot(7, "a" * 64).binding_hash
-    assert compatible_factor_inputs(selected, at_snapshot(7, "a" * 64))
+    assert selected.binding_hash == at_snapshot(7, fixture_digest("a")).binding_hash
+    assert compatible_factor_inputs(selected, at_snapshot(7, fixture_digest("a")))
     # The sealed index's rows bind it (its Feature values among them); its file's padding does not.
     assert selected.binding_hash != at_snapshot(7, content="blake3:" + "d" * 64).binding_hash
     assert not compatible_factor_inputs(selected, at_snapshot(7, content="blake3:" + "d" * 64))
@@ -343,13 +350,13 @@ def test_bundle_pool_alias_is_verified_as_one_object_and_still_refuses_tamper(
     )
     # A binding this data root does not keep is refused by name, never read from elsewhere.
     with pytest.raises(DataError) as missing:
-        read_factor_bundle(tmp_path, "a" * 64, verify=False)
+        read_factor_bundle(tmp_path, fixture_digest("a"), verify=False)
     assert missing.value.failure.code == "data_layer.input_missing"
 
     (bundle,) = _inputs(tmp_path, count=1)
     source = factor_input_paths(tmp_path, bundle.binding_hash)[0]
     alias = source / "market-data.duckdb"
-    pool = source.parent.parent / "databases" / bundle.database_snapshot_hash
+    pool = source.parent.parent / "databases" / blake3_filename(bundle.database_snapshot_hash)
     pool = pool / "market-data.duckdb"
     assert os.stat(alias).st_ino == os.stat(pool).st_ino
     reads = _counting_reads(monkeypatch)
@@ -424,6 +431,8 @@ def _inputs(root: Path, *, count: int = 3):
     source = root / "staging"
     source.mkdir()
     panel = {"active_listing_count": 120}
+    panel_hash = fixture_digest("captured input panel")
+    panel_name = blake3_filename(panel_hash)
     for index in range(count):
         database = source / "market-data.duckdb"
         database.write_bytes(f"database-{index}".encode())
@@ -432,19 +441,19 @@ def _inputs(root: Path, *, count: int = 3):
         panel_file = source / "panel.json"
         panel_file.write_text(json.dumps(panel), encoding="utf-8")
         files = (
-            ("artifacts/feature-panel/manifests/" + "a" * 64 + ".json", file_digest(panel_file)),
+            (f"artifacts/feature-panel/manifests/{panel_name}.json", file_digest(panel_file)),
             ("data.parquet", file_digest(parquet)),
             ("market-data.duckdb", file_digest(database)),
         )
         bundle = FactorInputBundle.create(
-            panel_snapshot_hash="a" * 64,
-            outcome_snapshot_hash="b" * 64,
+            panel_snapshot_hash=panel_hash,
+            outcome_snapshot_hash=fixture_digest("captured input outcomes"),
             sessions=(date(2024, 1, 2),),
             files=files,
             database_snapshot_hash=file_digest(database),
         )
         bound = root.parent / f"{root.name}-bind"  # laid out as a copy, outside the workspace
-        staged = bound / "research-inputs" / bundle.binding_hash
+        staged = bound / "research-inputs" / blake3_filename(bundle.binding_hash)
         for name, _digest in files:
             original = (
                 database
@@ -455,8 +464,9 @@ def _inputs(root: Path, *, count: int = 3):
             )
             _copy_input(root, original, staged / "source" / name)
         (staged / "manifest.json").write_text(bundle.model_dump_json(), encoding="utf-8")
-        (kept,) = [files for h, files in legacy_bindings(bound) if h == bundle.binding_hash]
-        history.keep_research_input(bundle.binding_hash, kept)
+        history.keep_research_input(
+            bundle.binding_hash, dict(legacy_bindings(bound))[bundle.binding_hash]
+        )
         updated = manifest.with_bindings(
             experiment_inputs=(
                 ResearchWorkspaceExperimentInput(
@@ -474,7 +484,7 @@ def _inputs(root: Path, *, count: int = 3):
         receipt = canonical_hash(values)
         records = root / "research-inputs/publications"
         records.mkdir(parents=True, exist_ok=True)
-        (records / f"{receipt}.json").write_text(
+        (records / f"{blake3_filename(receipt)}.json").write_text(
             json.dumps({**values, "receipt_hash": receipt}), encoding="utf-8"
         )
         manifest = updated
@@ -496,15 +506,15 @@ def test_revision_lineage_reuse_staleness_and_retention(tmp_path: Path, monkeypa
     a, b, c, default = _inputs(tmp_path, count=4)
     manifest_bytes = (tmp_path / "research-workspace.json").read_bytes()
     source = ResearchInputSource(
-        binding_hash="1" * 64,
-        manifest_revision="2" * 64,
-        data_revision_hash="3" * 64,
-        panel_snapshot_hash="a" * 64,
+        binding_hash=fixture_digest("captured input binding"),
+        manifest_revision=fixture_digest("captured universe revision"),
+        data_revision_hash=fixture_digest("captured data revision"),
+        panel_snapshot_hash=fixture_digest("captured input panel"),
         panel_through=date(2024, 1, 2),
-        outcome_watermark_hash="4" * 64,
-        outcome_recipe_hash="5" * 64,
-        outcome_policy_hash="6" * 64,
-        materializer_hash="7" * 64,
+        outcome_watermark_hash=fixture_digest("outcome watermark"),
+        outcome_recipe_hash=fixture_digest("outcome recipe"),
+        outcome_policy_hash=fixture_digest("outcome policy"),
+        materializer_hash=fixture_digest("input materializer"),
     )
     calls = []
     with WorkspaceApplicationSession.acquire(tmp_path) as session:
@@ -516,7 +526,9 @@ def test_revision_lineage_reuse_staleness_and_retention(tmp_path: Path, monkeypa
         assert app.plan("factor")["status"] == "REUSED_EXACT"
         for index, bundle in enumerate((a, b, c), start=1):
             # Same through-date; corrected source journals must still rotate capture identity.
-            current = source.model_copy(update={"data_revision_hash": str(index + 4) * 64})
+            current = source.model_copy(
+                update={"data_revision_hash": fixture_digest(("changed data revision", index))}
+            )
             preview = app.plan("factor")
             assert preview["summary"]["database_snapshot_bytes"] == 0
             plan = app.last_plan
@@ -592,7 +604,11 @@ def test_revision_lineage_reuse_staleness_and_retention(tmp_path: Path, monkeypa
         assert (tmp_path / "research-workspace.json").read_bytes() == manifest_bytes
         records = app.revisions.lineage("factor")
         assert len(records) == 3
-        saved = tmp_path / "research-inputs/publications" / f"{records[0].receipt_hash}.json"
+        saved = (
+            tmp_path
+            / "research-inputs/publications"
+            / f"{blake3_filename(records[0].receipt_hash)}.json"
+        )
         body = saved.read_bytes()
         saved.unlink()
         try:
@@ -604,7 +620,7 @@ def test_revision_lineage_reuse_staleness_and_retention(tmp_path: Path, monkeypa
         forged = ResearchInputRevision.create(
             **{**records[0].model_dump(exclude={"receipt_hash"}), "source": current}
         )
-        path = saved.parent / f"{forged.receipt_hash}.json"
+        path = saved.parent / f"{blake3_filename(forged.receipt_hash)}.json"
         path.write_text(forged.model_dump_json(), encoding="utf-8")
         try:
             with pytest.raises(ValueError, match="publication_task_mismatch"):
@@ -618,10 +634,10 @@ def test_revision_lineage_reuse_staleness_and_retention(tmp_path: Path, monkeypa
                 "binding_hash": default.binding_hash,
             }
         )
-        original_record = saved.parent / f"{records[-1].receipt_hash}.json"
+        original_record = saved.parent / f"{blake3_filename(records[-1].receipt_hash)}.json"
         original_bytes = original_record.read_bytes()
         original_record.unlink()
-        replacement = saved.parent / f"{substituted.receipt_hash}.json"
+        replacement = saved.parent / f"{blake3_filename(substituted.receipt_hash)}.json"
         replacement.write_text(substituted.model_dump_json(), encoding="utf-8")
         try:
             with pytest.raises(ValueError, match="publication_evidence_mismatch"):
@@ -657,15 +673,15 @@ def test_a_bundle_damaged_before_its_publication_leaves_no_receipt(tmp_path: Pat
     assert "verify" not in inspect.signature(ResearchInputRevisions.publish).parameters
     bundle, *_rest = _inputs(tmp_path, count=2)
     source = ResearchInputSource(
-        binding_hash="1" * 64,
-        manifest_revision="2" * 64,
-        data_revision_hash="3" * 64,
-        panel_snapshot_hash="a" * 64,
+        binding_hash=fixture_digest("captured input binding"),
+        manifest_revision=fixture_digest("captured universe revision"),
+        data_revision_hash=fixture_digest("captured data revision"),
+        panel_snapshot_hash=fixture_digest("captured input panel"),
         panel_through=date(2024, 1, 2),
-        outcome_watermark_hash="4" * 64,
-        outcome_recipe_hash="5" * 64,
-        outcome_policy_hash="6" * 64,
-        materializer_hash="7" * 64,
+        outcome_watermark_hash=fixture_digest("outcome watermark"),
+        outcome_recipe_hash=fixture_digest("outcome recipe"),
+        outcome_policy_hash=fixture_digest("outcome policy"),
+        materializer_hash=fixture_digest("input materializer"),
     )
     sealed = factor_input_paths(tmp_path, bundle.binding_hash)[0] / "market-data.duckdb"
     good = sealed.read_bytes()
@@ -675,7 +691,9 @@ def test_a_bundle_damaged_before_its_publication_leaves_no_receipt(tmp_path: Pat
         app = input_capture.ResearchInputCaptureApplication(
             session, clock=lambda: datetime.now(UTC)
         )
-        current = source.model_copy(update={"data_revision_hash": "5" * 64})
+        current = source.model_copy(
+            update={"data_revision_hash": fixture_digest("changed data revision")}
+        )
         monkeypatch.setattr(app, "_source", lambda root=None: source if root else current)
         preview = app.plan("factor")
         assert preview["status"] == "CONFIRMATION_REQUIRED"
@@ -743,7 +761,7 @@ def test_a_cleanup_takes_only_its_eligible_targets_never_an_input(
         with pytest.raises(ValueError, match=r"storage.input_pin_retired"):
             storage.pin(a.binding_hash, pinned=True, caller="HUMAN")
         with pytest.raises(ValueError, match=r"storage.input_pin_unavailable"):
-            storage.pin("9" * 64, pinned=True, caller="HUMAN")
+            storage.pin(fixture_digest("unknown input"), pinned=True, caller="HUMAN")
         plan = storage.plan()
         assert plan["bindings"] == []
         assert list(plan["targets"]) == [chunk("a"), chunk("d"), chunk("e")]
@@ -1009,8 +1027,8 @@ def _check_reclaim_command(workspace: Path, monkeypatch: pytest.MonkeyPatch) -> 
     )
     pinned.parent.mkdir(parents=True)
     pinned.write_bytes(b"pinned")
-    pin = "f" * 64
-    file = SimpleNamespace(path=pinned, sha256=file_digest(pinned), bytes=pinned.stat().st_size)
+    pin = fixture_digest("storage-reclaim-pin")
+    file = SimpleNamespace(path=pinned, digest=file_digest(pinned), bytes=pinned.stat().st_size)
 
     def retention(_self, referenced_heads=(), *, active_scope_hashes=None):
         held = pin in referenced_heads
@@ -1145,22 +1163,24 @@ def _panel_generations(root: Path, monkeypatch: pytest.MonkeyPatch):
     panel_root = root / "artifacts/feature-panel"
     (panel_root / "manifests").mkdir(parents=True)
     (panel_root / "chunks").mkdir()
+    digests = {name: "blake3:" + name * 64 for name in "abcde"}
+    filenames = {name: blake3_filename(digest) for name, digest in digests.items()}
     for name in "abcd":
-        (panel_root / "manifests" / f"{name * 64}.json").write_text("{}")
-        (panel_root / "chunks" / f"{name * 64}.parquet").write_bytes(name.encode())
-    (panel_root / "chunks" / f"{'e' * 64}.parquet").write_bytes(b"e")
+        (panel_root / "manifests" / f"{filenames[name]}.json").write_text("{}")
+    for name, filename in filenames.items():
+        (panel_root / "chunks" / f"{filename}.parquet").write_bytes(name.encode())
     monkeypatch.setattr(
         PanelStateRepository,
         "feature_panel_snapshot_for_active",
-        lambda *_: {"snapshot_hash": "c" * 64},
+        lambda *_: {"snapshot_hash": digests["c"]},
     )
     monkeypatch.setattr(
         DuckDbWorkspaceMaintenanceRegistry,
         "read_data_update_receipt",
         lambda *_: SimpleNamespace(
-            before=SimpleNamespace(panel_hash="b" * 64),
-            after=SimpleNamespace(panel_hash="c" * 64),
-            content_hash="e" * 64,
+            before=SimpleNamespace(panel_hash=digests["b"]),
+            after=SimpleNamespace(panel_hash=digests["c"]),
+            content_hash=digests["e"],
         ),
     )
     monkeypatch.setattr(
@@ -1168,7 +1188,7 @@ def _panel_generations(root: Path, monkeypatch: pytest.MonkeyPatch):
         "load_feature_panel_manifest",
         lambda _self, uri: {"chunks": [{"chunk_hash": uri.rsplit("/", 1)[-1]}]},
     )
-    return lambda name: f"artifacts/feature-panel/chunks/{name * 64}.parquet"
+    return lambda name: f"artifacts/feature-panel/chunks/{filenames[name]}.parquet"
 
 
 @pytest.mark.proves("product_host.panel_cleanup_keeps_current_and_previous_generations")
@@ -1241,8 +1261,8 @@ def test_the_plan_links_a_retained_retrieval_model_copy_to_the_store(
     )
     child = EvidenceReviewArtifactBinding(
         relative_path="evidence-cro-authority/registry.json",
-        file_sha256="a" * 64,
-        content_hash="b" * 64,
+        file_digest=fixture_digest("registry bytes"),
+        content_hash=fixture_digest("registry content"),
     )
     authority = EvidenceReviewWorkspaceManifest.create(
         authority_id="stand-in",
@@ -1250,7 +1270,7 @@ def test_the_plan_links_a_retained_retrieval_model_copy_to_the_store(
         listing_authority=child,
         recorded_documents=child,
         semantic_model_relative_path="evidence-cro-authority/semantic-model",
-        semantic_capability_hash="c" * 64,
+        semantic_capability_hash=fixture_digest("semantic capability"),
     )
     payload = authority.model_dump_json().encode("utf-8")
     (workspace / "evidence-cro-authority" / "authority.json").write_bytes(payload)
@@ -1259,7 +1279,7 @@ def test_the_plan_links_a_retained_retrieval_model_copy_to_the_store(
         read_research_workspace_manifest(workspace).with_bindings(
             evidence_review=ResearchWorkspaceEvidenceReview(
                 relative_path="evidence-cro-authority/authority.json",
-                file_sha256=hashlib.sha256(payload).hexdigest(),
+                file_digest=blake3_digest(payload),
             )
         ),
     )

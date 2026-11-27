@@ -30,6 +30,7 @@ from typing import Literal, Self
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 from alphalattice.capabilities.domain_contracts.identity import canonical_hash
+from alphalattice.kernel.identity import BLAKE3_PATTERN
 from alphalattice.protocols.actor_execution.answers import SPECIALIST_REFERENCE_COUNT
 
 from .projections import estimate_cl100k_proxy_tokens
@@ -115,7 +116,7 @@ class AgentBundleRecord(BaseModel):  # type: ignore[misc]
     files: tuple[str, ...] = Field(min_length=1, max_length=256)
     allowed_references: tuple[str, ...] = Field(default=(), max_length=SPECIALIST_REFERENCE_COUNT)
     """Exact Task/artifact references this generic specialist bundle admits; never client text."""
-    record_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
+    record_hash: str = Field(pattern=BLAKE3_PATTERN)
 
     @model_validator(mode="after")  # type: ignore[untyped-decorator]
     def _slot_matches(self) -> Self:

@@ -22,10 +22,11 @@ from alphalattice.control.workspace_runtime.content_store import (
     ContentAddressedStore,
     ContentAddressedStoreError,
 )
-from alphalattice.control.workspace_runtime.verified_facts import file_sha256
+from alphalattice.control.workspace_runtime.verified_facts import verified_file_digest
 from alphalattice.foundation.data_layer import arrays, history
 from alphalattice.foundation.market_data_ops.storage.rebase import PRICES
 from alphalattice.foundation.market_data_ops.storage.rebase import apply as apply_rebase
+from alphalattice.kernel.identity import blake3_filename, blake3_from_filename
 
 from .contracts import (
     HistoryProofParts,
@@ -50,7 +51,7 @@ _REUSE_INVALID = "alpha_research.workspace_observation_history_reuse_invalid"
 
 def _part_category(column_names: tuple[str, ...], shape: tuple[int, int]) -> str:
     layout = canonical_hash({"column_names": column_names, "shape": shape, "dtype": "float64"})
-    return f"{_PARTS}/{layout}"
+    return f"{_PARTS}/{blake3_filename(layout)}"
 
 
 HISTORY_PART_SESSIONS = 21
@@ -291,7 +292,7 @@ class WorkspaceObservationHistoryFile:
     """Exact file bytes for a retention root or an unrooted cleanup candidate."""
 
     path: Path
-    sha256: str
+    digest: str
     bytes: int
 
 
@@ -320,7 +321,7 @@ class _WorkspaceObservationHistoryStore:
 
     def _path(self, category: str, value: str, extension: str) -> Path:
         self._require_hash(value)
-        target = self.root / category / f"{value}.{extension}"
+        target = self.root / category / f"{blake3_filename(value)}.{extension}"
         if not target.resolve().is_relative_to(self.root.resolve()):
             raise self.error(_INVALID)
         return target
@@ -673,8 +674,9 @@ class _WorkspaceObservationHistoryStore:
                 raise self.error(_INVALID)
             for path in sorted(directory.rglob("*") if category == _PARTS else directory.iterdir()):
                 if path.is_dir() and category == _PARTS and path.parent == directory:
-                    self._require_hash(path.name)
-                    if not path.resolve().is_relative_to(self.root.resolve()):
+                    if blake3_from_filename(path.name) is None or not path.resolve().is_relative_to(
+                        self.root.resolve()
+                    ):
                         raise self.error(_INVALID)
                     continue
                 if not path.is_file() or not path.resolve().is_relative_to(self.root.resolve()):
@@ -686,20 +688,22 @@ class _WorkspaceObservationHistoryStore:
                     continue
                 if path.suffix != f".{extension}":
                     raise self.error(_INVALID)
-                self._require_hash(path.stem)
+                digest = blake3_from_filename(path.stem)
+                if digest is None:
+                    raise self.error(_INVALID)
                 if category == _MARKERS:
-                    loaded = self.load(path.stem)
+                    loaded = self.load(digest)
                     if loaded is None:
                         raise self.error(_MISSING)
-                    marker = self._marker(path.stem)
+                    marker = self._marker(digest)
                     assert marker is not None
-                    if active_scope_hashes is None or path.stem in active_scope_hashes:
+                    if active_scope_hashes is None or digest in active_scope_hashes:
                         protected.add(path)
                         heads.add(marker.current_head_hash)
                         if marker.previous_head_hash is not None:
                             heads.add(marker.previous_head_hash)
                 elif category == _HEADS:
-                    head = self._head(path.stem)
+                    head = self._head(digest)
                     all_heads.add(head.head_hash)
                     for part in head.parts:
                         self._part(head, part, {})
@@ -709,7 +713,7 @@ class _WorkspaceObservationHistoryStore:
                         metadata = pq.read_metadata(path)
                         shape = json.loads((metadata.metadata or {})[b"shape"])
                         values = self.content.load_columns(
-                            category=f"{_PARTS}/{path.parent.name}", content_hash=path.stem
+                            category=f"{_PARTS}/{path.parent.name}", content_hash=digest
                         )
                         if (
                             not isinstance(shape, list)
@@ -746,7 +750,9 @@ class _WorkspaceObservationHistoryStore:
                     protected.add(old_part)
 
         def fact(path: Path) -> WorkspaceObservationHistoryFile:
-            return WorkspaceObservationHistoryFile(path, file_sha256(path), path.stat().st_size)
+            return WorkspaceObservationHistoryFile(
+                path, verified_file_digest(path), path.stat().st_size
+            )
 
         return WorkspaceObservationHistoryRetention(
             roots=tuple(fact(path) for path in sorted(protected)),

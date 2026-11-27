@@ -12,19 +12,20 @@ from alphalattice.investment.portfolio_strategy_lab.contracts import PortfolioLa
 from alphalattice.investment.portfolio_strategy_lab.regularization.contracts import (
     PortfolioResearchTerminalOutcome,
 )
+from alphalattice.kernel.identity import BLAKE3_PATTERN
 
 
 class PortfolioResearchScientistReview(PortfolioLabContract):
     """Durable result of one admitted scientific-review actor."""
 
     kind: Literal["PortfolioResearchScientistReview"] = "PortfolioResearchScientistReview"
-    dossier_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
-    board_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
+    dossier_hash: str = Field(pattern=BLAKE3_PATTERN)
+    board_hash: str = Field(pattern=BLAKE3_PATTERN)
     terminal: PortfolioResearchTerminalOutcome
-    value_report_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
-    review_binding_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
+    value_report_hash: str = Field(pattern=BLAKE3_PATTERN)
+    review_binding_hash: str = Field(pattern=BLAKE3_PATTERN)
     reviewed_at: datetime
-    review_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
+    review_hash: str = Field(pattern=BLAKE3_PATTERN)
 
     @model_validator(mode="after")  # type: ignore[untyped-decorator]
     def validate_review(self) -> Self:

@@ -15,6 +15,7 @@ from dataclasses import asdict
 from datetime import date
 from pathlib import Path
 from types import SimpleNamespace
+from urllib.parse import quote
 from uuid import uuid4
 
 import pytest
@@ -349,7 +350,7 @@ def test_configuration_and_detach_preserve_unrelated_settings(tmp_path, monkeypa
     transport = workspace_connection_key(workspace)
     assert codex["exporter"]["otlp-http"]["headers"]["X-Alphalattice-Workspace"] == transport
     assert (
-        f"X-Alphalattice-Workspace={transport}"
+        f"X-Alphalattice-Workspace={quote(transport, safe='')}"
         in preview["claude_env"]["OTEL_EXPORTER_OTLP_HEADERS"]
     )
     written = setup.agent_exporters(tmp_path, connection, configure_claude=True)
@@ -1332,7 +1333,7 @@ def test_binding_collection_keeps_exact_readable_slots_and_reports_each_bad_reco
     selected = NativeResearchBinding.read(project, session=("codex", "fixture-second"))
     before = selected.record_path(project).read_bytes()
     directory = project / ".codex" / BINDING_DIRECTORY
-    bad = directory / ("0" * 64 + ".json")
+    bad = directory / ("blake3-" + "0" * 64 + ".json")
     if problem == "malformed_json":
         bad.write_bytes(b"{broken")
     elif problem == "oversized":

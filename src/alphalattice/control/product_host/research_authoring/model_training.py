@@ -46,7 +46,7 @@ from alphalattice.investment.alpha_research.scores.product_lifecycle import (
 # Existing owners supply the IDs; the pin prevents a later catalogue addition
 # from silently changing the frozen component's common training-row denominator.
 FROZEN_TRAINING_FACTOR_AXIS_HASH = (
-    "90e032fec9de4e23930569f292a8bb6fa076357de3ae4ff22b1b1213d5a302ce"
+    "blake3:75263afe8beddceec17d87569ee28eec4f360ebe28a60651b1ee4bea62b3abda"
 )
 
 

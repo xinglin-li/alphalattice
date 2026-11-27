@@ -39,6 +39,7 @@ from alphalattice.interface.local_application.failure_codes import public_failur
 from alphalattice.investment.portfolio_strategy_lab.application.contracts import (
     ScoreSourceMode,
 )
+from alphalattice.kernel.identity import BLAKE3_PATTERN, is_blake3
 
 if TYPE_CHECKING:
     from alphalattice.control.workspace_runtime.mutation_gate import WorkspaceMutationGate
@@ -92,7 +93,7 @@ class ResearchWorkspaceEvidenceReview(_Contract):
     """The optional Evidence/CRO authority package installed in this workspace."""
 
     relative_path: str = Field(min_length=1, max_length=1024)
-    file_sha256: str = Field(pattern=r"^[0-9a-f]{64}$")
+    file_digest: str = Field(pattern=BLAKE3_PATTERN)
 
     @model_validator(mode="after")  # type: ignore[untyped-decorator]
     def validate_path(self) -> Self:
@@ -118,12 +119,12 @@ class ResearchWorkspaceScoreInput(_Contract):
     """A component preparation capability, not another executable Portfolio mode."""
 
     strategy_package_id: str = Field(min_length=1)
-    strategy_package_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
+    strategy_package_hash: str = Field(pattern=BLAKE3_PATTERN)
     component_id: str | None = Field(default=None, exclude_if=lambda v: v is None)
     authority_relative_path: str = Field(min_length=1)
-    authority_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
+    authority_hash: str = Field(pattern=BLAKE3_PATTERN)
     source_kind: Literal["WORKSPACE_DATA_FEATURE", "RECORDED_INPUT_SNAPSHOT"]
-    observation_snapshot_hash: str | None = Field(default=None, pattern=r"^[0-9a-f]{64}$")
+    observation_snapshot_hash: str | None = Field(default=None, pattern=BLAKE3_PATTERN)
 
     @model_validator(mode="after")  # type: ignore[untyped-decorator]
     def validate_source(self) -> Self:
@@ -141,8 +142,8 @@ class ResearchWorkspaceCalibrationInput(_Contract):
     """A package's calibration seed: an operator's QA epoch, or a person's activation (LS1)."""
 
     strategy_package_id: str = Field(min_length=1)
-    strategy_package_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
-    seed_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
+    strategy_package_hash: str = Field(pattern=BLAKE3_PATTERN)
+    seed_hash: str = Field(pattern=BLAKE3_PATTERN)
     source_kind: Literal["RECORDED_INPUT_SNAPSHOT", "WORKSPACE_DATA_FEATURE"]
 
 
@@ -153,25 +154,25 @@ class ResearchWorkspaceDecisionUpdate(_Contract):
     """
 
     strategy_package_id: str = Field(min_length=1)
-    strategy_package_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
-    checkpoint_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
+    strategy_package_hash: str = Field(pattern=BLAKE3_PATTERN)
+    checkpoint_hash: str = Field(pattern=BLAKE3_PATTERN)
 
 
 class ResearchWorkspaceExperimentInput(_Contract):
     """An immutable local research input closure, never a caller path grant."""
 
     input_id: str = Field(pattern=r"^[a-z0-9][a-z0-9._-]{0,95}$")
-    binding_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
+    binding_hash: str = Field(pattern=BLAKE3_PATTERN)
 
 
 class ResearchWorkspaceModelTrainingInput(_Contract):
     """A research input/component capability, not a strategy installation."""
 
     component_id: str = Field(pattern=r"^[A-Z][A-Z0-9_]+$")
-    input_binding_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
-    source_identity_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
+    input_binding_hash: str = Field(pattern=BLAKE3_PATTERN)
+    source_identity_hash: str = Field(pattern=BLAKE3_PATTERN)
     authority_relative_path: str = Field(min_length=1)
-    authority_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
+    authority_hash: str = Field(pattern=BLAKE3_PATTERN)
 
     @property
     def source_handle(self) -> str:
@@ -203,9 +204,7 @@ def component_training_selection(handle: str) -> tuple[str, str | None]:
     if not handle.startswith("component-training."):
         raise ResearchWorkspaceError("research_workspace.training_handle_invalid")
     component, separator, binding = handle.removeprefix("component-training.").partition("@")
-    if not component or (
-        separator and (len(binding) != 64 or any(c not in "0123456789abcdef" for c in binding))
-    ):
+    if not component or (separator and not is_blake3(binding)):
         raise ResearchWorkspaceError("research_workspace.training_handle_invalid")
     return component.upper(), binding if separator else None
 
@@ -214,7 +213,7 @@ class ResearchWorkspaceManifest(_Contract):
     """The complete local configuration the ordinary launcher may consume."""
 
     kind: Literal["ResearchWorkspaceManifest"] = "ResearchWorkspaceManifest"
-    manifest_schema: Literal["research-workspace-manifest"] = "research-workspace-manifest"
+    manifest_schema: Literal["research-workspace-manifest-v2"] = "research-workspace-manifest-v2"
     workspace_id: str = Field(min_length=1, max_length=160)
     default_strategy_package_id: str | None = Field(default=None, min_length=1, max_length=160)
     default_score_source_mode: ScoreSourceMode | None = None
@@ -234,7 +233,7 @@ class ResearchWorkspaceManifest(_Contract):
     decision_updates: tuple[ResearchWorkspaceDecisionUpdate, ...] | None = None
     experiment_inputs: tuple[ResearchWorkspaceExperimentInput, ...] | None = None
     model_training_inputs: tuple[ResearchWorkspaceModelTrainingInput, ...] | None = None
-    manifest_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
+    manifest_hash: str = Field(pattern=BLAKE3_PATTERN)
 
     @classmethod
     def create(
@@ -280,7 +279,7 @@ class ResearchWorkspaceManifest(_Contract):
         ordered = tuple(sorted(strategy_artifacts, key=lambda value: value.artifact_key))
         values: dict[str, object] = {
             "kind": "ResearchWorkspaceManifest",
-            "manifest_schema": "research-workspace-manifest",
+            "manifest_schema": "research-workspace-manifest-v2",
             "workspace_id": workspace_id,
             "default_strategy_package_id": default_strategy_package_id,
             "default_score_source_mode": default_score_source_mode,
@@ -614,20 +613,20 @@ def named_workspace_id(workspace: Path) -> str | None:
 def read_research_workspace_manifest(workspace: Path) -> ResearchWorkspaceManifest:
     """Open and recursively verify the manifest at the workspace boundary.
 
-    The format grows by optional fields, so every earlier manifest reads (all 449
-    saved by September 2026 did). A manifest carrying a field or schema this build
-    does not know was written by a newer build; it is refused by that name, with
-    the fields, so the next step -- open it with that build or a newer one -- is
-    plain. A change that is not additive brings its own schema name and an
-    upgrader from the previous one, here. A manifest holding a spelling NM2 retired
-    was prepared before the 2026-10-02 renames, which this build does not read; it is
-    refused by that name, the spelling its subject, and left as it is.
+    Check the persisted format before validating its fields or resolving any workspace data.
+    The first format used SHA-256 seals. A different declared schema or extra field is
+    reported as a newer format, with the unknown fields.
     """
     path = workspace.resolve() / RESEARCH_WORKSPACE_MANIFEST_NAME
     try:
         payload = json.loads(path.read_text(encoding="utf-8"))
     except (FileNotFoundError, OSError, json.JSONDecodeError) as error:
         raise ResearchWorkspaceError("research_workspace.manifest_unreadable") from error
+    if (
+        isinstance(payload, dict)
+        and payload.get("manifest_schema") == "research-workspace-manifest"
+    ):
+        raise ResearchWorkspaceError("research_workspace.manifest_before_blake3")
     retired = retired_spelling_in(payload)
     if retired is not None:
         raise ResearchWorkspaceError(f"{PREPARED_BEFORE_RENAMES}:{retired}")

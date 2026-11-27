@@ -101,10 +101,13 @@ from alphalattice.investment.alpha_research.targets.total_return import (
     total_return_array_identity,
 )
 from alphalattice.kernel.identity import (
+    BLAKE3_PATTERN,
     FileDigestTrust,
-    identity_sha256,
+    blake3_filename,
+    blake3_from_filename,
     integrity_blake3,
-    integrity_sha256,
+    is_blake3,
+    tagged_blake3,
 )
 
 from .contracts import AlphaDevelopmentFitEvidence, AlphaExperimentBatchResult
@@ -176,23 +179,23 @@ class PanelScoreSurfaceArtifact(BaseModel):  # type: ignore[misc]
     model_config = ConfigDict(extra="forbid", frozen=True)
 
     kind: str = "PanelScoreSurfaceArtifact"
-    source_surface_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
+    source_surface_hash: str = Field(pattern=BLAKE3_PATTERN)
     fold_index: int = Field(ge=0)
     surface_id: str
     span_sessions: int = Field(ge=1)
     row_count: int = Field(ge=1)
-    row_axis_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
-    score_lane_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
-    target_z_lane_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
-    raw_simple_return_lane_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
+    row_axis_hash: str = Field(pattern=BLAKE3_PATTERN)
+    score_lane_hash: str = Field(pattern=BLAKE3_PATTERN)
+    target_z_lane_hash: str = Field(pattern=BLAKE3_PATTERN)
+    raw_simple_return_lane_hash: str = Field(pattern=BLAKE3_PATTERN)
     model_recipe_id: str | None = None
     producer_spec_id: str | None = None
-    upstream_raw_score_artifact_hash: str | None = Field(default=None, pattern=r"^[0-9a-f]{64}$")
-    filter_spec_hash: str | None = Field(default=None, pattern=r"^[0-9a-f]{64}$")
-    filter_evidence_hash: str | None = Field(default=None, pattern=r"^[0-9a-f]{64}$")
-    fold_selection_hash: str | None = Field(default=None, pattern=r"^[0-9a-f]{64}$")
-    output_score_value_hash: str | None = Field(default=None, pattern=r"^[0-9a-f]{64}$")
-    artifact_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
+    upstream_raw_score_artifact_hash: str | None = Field(default=None, pattern=BLAKE3_PATTERN)
+    filter_spec_hash: str | None = Field(default=None, pattern=BLAKE3_PATTERN)
+    filter_evidence_hash: str | None = Field(default=None, pattern=BLAKE3_PATTERN)
+    fold_selection_hash: str | None = Field(default=None, pattern=BLAKE3_PATTERN)
+    output_score_value_hash: str | None = Field(default=None, pattern=BLAKE3_PATTERN)
+    artifact_hash: str = Field(pattern=BLAKE3_PATTERN)
 
     @classmethod
     def create(cls, **values: object) -> Self:
@@ -383,12 +386,14 @@ class AlphaDevelopmentArtifactStore:
 
     @staticmethod
     def _require_hash(value: str) -> None:
-        if len(value) != 64 or any(character not in "0123456789abcdef" for character in value):
-            raise ValueError("Alpha artifact identity is not SHA-256")
+        if not is_blake3(value):
+            raise ValueError("Alpha artifact identity is not tagged BLAKE3")
 
     def _path(self, category: str, content_hash: str, suffix: str) -> Path:
         self._require_hash(content_hash)
-        return self._document_path(self.root / category / f"{content_hash}.{suffix}")
+        return self._document_path(
+            self.root / category / f"{blake3_filename(content_hash)}.{suffix}"
+        )
 
     @staticmethod
     def _document_path(target: Path) -> Path:
@@ -481,7 +486,7 @@ class AlphaDevelopmentArtifactStore:
 
     def _publish_packed_bytes(self, *, category: str, payload: bytes, durable: bool = True) -> str:
         with span("hash", "alpha_packed"):
-            content_hash = integrity_sha256(payload).hexdigest()
+            content_hash = tagged_blake3(integrity_blake3(payload))
         if category.startswith("current/") and self._packed_is_door(
             category.removeprefix("current/")
         ):
@@ -525,7 +530,7 @@ class AlphaDevelopmentArtifactStore:
                 os.link(origin, staged)
             except OSError:
                 return self._publish_packed_bytes(category="current/" + category, payload=payload)
-            if integrity_sha256(staged.read_bytes()).hexdigest() != content_hash:
+            if tagged_blake3(integrity_blake3(staged.read_bytes())) != content_hash:
                 raise self._packed_readback_error("alpha_research.frozen_input_content_invalid")
             try:
                 # link, not replace: a concurrently present name must be proved.
@@ -650,7 +655,7 @@ class AlphaDevelopmentArtifactStore:
             payload, before, after = FileDigestTrust.read_snapshot(path)
         if full_proof():
             with span("hash", "alpha_packed"):
-                observed_hash = identity_sha256(payload).hexdigest()
+                observed_hash = tagged_blake3(integrity_blake3(payload))
         else:
             observed_hash = content_hash
         if (
@@ -727,7 +732,7 @@ class AlphaDevelopmentArtifactStore:
         """The exact verified bytes of one JSON file snapshot and its descriptor identity."""
 
         content_hash = self._hash_from_uri(uri, category)
-        target = self.root / category / f"{content_hash}.json"
+        target = self.root / category / f"{blake3_filename(content_hash)}.json"
         resolved = target.resolve()
         if not resolved.is_relative_to(self.root.parent):
             raise AlphaDevelopmentArtifactReadbackError("Alpha JSON artifact is outside root")
@@ -953,8 +958,12 @@ class AlphaDevelopmentArtifactStore:
     def load_total_return_target_surface(
         self, evidence_hash: str
     ) -> tuple[TotalReturnAlphaTargetEvidence, pa.Table, pa.Table, pa.Table]:
+        """Read a sealed target description and its three aligned value tables."""
+
         evidence = self.load_total_return_target_evidence(evidence_hash)
-        directory = self.root / TOTAL_RETURN_TARGET_SURFACE_CATEGORY / evidence_hash
+        directory = (
+            self.root / TOTAL_RETURN_TARGET_SURFACE_CATEGORY / blake3_filename(evidence_hash)
+        )
         targets = pq.read_table(directory / "targets.parquet")
         dispersion = pq.read_table(directory / "dispersion.parquet")
         bounds = pq.read_table(directory / "bounds.parquet")
@@ -1031,7 +1040,9 @@ class AlphaDevelopmentArtifactStore:
         """
 
         evidence = self.load_total_return_target_evidence(evidence_hash)
-        directory = self.root / TOTAL_RETURN_TARGET_SURFACE_CATEGORY / evidence_hash
+        directory = (
+            self.root / TOTAL_RETURN_TARGET_SURFACE_CATEGORY / blake3_filename(evidence_hash)
+        )
         targets = pq.read_table(
             directory / "targets.parquet",
             columns=[
@@ -1370,7 +1381,7 @@ class AlphaDevelopmentArtifactStore:
         for fold, payload in zip(row_axis_receipt.folds, row_axis_lane_payloads, strict=True):
             if (
                 len(payload) != fold.row_count * np.dtype(fold.listing_position_dtype).itemsize
-                or identity_sha256(payload).hexdigest() != fold.listing_position_lane_hash
+                or tagged_blake3(integrity_blake3(payload)) != fold.listing_position_lane_hash
                 or self._publish_lane(
                     category=FIXED_ALPHA_ROW_AXIS_LANE_CATEGORY,
                     columns={
@@ -1539,7 +1550,7 @@ class AlphaDevelopmentArtifactStore:
                     fold_index=fold_index,
                     validation_sessions=sessions,
                     row_count_by_session=tuple(counts[value] for value in sessions),
-                    listing_position_lane_hash=identity_sha256(payload).hexdigest(),
+                    listing_position_lane_hash=tagged_blake3(integrity_blake3(payload)),
                     row_count=identity.row_count,
                     row_axis_hash=identity.row_axis_hash,
                     fixed_score_artifact_hash=fixed.artifact_hash,
@@ -1758,6 +1769,13 @@ class AlphaDevelopmentArtifactStore:
             identity_field="replay_hash",
         )
 
+    def _model_fit_sidecar_path(self, operation_binding_hash: str) -> Path:
+        return self._path("current/model-fit-sidecar-by-operation", operation_binding_hash, "json")
+
+    def has_model_fit_sidecar(self, operation_binding_hash: str) -> bool:
+        """Whether evidence for this operation is already present."""
+        return self._model_fit_sidecar_path(operation_binding_hash).exists()
+
     def publish_model_fit_sidecar(
         self,
         *,
@@ -1777,12 +1795,7 @@ class AlphaDevelopmentArtifactStore:
             fit_provenance_hash=fit_provenance.provenance_hash,
         )
         self._publish("model-fit-sidecars", sidecar, "sidecar_hash")
-        pointer = self._document_path(
-            self.root
-            / "current"
-            / "model-fit-sidecar-by-operation"
-            / f"{operation_binding_hash}.json"
-        )
+        pointer = self._model_fit_sidecar_path(operation_binding_hash)
         payload = sidecar.model_dump(mode="json")
         if pointer.is_file():
             existing = json.loads(pointer.read_text(encoding="utf-8"))
@@ -1805,12 +1818,7 @@ class AlphaDevelopmentArtifactStore:
         if scope is not None and key in scope:
             kept_sidecar, kept_estimator, kept_provenance = scope[key]
             return kept_sidecar, copy.deepcopy(kept_estimator), kept_provenance
-        pointer = self._document_path(
-            self.root
-            / "current"
-            / "model-fit-sidecar-by-operation"
-            / f"{operation_binding_hash}.json"
-        )
+        pointer = self._model_fit_sidecar_path(operation_binding_hash)
         if not pointer.is_file():
             raise AlphaDevelopmentArtifactReadbackError("model fit sidecar is unavailable")
         payload = json.loads(pointer.read_text(encoding="utf-8"))
@@ -1864,7 +1872,7 @@ class AlphaDevelopmentArtifactStore:
         if not root.is_dir():
             return ()
         return tuple(
-            self.load_current_refit_diagnostic(path.stem)
+            self.load_current_refit_diagnostic(_artifact_file_identity(path))
             for path in sorted(root.glob("*.json"), key=lambda value: value.name)
         )
 
@@ -2181,10 +2189,12 @@ class AlphaDevelopmentArtifactStore:
         one of several roots by directory order would be selecting evidence.
         """
 
-        category = self.development_category_dir("target-study-roots")
-        if not category.is_dir():
-            return ()
-        return tuple(sorted(path.stem for path in category.glob("*.json")))
+        return self.development_category_identities("target-study-roots")
+
+    def development_category_identities(self, category: str) -> tuple[str, ...]:
+        """List the tagged identities of a category's published JSON records."""
+        directory = self.development_category_dir(category)
+        return tuple(_artifact_file_identity(path) for path in sorted(directory.glob("*.json")))
 
     def load_comparison_evidence(self, value: str) -> AlphaTargetPreprocessingComparisonEvidence:
         """Read one target preprocessing comparison's evidence by its hash."""
@@ -2281,7 +2291,7 @@ class AlphaDevelopmentArtifactStore:
             self.root
             / "current"
             / "candidate-numerical-fold-by-binding"
-            / f"{value.execution_binding_hash}.json"
+            / f"{blake3_filename(value.execution_binding_hash)}.json"
         )
         payload = {
             "execution_binding_hash": value.execution_binding_hash,
@@ -2448,7 +2458,7 @@ class AlphaDevelopmentArtifactStore:
             self.root
             / "current"
             / "candidate-numerical-fold-by-binding"
-            / f"{execution_binding_hash}.json"
+            / f"{blake3_filename(execution_binding_hash)}.json"
         )
         if not pointer.is_file():
             return None
@@ -2587,7 +2597,7 @@ class AlphaDevelopmentArtifactStore:
             with pa.OSFile(str(path), "wb") as sink, pa.ipc.new_file(sink, table.schema) as writer:
                 writer.write_table(table)
             with pa.OSFile(str(path), "rb") as source:
-                body_digest = integrity_blake3(source.read_buffer()).hexdigest()
+                body_digest = tagged_blake3(integrity_blake3(source.read_buffer()))
             output.chunks[digest] = seal, body_digest, path
 
     @classmethod
@@ -2597,7 +2607,7 @@ class AlphaDevelopmentArtifactStore:
         for digest, (seal, expected, path) in output.chunks.items():
             with pa.OSFile(str(path), "rb") as source:
                 body = source.read_buffer()
-            if integrity_blake3(body).hexdigest() != expected:
+            if tagged_blake3(integrity_blake3(body)) != expected:
                 raise AlphaDevelopmentArtifactReadbackError("staged Alpha catalog rows changed")
             chunks[digest] = seal, pa.ipc.open_file(body).read_all()
         history.write_alpha_development_chunks(chunks, summaries=output.summaries)
@@ -2657,7 +2667,7 @@ class AlphaDevelopmentArtifactStore:
         else:
             target = self._path(f"current/{category}", content_hash, "parquet")
             target.parent.mkdir(parents=True, exist_ok=True)
-            staged = target.with_name(f".{content_hash}.{os.getpid()}.tmp")
+            staged = target.with_name(f".{target.name}.{os.getpid()}.tmp")
             if not target.exists():
                 pq.write_table(table.replace_schema_metadata(metadata), staged, compression="zstd")
                 os.replace(staged, target)
@@ -2741,7 +2751,9 @@ class AlphaDevelopmentArtifactStore:
         return self._publish("estimator-states", value, "state_hash")
 
     def load_model_text(self, content_hash: str) -> str:
-        path: Path = self.root / "current" / "model-text" / f"{content_hash}.txt"
+        """Open serialized model text after checking it under its content identity."""
+
+        path = self._path("current/model-text", content_hash, "txt")
         value: str = path.read_text(encoding="utf-8")
         if canonical_hash(value) != content_hash:
             raise AlphaDevelopmentArtifactReadbackError("Alpha model-text content changed")
@@ -2969,11 +2981,7 @@ def alpha_array_files(workspace: Path) -> list[tuple[Path, str]]:
                     or (directory.startswith(_ALPHA_HISTORY) and path.suffix == ".parquet")
                 )
                 if score or lane:
-                    if (
-                        len(path.stem) != 64
-                        or any(c not in "0123456789abcdef" for c in path.stem)
-                        or path.is_symlink()
-                    ):
+                    if blake3_from_filename(path.stem) is None or path.is_symlink():
                         raise DataError("an Alpha part is invalid", code="data_layer.part_invalid")
                     layout = (
                         directory + "/" + path.suffix[1:]
@@ -2982,6 +2990,13 @@ def alpha_array_files(workspace: Path) -> list[tuple[Path, str]]:
                     )
                     found.append((path, layout))
     return sorted(found)
+
+
+def _artifact_file_identity(path: Path) -> str:
+    digest = blake3_from_filename(path.stem)
+    if digest is None:
+        raise AlphaDevelopmentArtifactReadbackError("Alpha artifact identity is not tagged BLAKE3")
+    return digest
 
 
 def alpha_array_upgrade_family(holder: Callable[[Path], str | None]) -> Family:
@@ -2996,7 +3011,7 @@ def alpha_array_upgrade_family(holder: Callable[[Path], str | None]) -> Family:
                         path
                     )  # prove the old lane's own cited digest before keeping it
                 history.keep_alpha_part(
-                    path.stem,
+                    _artifact_file_identity(path),
                     layout,
                     path.read_bytes(),
                     upgrade_owner=(runner.log, runner.root, held),
@@ -3006,7 +3021,9 @@ def alpha_array_upgrade_family(holder: Callable[[Path], str | None]) -> Family:
     def verify(runner: Any) -> bool:
         for workspace in runner.workspaces:
             for path, layout in alpha_array_files(workspace):
-                digest = history._alpha_part_body(runner.log.read, path.stem, layout)
+                digest = history._alpha_part_body(
+                    runner.log.read, _artifact_file_identity(path), layout
+                )
                 if (
                     digest is None
                     or arrays.read_packed(runner.root, runner.log.read, digest) != path.read_bytes()
@@ -3021,7 +3038,7 @@ def alpha_array_upgrade_family(holder: Callable[[Path], str | None]) -> Family:
             return False
         held = holder(workspace)
         for path, layout in alpha_array_files(workspace):
-            digest = history.alpha_part_body_digest(path.stem, layout)
+            digest = history.alpha_part_body_digest(_artifact_file_identity(path), layout)
             if digest is None or not history.array_held_by(digest, held):
                 return True
         return False

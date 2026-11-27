@@ -22,11 +22,13 @@ from alphalattice.investment.portfolio_strategy_lab.contracts import (
     TopKEqualWeightPolicy,
     seal_contract,
 )
+from alphalattice.kernel.identity import blake3_filename
+from tests._support.identity_fixtures import fixture_digest
 
 PLAYPEN_ROOT = resolve_playpen_root(Path(__file__))
 PLAYPEN_SRC = PLAYPEN_ROOT / "src"
 
-_HASHES = tuple(f"{value:064x}" for value in range(1, 22))
+_HASHES = tuple(fixture_digest(("walk-forward", value)) for value in range(1, 22))
 
 
 def _mandate(sessions: tuple[date, ...]) -> PortfolioStrategyLabMandate:
@@ -209,7 +211,8 @@ def test_execution_clock_history_serves_risk_without_expanding_event_axis() -> N
 
     axis = tuple(date(2022, 1, 1) + timedelta(days=index) for index in range(324))
     sessions = axis[316:-2]
-    manifest_ref = "manifests/" + _HASHES[3] + ".json"
+    snapshot_hash = _HASHES[3]
+    manifest_ref = f"playpen://data-operations/execution-outcomes/manifests/{snapshot_hash}"
     owner = _ClockOwnerView(axis=axis, manifest_ref=manifest_ref)
     execution = resolve_execution_clock_context(
         reader=owner,
@@ -241,6 +244,7 @@ def test_execution_clock_history_serves_risk_without_expanding_event_axis() -> N
     )
     assert admitted.disposition == "ADMITTED"
     assert execution.events.ordered_formation_sessions == sessions
+    assert execution.events.outcome_snapshot_hash == snapshot_hash
     assert owner.read_count == 1
 
 
@@ -621,7 +625,7 @@ def _transition_binding(**overrides):  # type: ignore[no-untyped-def]
         "execution_method_binding_hash": _HASHES[1],
         "rebalance_clock": EveryFormationClock().binding,
         "reference_mark_method": MARKED_TO_MARKET_AT_CLOSE_T,
-        "mark_manifest_ref": f"manifests/{_HASHES[3]}.json",
+        "mark_manifest_ref": f"manifests/{blake3_filename(_HASHES[3])}.json",
         "mark_surface_hash": _HASHES[3],
         "mark_epoch_hash": _HASHES[4],
         "mark_price_basis": "split_adjusted",
@@ -973,7 +977,7 @@ def test_buffered_rank_return_uses_only_matured_outcomes_and_never_an_optimizer(
             )
         return PortfolioExecutionEvents.create(
             outcome_snapshot_hash=_HASHES[1],
-            outcome_manifest_ref=f"outcomes/{_HASHES[1]}.json",
+            outcome_manifest_ref=f"outcomes/{blake3_filename(_HASHES[1])}.json",
             method_seal_disposition="METHOD_BOUND",
             method_binding_hash=_HASHES[2],
             execution_recipe_id="NEXT_COMMON_SESSION_OPEN_TO_FOLLOWING_OPEN",
@@ -1685,7 +1689,7 @@ def test_the_mark_surface_publishes_reads_and_reverifies_every_block(tmp_path: P
         store.load_manifest(_HASHES[1])
     # The file answering to one name, sealed under another. Its own validator
     # only proves internal consistency, which a whole re-seal satisfies for free.
-    (store.root / "manifests" / f"{_HASHES[1]}.json").write_bytes(
+    (store.root / "manifests" / f"{blake3_filename(_HASHES[1])}.json").write_bytes(
         surface.model_dump_json().encode("utf-8")
     )
     with pytest.raises(SessionMarkError, match="session_mark_surface_not_this_handle"):

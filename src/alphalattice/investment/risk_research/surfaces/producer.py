@@ -19,7 +19,7 @@ import numpy.typing as npt
 
 from alphalattice.capabilities.domain_contracts.identity import canonical_hash
 from alphalattice.foundation.feature_engine.panels.closure_contracts import SectorRevisionMap
-from alphalattice.kernel.identity import identity_sha256
+from alphalattice.kernel.identity import identity_blake3, is_blake3, tagged_blake3
 
 from .decomposition import (
     INSTALLED_RISK_DECOMPOSITION_RECIPE,
@@ -36,11 +36,11 @@ RISK_PRODUCER_ID: Final = "SECTOR_DEGARCH_504_EXACT_CLOSURE"
 
 
 def _array_hash(values: npt.NDArray[np.generic], *, dtype: npt.DTypeLike) -> str:
-    return identity_sha256(np.ascontiguousarray(values, dtype=dtype).tobytes()).hexdigest()
+    return tagged_blake3(identity_blake3(np.ascontiguousarray(values, dtype=dtype).tobytes()))
 
 
 def _require_hash(value: str, *, code: str) -> None:
-    if len(value) != 64 or any(character not in "0123456789abcdef" for character in value):
+    if not is_blake3(value):
         raise RiskDecompositionError(code)
 
 

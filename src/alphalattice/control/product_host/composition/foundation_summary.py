@@ -6,13 +6,13 @@ Foundation readback, export and admission continue to verify their full source g
 
 from __future__ import annotations
 
-import re
 from pathlib import Path
 
 from alphalattice.foundation.research_foundation.publication.sponsorship import (
     read_foundation_admission,
 )
 from alphalattice.interface.local_application.failure_codes import public_failure
+from alphalattice.kernel.identity import is_blake3
 from alphalattice.protocols.research_authoring.contracts import AuthoringError
 
 
@@ -29,10 +29,7 @@ def read_foundation_summary(workspace: Path, foundation_admission_hash: str) -> 
     Raises:
         AuthoringError: The exact identity is invalid, unavailable or contradicts its binding.
     """
-    if (
-        not isinstance(foundation_admission_hash, str)
-        or re.fullmatch(r"[0-9a-f]{64}", foundation_admission_hash) is None
-    ):
+    if not isinstance(foundation_admission_hash, str) or not is_blake3(foundation_admission_hash):
         raise AuthoringError("research_foundation.admission_identity_invalid")
     try:
         admission = read_foundation_admission(workspace / "artifacts", foundation_admission_hash)

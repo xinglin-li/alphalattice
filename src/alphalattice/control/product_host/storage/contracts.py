@@ -10,6 +10,7 @@ from typing import Literal
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 from alphalattice.capabilities.domain_contracts.identity import canonical_hash
+from alphalattice.kernel.identity import BLAKE3_PATTERN
 
 GIB = 1024**3
 
@@ -47,7 +48,7 @@ class StorageBudgetResolution(_Contract):
     managed_cap_bytes: int = Field(ge=10 * GIB)
     cleanup_target_bytes: int = Field(gt=0)
     high_water_bytes: int = Field(gt=0)
-    policy_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
+    policy_hash: str = Field(pattern=BLAKE3_PATTERN)
 
     @model_validator(mode="after")  # type: ignore[untyped-decorator]
     def validate_resolution(self) -> StorageBudgetResolution:
@@ -83,10 +84,10 @@ class StorageRetentionRoot(_Contract):
 
     root_kind: StorageRootKind
     root_id: str
-    head_hash: str | None = Field(default=None, pattern=r"^[0-9a-f]{64}$")
-    panel_snapshot_hash: str | None = Field(default=None, pattern=r"^[0-9a-f]{64}$")
+    head_hash: str | None = Field(default=None, pattern=BLAKE3_PATTERN)
+    panel_snapshot_hash: str | None = Field(default=None, pattern=BLAKE3_PATTERN)
     approved_bytes: int | None = Field(default=None, ge=0)
-    approval_hash: str | None = Field(default=None, pattern=r"^[0-9a-f]{64}$")
+    approval_hash: str | None = Field(default=None, pattern=BLAKE3_PATTERN)
 
     @model_validator(mode="after")  # type: ignore[untyped-decorator]
     def validate_pin(self) -> StorageRetentionRoot:
@@ -116,7 +117,7 @@ class CurrentStateStorageInventory(_Contract):
     artifact_bytes: int = Field(ge=0)
     staging_bytes: int = Field(ge=0)
     available_disk_bytes: int = Field(ge=0)
-    active_catalog_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
+    active_catalog_hash: str = Field(pattern=BLAKE3_PATTERN)
     active_factor_ids: tuple[str, ...]
     stored_feature_columns: tuple[str, ...]
     orphan_feature_columns: tuple[str, ...]
@@ -125,11 +126,11 @@ class CurrentStateStorageInventory(_Contract):
     cutoff_set_count: int = Field(ge=0)
     active_listing_count: int = Field(gt=0)
     research_session_count: int = Field(gt=0)
-    current_head_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
-    previous_head_hash: str | None = Field(default=None, pattern=r"^[0-9a-f]{64}$")
-    panel_snapshot_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
+    current_head_hash: str = Field(pattern=BLAKE3_PATTERN)
+    previous_head_hash: str | None = Field(default=None, pattern=BLAKE3_PATTERN)
+    panel_snapshot_hash: str = Field(pattern=BLAKE3_PATTERN)
     downstream_identities: tuple[tuple[str, str], ...]
-    inventory_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
+    inventory_hash: str = Field(pattern=BLAKE3_PATTERN)
 
     @model_validator(mode="after")  # type: ignore[untyped-decorator]
     def validate_inventory(self) -> CurrentStateStorageInventory:
@@ -164,7 +165,7 @@ class StorageEvictionPlan(_Contract):
 
     kind: Literal["StorageEvictionPlan"] = "StorageEvictionPlan"
     operation_id: str
-    inventory_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
+    inventory_hash: str = Field(pattern=BLAKE3_PATTERN)
     roots: tuple[StorageRetentionRoot, ...]
     evict_paths: tuple[str, ...]
     evict_bytes: int = Field(ge=0)
@@ -172,7 +173,7 @@ class StorageEvictionPlan(_Contract):
     managed_cap_bytes: int | None = Field(default=None, gt=0)
     """Historical plans' recorded cap; new plans leave execution settings out."""
     expected_final_bytes: int = Field(ge=0)
-    plan_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
+    plan_hash: str = Field(pattern=BLAKE3_PATTERN)
 
     @model_validator(mode="after")  # type: ignore[untyped-decorator]
     def validate_plan(self) -> StorageEvictionPlan:

@@ -25,14 +25,20 @@ from alphalattice.investment.risk_research.contracts import (
     HistoricalCovarianceBuildCheckpoint,
     HistoricalCovarianceChunk,
 )
-from alphalattice.kernel.identity import integrity_sha256
+from alphalattice.kernel.identity import (
+    blake3_filename,
+    blake3_from_filename,
+    integrity_blake3,
+    is_blake3,
+    tagged_blake3,
+)
 
 type FloatArray = NDArray[np.float64]
 _PREFIX = "playpen://risk-research/"
 
 
 def _packed_digest(content: bytes | memoryview) -> str:
-    return integrity_sha256(content).hexdigest()
+    return tagged_blake3(integrity_blake3(content))
 
 
 class RiskArtifactError(ValueError):
@@ -53,7 +59,7 @@ class RiskArtifactStore:
 
     @staticmethod
     def _require_hash(value: str) -> None:
-        if len(value) != 64 or any(character not in "0123456789abcdef" for character in value):
+        if not is_blake3(value):
             raise RiskArtifactError("risk_research.artifact_identity_invalid")
 
     @staticmethod
@@ -79,7 +85,7 @@ class RiskArtifactStore:
 
     def _path(self, category: str, content_hash: str, suffix: str) -> Path:
         self._require_hash(content_hash)
-        return self.root / category / f"{content_hash}.{suffix}"
+        return self.root / category / f"{blake3_filename(content_hash)}.{suffix}"
 
     def publish_json(
         self,
@@ -120,7 +126,7 @@ class RiskArtifactStore:
         return ArtifactDescriptor(
             kind=f"risk-research-{category.replace('/', '-')}",
             content_hash=content_hash,
-            metadata_hash=integrity_sha256(content).hexdigest(),
+            metadata_hash=_packed_digest(content),
             uri=self.uri(category, content_hash),
         )
 
@@ -171,9 +177,12 @@ class RiskArtifactStore:
         """
         root = self.root / category
         for path in sorted(root.glob("*.json")) if root.is_dir() else ():
+            digest = blake3_from_filename(path.stem)
+            if digest is None:
+                raise RiskArtifactError("risk_research.artifact_identity_invalid")
             yield self.load_json(
                 category=category,
-                uri=self.uri(category, path.stem),
+                uri=self.uri(category, digest),
                 identity_field=identity_field,
             )
 
@@ -330,10 +339,8 @@ class RiskArtifactStore:
             raise RiskArtifactError(str(error.failure.code)) from error
         if packed is None:
             return None
-        if (
-            _packed_digest(memoryview(packed.astype("<f8", copy=False)))
-            != chunk.packed_bytes_sha256
-        ):
+        packed_bytes = memoryview(np.ascontiguousarray(packed, dtype="<f8")).cast("B")
+        if _packed_digest(packed_bytes) != chunk.packed_bytes_sha256:
             raise RiskArtifactError("risk_research.covariance_chunk_tampered")
         return cast(FloatArray, packed)
 
@@ -390,7 +397,7 @@ class RiskArtifactStore:
         """Read a typed build checkpoint and verify every retained covariance chunk.
 
         Args:
-            program_hash: Exact lowercase hexadecimal program identity selecting the checkpoint.
+            program_hash: Tagged BLAKE3 program identity selecting the checkpoint.
             ordered_listing_ids: Listing axis shared by the checkpoint's chunks.
 
         Returns:
@@ -401,7 +408,7 @@ class RiskArtifactStore:
                 readback fails.
         """
         self._require_hash(program_hash)
-        target = self.root / "covariance" / "builds" / f"{program_hash}.json"
+        target = self.root / "covariance" / "builds" / f"{blake3_filename(program_hash)}.json"
         if not target.is_file():
             return None
         try:

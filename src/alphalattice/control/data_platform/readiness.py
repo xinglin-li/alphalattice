@@ -62,7 +62,7 @@ from alphalattice.foundation.market_data_ops.storage.duckdb import MarketDataRep
 from alphalattice.foundation.research_foundation.storage.repository import (
     ResearchFoundationStateRepository,
 )
-from alphalattice.kernel.identity import identity_sha256
+from alphalattice.kernel.identity import identity_blake3, tagged_blake3
 
 
 class WorkspaceReadinessStatus(StrEnum):
@@ -263,7 +263,7 @@ def _transition_id(
             "workspace-readiness-manifest-transition",
         )
     )
-    return identity_sha256(payload.encode("utf-8")).hexdigest()
+    return tagged_blake3(identity_blake3(payload.encode("utf-8")))
 
 
 def daily_source_ready_at(session_close: datetime) -> datetime:

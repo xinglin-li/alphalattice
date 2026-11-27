@@ -12,7 +12,7 @@ from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 from alphalattice.capabilities.domain_contracts.identity import canonical_hash
 from alphalattice.capabilities.domain_contracts.sealing import scoped_model_digest
-from alphalattice.kernel.identity import integrity_sha256
+from alphalattice.kernel.identity import BLAKE3_PATTERN, integrity_blake3, is_blake3, tagged_blake3
 
 type FloatArray = npt.NDArray[np.float64]
 type AlphaModelFitProtocol = Literal["DIRECT_FIT", "NESTED_EARLY_STOPPING_REFIT"]
@@ -26,14 +26,14 @@ def alpha_model_array_content_hash(value: npt.NDArray[np.generic]) -> str:
         value: Numerical array whose dtype, shape and contiguous value bytes are to be bound.
 
     Returns:
-        SHA-256 identity over dtype spelling, shape representation and contiguous values.
+        Tagged BLAKE3 identity over dtype spelling, shape and contiguous values.
     """
     contiguous = np.ascontiguousarray(value)
-    digest = integrity_sha256()
+    digest = integrity_blake3()
     digest.update(contiguous.dtype.str.encode("ascii"))
     digest.update(repr(contiguous.shape).encode("ascii"))
     digest.update(memoryview(contiguous).cast("B"))
-    return digest.hexdigest()
+    return tagged_blake3(digest)
 
 
 class _Contract(BaseModel):  # type: ignore[misc]
@@ -46,7 +46,7 @@ class AlphaModelRecipeEnvelope(_Contract):
     adapter_id: str = Field(min_length=1, max_length=96)
     recipe_schema_id: str = Field(min_length=1, max_length=128)
     parameters: dict[str, Any]
-    recipe_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
+    recipe_hash: str = Field(pattern=BLAKE3_PATTERN)
 
     @classmethod
     def create(
@@ -100,7 +100,7 @@ class AlphaModelSearchDomainEnvelope(_Contract):
     recipe_schema_id: str = Field(min_length=1, max_length=128)
     search_domain_schema_id: str = Field(min_length=1, max_length=128)
     constraints: dict[str, Any]
-    search_domain_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
+    search_domain_hash: str = Field(pattern=BLAKE3_PATTERN)
 
     @classmethod
     def create(
@@ -158,7 +158,7 @@ class AlphaModelNumericalBinding(_Contract):
     implementation_owners: tuple[str, ...] = Field(min_length=1)
     deterministic_policy: dict[str, Any]
     required_runtime_capabilities: tuple[str, ...]
-    numerical_binding_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
+    numerical_binding_hash: str = Field(pattern=BLAKE3_PATTERN)
 
     @classmethod
     def create(
@@ -224,7 +224,7 @@ class AlphaModelStateProjection(_Contract):
     state_kind: str = Field(min_length=1, max_length=64)
     state_schema_id: str = Field(min_length=1, max_length=128)
     payload: dict[str, Any]
-    projection_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
+    projection_hash: str = Field(pattern=BLAKE3_PATTERN)
 
     @classmethod
     def create(
@@ -280,15 +280,15 @@ class AlphaModelStateProjection(_Contract):
 class AlphaModelSelectionDiagnostic(_Contract):
     """Model-neutral inner-selection evidence emitted by one nested fit."""
 
-    recipe_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
-    estimator_content_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
-    training_binding_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
+    recipe_hash: str = Field(pattern=BLAKE3_PATTERN)
+    estimator_content_hash: str = Field(pattern=BLAKE3_PATTERN)
+    training_binding_hash: str = Field(pattern=BLAKE3_PATTERN)
     metric_id: str = Field(min_length=1, max_length=96)
     direction: Literal["MINIMIZE", "MAXIMIZE"]
     value: float = Field(allow_inf_nan=False)
     selected_iteration: int = Field(ge=1)
-    fit_plan_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
-    diagnostic_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
+    fit_plan_hash: str = Field(pattern=BLAKE3_PATTERN)
+    diagnostic_hash: str = Field(pattern=BLAKE3_PATTERN)
 
     @classmethod
     def create(
@@ -367,7 +367,7 @@ class BoundAlphaTrainingInput:
                 values is invalid.
         """
         if (
-            len(self.training_binding_hash) != 64
+            not is_blake3(self.training_binding_hash)
             or not self.ordered_feature_ids
             or self.features.ndim != 2
             or self.targets.ndim != 1
@@ -396,7 +396,7 @@ class BoundAlphaPredictionInput:
                 is invalid.
         """
         if (
-            len(self.training_binding_hash) != 64
+            not is_blake3(self.training_binding_hash)
             or not self.ordered_feature_ids
             or self.features.ndim != 2
             or self.features.shape[1] != len(self.ordered_feature_ids)
@@ -445,8 +445,8 @@ class BoundAlphaModelFitInput:
                 or measured array hashes do not agree.
         """
         if (
-            len(self.fit_plan_hash) != 64
-            or len(self.parent_training_binding_hash) != 64
+            not is_blake3(self.fit_plan_hash)
+            or not is_blake3(self.parent_training_binding_hash)
             or not self.ordered_feature_ids
             or self.ordered_feature_ids != tuple(dict.fromkeys(self.ordered_feature_ids))
         ):
@@ -543,7 +543,7 @@ class AlphaEstimatorContent(_Contract):
     content_format_id: str = Field(min_length=1, max_length=128)
     ordered_feature_ids: tuple[str, ...] = Field(min_length=1)
     payload: dict[str, Any]
-    content_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
+    content_hash: str = Field(pattern=BLAKE3_PATTERN)
 
     @classmethod
     def create(
@@ -596,23 +596,23 @@ class AlphaEstimatorContent(_Contract):
 class AlphaFitProvenanceReceipt(_Contract):
     """Identity of one fit event, separate from learned estimator content."""
 
-    recipe_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
-    training_binding_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
-    estimator_content_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
-    package_identity_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
+    recipe_hash: str = Field(pattern=BLAKE3_PATTERN)
+    training_binding_hash: str = Field(pattern=BLAKE3_PATTERN)
+    estimator_content_hash: str = Field(pattern=BLAKE3_PATTERN)
+    package_identity_hash: str = Field(pattern=BLAKE3_PATTERN)
     fit_plan_hash: str | None = Field(
         default=None,
-        pattern=r"^[0-9a-f]{64}$",
+        pattern=BLAKE3_PATTERN,
         exclude_if=lambda value: value is None,
     )
     numerical_environment_hash: str | None = Field(
         default=None,
-        pattern=r"^[0-9a-f]{64}$",
+        pattern=BLAKE3_PATTERN,
         exclude_if=lambda value: value is None,
     )
     fit_call_count: int = Field(ge=0)
     predict_call_count: int = Field(ge=0)
-    provenance_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
+    provenance_hash: str = Field(pattern=BLAKE3_PATTERN)
 
     @classmethod
     def create(
@@ -686,10 +686,10 @@ class AlphaFitProvenanceReceipt(_Contract):
 class AlphaModelFitSidecar(_Contract):
     """Readback link from one Host operation to content and fit provenance."""
 
-    operation_binding_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
-    estimator_content_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
-    fit_provenance_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
-    sidecar_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
+    operation_binding_hash: str = Field(pattern=BLAKE3_PATTERN)
+    estimator_content_hash: str = Field(pattern=BLAKE3_PATTERN)
+    fit_provenance_hash: str = Field(pattern=BLAKE3_PATTERN)
+    sidecar_hash: str = Field(pattern=BLAKE3_PATTERN)
 
     @classmethod
     def create(

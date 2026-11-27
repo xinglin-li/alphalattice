@@ -1,6 +1,6 @@
 """Canonical content hashes of Arrow columns and tables, bit for bit ``canonical_hash``.
 
-``canonical_hash`` states an identity as the SHA-256 of one canonical JSON
+``canonical_hash`` states an identity as the tagged BLAKE3 digest of one canonical JSON
 document. When the document's bulk is the rows of an Arrow table or the
 values of one column, building those rows as Python objects and encoding them
 one value at a time is where a verification spends its time. The functions
@@ -33,7 +33,12 @@ from json.encoder import encode_basestring_ascii
 import pyarrow as pa
 import pyarrow.compute as pc
 
-from alphalattice.kernel.identity import canonical_hash, canonical_json, identity_sha256
+from alphalattice.kernel.identity import (
+    canonical_hash,
+    canonical_json,
+    identity_blake3,
+    tagged_blake3,
+)
 
 _PLAIN_ASCII = r"^[\x20\x21\x23-\x5b\x5d-\x7e]*$"
 """Printable ASCII without the double quote and the backslash: the strings the
@@ -214,7 +219,7 @@ def canonical_hash_with_rows(payload: Mapping[str, object], *, key: str, table: 
     if encoded is None:
         general: str = canonical_hash({**payload, key: table.to_pylist()})
         return general
-    return identity_sha256(_document(payload, key, encoded)).hexdigest()
+    return tagged_blake3(identity_blake3(_document(payload, key, encoded)))
 
 
 def canonical_hash_with_row_lists(
@@ -235,7 +240,7 @@ def canonical_hash_with_row_lists(
             {**payload, key: [tuple(row.values()) for row in table.to_pylist()]}
         )
         return general
-    return identity_sha256(_document(payload, key, encoded)).hexdigest()
+    return tagged_blake3(identity_blake3(_document(payload, key, encoded)))
 
 
 def canonical_hash_with_values(
@@ -252,7 +257,7 @@ def canonical_hash_with_values(
     if encoded is None:
         general: str = canonical_hash({**payload, key: chunked.to_pylist()})
         return general
-    return identity_sha256(_document(payload, key, encoded)).hexdigest()
+    return tagged_blake3(identity_blake3(_document(payload, key, encoded)))
 
 
 def canonical_row_hashes(table: pa.Table) -> list[str]:
@@ -265,7 +270,7 @@ def canonical_row_hashes(table: pa.Table) -> list[str]:
     rows = _row_objects(table)
     if rows is None:
         return [canonical_hash(row) for row in table.to_pylist()]
-    return [identity_sha256(text.encode("ascii")).hexdigest() for text in rows.to_pylist()]
+    return [tagged_blake3(identity_blake3(text.encode("ascii"))) for text in rows.to_pylist()]
 
 
 __all__ = [

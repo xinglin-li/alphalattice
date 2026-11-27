@@ -432,7 +432,7 @@ class VerifiedSourceLookup:
                 continue
             self.scanned_commits += 1
             self._add(index, commit.reference)
-            self._committed.add((commit.reference.revision, commit.reference.content_sha256))
+            self._committed.add((commit.reference.revision, commit.reference.content_digest))
         for identity in deferrals.since(accepted_at):
             try:
                 deferral = self._artifacts.load(
@@ -482,7 +482,7 @@ class VerifiedSourceLookup:
         A body restored under that commit needs no second record.
         """
         self._index(reference.accepted_at)
-        return (reference.revision, reference.content_sha256) in self._committed
+        return (reference.revision, reference.content_digest) in self._committed
 
     @staticmethod
     def _add(
@@ -492,13 +492,13 @@ class VerifiedSourceLookup:
         if reference.source_name != "SEC_EDGAR":
             return
         held = index.setdefault(reference.revision, [])
-        if all(value.content_sha256 != reference.content_sha256 for value in held):
+        if all(value.content_digest != reference.content_digest for value in held):
             held.append(reference)
 
     def add(self, reference: AcquiredEvidenceDocumentReference, *, committed: bool) -> None:
         self._add(self._by_accession, reference)
         if committed:
-            self._committed.add((reference.revision, reference.content_sha256))
+            self._committed.add((reference.revision, reference.content_digest))
 
     def holdings(
         self, *, entity_id: str, cik: str | None
@@ -1346,7 +1346,7 @@ class AlternativeEvidenceDocumentIntelligenceRuntime:
         if not directory.is_dir():
             return ()
         return tuple(
-            self.artifacts.load_retrieval_generation(path.stem)
+            self.artifacts.load_retrieval_generation(self.artifacts.file_identity(path))
             for path in sorted(directory.glob("*.json"))
         )
 
@@ -1448,7 +1448,7 @@ class AlternativeEvidenceDocumentIntelligenceRuntime:
             if reference is None:
                 return None
             resolved = self.documents.resolve_source_object(reference, as_of=as_of)
-            return resolved.content, reference.content_sha256, reference.media_type
+            return resolved.content, reference.content_digest, reference.media_type
 
         return original_for
 
@@ -1461,7 +1461,7 @@ class AlternativeEvidenceDocumentIntelligenceRuntime:
         root = self.artifacts.root / "source-document-sets"
         for path in sorted(root.glob("*.json")) if root.is_dir() else ():
             try:
-                value = self.artifacts.load_source_set(path.stem)
+                value = self.artifacts.load_source_set(self.artifacts.file_identity(path))
             except (ValueError, OSError):
                 continue
             if (
@@ -1668,7 +1668,7 @@ class AlternativeEvidenceDocumentIntelligenceRuntime:
             UUID(document_set.workspace_snapshot_id)
         )
         bodies = {
-            (r.document.document_id, r.revision): r.content_sha256 for r in snapshot.revisions
+            (r.document.document_id, r.revision): r.content_digest for r in snapshot.revisions
         }
         return {
             ref.semantic_handle: (

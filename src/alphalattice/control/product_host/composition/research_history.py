@@ -29,6 +29,7 @@ from alphalattice.investment.portfolio_strategy_lab.application.task import (
     PORTFOLIO_PUBLIC_TASK_KIND,
     portfolio_research_task_input,
 )
+from alphalattice.kernel.identity import blake3_from_filename
 from alphalattice.oversight.chief_risk_officer.decision.book_evidence import BookSelector
 
 if TYPE_CHECKING:
@@ -92,12 +93,19 @@ def _review_metadata(
 
     readable: list[PortfolioReviewPublication] = []
     for path in sorted(paths):
+        identity = blake3_from_filename(path.stem)
         try:
             readable.append(
-                store.load("cro-review-publications", path.stem, PortfolioReviewPublication)
+                store.load(
+                    "cro-review-publications",
+                    identity or "",
+                    PortfolioReviewPublication,
+                )
             )
         except (ValueError, OSError) as error:
-            refused.append((path.stem, public_failure(error, "research_history.entry_unreadable")))
+            refused.append(
+                (identity or path.stem, public_failure(error, "research_history.entry_unreadable"))
+            )
     return tuple(readable), tuple(refused)
 
 

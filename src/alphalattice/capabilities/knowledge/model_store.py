@@ -67,7 +67,7 @@ from alphalattice.capabilities.knowledge.hybrid_contracts import (
 )
 from alphalattice.kernel.config import current as process_config
 from alphalattice.kernel.egress import EgressPort, EgressTransportError, HttpEgress, HttpSource
-from alphalattice.kernel.identity import integrity_sha256
+from alphalattice.kernel.identity import integrity_sha256_model_release
 
 
 @dataclass(frozen=True, slots=True)
@@ -378,11 +378,8 @@ def _staging_directory(store: Path, pack: PackDefinition) -> Path:
 
 
 def _sha256(path: Path) -> str:
-    digest = integrity_sha256()
     with path.open("rb") as handle:
-        for block in iter(lambda: handle.read(1 << 20), b""):
-            digest.update(block)
-    return digest.hexdigest()
+        return integrity_sha256_model_release(handle)
 
 
 _PACK_CHECK = threading.Lock()

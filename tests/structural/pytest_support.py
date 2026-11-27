@@ -64,6 +64,7 @@ def pytest_checkout(tmp_path: Path, source: Path) -> tuple[Path, dict[str, str]]
         GoalSubmission,
     )
     from alphalattice.interface.local_application.native_setup import declare_project
+    from tests._support.identity_fixtures import fixture_digest
 
     checkout = tmp_path / "checkout"
     tests = checkout / "tests"
@@ -122,8 +123,8 @@ def pytest_checkout(tmp_path: Path, source: Path) -> tuple[Path, dict[str, str]]
         decision_updates=(
             ResearchWorkspaceDecisionUpdate(
                 strategy_package_id="caller-package",
-                strategy_package_hash="a" * 64,
-                checkpoint_hash="b" * 64,
+                strategy_package_hash=fixture_digest("caller strategy package"),
+                checkpoint_hash=fixture_digest("caller strategy checkpoint"),
             ),
         ),
     )

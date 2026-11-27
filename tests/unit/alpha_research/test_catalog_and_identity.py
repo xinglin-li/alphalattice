@@ -7,6 +7,7 @@ from unittest.mock import Mock
 import pytest
 
 from alphalattice.capabilities.domain_contracts.identity import canonical_hash
+from alphalattice.capabilities.domain_contracts.sealing import seal_model_from_dump
 from alphalattice.investment.alpha_research.experiments.bindings import (
     AlphaExperimentAdmissionError,
     build_alpha_experiment_request,
@@ -24,6 +25,7 @@ from tests.alpha_research.registered_catalog import (
 
 
 def test_catalog_rejects_reorder_and_forged_source_card() -> None:
+    """The authorized catalog refuses reordered source cards and forged seals."""
     _request, inventory = synthetic_request()
     reordered = inventory.model_copy(
         update={"alpha_models": tuple(reversed(inventory.alpha_models))}
@@ -33,7 +35,9 @@ def test_catalog_rejects_reorder_and_forged_source_card() -> None:
             reordered,
             ordered_factor_ids=FIXTURE_FACTOR_IDS,
         )
-    forged_card = inventory.alpha_models[0].model_copy(update={"card_hash": "f" * 64})
+    forged_card = inventory.alpha_models[0].model_copy(
+        update={"card_hash": canonical_hash("forged source card")}
+    )
     forged = inventory.model_copy(
         update={"alpha_models": (forged_card, *inventory.alpha_models[1:])}
     )
@@ -64,40 +68,35 @@ def test_full_high_inventory_has_exact_role_aware_36_card_surface() -> None:
 
 
 def test_adding_sibling_candidate_does_not_change_existing_numerical_child_binding() -> None:
+    """A sibling changes the request seal but preserves an existing numerical child."""
     request, inventory = synthetic_request()
     cards = load_registered_alpha_catalog(
         inventory,
         ordered_factor_ids=FIXTURE_FACTOR_IDS,
     )
-    fold_hashes = ("1" * 64, "2" * 64)
+    fold_hashes = (canonical_hash("first fold"), canonical_hash("second fold"))
+    split_hash = canonical_hash("fixture split")
     original_surface = build_development_surface_binding(
         request=request,
-        split_hash="3" * 64,
+        split_hash=split_hash,
         fold_commitment_hashes=fold_hashes,
     )
-    provisional_request = request.model_copy(
-        update={
-            "inventory_hash": "4" * 64,
+    expanded_request = seal_model_from_dump(
+        type(request),
+        {
+            **{name: value for name, value in request if name != "request_hash"},
+            "inventory_hash": canonical_hash("expanded inventory"),
             "candidate_ids": (*request.candidate_ids, "model.new-sibling"),
             "candidate_card_hashes": (
                 *request.candidate_card_hashes,
-                "5" * 64,
+                canonical_hash("sibling card"),
             ),
-            "request_hash": "0" * 64,
-        }
-    )
-    expanded_request = type(request).model_validate(
-        provisional_request.model_copy(
-            update={
-                "request_hash": canonical_hash(
-                    provisional_request.model_dump(mode="json", exclude={"request_hash"})
-                )
-            }
-        )
+        },
+        field="request_hash",
     )
     expanded_surface = build_development_surface_binding(
         request=expanded_request,
-        split_hash="3" * 64,
+        split_hash=split_hash,
         fold_commitment_hashes=fold_hashes,
     )
     assert expanded_request.request_hash != request.request_hash
@@ -167,7 +166,7 @@ def test_historical_sector_coverage_is_bound_without_moving_legacy_foundations()
         AlphaDevelopmentFoundationBinding,
     )
 
-    digest = "1" * 64
+    digest = canonical_hash("foundation lineage")
     legacy = AlphaDevelopmentFoundationBinding.create(
         research_cadence=RebalanceFrequency.DAILY,
         feature_panel_snapshot_hash=digest,
@@ -196,10 +195,13 @@ def test_historical_sector_coverage_is_bound_without_moving_legacy_foundations()
             for k in type(legacy).model_fields
             if k not in {"foundation_hash", "sector_coverage_hash"}
         },
-        sector_coverage_hash="2" * 64,
+        sector_coverage_hash=canonical_hash("sector coverage"),
     )
     assert expanded.foundation_hash != legacy.foundation_hash
     assert expanded.sector_revision == legacy.sector_revision
-    tampered = {**expanded.model_dump(mode="json"), "sector_coverage_hash": "3" * 64}
+    tampered = {
+        **expanded.model_dump(mode="json"),
+        "sector_coverage_hash": canonical_hash("forged sector coverage"),
+    }
     with pytest.raises(ValueError, match="development_foundation_identity_invalid"):
         AlphaDevelopmentFoundationBinding.model_validate(tampered)

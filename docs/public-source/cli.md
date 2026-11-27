@@ -92,7 +92,8 @@ bound fields stay fixed. `--list-next` lists actions; `--choices choices.yaml`
 supplies missing values. Partly filled objects remain templates.
 
 Compact view shortens issued references to twelve characters, resolved by the
-workspace; ambiguity or an unknown reference is refused with candidates.
+workspace. A tagged BLAKE3 reference keeps its `blake3:` prefix and twelve hex
+characters. Ambiguous or unknown references are refused with candidates.
 Authored identifiers, paths and commands stay whole. `--view full`, `--output`
 and `--from` retain whole references. Run returned PowerShell commands as printed,
 including quoting and the call operator; requests with double quotes use JSON

@@ -42,7 +42,7 @@
   "nontrivial_package_dependency_components": [],
   "packaged_system_resource_identity": {
     "resource_count": 41,
-    "resource_identity_hash": "32c4f5f5e0c0777026a05341601f598b52d1595e28a6f1dd5bc4a1aedf1b814f",
+    "resource_identity_hash": "blake3:8a199646cf0e5a339e372604350488d8ab6a6579f21790123b8118d18bcb4118",
     "resource_kind_counts": {
       "knowledge": 4,
       "package_arg_spec": 37,

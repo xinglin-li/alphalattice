@@ -73,7 +73,9 @@ from alphalattice.investment.sector_research.targets.execution import (
     compile_sector_target_surface,
     seal_sector_target_evidence,
 )
+from alphalattice.kernel.identity import blake3_filename
 from alphalattice.protocols.actor_execution import ActorKind
+from tests._support.identity_fixtures import fixture_digest
 from tests._support.researcher_methodology_session_fixtures import (
     development_risk_workspace as development_risk_workspace,
 )
@@ -119,15 +121,15 @@ def _synthetic_evidence(*, session_count: int = 30):  # type: ignore[no-untyped-
     table, sectors, sessions = _synthetic_target_table(session_count=session_count)
     recipe = build_sector_target_recipe(
         execution_outcome_recipe_id="ONE_SESSION_OPEN_TO_OPEN",
-        sector_revision="a" * 64,
+        sector_revision=fixture_digest("a"),
     )
     surface = compile_sector_target_surface(
         source_table=table, recipe=recipe, sector_by_listing_id=sectors
     )
     evidence = seal_sector_target_evidence(
         surface=surface,
-        causal_outcome_snapshot_hash="b" * 64,
-        outcome_method_binding_hash="c" * 64,
+        causal_outcome_snapshot_hash=fixture_digest("b"),
+        outcome_method_binding_hash=fixture_digest("c"),
         maturity_lag_sessions=2,
         actual_session_span=2,
         forecast_horizon_sessions=1,
@@ -209,8 +211,8 @@ def test_clean_target_is_the_hand_computed_sector_mean_and_nothing_else(
     assert partial.available[3][1] is True
     partial_evidence = seal_sector_target_evidence(
         surface=partial,
-        causal_outcome_snapshot_hash="b" * 64,
-        outcome_method_binding_hash="c" * 64,
+        causal_outcome_snapshot_hash=fixture_digest("b"),
+        outcome_method_binding_hash=fixture_digest("c"),
         maturity_lag_sessions=2,
         actual_session_span=2,
         forecast_horizon_sessions=1,
@@ -251,7 +253,7 @@ def test_clean_target_is_the_hand_computed_sector_mean_and_nothing_else(
         refit_every_sessions=0,
         minimum_history_sessions=0,
         forecast_formation_sessions=forecast_sessions,
-        development_source_closure_hash="d" * 64,
+        development_source_closure_hash=fixture_digest("d"),
     )
     values = ((0.125, None),)
     forecast = SectorForecastSurface.create(
@@ -327,9 +329,9 @@ def test_clean_target_is_the_hand_computed_sector_mean_and_nothing_else(
     assert store.list_category(SECTOR_FORECAST_EVALUATION_CATEGORY) == (evaluation.evaluation_hash,)
     assert not family.holds(workspace)
     with pytest.raises(FileNotFoundError, match="sector artifact is missing"):
-        store.load_evaluation(evaluation.evaluation_hash, experiment="0" * 64)
+        store.load_evaluation(evaluation.evaluation_hash, experiment=fixture_digest("0"))
     with pytest.raises(FileNotFoundError, match="sector artifact is missing"):
-        store.load_target_evidence("0" * 64)
+        store.load_target_evidence(fixture_digest("0"))
 
 
 def test_same_shaped_wrong_inputs_are_refused_before_any_model() -> None:
@@ -667,7 +669,7 @@ def test_host_derives_every_identity_and_the_verifier_walks_to_the_seal(  # type
     assert tuple(read(digest) for _, digest, read in reads) == old
     assert tuple(store.list_category(category) for category in categories) == old_lists
     with pytest.raises(FileNotFoundError, match="sector artifact is missing"):
-        store.load_target_evidence("0" * 64)
+        store.load_target_evidence(fixture_digest("0"))
     for value, digest, read in reads[:2]:
         profile, rows = history.read_sector_result(digest)
         assert profile == {"descriptor": digest}
@@ -716,7 +718,7 @@ def test_tamper_missing_child_and_wrong_lineage_are_refused(  # type: ignore[no-
         store.root
         / "result-descriptors"
         / SECTOR_FORECAST_SURFACE_CATEGORY
-        / f"{ewma.surface.surface_hash}.json"
+        / f"{blake3_filename(ewma.surface.surface_hash)}.json"
     )
     original = surface_path.read_bytes()
     try:
@@ -803,7 +805,9 @@ def test_tamper_missing_child_and_wrong_lineage_are_refused(  # type: ignore[no-
         ),
     )
     forged_path = (
-        store.root / SECTOR_EXPERIMENT_EVIDENCE_CATEGORY / f"{forged.experiment_hash}.json"
+        store.root
+        / SECTOR_EXPERIMENT_EVIDENCE_CATEGORY
+        / f"{blake3_filename(forged.experiment_hash)}.json"
     )
     try:
         store.publish_experiment_results(
@@ -893,7 +897,7 @@ def test_selection_resolution_is_owned_by_sector_and_refuses_wrong_axes(  # type
             kind="SectorForecastSelection",
             method_id="EWMA_SECTOR_MEAN",
             sector_experiment_hash=None,
-            selection_hash="0" * 64,
+            selection_hash=fixture_digest("0"),
         )
 
 
@@ -1094,13 +1098,21 @@ def _reseal_forged_experiment(  # type: ignore[no-untyped-def]
     )
     descriptors = store.root / "result-descriptors"
     children = (
-        descriptors / SECTOR_TARGET_EVIDENCE_CATEGORY / f"{target.evidence_hash}.json",
-        descriptors / SECTOR_FORECAST_SURFACE_CATEGORY / f"{surface.surface_hash}.json",
-        descriptors / SECTOR_FORECAST_EVALUATION_CATEGORY / f"{evaluation.evaluation_hash}.json",
+        descriptors
+        / SECTOR_TARGET_EVIDENCE_CATEGORY
+        / f"{blake3_filename(target.evidence_hash)}.json",
+        descriptors
+        / SECTOR_FORECAST_SURFACE_CATEGORY
+        / f"{blake3_filename(surface.surface_hash)}.json",
+        descriptors
+        / SECTOR_FORECAST_EVALUATION_CATEGORY
+        / f"{blake3_filename(evaluation.evaluation_hash)}.json",
     )
     written = [path for path in children if not path.exists()]
     written.append(
-        store.root / SECTOR_EXPERIMENT_EVIDENCE_CATEGORY / f"{root.experiment_hash}.json"
+        store.root
+        / SECTOR_EXPERIMENT_EVIDENCE_CATEGORY
+        / f"{blake3_filename(root.experiment_hash)}.json"
     )
     store.publish_experiment_results(target, surface, evaluation, root)
     return root.experiment_hash, written
@@ -1150,7 +1162,7 @@ def test_forged_recipe_policy_and_closure_cannot_pass_the_verifier(  # type: ign
         with pytest.raises(SectorResearchError, match="evidence_target_policy_not_installed"):
             service.verify(experiment_hash=forged)
 
-        forged, paths = _reseal_forged_experiment(store, ewma, closure_hash="f" * 64)
+        forged, paths = _reseal_forged_experiment(store, ewma, closure_hash=fixture_digest("f"))
         written.extend(paths)
         with pytest.raises(SectorResearchError, match="evidence_execution_closure_drift"):
             service.verify(experiment_hash=forged)
@@ -1292,6 +1304,6 @@ def test_a_campaign_document_is_read_by_the_one_declaration_loader() -> None:
     with pytest.raises(yaml.YAMLError, match="twice"):
         SectorCampaignRequest.from_yaml(
             "campaign_id: a\ncampaign_id: b\n",
-            causal_outcome_snapshot_hash="0" * 64,
-            sector_revision="0" * 64,
+            causal_outcome_snapshot_hash=fixture_digest("0"),
+            sector_revision=fixture_digest("0"),
         )

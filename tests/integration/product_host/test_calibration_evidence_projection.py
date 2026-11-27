@@ -34,6 +34,7 @@ from alphalattice.investment.portfolio_strategy_lab.application.calibration impo
     publish_consumed_observations,
     publish_observations,
 )
+from tests._support.identity_fixtures import fixture_digest
 from tests.portfolio_strategy_lab.local_web_support import TEST_PACKAGE
 
 
@@ -51,27 +52,27 @@ def test_calibration_keeps_full_evidence_when_projected_values_agree(live):
         returns=np.full_like(values, np.nan),
         eligible=np.ones(values.shape, dtype=np.bool_),
         strategy_package_hash=TEST_PACKAGE.package_hash,
-        component_recipe_hash="b" * 64,
+        component_recipe_hash=fixture_digest("b"),
         rule=FrozenRankCalibrationRule.create(activation_session=date(2021, 9, 7)),
         formation_sessions=days[:3],
         holding_end_sessions=(None,) * 3,
         ordered_listing_ids=ids,
-        source_hashes=("c" * 64,),
+        source_hashes=(fixture_digest("c"),),
         origin="SYNTHETIC_QA_INPUTS",
     )
     score = seal_current_contract(
         FrozenComponentScoreSnapshot,
         {
-            "request_hash": "d" * 64,
+            "request_hash": fixture_digest("d"),
             "strategy_package_hash": TEST_PACKAGE.package_hash,
-            "component_recipe_hash": "b" * 64,
-            "inference_authority_hash": "c" * 64,
-            "observation_snapshot_hash": "e" * 64,
+            "component_recipe_hash": fixture_digest("b"),
+            "inference_authority_hash": fixture_digest("c"),
+            "observation_snapshot_hash": fixture_digest("e"),
             "formation_session": days[-1],
             "ordered_listing_ids": ids,
             "feature_values_hashes": (),
             "model_identity_hashes": (),
-            "projection_hash": "f" * 64,
+            "projection_hash": fixture_digest("f"),
             "scores": tuple(map(float, range(len(ids)))),
             "live": (True,) * len(ids),
             "prediction_calls": 0,
@@ -89,8 +90,8 @@ def test_calibration_keeps_full_evidence_when_projected_values_agree(live):
         ),
         score_snapshot_hash=score.snapshot_hash,
         history_score_hashes=(score.snapshot_hash,),
-        source_hash="c" * 64,
-        implementation_hash="f" * 64,
+        source_hash=fixture_digest("c"),
+        implementation_hash=fixture_digest("f"),
     )
     captured = LocalQAMarketSnapshot.create(
         source_hash=plan.source_hash,
@@ -164,12 +165,12 @@ def test_calibration_keeps_dated_membership_and_score_refusals_with_scalar_eligi
         returns=np.full_like(values, np.nan),
         eligible=seed_eligible,
         strategy_package_hash=TEST_PACKAGE.package_hash,
-        component_recipe_hash="b" * 64,
+        component_recipe_hash=fixture_digest("b"),
         rule=rule,
         formation_sessions=days[:3],
         holding_end_sessions=(None,) * 3,
         ordered_listing_ids=ids,
-        source_hashes=("c" * 64,),
+        source_hashes=(fixture_digest("c"),),
         origin="SYNTHETIC_QA_INPUTS",
     )
     history = []
@@ -178,16 +179,16 @@ def test_calibration_keeps_dated_membership_and_score_refusals_with_scalar_eligi
         score = seal_current_contract(
             FrozenComponentScoreSnapshot,
             {
-                "request_hash": "d" * 64,
+                "request_hash": fixture_digest("d"),
                 "strategy_package_hash": TEST_PACKAGE.package_hash,
-                "component_recipe_hash": "b" * 64,
-                "inference_authority_hash": "c" * 64,
-                "observation_snapshot_hash": "e" * 64,
+                "component_recipe_hash": fixture_digest("b"),
+                "inference_authority_hash": fixture_digest("c"),
+                "observation_snapshot_hash": fixture_digest("e"),
                 "formation_session": day,
                 "ordered_listing_ids": selected,
                 "feature_values_hashes": (),
                 "model_identity_hashes": (),
-                "projection_hash": "f" * 64,
+                "projection_hash": fixture_digest("f"),
                 "scores": tuple(
                     None if listing == inactive else float(ids.index(listing))
                     for listing in selected
@@ -209,8 +210,8 @@ def test_calibration_keeps_dated_membership_and_score_refusals_with_scalar_eligi
         ),
         score_snapshot_hash=history[-1].snapshot_hash,
         history_score_hashes=tuple(score.snapshot_hash for score in history),
-        source_hash="c" * 64,
-        implementation_hash="f" * 64,
+        source_hash=fixture_digest("c"),
+        implementation_hash=fixture_digest("f"),
     )
     captured = LocalQAMarketSnapshot.create(
         source_hash=plan.source_hash,

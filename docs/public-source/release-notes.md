@@ -3,6 +3,15 @@ Last checked: 2026-11-24 against 0.2.9
 
 Latest released version: [0.2.9](#029). Earlier measurements describe their own versions.
 
+## 0.2.10 (unreleased)
+
+**Start with a fresh data root and research workspace.** AlphaLattice now uses
+BLAKE3 for internal identities and verification. It opens only data created in
+the new format. Use the original release to open data roots, workspaces, and
+backups created by an earlier release.
+
+Request fields carrying internal digests now require the `blake3:` prefix. Earlier digests are refused.
+
 ## 0.2.9
 
 **AlphaLattice 0.2.9 starts faster, runs Tasks more reliably, frees unused storage, and makes research results easier to check.**

@@ -13,6 +13,7 @@ import pytest
 from alphalattice.capabilities.data.errors import DataError
 from alphalattice.foundation.data_layer import arrays, history
 from alphalattice.foundation.data_layer.store import StorePort
+from tests._support.identity_fixtures import fixture_digest
 
 TEST_SOURCE = "src/alphalattice/foundation/data_layer/arrays.py"
 
@@ -75,8 +76,9 @@ def test_a_workspace_copy_reads_the_lanes_it_carries_on_its_own_root(
     lane = {"value": np.array([np.nan, -0.0])}
     columns = arrays.keep(root, log, lane, workspace=held)
     packed = arrays.keep_packed(root, log, b"legacy", workspace=held)
+    alpha_content = fixture_digest("carried-alpha")
     alpha = history.keep_alpha_part(
-        "a" * 64, "alpha-layout", b"alpha body", upgrade_owner=(log, root, held)
+        alpha_content, "alpha-layout", b"alpha body", upgrade_owner=(log, root, held)
     )
     for name, data in (("dir/b", b"B"), ("dir/a", b"A"), ("dir/c", b"C")):
         history.keep_workspace_file(held, name, data)
@@ -105,8 +107,8 @@ def test_a_workspace_copy_reads_the_lanes_it_carries_on_its_own_root(
             assert history.read_kept_file("copy", "dir/b") == b"B2"
             assert history.read_array(columns, packed=True) == lane["value"].tobytes()
             assert history.read_array(packed, packed=True) == b"legacy"
-            assert history.alpha_part_body_digest("a" * 64, "alpha-layout") == alpha
-            assert history.read_alpha_part("a" * 64, "alpha-layout") == b"alpha body"
+            assert history.alpha_part_body_digest(alpha_content, "alpha-layout") == alpha
+            assert history.read_alpha_part(alpha_content, "alpha-layout") == b"alpha body"
             holds = history._open["log"].read("SELECT DISTINCT root_id FROM live_ref")
             assert [row[0] for row in holds] == ["copy"]
         finally:

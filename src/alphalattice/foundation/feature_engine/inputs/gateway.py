@@ -10,7 +10,6 @@ case.  It never edits a value in order to make data pass.
 from __future__ import annotations
 
 import json
-import re
 from collections import defaultdict
 from collections.abc import Mapping
 from dataclasses import asdict, dataclass, replace
@@ -49,6 +48,7 @@ from alphalattice.foundation.market_data_ops.sources.membership import (
     journal_members,
     membership_identity,
 )
+from alphalattice.kernel.identity import is_blake3
 
 from .contracts import (
     FEATURE_QUALIFICATION_DOMAINS,
@@ -174,10 +174,10 @@ class ListingQualityEvidence:
         """Validate the evidence range, identities and failure facts."""
         if self.range_start > self.range_end:
             raise ValueError("quality evidence range is reversed")
-        if len(self.evidence_hash) != 64:
-            raise ValueError("quality evidence requires a SHA-256 identity")
-        if self.anomaly_signature_hash is not None and len(self.anomaly_signature_hash) != 64:
-            raise ValueError("anomaly signature requires a SHA-256 identity")
+        if not is_blake3(self.evidence_hash):
+            raise ValueError("quality evidence requires a BLAKE3 identity")
+        if self.anomaly_signature_hash is not None and not is_blake3(self.anomaly_signature_hash):
+            raise ValueError("anomaly signature requires a BLAKE3 identity")
         if self.unexplained_moves and (
             tuple(item.session for item in self.unexplained_moves) != self.unexplained_sessions
         ):
@@ -193,11 +193,10 @@ class ListingQualityEvidence:
         )
         if any(alias_fields) and not all(alias_fields):
             raise ValueError("verified alias evidence must be complete")
-        if (
-            self.verified_alias_evidence_hash is not None
-            and len(self.verified_alias_evidence_hash) != 64
+        if self.verified_alias_evidence_hash is not None and not is_blake3(
+            self.verified_alias_evidence_hash
         ):
-            raise ValueError("verified alias evidence requires a SHA-256 identity")
+            raise ValueError("verified alias evidence requires a BLAKE3 identity")
 
     @property
     def admitted(self) -> bool:
@@ -326,10 +325,7 @@ class FeatureInputAdmission:
             and feature_qualification_hash is None
         ):
             raise ValueError("base Feature admission requires materialized qualification evidence")
-        if feature_qualification_hash is not None and (
-            len(feature_qualification_hash) != 64
-            or any(value not in "0123456789abcdef" for value in feature_qualification_hash)
-        ):
+        if feature_qualification_hash is not None and not is_blake3(feature_qualification_hash):
             raise ValueError("base Feature qualification identity is invalid")
         counts: dict[str, int] = defaultdict(int)
         for quarantine in quarantines:
@@ -476,7 +472,6 @@ class FeatureInputAgentCase:
 
 QUARANTINE_CONTINUATION_RULE = "recoverable_quarantine.unchanged_unexplained_move.v1"
 CONTINUABLE_OPTION_IDS: frozenset[str] = frozenset({"recoverable_quarantine"})
-_SHA256_HEX = re.compile(r"[0-9a-f]{64}")
 
 
 @dataclass(frozen=True)
@@ -558,13 +553,13 @@ class QuarantineContinuation:
         """Read a persisted record whose identity is present, well-formed and matching.
 
         A document without its ``continuation_hash`` (absent, empty or not a
-        SHA-256) is refused before any value is read; one whose identity does
+        tagged BLAKE3) is refused before any value is read; one whose identity does
         not match its content is refused by the construction. The reader
         never supplies an identity a document lacks.
         """
         payload = json.loads(document)
         given = payload.get("continuation_hash") if isinstance(payload, dict) else None
-        if not isinstance(given, str) or _SHA256_HEX.fullmatch(given) is None:
+        if not isinstance(given, str) or not is_blake3(given):
             raise ValueError("feature_input.continuation_identity_absent")
         record: QuarantineContinuation = TypeAdapter(cls).validate_json(document)
         if record.continuation_hash != given:

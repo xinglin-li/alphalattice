@@ -95,69 +95,7 @@ class HistoricalEvidenceBindings:
         )
 
 
-SUPPORTED_HISTORICAL_BINDINGS: tuple[HistoricalEvidenceBindings, ...] = (
-    # The tuple at f2af8500d859b824ed202e292a0eedd117f8529c, the backend baseline
-    # the lead accepted (unchanged through the first-release integration's
-    # T1-T3, c40b6cad..9b1de175): the QA copies of its acceptance (ae-fr-live,
-    # ae-fr-fresh-*) and any workspace run on the accepted baseline sealed
-    # analyses and reviews under it. T4's repair of the report period rotates
-    # the canonicalization binding (structure.py). Listed so those artifacts
-    # re-read exactly as sealed; it grants no current eligibility.
-    HistoricalEvidenceBindings(
-        acquisition_binding_hash=(
-            "392ef08ab318b0c184f5a35d51981201196f120714426723848c71415f82c346"
-        ),
-        canonicalization_binding_hash=(
-            "9922289905e55bd26ca771760f92894b65c0acfd5b7811af97e4e1b7e800c536"
-        ),
-        retrieval_binding_hash=("ffc203914422a488e17a4469b7fe538ebd5421d3213549b2f6a2f9159680ed48"),
-        analysis_policy_hash=("d3e3cbeb09c8f86d0de7c227e48bae10194a1d0ebfd6bdf69d4add7af0a04114"),
-        decision_policy_hash=("e0b12bbe19341c4f8212b9843ada1790b0c6adaed8a2fbccc9a511c2b7c08577"),
-        publication_binding_hash=(
-            "01a32a4c23e9a24d3a924c1bcec229ddd9332868721f637093ffeca53403f120"
-        ),
-    ),
-    # The tuple of release 0.1.3 (develop through bd11bbccf): a person's workspace may hold
-    # analyses and reviews sealed under it. The SEC source's clamp to its admission's documents
-    # per issuer (2026-10-09) rotates the acquisition binding (sec_edgar.py). Listed so those
-    # artifacts re-read exactly as sealed; it grants no current eligibility.
-    HistoricalEvidenceBindings(
-        acquisition_binding_hash=(
-            "259473047bff6003faf3cd2e8f72d42e2f4a7a87ddf89ca3ce53adbd57b7cd47"
-        ),
-        canonicalization_binding_hash=(
-            "8b5a16e890540e4fad64af6fc3e04046b024173e4b586e5419e2837c0856ca44"
-        ),
-        retrieval_binding_hash=("45ee521713056588758ff624627b3b77db7230b7ce2b7961567e34a94e726c59"),
-        analysis_policy_hash=("1e0a84f859aade29d3415002c27a851bfa63034cda358c4653261d80c036d301"),
-        decision_policy_hash=("fd1161bf40ca1077ad8d9a5a1a18f7ec2990d7ed5cb60b6a9ccad3e8fef4993c"),
-        publication_binding_hash=(
-            "906d733cbae3d8904964959d1ebd72f8182f0d316f8e54aa19d69e28f575742a"
-        ),
-    ),
-    # The tuple of develop before review searched the Host's retrieval store (34eecd808): a
-    # workspace on a 0.2.8 development build may hold analyses and reviews sealed under it.
-    # Review on the retrieval store rotates the canonicalization binding (the store-backed
-    # library), the retrieval binding (the store's generations and search) and the analysis
-    # policy (the per-query scores the receipt seals). Listed so those artifacts re-read exactly
-    # as sealed, labelled historical; it grants no current eligibility.
-    HistoricalEvidenceBindings(
-        acquisition_binding_hash=(
-            "01133406e6c5153e9c7513cdfae0e08865e18c54c09009de3be5bc44a6cff175"
-        ),
-        canonicalization_binding_hash=(
-            "a9653304f517cbf7b54fc7322f64598c96f8c47e7e9042bdd5190f1f986f5476"
-        ),
-        retrieval_binding_hash=("897ebf16a9006c85d63f787002c4608f41f5328baf1eb8b23bda8a84efeca457"),
-        analysis_policy_hash=("d4e87ce6199820036b37e6dc7651d6a7488f60efafa4f077d30cec161a177faf"),
-        decision_policy_hash=("b6c20ccd60d75b42f42654664264f599c60062dadd60f0b196e641ebc211916b"),
-        publication_binding_hash=(
-            "d0095e24a209736d3c762e40e676b1f32469e2daba5e834bfb93f5710e8591a5"
-        ),
-    ),
-    # No kept workspace holds a publication under the removed bindings. Their readback
-    # is observed history, never current authority (`ObservedEvidenceBindings`).
-)
+SUPPORTED_HISTORICAL_BINDINGS: tuple[HistoricalEvidenceBindings, ...] = ()
 
 
 @dataclass(frozen=True, slots=True)

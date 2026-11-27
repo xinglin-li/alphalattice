@@ -56,6 +56,7 @@ from alphalattice.oversight.chief_risk_officer.runtime.portfolio_review_task imp
 from tests._support.alternative_evidence_desk_fixtures import (
     review_on_the_store as review_on_the_store,
 )
+from tests._support.identity_fixtures import fixture_digest
 from tests.alternative_evidence_desk.planted_corpus import _NOW
 from tests.alternative_evidence_desk.review_dossiers import controlled_answer
 from tests.alternative_evidence_desk.review_http_support import (
@@ -112,9 +113,7 @@ def seed_update(service, n, *, previous=None, observed=False, legacy_settlement=
     )
     store.publish_decision_checkpoint(n.checkpoint)
     store.content.publish_model(category="decision-plans", value=plan, identity_field="plan_hash")
-    store.content.publish_model(
-        category="decision-observations", value=market, identity_field="content_hash"
-    )
+    store.publish_decision_observations(market)
     value = advance_decision_state(
         checkpoint=n.checkpoint,
         previous=previous,
@@ -202,6 +201,7 @@ def seed_update(service, n, *, previous=None, observed=False, legacy_settlement=
         )
     assert registry.task(task.task_id).lifecycle is TaskLifecycle.SUCCEEDED
     body = service.get(f"/api/portfolio-update?task_id={task.task_id}")
+    assert "publication" in body, body
     assert body["publication"]["content_hash"] == value.content_hash
     return value, body["review_selector"]
 
@@ -217,17 +217,15 @@ def updated(tmp_path, numerical):
         report=SimpleNamespace(window_end_book=SimpleNamespace(positions=positions)),
     )
     service = start_service(workspace, authority, tmp_path)
-    value, selector = seed_update(service, numerical)
     context = SimpleNamespace(
         service=service,
         authority=authority,
         workspace=workspace,
-        value=value,
-        selector=selector,
         n=numerical,
         path=tmp_path,
     )
     try:
+        context.value, context.selector = seed_update(service, numerical)
         yield context
     finally:
         context.service.session.stop()
@@ -271,7 +269,7 @@ def test_updated_book_uses_exact_source_not_the_default_result(updated, monkeypa
     assert reused["publication_task_id"] == task
     expected = {"operation": "PORTFOLIO_UPDATE_READBACK", "task_id": task}
     assert continued("PORTFOLIO_UPDATE_READBACK", reused, {}, frozenset({"task_id"})) == expected
-    assert reused_read(service.registry, "0" * 64, "READ") == {}
+    assert reused_read(service.registry, fixture_digest("unrun update plan"), "READ") == {}
     refused = service.agent(Request(operation="EXPERIMENT_READBACK", task_id=UUID(task)))
     assert refused["failure_code"] == "research_experiment.task_kind_mismatch", refused
     assert refused["detail"] and refused["task_kind"], refused
@@ -316,8 +314,12 @@ def test_updated_book_uses_exact_source_not_the_default_result(updated, monkeypa
         assert cold["state"] == "EVIDENCE_AUTHORITY_NOT_ADMITTED"
         assert cold["book"]["committee_context"] == context
     initial = len(service.registry.tasks())
+    wrong_publication = fixture_digest("unbound update publication")
     for replacement, refused in (
-        ({"update_publication_hash": "0" * 64}, "portfolio_update.publication_not_bound_to_task"),
+        (
+            {"update_publication_hash": wrong_publication},
+            "portfolio_update.publication_not_bound_to_task",
+        ),
         (
             {"position_basis": "OBSERVED_RESEARCH_ENTRY"},
             "product_host.evidence_review_update_basis_mismatch",
@@ -446,7 +448,7 @@ def test_updated_book_uses_exact_source_not_the_default_result(updated, monkeypa
     code, body = service.request(
         "/api/research/delivery",
         method="POST",
-        payload={**delivery_request, "update_publication_hash": "0" * 64},
+        payload={**delivery_request, "update_publication_hash": wrong_publication},
     )
     assert code == 200
     assert body["status"] == "REFUSED"
@@ -670,10 +672,8 @@ def test_update_review_recovery_revalidates_its_exact_source(
     task_id = UUID(admitted["task_id"])
     task = service.registry.task(task_id)
     assert task.lifecycle is TaskLifecycle.RECOVERY_REQUIRED
-    path = (
-        service.session.operations.updates.store.root
-        / "decision-updates"
-        / f"{c.value.content_hash}.json"
+    path = service.session.operations.updates.store.content.artifact_path(
+        category="decision-updates", content_hash=c.value.content_hash
     )
     original = path.read_bytes()
     calls = len(service.review.review_actor.observed_deadlines)
@@ -788,7 +788,9 @@ def test_a_sealed_review_update_is_verified_once_for_its_concurrent_readers(
             held["publication"] = None
             assert operations._read_review_update(task, publication) == bodies[1]
             assert len(verified) == before + 3
-        path = operations.updates.store.root / "decision-updates" / f"{publication}.json"
+        path = operations.updates.store.content.artifact_path(
+            category="decision-updates", content_hash=publication
+        )
         original_bytes = path.read_bytes()
         try:
             path.write_bytes(b"tampered")

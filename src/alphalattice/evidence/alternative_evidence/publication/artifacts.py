@@ -39,6 +39,7 @@ from alphalattice.evidence.alternative_evidence.sources.contracts import (
     AcquiredEvidenceSourceSet,
     parse_source_set,
 )
+from alphalattice.kernel.identity import blake3_filename, blake3_from_filename, is_blake3
 
 
 class AlternativeEvidencePublicationError(ValueError):
@@ -231,15 +232,26 @@ class AlternativeEvidenceArtifactStore:
         if category not in _CATEGORIES or not directory.is_dir():
             return ()
         return tuple(
-            self.load(category, path.stem, model) for path in sorted(directory.glob("*.json"))
+            self.load(category, self.file_identity(path), model)
+            for path in sorted(directory.glob("*.json"))
         )
 
-    def _path(self, category: str, identity: str) -> Path:
-        if not _is_hash(identity) or category not in _CATEGORIES:
+    @staticmethod
+    def file_identity(path: Path) -> str:
+        """Read the digest from an artifact's registered filename."""
+        identity = blake3_from_filename(path.stem)
+        if identity is None:
             raise AlternativeEvidencePublicationError(
                 "alternative_evidence.artifact_reference_invalid"
             )
-        return self.root / category / f"{identity}.json"
+        return identity
+
+    def _path(self, category: str, identity: str) -> Path:
+        if not is_blake3(identity) or category not in _CATEGORIES:
+            raise AlternativeEvidencePublicationError(
+                "alternative_evidence.artifact_reference_invalid"
+            )
+        return self.root / category / f"{blake3_filename(identity)}.json"
 
     @staticmethod
     def _atomic_write(target: Path, content: bytes) -> None:
@@ -325,10 +337,6 @@ def _identity_field(model: type[BaseModel]) -> str:
     matches = [name for name in model.model_fields if name.endswith("_hash")]
     # Every stored model has exactly one self-identity as its final hash field.
     return str(matches[-1])
-
-
-def _is_hash(value: str) -> bool:
-    return len(value) == 64 and all(character in "0123456789abcdef" for character in value)
 
 
 def _serialized(model: BaseModel) -> bytes:

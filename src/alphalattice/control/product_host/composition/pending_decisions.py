@@ -72,8 +72,7 @@ def _data_issues(readback: Mapping[str, Any]) -> list[dict[str, Any]]:
     cases: dict[str, dict[str, Any]] = {}
     for name, request in offered.items():
         if name.startswith("preview:"):
-            _prefix, case, _option = name.split(":", 2)
-            cases.setdefault(case, {})[name] = request
+            cases.setdefault(request["data_issue_case_token"], {})[name] = request
     return [
         {
             "kind": "DATA_ISSUE",

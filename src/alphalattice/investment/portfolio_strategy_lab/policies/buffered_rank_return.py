@@ -20,7 +20,7 @@ from alphalattice.capabilities.portfolio_backtesting.contracts import (
 from alphalattice.capabilities.portfolio_inputs.signed_score.contracts import (
     PortfolioExecutionEvents,
 )
-from alphalattice.kernel.identity import identity_sha256
+from alphalattice.kernel.identity import BLAKE3_PATTERN, identity_blake3, tagged_blake3
 
 from .buffered_equal_weight import whole_book_equal_weight_target, whole_book_hysteresis_selection
 from .contracts import (
@@ -55,7 +55,7 @@ type IntArray = npt.NDArray[np.int64]
 
 
 def _array_hash(values: np.ndarray, *, dtype: npt.DTypeLike) -> str:
-    return identity_sha256(np.ascontiguousarray(values, dtype=dtype).tobytes()).hexdigest()
+    return tagged_blake3(identity_blake3(np.ascontiguousarray(values, dtype=dtype).tobytes()))
 
 
 def _readonly(values: npt.NDArray[np.generic]) -> npt.NDArray[np.generic]:
@@ -181,7 +181,7 @@ class WholeBookHysteresisCausalRankMuRecipe(BaseModel):  # type: ignore[misc]
     bucket_count: Literal[20] = 20
     lookback: Literal[252] = 252
     maximum_weight: float = 0.06
-    recipe_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
+    recipe_hash: str = Field(pattern=BLAKE3_PATTERN)
 
     @property
     def policy_id(self) -> str:

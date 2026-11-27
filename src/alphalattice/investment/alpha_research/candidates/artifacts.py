@@ -22,6 +22,7 @@ from alphalattice.investment.sector_research.models.legacy_excess_ema import (
     SectorEmaAlphaSurface,
     sector_ema_table_content_hash,
 )
+from alphalattice.kernel.identity import blake3_filename
 
 from .contracts import (
     AlphaCandidateRegistrySnapshot,
@@ -76,7 +77,9 @@ class AlphaGoalResearchArtifactStore:
             raise ValueError("alpha_research.sector_ema_table_hash_mismatch")
         sink = pa.BufferOutputStream()
         pq.write_table(table, sink, compression="zstd")
-        target = self.root / "sector-ema-surfaces" / f"{manifest.manifest_hash}.parquet"
+        target = (
+            self.root / "sector-ema-surfaces" / f"{blake3_filename(manifest.manifest_hash)}.parquet"
+        )
         self._atomic_bytes(target, sink.getvalue().to_pybytes())
         durable = pq.read_table(target).combine_chunks()
         if sector_ema_table_content_hash(durable) != manifest.table_content_hash:
@@ -97,7 +100,7 @@ class AlphaGoalResearchArtifactStore:
                 disagree.
         """
         manifest = self._load("sector-ema-manifests", value_hash, SectorEmaAlphaManifest)
-        table_path = self.root / "sector-ema-surfaces" / f"{value_hash}.parquet"
+        table_path = self.root / "sector-ema-surfaces" / f"{blake3_filename(value_hash)}.parquet"
         table = pq.read_table(table_path).combine_chunks()
         if (
             sector_ema_table_content_hash(table) != manifest.table_content_hash
@@ -210,7 +213,7 @@ class AlphaGoalResearchArtifactStore:
                 publication.
         """
         uri = self._publish("safe-projections", value.projection_hash, value)
-        pointer = self.root / "projection-by-marker" / f"{value.marker_hash}.json"
+        pointer = self.root / "projection-by-marker" / f"{blake3_filename(value.marker_hash)}.json"
         payload = {
             "marker_hash": value.marker_hash,
             "projection_hash": value.projection_hash,
@@ -398,7 +401,9 @@ class AlphaGoalResearchArtifactStore:
         Raises:
             ValueError: The lookup marker_hash differs from the requested marker.
         """
-        payload = self._read_json(self.root / "projection-by-marker" / f"{marker_hash}.json")
+        payload = self._read_json(
+            self.root / "projection-by-marker" / f"{blake3_filename(marker_hash)}.json"
+        )
         if payload.get("marker_hash") != marker_hash:
             raise ValueError("alpha_research.projection_pointer_tampered")
         return self.load_projection(str(payload["projection_hash"]))
@@ -485,7 +490,7 @@ class AlphaGoalResearchArtifactStore:
         The active pointer is never opened.  A frozen consumer that recorded
         ``marker_hash`` keeps reading after Alpha activates a newer marker.
         """
-        if not (self.root / "markers" / f"{marker_hash}.json").is_file():
+        if not (self.root / "markers" / f"{blake3_filename(marker_hash)}.json").is_file():
             raise FileNotFoundError("alpha_research.sealed_marker_missing")
         marker = self._load("markers", marker_hash, AlphaGoalResearchMarker)
         if marker.marker_hash != marker_hash:
@@ -588,7 +593,7 @@ class AlphaGoalResearchArtifactStore:
             self._atomic_json(pointer, payload)
 
     def _publish(self, kind: str, value_hash: str, value: BaseModel) -> str:
-        path = self.root / kind / f"{value_hash}.json"
+        path = self.root / kind / f"{blake3_filename(value_hash)}.json"
         payload = value.model_dump(mode="json")
         if path.exists():
             if self._read_json(path) != payload:
@@ -598,7 +603,7 @@ class AlphaGoalResearchArtifactStore:
         return path.as_uri()
 
     def _load(self, kind: str, value_hash: str, model: type[ContractT]) -> ContractT:
-        path = self.root / kind / f"{value_hash}.json"
+        path = self.root / kind / f"{blake3_filename(value_hash)}.json"
         return cast(ContractT, model.model_validate(self._read_json(path)))
 
     @staticmethod

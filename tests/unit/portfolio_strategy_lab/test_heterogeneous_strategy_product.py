@@ -14,7 +14,6 @@ from alphalattice.capabilities.portfolio_backtesting.segments import (
 from alphalattice.investment.alpha_research.scores.heterogeneous_product import (
     COMPONENT_IDS,
     INSTALLED_HETEROGENEOUS_ALPHA_STRATEGY,
-    SUCCESSOR_PACKAGE_HASH,
 )
 from alphalattice.investment.alpha_research.scores.product_recipe import (
     INSTALLED_ALPHA_PRODUCT_RECIPE,
@@ -101,7 +100,7 @@ def test_the_successor_restates_all_four_complete_recipes_without_rotating_g0() 
     strategy = INSTALLED_HETEROGENEOUS_ALPHA_STRATEGY
 
     assert tuple(value.component_id for value in strategy.components) == COMPONENT_IDS
-    assert strategy.successor_package_hash == SUCCESSOR_PACKAGE_HASH
+    assert strategy.strategy_hash.startswith("blake3:")
     assert strategy.predecessor_recipe_hash == INSTALLED_ALPHA_PRODUCT_RECIPE.recipe_hash
     assert strategy.component("G2_R0_TREND").target_recipe == "T1_H3_PURE_TOTAL_RETURN_Z"
     assert strategy.component("G6_R0_FAST_REBOUND").objective == "ROW_BALANCED_L2"

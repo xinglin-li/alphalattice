@@ -7,6 +7,7 @@ from pathlib import Path
 
 from alphalattice.capabilities.domain_contracts import spawn
 from devtools.architecture.structural import file_text
+from tests._support.identity_fixtures import fixture_digest
 
 _OPTION_CASES = {
     "accessions": ("--acquire-sec", "--entities", "AAPL", "--accessions", "bad", "--preflight"),
@@ -43,7 +44,7 @@ _OPTION_CASES = {
         "fixture-input",
     ),
     "semantic_model": ("--acquire-sec", "--entities", "AAPL"),
-    "source_artifact_root": ("--source-set-hash", "a" * 64),
+    "source_artifact_root": ("--source-set-hash", fixture_digest("absent source set")),
     "source_set_hash": ("--source-set-hash", "../escape"),
 }
 

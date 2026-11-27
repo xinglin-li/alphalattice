@@ -13,6 +13,7 @@ from alphalattice.evidence.alternative_evidence.contracts import (
     AlternativeEvidenceContract,
     validate_contract_identity,
 )
+from alphalattice.kernel.identity import BLAKE3_PATTERN
 
 ACQUISITION_BINDING_ROLE = "alternative_evidence.acquisition_binding"
 CANONICALIZATION_BINDING_ROLE = "alternative_evidence.canonicalization_binding"
@@ -54,25 +55,25 @@ class AlternativeEvidenceAnalysisPublication(AlternativeEvidenceContract):
     kind: Literal["AlternativeEvidenceAnalysisPublication"] = (
         "AlternativeEvidenceAnalysisPublication"
     )
-    request_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
-    registry_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
-    source_snapshot_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
-    document_set_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
-    retrieval_generation_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
-    access_receipt_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
-    analyst_brief_receipt_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
-    analyst_brief_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
-    cro_package_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
-    obligation_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
-    acquisition_binding_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
-    canonicalization_binding_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
-    retrieval_binding_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
-    analysis_policy_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
-    decision_policy_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
-    publication_binding_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
+    request_hash: str = Field(pattern=BLAKE3_PATTERN)
+    registry_hash: str = Field(pattern=BLAKE3_PATTERN)
+    source_snapshot_hash: str = Field(pattern=BLAKE3_PATTERN)
+    document_set_hash: str = Field(pattern=BLAKE3_PATTERN)
+    retrieval_generation_hash: str = Field(pattern=BLAKE3_PATTERN)
+    access_receipt_hash: str = Field(pattern=BLAKE3_PATTERN)
+    analyst_brief_receipt_hash: str = Field(pattern=BLAKE3_PATTERN)
+    analyst_brief_hash: str = Field(pattern=BLAKE3_PATTERN)
+    cro_package_hash: str = Field(pattern=BLAKE3_PATTERN)
+    obligation_hash: str = Field(pattern=BLAKE3_PATTERN)
+    acquisition_binding_hash: str = Field(pattern=BLAKE3_PATTERN)
+    canonicalization_binding_hash: str = Field(pattern=BLAKE3_PATTERN)
+    retrieval_binding_hash: str = Field(pattern=BLAKE3_PATTERN)
+    analysis_policy_hash: str = Field(pattern=BLAKE3_PATTERN)
+    decision_policy_hash: str = Field(pattern=BLAKE3_PATTERN)
+    publication_binding_hash: str = Field(pattern=BLAKE3_PATTERN)
     published_at: datetime
     expires_at: datetime
-    publication_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
+    publication_hash: str = Field(pattern=BLAKE3_PATTERN)
 
     @model_validator(mode="after")  # type: ignore[untyped-decorator]
     def validate_publication(self) -> Self:

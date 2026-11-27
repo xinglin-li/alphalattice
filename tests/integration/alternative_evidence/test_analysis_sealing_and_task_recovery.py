@@ -61,7 +61,9 @@ from alphalattice.evidence.alternative_evidence.runtime.task_adapter import (
     SubmittedEvidenceAnalysis,
     alternative_evidence_document_task_contract,
 )
+from alphalattice.kernel.identity import blake3_filename
 from alphalattice.protocols.actor_execution import ActorKind, seal_actor_submission
+from tests._support.identity_fixtures import fixture_digest
 from tests.alternative_evidence_desk.document_intelligence_support import (
     _obligation,
     _open_recorded,
@@ -175,7 +177,9 @@ def test_the_host_seals_publishes_and_replays_the_analysis(tmp_path: Path) -> No
     with pytest.raises(AlternativeEvidencePublicationError, match="expired"):
         runtime.publications.read(publication_hash, now=later)
 
-    stored = next((tmp_path / "artifacts").rglob(f"{result.brief.brief_hash}.json"))
+    stored = next(
+        (tmp_path / "artifacts").rglob(f"{blake3_filename(result.brief.brief_hash)}.json")
+    )
     payload = json.loads(stored.read_text(encoding="utf-8"))
     payload["executive_summary"] = "tampered"
     stored.write_text(json.dumps(payload), encoding="utf-8")
@@ -264,7 +268,7 @@ def test_forged_host_policy_bindings_are_refused(tmp_path: Path) -> None:
     def _forge(binding: Any) -> Any:
         values = {
             **binding.model_dump(exclude={"binding_hash"}),
-            "validation_source_hash": "b" * 64,
+            "validation_source_hash": fixture_digest("forged validation source"),
         }
         return type(binding)(**values, binding_hash=str(canonical_hash(values)))
 
@@ -437,7 +441,10 @@ def test_external_analysis_reopens_preparation_and_recovers_without_another_retr
     )
     for field in ("packet_hash", "analysis_policy_hash", "decision_policy_hash"):
         with pytest.raises(ValueError, match="external_analysis_binding_changed"):
-            adapter.validate_submission(submitted.model_copy(update={field: "0" * 64}), now=_NOW)
+            adapter.validate_submission(
+                submitted.model_copy(update={field: fixture_digest("wrong submission binding")}),
+                now=_NOW,
+            )
     adapter.validate_submission(submitted, now=_NOW)
     contract = alternative_evidence_document_task_contract(
         request=request,
@@ -580,7 +587,7 @@ def test_a_stage_failure_names_the_owners_own_code(
     ) <= (FAILURE_CODE_MAX_LENGTH)
     legacy = {
         "kind": "AlternativeEvidenceUnitFailure",
-        "run_hash": "a" * 64,
+        "run_hash": fixture_digest("historical analysis run"),
         "unit_id": "u01",
         "ordered_entity_ids": ["AAPL"],
         "stage_id": "build_retrieval_generation",
@@ -910,5 +917,5 @@ def test_an_obligation_that_disagrees_with_the_request_is_refused_before_a_task(
                 request=request,
                 admission=admission,
                 obligation=obligation,
-                resource_binding_hash="0" * 64,
+                resource_binding_hash=fixture_digest("other evidence resources"),
             )

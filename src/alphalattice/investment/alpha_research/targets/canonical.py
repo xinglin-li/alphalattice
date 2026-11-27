@@ -46,7 +46,7 @@ from alphalattice.capabilities.quant.cross_section import (
     median_mad_winsor,
 )
 from alphalattice.capabilities.quant.sector_history import sector_positions
-from alphalattice.kernel.identity import identity_sha256
+from alphalattice.kernel.identity import BLAKE3_PATTERN, identity_blake3, tagged_blake3
 
 from .catalog import AlphaTargetCatalog, build_installed_alpha_target_catalog
 from .execution_outcome import AlphaTargetBoundaryError
@@ -121,9 +121,9 @@ class CanonicalAlphaTargetRecipe(BaseModel):  # type: ignore[misc]
     """Below two rows a sample deviation does not exist; the formation is
     unavailable rather than assigned an invented scale."""
 
-    sector_revision: str = Field(pattern=r"^[0-9a-f]{64}$")
+    sector_revision: str = Field(pattern=BLAKE3_PATTERN)
     sector_source: str = Field(min_length=1, max_length=96)
-    recipe_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
+    recipe_hash: str = Field(pattern=BLAKE3_PATTERN)
 
     @model_validator(mode="after")  # type: ignore[untyped-decorator]
     def validate_identity(self) -> Self:
@@ -265,7 +265,7 @@ def _lane_identity(values: FloatArray) -> str:
             {
                 "dtype": str(contiguous.dtype),
                 "shape": [int(value) for value in contiguous.shape],
-                "content": identity_sha256(contiguous.tobytes()).hexdigest(),
+                "content": tagged_blake3(identity_blake3(contiguous.tobytes())),
             }
         )
     )
@@ -283,19 +283,19 @@ class CanonicalAlphaTargetLaneIdentity(BaseModel):  # type: ignore[misc]
     model_config = ConfigDict(extra="forbid", frozen=True)
 
     kind: Literal["CanonicalAlphaTargetLaneIdentity"] = "CanonicalAlphaTargetLaneIdentity"
-    raw_log_execution_return_identity: str = Field(pattern=r"^[0-9a-f]{64}$")
-    simple_economic_return_identity: str = Field(pattern=r"^[0-9a-f]{64}$")
-    sector_center_identity: str = Field(pattern=r"^[0-9a-f]{64}$")
-    raw_residual_identity: str = Field(pattern=r"^[0-9a-f]{64}$")
-    bounded_residual_identity: str = Field(pattern=r"^[0-9a-f]{64}$")
-    redemeaned_residual_identity: str = Field(pattern=r"^[0-9a-f]{64}$")
-    cross_sectional_dispersion_identity: str = Field(pattern=r"^[0-9a-f]{64}$")
-    fit_target_identity: str = Field(pattern=r"^[0-9a-f]{64}$")
-    bounded_raw_return_identity: str | None = Field(default=None, pattern=r"^[0-9a-f]{64}$")
-    sector_residual_identity: str | None = Field(default=None, pattern=r"^[0-9a-f]{64}$")
-    ordered_sessions_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
-    ordered_listing_ids_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
-    lane_identity_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
+    raw_log_execution_return_identity: str = Field(pattern=BLAKE3_PATTERN)
+    simple_economic_return_identity: str = Field(pattern=BLAKE3_PATTERN)
+    sector_center_identity: str = Field(pattern=BLAKE3_PATTERN)
+    raw_residual_identity: str = Field(pattern=BLAKE3_PATTERN)
+    bounded_residual_identity: str = Field(pattern=BLAKE3_PATTERN)
+    redemeaned_residual_identity: str = Field(pattern=BLAKE3_PATTERN)
+    cross_sectional_dispersion_identity: str = Field(pattern=BLAKE3_PATTERN)
+    fit_target_identity: str = Field(pattern=BLAKE3_PATTERN)
+    bounded_raw_return_identity: str | None = Field(default=None, pattern=BLAKE3_PATTERN)
+    sector_residual_identity: str | None = Field(default=None, pattern=BLAKE3_PATTERN)
+    ordered_sessions_hash: str = Field(pattern=BLAKE3_PATTERN)
+    ordered_listing_ids_hash: str = Field(pattern=BLAKE3_PATTERN)
+    lane_identity_hash: str = Field(pattern=BLAKE3_PATTERN)
 
     @model_validator(mode="after")  # type: ignore[untyped-decorator]
     def validate_identity(self) -> Self:
@@ -541,16 +541,16 @@ class CanonicalAlphaTargetRecipeBinding(BaseModel):  # type: ignore[misc]
 
     kind: Literal["CanonicalAlphaTargetRecipeBinding"] = "CanonicalAlphaTargetRecipeBinding"
     target_recipe_id: str = Field(min_length=1, max_length=96)
-    target_recipe_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
+    target_recipe_hash: str = Field(pattern=BLAKE3_PATTERN)
     standardization_id: str = Field(min_length=1, max_length=128)
-    target_catalog_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
-    causal_outcome_snapshot_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
-    outcome_method_binding_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
+    target_catalog_hash: str = Field(pattern=BLAKE3_PATTERN)
+    causal_outcome_snapshot_hash: str = Field(pattern=BLAKE3_PATTERN)
+    outcome_method_binding_hash: str = Field(pattern=BLAKE3_PATTERN)
     maturity_lag_sessions: int = Field(ge=2)
     """Carried from the outcome method, never chosen here. The scale consumer
     reads its causal lag from this rather than branching on a horizon."""
 
-    binding_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
+    binding_hash: str = Field(pattern=BLAKE3_PATTERN)
 
     @classmethod
     def create(
@@ -618,10 +618,10 @@ class CanonicalAlphaTargetEvidence(BaseModel):  # type: ignore[misc]
     model_config = ConfigDict(extra="forbid", frozen=True)
 
     kind: Literal["CanonicalAlphaTargetEvidence"] = "CanonicalAlphaTargetEvidence"
-    recipe_binding_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
-    lane_identity_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
-    ordered_sessions_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
-    ordered_listing_ids_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
+    recipe_binding_hash: str = Field(pattern=BLAKE3_PATTERN)
+    lane_identity_hash: str = Field(pattern=BLAKE3_PATTERN)
+    ordered_sessions_hash: str = Field(pattern=BLAKE3_PATTERN)
+    ordered_listing_ids_hash: str = Field(pattern=BLAKE3_PATTERN)
     ordered_listing_ids: tuple[str, ...] = Field(min_length=1)
     formation_sessions: tuple[date, ...] = Field(min_length=1)
     cross_sectional_dispersion: tuple[float | None, ...] = Field(min_length=1)
@@ -630,11 +630,11 @@ class CanonicalAlphaTargetEvidence(BaseModel):  # type: ignore[misc]
 
     available: tuple[bool, ...] = Field(min_length=1)
     unavailable_reasons: tuple[str | None, ...] = Field(min_length=1)
-    cross_sectional_dispersion_identity: str = Field(pattern=r"^[0-9a-f]{64}$")
-    redemeaned_residual_identity: str = Field(pattern=r"^[0-9a-f]{64}$")
-    raw_log_execution_return_identity: str = Field(pattern=r"^[0-9a-f]{64}$")
-    fit_target_identity: str = Field(pattern=r"^[0-9a-f]{64}$")
-    evidence_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
+    cross_sectional_dispersion_identity: str = Field(pattern=BLAKE3_PATTERN)
+    redemeaned_residual_identity: str = Field(pattern=BLAKE3_PATTERN)
+    raw_log_execution_return_identity: str = Field(pattern=BLAKE3_PATTERN)
+    fit_target_identity: str = Field(pattern=BLAKE3_PATTERN)
+    evidence_hash: str = Field(pattern=BLAKE3_PATTERN)
 
     @model_validator(mode="after")  # type: ignore[untyped-decorator]
     def validate_identity(self) -> Self:
@@ -746,13 +746,13 @@ class CanonicalAlphaScoreBinding(BaseModel):  # type: ignore[misc]
     model_config = ConfigDict(extra="forbid", frozen=True)
 
     kind: Literal["CanonicalAlphaScoreBinding"] = "CanonicalAlphaScoreBinding"
-    alpha_score_surface_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
+    alpha_score_surface_hash: str = Field(pattern=BLAKE3_PATTERN)
     candidate_id: str = Field(min_length=1, max_length=128)
-    target_recipe_binding_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
-    target_evidence_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
-    ordered_listing_ids_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
-    formation_sessions_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
-    binding_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
+    target_recipe_binding_hash: str = Field(pattern=BLAKE3_PATTERN)
+    target_evidence_hash: str = Field(pattern=BLAKE3_PATTERN)
+    ordered_listing_ids_hash: str = Field(pattern=BLAKE3_PATTERN)
+    formation_sessions_hash: str = Field(pattern=BLAKE3_PATTERN)
+    binding_hash: str = Field(pattern=BLAKE3_PATTERN)
 
     @classmethod
     def create(

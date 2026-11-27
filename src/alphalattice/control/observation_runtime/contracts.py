@@ -9,6 +9,7 @@ from typing import Any, Literal, Protocol, Self
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 from alphalattice.capabilities.domain_contracts.identity import canonical_hash
+from alphalattice.kernel.identity import BLAKE3_PATTERN
 
 Hash = str
 
@@ -89,11 +90,11 @@ class ObservationPayloadRef(_Contract):
 
     kind: Literal["ObservationPayloadRef"] = "ObservationPayloadRef"
     artifact_kind: str = Field(min_length=1)
-    content_hash: Hash = Field(pattern=r"^[0-9a-f]{64}$")
+    content_hash: Hash = Field(pattern=BLAKE3_PATTERN)
     uri: str = Field(pattern=r"^playpen://")
     availability: ObservationAvailability
     byte_count: int | None = Field(default=None, ge=0)
-    ref_hash: Hash = Field(pattern=r"^[0-9a-f]{64}$")
+    ref_hash: Hash = Field(pattern=BLAKE3_PATTERN)
 
     @model_validator(mode="after")  # type: ignore[untyped-decorator]
     def validate_identity(self) -> Self:
@@ -117,11 +118,11 @@ class ObservationAuthorityReference(_Contract):
     kind: Literal["ObservationAuthorityReference"] = "ObservationAuthorityReference"
     owner_kind: str = Field(min_length=1)
     record_kind: str = Field(min_length=1)
-    record_hash: Hash = Field(pattern=r"^[0-9a-f]{64}$")
+    record_hash: Hash = Field(pattern=BLAKE3_PATTERN)
     task_id: str | None = None
     run_id: str | None = None
     subject_id: str | None = None
-    reference_hash: Hash = Field(pattern=r"^[0-9a-f]{64}$")
+    reference_hash: Hash = Field(pattern=BLAKE3_PATTERN)
 
     @model_validator(mode="after")  # type: ignore[untyped-decorator]
     def validate_identity(self) -> Self:
@@ -147,15 +148,15 @@ class ObservationAuthorityReadback(_Contract):
     """Proof returned by the named external owner after authoritative readback."""
 
     kind: Literal["ObservationAuthorityReadback"] = "ObservationAuthorityReadback"
-    reference_hash: Hash = Field(pattern=r"^[0-9a-f]{64}$")
+    reference_hash: Hash = Field(pattern=BLAKE3_PATTERN)
     owner_kind: str = Field(min_length=1)
     record_kind: str = Field(min_length=1)
-    record_hash: Hash = Field(pattern=r"^[0-9a-f]{64}$")
+    record_hash: Hash = Field(pattern=BLAKE3_PATTERN)
     task_id: str | None = None
     run_id: str | None = None
     subject_id: str | None = None
     safe_claims: tuple[tuple[str, str | int | bool | None], ...] = ()
-    readback_hash: Hash = Field(pattern=r"^[0-9a-f]{64}$")
+    readback_hash: Hash = Field(pattern=BLAKE3_PATTERN)
 
     @model_validator(mode="after")  # type: ignore[untyped-decorator]
     def validate_identity(self) -> Self:
@@ -235,7 +236,7 @@ class ObservationDraft(_Contract):
     retention_class: ObservationRetentionClass
     inline_safe_payload: dict[str, Any] | None = None
     payload_ref: ObservationPayloadRef | None = None
-    policy_hash: Hash = Field(pattern=r"^[0-9a-f]{64}$")
+    policy_hash: Hash = Field(pattern=BLAKE3_PATTERN)
 
     @model_validator(mode="after")  # type: ignore[untyped-decorator]
     def validate_draft(self) -> Self:

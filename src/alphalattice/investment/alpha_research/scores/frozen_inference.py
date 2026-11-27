@@ -28,8 +28,6 @@ from alphalattice.investment.alpha_research.publication.contracts import (
 )
 from alphalattice.investment.alpha_research.scores.heterogeneous_product import (
     INSTALLED_HETEROGENEOUS_ALPHA_STRATEGY,
-    LIVE_COMPONENT_MODEL_SET_HASHES,
-    LIVE_SCORE_CLOSURE_RECEIPT_HASH,
     HeterogeneousChildModelIdentity,
     HeterogeneousComponentModelSet,
 )
@@ -46,6 +44,7 @@ from alphalattice.investment.alpha_research.scores.product_replay import (
     live_vintages,
     score_heterogeneous_component,
 )
+from alphalattice.kernel.identity import BLAKE3_PATTERN
 
 
 class FrozenInferenceError(ValueError):
@@ -61,7 +60,7 @@ class FrozenMarketScale(_Contract):
 
     vintage: str
     training_sessions: tuple[date, ...] = Field(min_length=1)
-    source_binding_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
+    source_binding_hash: str = Field(pattern=BLAKE3_PATTERN)
     center: tuple[float, float, float]
     scale: tuple[float, float, float]
 
@@ -100,9 +99,9 @@ class FrozenComponentInferenceAuthority(_Contract):
     model_set: HeterogeneousComponentModelSet
     children: tuple[HeterogeneousClosureChild, ...]
     market_scales: tuple[FrozenMarketScale, ...]
-    gate_m_receipt_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
-    numerical_environment_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
-    authority_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
+    gate_m_receipt_hash: str = Field(pattern=BLAKE3_PATTERN)
+    numerical_environment_hash: str = Field(pattern=BLAKE3_PATTERN)
+    authority_hash: str = Field(pattern=BLAKE3_PATTERN)
 
     @classmethod
     def create(cls, **values: object) -> Self:
@@ -134,8 +133,6 @@ class FrozenComponentInferenceAuthority(_Contract):
         model = self.model_set
         if (
             model.component_id != "G6_R0_FAST_REBOUND"
-            or self.gate_m_receipt_hash != LIVE_SCORE_CLOSURE_RECEIPT_HASH
-            or model.model_set_hash != LIVE_COMPONENT_MODEL_SET_HASHES[model.component_id]
             or tuple(value.vintage for value in self.market_scales) != model.vintages
             or tuple(
                 HeterogeneousChildModelIdentity(

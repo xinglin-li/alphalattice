@@ -19,6 +19,7 @@ from alphalattice.foundation.feature_engine.catalog.observation_clock import (
     installed_source_availability_catalog,
     observation_clock_for,
 )
+from alphalattice.kernel.identity import BLAKE3_PATTERN
 
 from .catalog import default_extension_kernel_registry, extension_factor_specs
 from .core_bundle import numerical_spec_hash
@@ -129,7 +130,7 @@ class FactorFormulaSpecification(_Contract):
     factor_id: str = Field(min_length=1, max_length=128)
     scientific_question: str = Field(min_length=1)
     formula_ref: str = Field(min_length=1, max_length=128)
-    implementation_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
+    implementation_hash: str = Field(pattern=BLAKE3_PATTERN)
     source_fields: tuple[str, ...] = Field(min_length=1)
     price_basis: str = Field(min_length=1)
     formation_cutoff: str = Field(min_length=1)
@@ -149,7 +150,7 @@ class FactorFormulaSpecification(_Contract):
     golden_examples: tuple[FactorFormulaGoldenExample, ...] = Field(min_length=2)
     absolute_tolerance: float = Field(gt=0.0)
     relative_tolerance: float = Field(gt=0.0)
-    specification_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
+    specification_hash: str = Field(pattern=BLAKE3_PATTERN)
 
     @classmethod
     def create(cls, **values: Any) -> Self:
@@ -219,14 +220,14 @@ class FactorDevelopmentCapability(_Contract):
 
     kind: Literal["FactorDevelopmentCapability"] = "FactorDevelopmentCapability"
     factor_id: str
-    formula_specification_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
-    implementation_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
+    formula_specification_hash: str = Field(pattern=BLAKE3_PATTERN)
+    implementation_hash: str = Field(pattern=BLAKE3_PATTERN)
     preprocessing_role: str
     nearest_neighbor_factor_ids: tuple[str, ...] = Field(min_length=1)
     incremental_evidence_method: Literal["TRAINING_RIDGE_RESIDUALIZATION_LAMBDA_1E_6"] = (
         "TRAINING_RIDGE_RESIDUALIZATION_LAMBDA_1E_6"
     )
-    capability_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
+    capability_hash: str = Field(pattern=BLAKE3_PATTERN)
 
     @classmethod
     def create(cls, **values: Any) -> Self:
@@ -266,10 +267,10 @@ class FactorDevelopmentAdmissionReceipt(_Contract):
 
     kind: Literal["FactorDevelopmentAdmissionReceipt"] = "FactorDevelopmentAdmissionReceipt"
     factor_id: str
-    capability_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
+    capability_hash: str = Field(pattern=BLAKE3_PATTERN)
     disposition: Literal["ADMITTED", "REFUSED"]
     reason: str
-    receipt_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
+    receipt_hash: str = Field(pattern=BLAKE3_PATTERN)
 
     @classmethod
     def create(cls, **values: Any) -> Self:

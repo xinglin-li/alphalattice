@@ -66,6 +66,7 @@ from alphalattice.foundation.market_data_ops.storage.duckdb import MarketDataRep
 from alphalattice.foundation.research_foundation.runtime.delta import VerifiedPreResearchHead
 from alphalattice.investment.alpha_research.publication.artifacts import AlphaCurrentArtifactStore
 from alphalattice.kernel.clock import utc_now
+from alphalattice.kernel.identity import blake3_filename, blake3_from_filename
 
 
 def _strings(value: object) -> set[str]:
@@ -146,7 +147,11 @@ class ResearchInputStorage:
         if not path.exists():
             return {}
         data = json.loads(path.read_text(encoding="utf-8"))
-        receipt = self.owner.governance_root / "input-pin-receipts" / f"{data['receipt_hash']}.json"
+        receipt = (
+            self.owner.governance_root
+            / "input-pin-receipts"
+            / f"{blake3_filename(data['receipt_hash'])}.json"
+        )
         if (
             json.loads(receipt.read_text(encoding="utf-8")) != data["pins"]
             or canonical_hash(data["pins"]) != data["receipt_hash"]
@@ -199,10 +204,11 @@ class ResearchInputStorage:
         alpha = store.workspace_observation_history_retention(active_scope_hashes=scopes)
         causal = local_qa_preparation_retention_inventory(artifacts)
         causal_heads = {
-            p.stem
+            digest
             for p in (
                 artifacts / "data-operations/execution-outcomes/local-qa-preparation/heads"
             ).glob("*.json")
+            if (digest := blake3_from_filename(p.stem)) is not None
         }
         known = set(alpha.head_hashes) | causal_heads
         # Preserve explicit head references if a retained manifest or pin names
@@ -219,14 +225,14 @@ class ResearchInputStorage:
                 referenced_heads=tuple(h for h in heads if h in causal_heads),
             )
         retained = (
-            *((f.path, f.sha256, f.bytes) for f in alpha.roots),
+            *((f.path, f.digest, f.bytes) for f in alpha.roots),
             *(
                 (artifacts / f.relative_path, f.file_hash, f.byte_count)
                 for f in causal.protected_files
             ),
         )
         candidates = (
-            *((f.path, f.sha256) for f in alpha.targets),
+            *((f.path, f.digest) for f in alpha.targets),
             *((artifacts / f.relative_path, f.file_hash) for f in causal.candidate_files),
         )
         return {
@@ -263,7 +269,11 @@ class ResearchInputStorage:
         # workspace generation is known to an input: none is released for one.
         protected_panels: set[str] = set()
         protected_outcomes: set[str] = set()
-        panel_hashes = {p.stem for p in (panel_root / "manifests").glob("*.json")}
+        panel_hashes = {
+            digest
+            for path in (panel_root / "manifests").glob("*.json")
+            if (digest := blake3_from_filename(path.stem)) is not None
+        }
         market = MarketDataRepository(self.workspace)
         active = PanelStateRepository(
             market.database, market_data=market
@@ -286,7 +296,7 @@ class ResearchInputStorage:
         heads = []
         for path in sorted((artifacts / "pre-research-revisions/heads").glob("*.json")):
             head = VerifiedPreResearchHead.model_validate_json(path.read_bytes())
-            if head.head_hash != path.stem:
+            if head.head_hash != blake3_from_filename(path.stem):
                 raise ValueError("storage.retention_root_mismatch")
             protected_panels.add(head.panel_snapshot_hash)
             protected_outcomes.add(head.causal_execution_outcome_snapshot_hash)
@@ -300,7 +310,7 @@ class ResearchInputStorage:
                 resolver.feature_panel_manifest_uri(panel_hash)
             )
             protected.update(
-                panel_root / "chunks" / f"{chunk['chunk_hash']}.parquet"
+                panel_root / "chunks" / f"{blake3_filename(chunk['chunk_hash'])}.parquet"
                 for chunk in panel["chunks"]
             )
         outcomes = CausalExecutionOutcomeDevelopmentReader(artifacts).artifacts
@@ -391,9 +401,8 @@ class ResearchInputStorage:
             bundle = read_factor_bundle(self.workspace, binding_hash, verify=False)
             artifacts = factor_input_paths(self.workspace, binding_hash)[1]
             manifests = artifacts / "feature-panel/manifests"
-            panel = json.loads(
-                (manifests / f"{bundle.panel_snapshot_hash}.json").read_text(encoding="utf-8")
-            )
+            name = f"{blake3_filename(bundle.panel_snapshot_hash)}.json"
+            panel = json.loads((manifests / name).read_text(encoding="utf-8"))
             estimates.append(
                 storage_input_estimate(
                     active_listing_count=int(panel["active_listing_count"]),
@@ -557,7 +566,7 @@ class ResearchInputStorage:
         if binding is None:
             return {}
         payload, digest = verified_bytes(confined(self.workspace, binding.relative_path))
-        if digest != binding.file_sha256:
+        if digest != binding.file_digest:
             return {}
         manifest = EvidenceReviewWorkspaceManifest.model_validate_json(payload)
         root = confined(self.workspace, manifest.semantic_model_relative_path)

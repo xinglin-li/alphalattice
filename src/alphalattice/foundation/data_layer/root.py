@@ -35,7 +35,7 @@ from alphalattice.kernel.config import DATA_ROOT_ENV as DATA_ROOT_ENV
 from alphalattice.kernel.config import data_root as data_root
 from alphalattice.kernel.resources import cpu_width
 
-SCHEMA_VERSION: Final = 16
+SCHEMA_VERSION: Final = 17
 """`PRAGMA user_version` of the databases this code creates; it refuses any other. A change to
 any schema file, or to how world derives the rows a root holds, takes the next number, so a root
 an earlier build made is refused by name."""
@@ -145,20 +145,27 @@ def view_statements(table_ids: Mapping[str, str]) -> Iterator[str]:
     yield from statements(schema_text("views.sql"))
 
 
+def require_log_schema(path: Path) -> None:
+    """Refuse another log format before a writable open or attachment.
+
+    The version is committed before the log is published and stays fixed. An immutable read
+    sees it without writing a journal or opening any tables.
+    """
+    uri = sqlite_read_only_uri(path.resolve()) + "&immutable=1"
+    with closing(sqlite3.connect(uri, uri=True)) as connection:
+        found = connection.execute("PRAGMA user_version").fetchone()[0]
+    if found != SCHEMA_VERSION:
+        raise DataError(
+            f"{path} is schema version {found}. This product reads version {SCHEMA_VERSION}. "
+            "To use this version, start a fresh data root.",
+            code="data_layer.schema_mismatch",
+        )
+
+
 def _database(path: Path, build) -> bool:
-    """Whether the database at `path` was made now: built whole under a temporary name and moved
-    into place, so a crash leaves none or all of it. An existing one is only read, and refused
-    unless it is this schema's version; the read is immutable, so a WAL database gains no -shm or
-    -wal file."""
+    """Whether the log was made now, built whole before it moves into place."""
     if path.exists():
-        uri = f"file:{path.as_posix()}?mode=ro&immutable=1"
-        with closing(sqlite3.connect(uri, uri=True)) as connection:
-            found = connection.execute("PRAGMA user_version").fetchone()[0]
-        if found != SCHEMA_VERSION:
-            raise DataError(
-                f"{path} is schema version {found}; this product reads version {SCHEMA_VERSION}",
-                code="data_layer.schema_mismatch",
-            )
+        require_log_schema(path)
         return False
     partial = path.with_name(f".{path.name}.{os.getpid()}.partial")
     partial.unlink(missing_ok=True)
@@ -318,7 +325,6 @@ def catalog(root: Path, *, owner: Any = None, keep_attached: bool = False) -> bo
 def catalog_matches(lake: Any, *, name: str = "lake") -> None:
     """Refuse catalog tables whose columns differ from catalog.sql.
 
-    Older 0.2.8 roots may lack an additive results table until its writer opens it.
     Tables a later step adds (a feature set's) are not catalog.sql's and are not compared.
     """
     declared = {
@@ -334,18 +340,11 @@ def catalog_matches(lake: Any, *, name: str = "lake") -> None:
         (name,),
     ).fetchall():
         held.setdefault(f"{schema}.{table}", []).append(column)
-    moved = sorted(
-        name
-        for name, columns in declared.items()
-        if held.get(name) != columns
-        and not (
-            name in {"results.validation_receipt", "results.sector_evaluation"} and name not in held
-        )
-    )
+    moved = sorted(name for name, columns in declared.items() if held.get(name) != columns)
     if moved:
         raise DataError(
             f"the data root's catalog was made by another catalog schema ({', '.join(moved)}"
-            " differ); it is never migrated in place: admit its workspaces into a new data root",
+            " differ). To use this version, start a fresh data root.",
             code="data_layer.schema_mismatch",
         )
 
@@ -353,10 +352,15 @@ def catalog_matches(lake: Any, *, name: str = "lake") -> None:
 def create_data_root(path: Path) -> DataRoot:
     """Make the data root at `path`, or find it whole; running it again changes nothing."""
     created = []
-    for folder in FOLDERS:
+    machine = path / "machine"
+    if not machine.is_dir():
+        machine.mkdir(parents=True, exist_ok=True)
+        created.append("machine")
+    made_log = _database(machine / "log.sqlite", build_log)
+    for folder in FOLDERS[1:]:
         if not (path / folder).is_dir():
             (path / folder).mkdir(parents=True, exist_ok=True)
             created.append(folder)
-    if _database(path / "machine" / "log.sqlite", build_log):
+    if made_log:
         created.append("machine/log.sqlite")
     return DataRoot(path=path, created=tuple(created))

@@ -8,17 +8,15 @@ from typing import Annotated, Literal
 from pydantic import Field, model_validator
 
 from alphalattice.capabilities.domain_contracts.domain.base import (
+    Blake3Identity,
     DomainModel,
-    Sha256Hex,
     UtcDatetime,
 )
-from alphalattice.capabilities.domain_contracts.domain.serialization import (
-    canonical_json_bytes,
-    sha256_hex,
-)
+from alphalattice.capabilities.domain_contracts.domain.serialization import canonical_json_bytes
 from alphalattice.capabilities.validation.enums import (
     SplitMode,
 )
+from alphalattice.kernel.identity import blake3_digest
 
 NonNegativeInt = Annotated[int, Field(ge=0)]
 PositiveInt = Annotated[int, Field(ge=1)]
@@ -32,7 +30,7 @@ BootstrapBitGenerator = Literal["PCG64"]
 
 
 def _logical_hash(value: object) -> str:
-    return sha256_hex(canonical_json_bytes(value))
+    return blake3_digest(canonical_json_bytes(value))
 
 
 class RebalanceEvidencePoint(DomainModel):
@@ -86,7 +84,7 @@ class SealedHoldoutDescriptor(DomainModel):
     session_count: PositiveInt
     first_session: date
     last_session: date
-    sessions_hash: Sha256Hex
+    sessions_hash: Blake3Identity
 
     @model_validator(mode="after")
     def validate_range(self) -> SealedHoldoutDescriptor:
@@ -100,10 +98,10 @@ class ResearchSplitPlan(DomainModel):
     """Committed walk-forward folds and sealed tail descriptor."""
 
     spec: ResearchSplitSpec
-    timeline_hash: Sha256Hex
+    timeline_hash: Blake3Identity
     windows: tuple[SplitWindow, ...] = Field(min_length=1)
     sealed_holdout: SealedHoldoutDescriptor
-    split_hash: Sha256Hex
+    split_hash: Blake3Identity
 
     @model_validator(mode="after")
     def validate_hash(self) -> ResearchSplitPlan:

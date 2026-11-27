@@ -29,6 +29,7 @@ from alphalattice.evidence.alternative_evidence.sources.sec_edgar import (
     HttpxSecOfficialTransport,
     SecEdgarSource,
 )
+from tests._support.identity_fixtures import fixture_digest
 
 AAPL = "0000320193"
 MSFT = "0000789019"
@@ -227,7 +228,7 @@ def _registry() -> SecIssuerRegistrySnapshot:
                 entity_id="AAPL", ticker="AAPL", cik=AAPL, legal_name="Apple Inc."
             ),
         ),
-        source_content_hash="c" * 64,
+        source_content_hash=fixture_digest("SEC registry bytes"),
     )
 
 

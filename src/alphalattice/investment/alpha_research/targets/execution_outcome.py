@@ -26,6 +26,7 @@ from alphalattice.capabilities.quant.cross_section import (
     median_mad_winsor,
 )
 from alphalattice.capabilities.quant.sector_history import sector_positions
+from alphalattice.kernel.identity import BLAKE3_PATTERN
 
 from .catalog import AlphaTargetCatalog, build_installed_alpha_target_catalog
 from .sector_runs import below_sector_sample, demean_by_run
@@ -87,7 +88,7 @@ class AlphaTargetPolicy(_Contract):
         "lane_standardization",
     )
     neutralization: Literal["EQUAL_SECTOR_DEMEAN", "NONE"] = "EQUAL_SECTOR_DEMEAN"
-    sector_revision: str = Field(pattern=r"^[0-9a-f]{64}$")
+    sector_revision: str = Field(pattern=BLAKE3_PATTERN)
     sector_source: Literal["YAHOO_CURRENT_SECTOR"] = "YAHOO_CURRENT_SECTOR"
     sector_history_treatment: SectorHistoryTreatment = "CURRENT_CLASSIFICATION_BACKFILLED"
     sector_point_in_time_qualified: Literal[False] = False
@@ -95,7 +96,7 @@ class AlphaTargetPolicy(_Contract):
     mad_scale: float = MAD_SCALE
     minimum_coverage: float = MIN_COVERAGE
     minimum_sector_sample: int = MIN_SECTOR_SAMPLE
-    policy_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
+    policy_hash: str = Field(pattern=BLAKE3_PATTERN)
 
     @property
     def standardization_id(self) -> str:

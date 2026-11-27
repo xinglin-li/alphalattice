@@ -39,8 +39,9 @@ from alphalattice.capabilities.portfolio_inputs.tradability.surface import (
     decision_eligible_at_close,
 )
 from alphalattice.foundation.market_data_ops.sources.contracts import RawDailyBar
+from tests._support.identity_fixtures import fixture_digest
 
-_H = "a" * 64
+_H = fixture_digest("Portfolio inputs a")
 
 
 def _bar(session: date, *, listing_id: str = "A", close: float = 10.0) -> RawDailyBar:
@@ -64,16 +65,18 @@ def _admission_inputs(
     risk_surface = SimpleNamespace(
         chunks=(SimpleNamespace(formation_sessions=formations),),
         formation_count=2,
-        surface_hash="b" * 64,
-        epoch_hash="c" * 64,
+        surface_hash=fixture_digest("Portfolio inputs b"),
+        epoch_hash=fixture_digest("Portfolio inputs c"),
         recipe=SimpleNamespace(output_unit="one-session-open-to-open-log-return-covariance"),
     )
-    epoch = SimpleNamespace(epoch_hash="c" * 64, ordered_listing_ids=listings)
+    epoch = SimpleNamespace(
+        epoch_hash=fixture_digest("Portfolio inputs c"), ordered_listing_ids=listings
+    )
     alpha_scores = SimpleNamespace(
-        surface_hash="d" * 64,
-        program_hash="e" * 64,
-        foundation_hash="f" * 64,
-        candidate_set_snapshot_hash="1" * 64,
+        surface_hash=fixture_digest("Portfolio inputs d"),
+        program_hash=fixture_digest("Portfolio inputs e"),
+        foundation_hash=fixture_digest("Portfolio inputs f"),
+        candidate_set_snapshot_hash=fixture_digest("Portfolio inputs 1"),
         risk_surface_hash=risk_surface.surface_hash,
         universe_epoch_hash=epoch.epoch_hash,
         ordered_listing_ids_hash=canonical_hash(listings),
@@ -95,14 +98,14 @@ def _admission_inputs(
     )
     return {
         "alpha_program": SimpleNamespace(
-            foundation_hash="f" * 64,
-            pm_plan_hash="2" * 64,
-            program_hash="e" * 64,
+            foundation_hash=fixture_digest("Portfolio inputs f"),
+            pm_plan_hash=fixture_digest("Portfolio inputs 2"),
+            program_hash=fixture_digest("Portfolio inputs e"),
         ),
         "candidate_set": SimpleNamespace(
-            program_hash="e" * 64,
-            foundation_hash="f" * 64,
-            snapshot_hash="1" * 64,
+            program_hash=fixture_digest("Portfolio inputs e"),
+            foundation_hash=fixture_digest("Portfolio inputs f"),
+            snapshot_hash=fixture_digest("Portfolio inputs 1"),
             ordered_candidate_ids=("ridge", "lasso", "elastic-net"),
         ),
         "alpha_scores": alpha_scores,
@@ -112,7 +115,7 @@ def _admission_inputs(
                 all_hard_gates_passed=True,
                 limitations=("Risk is current-universe research only.",),
             ),
-            marker=SimpleNamespace(marker_hash="3" * 64),
+            marker=SimpleNamespace(marker_hash=fixture_digest("Portfolio inputs 3")),
         ),
         "risk_lineage": SimpleNamespace(
             covariance_surface=risk_surface,
@@ -120,12 +123,12 @@ def _admission_inputs(
         ),
         "tradability": SimpleNamespace(
             projection=SimpleNamespace(status="DATA_TRADABILITY_READY"),
-            marker=SimpleNamespace(marker_hash="4" * 64),
+            marker=SimpleNamespace(marker_hash=fixture_digest("Portfolio inputs 4")),
         ),
         "tradability_lineage": SimpleNamespace(
             decision=decision,
             execution=execution,
-            bundle=SimpleNamespace(bundle_hash="5" * 64),
+            bundle=SimpleNamespace(bundle_hash=fixture_digest("Portfolio inputs 5")),
         ),
         "guardian": None,
         "evaluated_at": evaluated_at or datetime(2026, 8, 10, tzinfo=UTC),
@@ -208,33 +211,36 @@ def test_current_tradability_reuse_binds_schedule_and_source_watermark() -> None
     execution = date(2026, 8, 11)
     builder = HistoricalTradabilityBuilder.__new__(HistoricalTradabilityBuilder)
     cached = dict(
-        epoch_hash="c" * 64,
+        epoch_hash=fixture_digest("Portfolio inputs c"),
         formations=(formation,),
         available_sessions=(formation, execution),
         session_positions={formation: 0, execution: 1},
         intended_execution_sessions=(execution,),
-        schedule_hash="d" * 64,
+        schedule_hash=fixture_digest("Portfolio inputs d"),
         ordered_listing_ids=("A",),
-        source_watermark_hash="e" * 64,
+        source_watermark_hash=fixture_digest("Portfolio inputs e"),
     )
     decision = SimpleNamespace(
-        universe_epoch_hash="c" * 64,
+        universe_epoch_hash=fixture_digest("Portfolio inputs c"),
         ordered_listing_ids=("A",),
-        source_watermark_hash="e" * 64,
-        schedule_hash="d" * 64,
+        source_watermark_hash=fixture_digest("Portfolio inputs e"),
+        schedule_hash=fixture_digest("Portfolio inputs d"),
         formation_sessions=(formation,),
         intended_execution_sessions=(execution,),
     )
     execution_surface = SimpleNamespace(**vars(decision))
-    bundle = SimpleNamespace(universe_epoch_hash="c" * 64, schedule_hash="d" * 64)
+    bundle = SimpleNamespace(
+        universe_epoch_hash=fixture_digest("Portfolio inputs c"),
+        schedule_hash=fixture_digest("Portfolio inputs d"),
+    )
     arguments: dict[str, Any] = {
         "risk_inputs": PortfolioTradabilityRiskInputs(
-            return_surface_hash="a" * 64,
-            covariance_surface_hash="b" * 64,
-            epoch_hash="c" * 64,
+            return_surface_hash=fixture_digest("Portfolio inputs a"),
+            covariance_surface_hash=fixture_digest("Portfolio inputs b"),
+            epoch_hash=fixture_digest("Portfolio inputs c"),
             market_profile_id="us-current-index-research",
             ordered_listing_ids=("A",),
-            universe_manifest_revision="f" * 64,
+            universe_manifest_revision=fixture_digest("Portfolio inputs f"),
             formation_sessions=(formation,),
             formation_count=1,
             asset_count=1,
@@ -248,9 +254,13 @@ def test_current_tradability_reuse_binds_schedule_and_source_watermark() -> None
         authority_hash=canonical_hash(asdict(arguments["risk_inputs"])), **cached
     )
     assert builder.current_surfaces_match(**arguments)
-    stale_schedule = SimpleNamespace(**{**vars(decision), "schedule_hash": "f" * 64})
+    stale_schedule = SimpleNamespace(
+        **{**vars(decision), "schedule_hash": fixture_digest("Portfolio inputs f")}
+    )
     assert not builder.current_surfaces_match(**{**arguments, "decision": stale_schedule})
-    stale_source = SimpleNamespace(**{**vars(decision), "source_watermark_hash": "f" * 64})
+    stale_source = SimpleNamespace(
+        **{**vars(decision), "source_watermark_hash": fixture_digest("Portfolio inputs f")}
+    )
     assert not builder.current_surfaces_match(**{**arguments, "execution": stale_source})
 
 
@@ -262,7 +272,7 @@ def test_market_only_tradability_has_identical_outputs_to_the_risk_projection(
 
     sessions = tuple(date(2020, 1, 1) + timedelta(days=i) for i in range(25))
     manifest = SimpleNamespace(
-        revision_sha256="a" * 64,
+        revision_sha256=fixture_digest("Portfolio inputs a"),
         profile=SimpleNamespace(market_profile_id="fixture"),
         listings=(SimpleNamespace(listing_id="B" if historical_coverage else "A"),),
     )
@@ -280,7 +290,9 @@ def test_market_only_tradability_has_identical_outputs_to_the_risk_projection(
     market = SimpleNamespace(
         load_universe_manifest_revision=load,
         listing_scope=scope,
-        execution_source_watermark=lambda *a, **k: {"watermark_hash": "b" * 64},
+        execution_source_watermark=lambda *a, **k: {
+            "watermark_hash": fixture_digest("Portfolio inputs b")
+        },
     )
     monkeypatch.setattr(
         surface,
@@ -288,9 +300,9 @@ def test_market_only_tradability_has_identical_outputs_to_the_risk_projection(
         lambda *a, **k: pa.Table.from_pylist([asdict(_bar(s)) for s in sessions]),
     )
     risk = PortfolioTradabilityRiskInputs(
-        "c" * 64,
-        "d" * 64,
-        "e" * 64,
+        fixture_digest("Portfolio inputs c"),
+        fixture_digest("Portfolio inputs d"),
+        fixture_digest("Portfolio inputs e"),
         "fixture",
         ("A",),
         manifest.revision_sha256,
@@ -300,7 +312,7 @@ def test_market_only_tradability_has_identical_outputs_to_the_risk_projection(
         sessions,
     )
     neutral = surface.PortfolioTradabilityMarketInputs(
-        "f" * 64,
+        fixture_digest("Portfolio inputs f"),
         risk.epoch_hash,
         risk.market_profile_id,
         risk.ordered_listing_ids,
@@ -354,17 +366,25 @@ def test_a_built_surface_states_every_row_as_the_cell_rule_states_it(
     table = pa.Table.from_pylist([asdict(bar) for bar in bars])
     monkeypatch.setattr(surface, "_read_raw_bar_table", lambda *a, **k: table)
     manifest = SimpleNamespace(
-        revision_sha256="a" * 64,
+        revision_sha256=fixture_digest("Portfolio inputs a"),
         profile=SimpleNamespace(market_profile_id="fixture"),
         listings=tuple(SimpleNamespace(listing_id=v) for v in listings),
     )
     market = SimpleNamespace(
         load_universe_manifest_revision=lambda revision: manifest,
         listing_scope=lambda selected, *, listing_ids: manifest.listings,
-        execution_source_watermark=lambda *a, **k: {"watermark_hash": "b" * 64},
+        execution_source_watermark=lambda *a, **k: {
+            "watermark_hash": fixture_digest("Portfolio inputs b")
+        },
     )
     inputs = surface.PortfolioTradabilityMarketInputs(
-        "f" * 64, "d" * 64, "fixture", listings, manifest.revision_sha256, formations, sessions
+        fixture_digest("Portfolio inputs f"),
+        fixture_digest("Portfolio inputs d"),
+        "fixture",
+        listings,
+        manifest.revision_sha256,
+        formations,
+        sessions,
     )
     builder = HistoricalTradabilityBuilder(market_store=market, artifact_root=tmp_path)
     published = builder.build(market_inputs=inputs)
@@ -429,7 +449,7 @@ def test_chunk_identity_has_one_owner_and_payload_tamper_fails(tmp_path: Path) -
         surface_kind=chunk.surface_kind,
         formation_sessions=chunk.formation_sessions,
         row_count=chunk.row_count,
-        payload_sha256=chunk.payload_sha256,
+        payload_digest=chunk.payload_digest,
         metadata_hash=chunk.metadata_hash,
     )
     assert chunk == TradabilitySurfaceChunk.model_validate(chunk.model_dump())

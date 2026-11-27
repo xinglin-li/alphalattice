@@ -21,6 +21,8 @@ from typing import TYPE_CHECKING, Any, cast
 
 import numpy as np
 
+from alphalattice.kernel.identity import FileDigestTrust
+
 PLAYPEN_ROOT = Path(__file__).resolve().parents[1]
 if str(PLAYPEN_ROOT / "src") not in sys.path:
     sys.path.insert(0, str(PLAYPEN_ROOT / "src"))
@@ -38,32 +40,27 @@ from alphalattice.investment.portfolio_strategy_lab.policies.installed_strategie
     POST_OBSERVED_STRATEGY_AUTHORITY_ROOT_KEY,
 )
 from alphalattice.investment.portfolio_strategy_lab.policies.post_observed_authority import (  # noqa: E402
-    POST_OBSERVED_ASSET_INDEX_SHA256,
     POST_OBSERVED_AUTHORITY_MANIFEST_NAME,
-    POST_OBSERVED_DESCRIPTOR_SHA256,
-    POST_OBSERVED_FINAL_RECEIPT_SHA256,
-    POST_OBSERVED_MODEL_INDEX_SHA256,
-    POST_OBSERVED_QV_MAP_SHA256,
-    POST_OBSERVED_RESEARCH_SHA,
     FrozenAuthorityArtifact,
     PostObservedStrategyAuthorityManifest,
     admit_post_observed_strategy_authority,
 )
 
+POST_OBSERVED_RESEARCH_SHA = ""
 SOURCE_FILES = {
     "descriptor": (
         "post-governance-onboarding-descriptor.json",
-        POST_OBSERVED_DESCRIPTOR_SHA256,
+        "",
     ),
-    "qv_map": ("q-v-authority-map.json", POST_OBSERVED_QV_MAP_SHA256),
-    "model_index": ("model-payload-index.json", POST_OBSERVED_MODEL_INDEX_SHA256),
+    "qv_map": ("q-v-authority-map.json", ""),
+    "model_index": ("model-payload-index.json", ""),
     "asset_index": (
         "research-authority-asset-index.json",
-        POST_OBSERVED_ASSET_INDEX_SHA256,
+        "",
     ),
     "final_receipt": (
         "research-authority-final-receipt.json",
-        POST_OBSERVED_FINAL_RECEIPT_SHA256,
+        "",
     ),
 }
 
@@ -107,6 +104,8 @@ def _json(path: Path) -> dict[str, Any]:
 
 
 def _verified_file(path: Path, expected_hash: str) -> Path:
+    if not expected_hash:
+        raise MaterializationError("no independently admitted BLAKE3 research authority")
     resolved = path.resolve()
     if _sha256(resolved) != expected_hash:
         raise MaterializationError(f"source_hash_mismatch:{resolved}")
@@ -114,6 +113,8 @@ def _verified_file(path: Path, expected_hash: str) -> Path:
 
 
 def _repository_root(closure: Path) -> Path:
+    if not POST_OBSERVED_RESEARCH_SHA:
+        raise MaterializationError("no independently admitted BLAKE3 research authority")
     result = spawn.run(
         ["git", "-C", str(closure), "rev-parse", "--show-toplevel"],
         check=False,
@@ -170,7 +171,7 @@ def _copy_asset(
     return FrozenAuthorityArtifact(
         artifact_id=artifact_id,
         relative_path=relative_path,
-        sha256=digest,
+        digest=FileDigestTrust.fresh_digest(destination),
         bytes=destination.stat().st_size,
         dtype=dtype,
         shape=shape,
@@ -187,11 +188,10 @@ def _write_array_asset(
     destination = authority_root / relative_path
     destination.parent.mkdir(parents=True, exist_ok=True)
     np.save(destination, value, allow_pickle=False)
-    digest = _sha256(destination)
     return FrozenAuthorityArtifact(
         artifact_id=artifact_id,
         relative_path=relative_path,
-        sha256=digest,
+        digest=FileDigestTrust.fresh_digest(destination),
         bytes=destination.stat().st_size,
         dtype=value.dtype.str,
         shape=tuple(int(axis) for axis in value.shape),
@@ -313,7 +313,7 @@ def _materialize_authority(
     gate_v_artifacts = gate_v_assets.get("artifacts")
     if not isinstance(gate_v_artifacts, dict):
         raise MaterializationError("source_gate_v_asset_index_invalid")
-    source_snapshot_path, source_snapshot_hash = _source_asset(
+    source_snapshot_path, _ = _source_asset(
         gate_v_artifacts.get("source-snapshot-before.json"),
         label="gate_v_source_snapshot",
     )
@@ -495,12 +495,11 @@ def _materialize_authority(
             )
     manifest = PostObservedStrategyAuthorityManifest.create(
         research_repository_sha=POST_OBSERVED_RESEARCH_SHA,
-        source_descriptor_sha256=POST_OBSERVED_DESCRIPTOR_SHA256,
-        source_qv_map_sha256=POST_OBSERVED_QV_MAP_SHA256,
-        source_model_index_sha256=POST_OBSERVED_MODEL_INDEX_SHA256,
-        source_asset_index_sha256=POST_OBSERVED_ASSET_INDEX_SHA256,
-        source_final_receipt_sha256=POST_OBSERVED_FINAL_RECEIPT_SHA256,
-        source_shared_input_snapshot_sha256=source_snapshot_hash,
+        source_descriptor_digest=SOURCE_FILES["descriptor"][1],
+        source_qv_map_digest=SOURCE_FILES["qv_map"][1],
+        source_model_index_digest=SOURCE_FILES["model_index"][1],
+        source_asset_index_digest=SOURCE_FILES["asset_index"][1],
+        source_final_receipt_digest=SOURCE_FILES["final_receipt"][1],
         formation_sessions=sessions,
         ordered_listing_ids=ordered_listings,
         source_score_prefix_rows=4,
@@ -1144,9 +1143,9 @@ def prepare_score_inputs(
                 declared = known_files[
                     f"boosters/R0_CORE/deployment-{child.vintage}-seed-{child.seed}.txt"
                 ]
-                if child.payload.sha256 != declared["sha256"]:
-                    raise MaterializationError("scoring_model_index_mismatch")
                 _verified_file(source, declared["sha256"])
+                if child.payload.digest != FileDigestTrust.fresh_digest(source):
+                    raise MaterializationError("scoring_model_index_mismatch")
                 relative = f"models/{child.vintage}-{child.seed}.json"
                 copied = target / relative
                 copied.parent.mkdir(exist_ok=True)
@@ -1156,7 +1155,7 @@ def prepare_score_inputs(
                         update={
                             "payload": HeterogeneousClosureFile(
                                 relative_path=relative,
-                                sha256=_sha256(copied),
+                                digest=FileDigestTrust.fresh_digest(copied),
                                 byte_count=copied.stat().st_size,
                             )
                         }
@@ -1318,7 +1317,7 @@ def prepare_calibration_inputs(
     returns = np.full(scores.shape, np.nan, dtype=np.float64)
     eligible = np.zeros(scores.shape, dtype=np.bool_)
     columns = {v: i for i, v in enumerate(listings)}
-    hashes = [POST_OBSERVED_DESCRIPTOR_SHA256, snapshot_hash, score_hash, manifest_hash]
+    hashes = [SOURCE_FILES["descriptor"][1], snapshot_hash, score_hash, manifest_hash]
     for prefix, manifest_name, session_key, listing_key, development in (
         ("_panel_shared", "ready.json", "sessions", "listing_ids", True),
         (
@@ -1483,6 +1482,8 @@ def _parser() -> argparse.ArgumentParser:
 
 def main() -> int:
     args = _parser().parse_args()
+    if not POST_OBSERVED_RESEARCH_SHA:
+        raise MaterializationError("no independently admitted BLAKE3 research authority")
     if not args.prepare_model_lifecycle and (
         args.renewal_through is not None or args.model_component != "G6_R0_FAST_REBOUND"
     ):

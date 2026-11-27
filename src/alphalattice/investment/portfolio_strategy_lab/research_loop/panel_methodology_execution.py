@@ -147,6 +147,7 @@ from alphalattice.investment.risk_research.experiments.temporal import (
     risk_covariance_authority,
 )
 from alphalattice.kernel.execution import execution_port
+from alphalattice.kernel.identity import BLAKE3_PATTERN, blake3_from_filename
 from alphalattice.protocols.research_authoring.contracts import (
     AuthoringError,
     DeskExecutionResult,
@@ -196,7 +197,7 @@ class SessionMarkTemporalAuthority(Protocol):
     observed_through_event: str
 
 
-_HASH = r"^[0-9a-f]{64}$"
+_HASH = BLAKE3_PATTERN
 PANEL_METHODOLOGY_ROOT_CATEGORY = "development/paired-panel-research/roots"
 _ALPHA_ECONOMIC_CONTENT_CATEGORY = "development/paired-panel-research/alpha-economic-evaluations"
 _ALPHA_ECONOMIC_ATTESTATION_CATEGORY = (
@@ -2686,6 +2687,13 @@ def _verify_alpha_fold_checkpoint(
                 )
 
 
+def _decode_artifact_filename(path: Path) -> str:
+    digest = blake3_from_filename(path.stem)
+    if digest is None:
+        raise PortfolioPublicationError("content_store.identity_invalid")
+    return digest
+
+
 def _resolve_compatible_stage_root(
     *,
     store: PortfolioResearchArtifactStore,
@@ -2725,7 +2733,7 @@ def _resolve_compatible_stage_root(
         for path in sorted(category_root.glob("*.json")):
             root = store.load(
                 category=PANEL_METHODOLOGY_ROOT_CATEGORY,
-                content_hash=path.stem,
+                content_hash=_decode_artifact_filename(path),
                 model=PanelMethodologyExecutionRoot,
                 identity_field="root_hash",
             )
@@ -3025,7 +3033,7 @@ def _load_completed_alpha_folds(
     if ordered_score_surface_artifact_hashes is None:
         artifact_root = store.root / "development/paired-panel-research/score-surfaces"
         artifact_hashes = tuple(
-            path.stem
+            _decode_artifact_filename(path)
             for path in (sorted(artifact_root.glob("*.json")) if artifact_root.is_dir() else ())
         )
     else:
@@ -3043,14 +3051,15 @@ def _load_completed_alpha_folds(
         fold_hashes: list[str] = []
         fold_root = store.root / "development/paired-panel-research/folds"
         for path in sorted(fold_root.glob("*.json")) if fold_root.is_dir() else ():
+            fold_hash = _decode_artifact_filename(path)
             evidence = store.load(
                 category="development/paired-panel-research/folds",
-                content_hash=path.stem,
+                content_hash=fold_hash,
                 model=PanelModelFoldEvidence,
                 identity_field="fold_hash",
             )
             if evidence.program_hash == program_hash:
-                fold_hashes.append(path.stem)
+                fold_hashes.append(fold_hash)
     else:
         fold_hashes = list(ordered_fold_hashes)
     completed: list[_CompletedPanelAlphaFold] = []

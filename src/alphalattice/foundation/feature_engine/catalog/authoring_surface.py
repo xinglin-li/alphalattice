@@ -21,6 +21,7 @@ from alphalattice.foundation.feature_engine.producers.factors.specifications imp
     build_installed_factor_development_capabilities,
     build_installed_factor_formula_specifications,
 )
+from alphalattice.kernel.identity import BLAKE3_PATTERN
 
 
 class FactorAuthoringEntry(BaseModel):  # type: ignore[misc]
@@ -31,8 +32,8 @@ class FactorAuthoringEntry(BaseModel):  # type: ignore[misc]
     kind: Literal["FactorAuthoringEntry"] = "FactorAuthoringEntry"
     factor_id: str
     installed_formula_ref: str
-    implementation_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
-    specification_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
+    implementation_hash: str = Field(pattern=BLAKE3_PATTERN)
+    specification_hash: str = Field(pattern=BLAKE3_PATTERN)
     formula_status: Literal["COMPLETE"] = "COMPLETE"
     development_disposition: Literal["ADMITTED", "REFUSED"]
     development_reason: str
@@ -51,7 +52,7 @@ class FactorAuthoringSurface(BaseModel):  # type: ignore[misc]
     entries: tuple[FactorAuthoringEntry, ...]
     admitted_factor_ids: tuple[str, ...]
     refused_factor_ids: tuple[str, ...]
-    surface_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
+    surface_hash: str = Field(pattern=BLAKE3_PATTERN)
 
 
 def describe_factor_authoring_surface(

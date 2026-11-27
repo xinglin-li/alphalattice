@@ -67,6 +67,7 @@ from alphalattice.interface.local_application.portfolio_research import (
     PortfolioResearchRequestDocument,
 )
 from alphalattice.interface.local_application.questions import person_question
+from tests._support.identity_fixtures import fixture_digest
 from tests.portfolio_strategy_lab.host_requests import _json, _request
 from tests.portfolio_strategy_lab.local_web_support import _cli
 from tests.workspace_task_runner.task_control_support import task_log
@@ -164,8 +165,8 @@ def test_answer_receipt_preserves_sealed_refs_without_creating_a_scientific_task
     observer.returned(
         span,
         {
-            "answer_reference": "a" * 64,
-            "bundle_reference": "b" * 64,
+            "answer_reference": fixture_digest("sealed answer"),
+            "bundle_reference": fixture_digest("sealed bundle"),
             "text": "Owner prose is not retained in operation receipts.",
         },
     )
@@ -174,8 +175,8 @@ def test_answer_receipt_preserves_sealed_refs_without_creating_a_scientific_task
     assert requested["payload"]["phase"] == "REQUESTED"
     assert returned["payload"]["phase"] == "RETURNED"
     assert returned["payload"]["subject"] == {
-        "answer_reference": "a" * 64,
-        "bundle_reference": "b" * 64,
+        "answer_reference": fixture_digest("sealed answer"),
+        "bundle_reference": fixture_digest("sealed bundle"),
     }
     assert returned["payload"].get("status") is None
     assert returned["task_id"] is None
@@ -202,7 +203,10 @@ def test_answer_receipt_preserves_sealed_refs_without_creating_a_scientific_task
     assert question["words"] not in json.dumps(row["payload"])
     monkeypatch.setattr(
         "alphalattice.interface.local_application.activity.person_question",
-        lambda code: {**person_question(code), "catalog_hash": "f" * 64},
+        lambda code: {
+            **person_question(code),
+            "catalog_hash": fixture_digest("changed question catalog"),
+        },
     )
     changed = observer.read(ActivityReadQuery())["items"][-1]
     assert changed["payload"] == row["payload"]
@@ -214,7 +218,7 @@ def test_answer_receipt_preserves_sealed_refs_without_creating_a_scientific_task
         payload["person_confirmation"] = {
             "question": "Unused metadata",
             "words": "Unused answer",
-            "decision_hash": "a" * 64,
+            "decision_hash": fixture_digest("unused network decision"),
             "question_code": question_code,
         }
     answer = _json(live, "/api/workspace/network", method="POST", payload=payload)
@@ -1419,8 +1423,8 @@ def test_task_and_activity_lists_name_an_unreadable_queue_dependency_without_bla
     )
     plan = ResearchPlan.create(
         goal_hash=goal.goal_hash,
-        workflow_definition_hash="a" * 64,
-        verifier_catalog_hash="b" * 64,
+        workflow_definition_hash=fixture_digest("queued Factor workflow"),
+        verifier_catalog_hash=fixture_digest("queued Factor verifiers"),
         work_items=(
             WorkItemDefinition.create(
                 stage_id="resolve_inputs",

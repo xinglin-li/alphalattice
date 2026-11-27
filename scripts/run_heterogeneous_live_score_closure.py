@@ -68,10 +68,7 @@ from alphalattice.investment.alpha_research.inputs.panel_feature_materialization
 from alphalattice.investment.alpha_research.scores.heterogeneous_product import (  # noqa: E402
     COMPONENT_IDS,
     INSTALLED_HETEROGENEOUS_ALPHA_STRATEGY,
-    LIVE_MODEL_CLOSURE_MANIFEST_HASH,
     LIVE_MODEL_VINTAGES,
-    LIVE_SCORE_CLOSURE_RECEIPT_HASH,
-    LIVE_SOURCE_READBACK_SHA256,
     ComponentId,
     HeterogeneousLiveScoreClosureReceipt,
     array_value_hash,
@@ -638,13 +635,28 @@ def _admitted_axes(
     return axes, formations
 
 
+_ADMITTED_GATE_INPUTS: tuple[str, str, str] | None = None
+
+
+def _admitted_gate_inputs() -> tuple[str, str, str]:
+    if _ADMITTED_GATE_INPUTS is None:
+        raise ValueError(
+            "alpha_research.gate_m_source_readback_identity_invalid: "
+            "no independently admitted BLAKE3 inputs"
+        )
+    return _ADMITTED_GATE_INPUTS
+
+
 def _require_named_sources(
     args: argparse.Namespace, sources: set[Path]
 ) -> dict[str, dict[str, Any]]:
     """Every source read must be one the Gate M readback named, with the digest it recorded."""
 
+    from alphalattice.kernel.identity import FileDigestTrust
+
+    readback_digest, receipt_hash, model_manifest_hash = _admitted_gate_inputs()
     readback_path = args.gate_m_root / "source-readback.json"
-    if _sha256(readback_path) != LIVE_SOURCE_READBACK_SHA256:
+    if FileDigestTrust.fresh_digest(readback_path) != readback_digest:
         raise ValueError("alpha_research.gate_m_source_readback_identity_invalid")
     named = _read_json(readback_path)["sources"]
     before = _snapshot(sources)
@@ -654,10 +666,10 @@ def _require_named_sources(
     if unnamed:
         raise ValueError("alpha_research.gate_m_source_not_named_by_readback:" + "|".join(unnamed))
     receipt = _read_json(args.gate_m_root / "live-score-closure-receipt.json")
-    if receipt.get("receipt_hash") != LIVE_SCORE_CLOSURE_RECEIPT_HASH:
+    if receipt.get("receipt_hash") != receipt_hash:
         raise ValueError("alpha_research.gate_m_receipt_identity_invalid")
     gate_l = _read_json(args.g0_model_root / "live-model-closure-manifest.json")
-    if gate_l.get("manifest_hash") != LIVE_MODEL_CLOSURE_MANIFEST_HASH:
+    if gate_l.get("manifest_hash") != model_manifest_hash:
         raise ValueError("alpha_research.gate_l_manifest_identity_invalid")
     return before
 
@@ -830,15 +842,20 @@ def _run(args: argparse.Namespace) -> dict[str, Any]:
 
 
 def _closure_file(root: Path, relative: str) -> HeterogeneousClosureFile:
+    from alphalattice.kernel.identity import FileDigestTrust
+
     path = root / relative
     return HeterogeneousClosureFile(
-        relative_path=relative, sha256=_sha256(path), byte_count=path.stat().st_size
+        relative_path=relative,
+        digest=FileDigestTrust.fresh_digest(path),
+        byte_count=path.stat().st_size,
     )
 
 
 def _materialize(args: argparse.Namespace) -> dict[str, Any]:
     """Seal the minimum product-readable closure for the last formations."""
 
+    readback_digest, receipt_hash, model_manifest_hash = _admitted_gate_inputs()
     target = args.closure_output_root.resolve()
     if target.exists():
         raise ValueError("alpha_research.closure_root_exists_and_is_immutable")
@@ -941,9 +958,9 @@ def _materialize(args: argparse.Namespace) -> dict[str, Any]:
     momentum_relative = _save("momentum.npy", lambda path: np.save(path, momentum_lane))
     manifest = HeterogeneousCurrentClosureManifest.seal(
         strategy_hash=INSTALLED_HETEROGENEOUS_ALPHA_STRATEGY.strategy_hash,
-        gate_m_receipt_hash=LIVE_SCORE_CLOSURE_RECEIPT_HASH,
-        gate_m_source_readback_sha256=LIVE_SOURCE_READBACK_SHA256,
-        gate_l_manifest_hash=LIVE_MODEL_CLOSURE_MANIFEST_HASH,
+        gate_m_receipt_hash=receipt_hash,
+        gate_m_source_readback_digest=readback_digest,
+        gate_l_manifest_hash=model_manifest_hash,
         live_vintages=LIVE_MODEL_VINTAGES,
         formation_sessions=formations,
         ordered_listing_ids=listings,
@@ -951,7 +968,7 @@ def _materialize(args: argparse.Namespace) -> dict[str, Any]:
         numerical_environment_hash=owner.environment_hash,
         maximum_raw_prediction_gap=max(gaps.values()),
         source_provenance={
-            "gate_m_source_readback_sha256": LIVE_SOURCE_READBACK_SHA256,
+            "gate_m_source_readback_digest": readback_digest,
             "gate_d2_runner_sha256": before[str(args.gate_d2_runner.resolve())]["sha256"],
             "monthly_current_source_cache_identity_hash": resolution_hash,
             "prediction_call_count": str(owner.predictions),
@@ -1060,6 +1077,7 @@ def main(argv: list[str] | None = None) -> int:
             raise SystemExit("--gate-m-root is required to materialise a closure")
         result = _materialize(args)
     else:
+        _admitted_gate_inputs()
         result = _run(args)
     print(json.dumps(result, indent=2, sort_keys=True))
     return 0

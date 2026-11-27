@@ -38,6 +38,7 @@ from alphalattice.control.product_host.research_authoring.authority import (
 )
 from alphalattice.control.product_host.research_authoring.factor_inputs import (
     confined,
+    factor_input_baseline,
     factor_input_paths,
     read_factor_bundle,
 )
@@ -99,7 +100,7 @@ from alphalattice.investment.portfolio_strategy_lab.policies.tranche_book import
     TOP_K_RANGE,
     TRANCHES_RANGE,
 )
-from alphalattice.kernel.identity import identity_sha256
+from alphalattice.kernel.identity import blake3_filename, identity_blake3, tagged_blake3
 from alphalattice.protocols.research_authoring.contracts import (
     AuthoringError,
     ResearchExperimentEnvelope,
@@ -344,7 +345,7 @@ def prepare_portfolio_handoff(
         if key in authored:
             experiment[key] = authored[key]
     experiment["output_workspace"] = "managed"
-    experiment["baseline_workspace"] = f"research-inputs/{input_binding_hash}/source"
+    experiment["baseline_workspace"] = factor_input_baseline(input_binding_hash)
     key = canonical_hash(
         {
             "experiment": experiment,
@@ -352,7 +353,7 @@ def prepare_portfolio_handoff(
             "input": input_binding_hash,
         }
     )
-    experiment["output_workspace"] = f"research-experiments/portfolio-{key}"
+    experiment["output_workspace"] = f"research-experiments/portfolio-{blake3_filename(key)}"
     if authored and (
         set(authored) - set(experiment) - {"envelope_hash"}
         or any(
@@ -795,7 +796,7 @@ def prepare_portfolio_market_inputs(
     )
     if (
         local_qa is not None
-        and identity_sha256(np.ascontiguousarray(realized, dtype="<f8").tobytes()).hexdigest()
+        and tagged_blake3(identity_blake3(np.ascontiguousarray(realized, dtype="<f8").tobytes()))
         != local_qa.binding.returns_hash
     ):
         raise AuthoringError("portfolio_research.local_qa_outcome_values_mismatch")

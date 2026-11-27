@@ -15,7 +15,6 @@ than claims.
 from __future__ import annotations
 
 import dataclasses
-import hashlib
 import json
 from dataclasses import dataclass
 from datetime import UTC, date, datetime, timedelta
@@ -28,7 +27,6 @@ import pyarrow as pa
 import pytest
 
 from alphalattice.capabilities.domain_contracts.identity import canonical_hash
-from alphalattice.capabilities.domain_contracts.recipe_identity import recipe_identity
 from alphalattice.capabilities.portfolio_backtesting.contracts import PortfolioWalkForwardState
 from alphalattice.control.product_host.composition.application_session import (
     WorkspaceApplicationSession,
@@ -134,11 +132,13 @@ from alphalattice.investment.risk_research.surfaces.decomposition import (
 from alphalattice.investment.risk_research.surfaces.returns import (
     RiskReturnArtifactStore,
 )
+from alphalattice.kernel.identity import blake3_filename
 from alphalattice.oversight.model_validation.protected_gate import (
     ProtectedValidationGate,
     ProtectedValidationGateError,
     ProtectedValidationStore,
 )
+from tests._support.identity_fixtures import fixture_digest
 from tests.portfolio_strategy_lab.local_web_support import (
     TEST_PACKAGE,
     _resolved,
@@ -161,6 +161,7 @@ DEVELOPMENT_SESSIONS = (date(2024, 1, 2), date(2024, 1, 3), date(2024, 2, 1))
 # a fixture that matched the development axis would let a shape assumption hide.
 PROTECTED_SESSIONS = (date(2024, 3, 1), date(2024, 3, 4), date(2024, 3, 5), date(2024, 3, 6))
 LISTINGS = tuple(f"listing-{index:04d}" for index in range(80))
+WORKSPACE_MANIFEST_HASH = fixture_digest("finalization workspace manifest")
 
 
 def _fixture(sessions: tuple[date, ...] = PROTECTED_SESSIONS) -> ProtectedFixture:
@@ -205,7 +206,7 @@ def _wire(
     development = PortfolioResearchApplication(
         workspace_id=workspace_id,
         workspace=workspace,
-        manifest_binding=lambda: "a" * 64,
+        manifest_binding=lambda: canonical_hash("finalization development manifest"),
         session=session,
         resolver=_Resolver(development_inputs, numerical=development_inputs),
     )
@@ -335,11 +336,11 @@ def test_the_validation_receipt_carries_no_metric_and_the_handoff_copies_none(
             cumulative_return: float = 0.0
 
         _Leaky.create(
-            permit_hash="a" * 64,
-            candidate_hash="b" * 64,
-            package_hash="c" * 64,
-            fixture_hash="d" * 64,
-            pre_protected_state_hash="e" * 64,
+            permit_hash=fixture_digest("finalization a"),
+            candidate_hash=fixture_digest("finalization b"),
+            package_hash=fixture_digest("finalization c"),
+            fixture_hash=fixture_digest("finalization d"),
+            pre_protected_state_hash=fixture_digest("finalization e"),
             closure="CLOSED_EXACT",
             claim_limits=(CLAIM_LIMIT_NO_RESELECTION,),
             sealed_at=datetime.now(UTC),
@@ -359,11 +360,11 @@ def test_the_validation_receipt_carries_no_metric_and_the_handoff_copies_none(
     monkeypatch.setenv(history.DATA_ROOT_ENV, str(root))
     store = ProtectedValidationStore(workspace / "runtime" / "artifacts")
     receipt = PortfolioValidationReceipt.create(
-        permit_hash="1" * 64,
-        candidate_hash="2" * 64,
-        package_hash="3" * 64,
-        fixture_hash="4" * 64,
-        pre_protected_state_hash="5" * 64,
+        permit_hash=fixture_digest("finalization 1"),
+        candidate_hash=fixture_digest("finalization 2"),
+        package_hash=fixture_digest("finalization 3"),
+        fixture_hash=fixture_digest("finalization 4"),
+        pre_protected_state_hash=fixture_digest("finalization 5"),
         closure="CLOSED_EXACT",
         claim_limits=(CLAIM_LIMIT_NO_RESELECTION,),
         sealed_at=datetime.fromisoformat("2026-01-01T10:00:00+05:30"),
@@ -401,7 +402,7 @@ def test_the_validation_receipt_carries_no_metric_and_the_handoff_copies_none(
         assert history.validation_claim(receipt.permit_hash) == claim.model_dump(mode="json")
         other = PortfolioValidationReceipt.create(
             **receipt.model_dump(mode="python", exclude={"receipt_hash", "permit_hash"}),
-            permit_hash="6" * 64,
+            permit_hash=fixture_digest("finalization 6"),
         )
         wrong = history.validation_receipt_table(
             [other.model_dump(mode="python")], {other.receipt_hash: "other"}
@@ -606,10 +607,10 @@ def test_a_mismatched_candidate_configuration_or_state_fails_closed(tmp_path: Pa
             candidate_hash=candidate.candidate_hash,
             continued_from_state_hash=candidate.pre_protected_state.state_hash,
             fixture_hash=fixture.fixture_hash,
-            protected_result_hash="d" * 64,
-            protected_execution_ledger_hash="a" * 64,
-            protected_economic_ledger_hash="b" * 64,
-            protected_report_hash="c" * 64,
+            protected_result_hash=fixture_digest("finalization d"),
+            protected_execution_ledger_hash=fixture_digest("finalization a"),
+            protected_economic_ledger_hash=fixture_digest("finalization b"),
+            protected_report_hash=fixture_digest("finalization c"),
             protected_formation_count=len(PROTECTED_SESSIONS),
             protected_listing_count=len(LISTINGS),
         )
@@ -618,7 +619,7 @@ def test_a_mismatched_candidate_configuration_or_state_fails_closed(tmp_path: Pa
         discontinuous = FinalPortfolioEvaluationPackage.create(
             **{
                 **package.model_dump(mode="python", exclude={"package_hash"}),
-                "continued_from_state_hash": "d" * 64,
+                "continued_from_state_hash": fixture_digest("finalization d"),
             }
         )
         receipt = gate.close(permit=permit, candidate=candidate, package=discontinuous)
@@ -651,10 +652,10 @@ def test_a_permit_this_gate_never_issued_is_refused(tmp_path: Path) -> None:
             candidate_hash=candidate.candidate_hash,
             continued_from_state_hash=candidate.pre_protected_state.state_hash,
             fixture_hash=fixture.fixture_hash,
-            protected_result_hash="d" * 64,
-            protected_execution_ledger_hash="a" * 64,
-            protected_economic_ledger_hash="b" * 64,
-            protected_report_hash="c" * 64,
+            protected_result_hash=fixture_digest("finalization d"),
+            protected_execution_ledger_hash=fixture_digest("finalization a"),
+            protected_economic_ledger_hash=fixture_digest("finalization b"),
+            protected_report_hash=fixture_digest("finalization c"),
             protected_formation_count=4,
             protected_listing_count=len(LISTINGS),
         )
@@ -676,7 +677,7 @@ def test_the_release_refuses_a_receipt_for_another_package(tmp_path: Path) -> No
         tampered = FinalPortfolioEvaluationPackage.create(
             **{
                 **finalized.package.model_dump(mode="python", exclude={"package_hash"}),
-                "protected_report_hash": "e" * 64,
+                "protected_report_hash": fixture_digest("finalization e"),
             }
         )
         with pytest.raises(
@@ -707,13 +708,13 @@ def test_the_release_refuses_an_unclosed_receipt(tmp_path: Path) -> None:
         permit = gate.admit(candidate=candidate, fixture=fixture)
         package = FinalPortfolioEvaluationPackage.create(
             permit_hash=permit.permit_hash,
-            candidate_hash="9" * 64,
+            candidate_hash=fixture_digest("finalization 9"),
             continued_from_state_hash=candidate.pre_protected_state.state_hash,
             fixture_hash=fixture.fixture_hash,
-            protected_result_hash="d" * 64,
-            protected_execution_ledger_hash="a" * 64,
-            protected_economic_ledger_hash="b" * 64,
-            protected_report_hash="c" * 64,
+            protected_result_hash=fixture_digest("finalization d"),
+            protected_execution_ledger_hash=fixture_digest("finalization a"),
+            protected_economic_ledger_hash=fixture_digest("finalization b"),
+            protected_report_hash=fixture_digest("finalization c"),
             protected_formation_count=4,
             protected_listing_count=len(LISTINGS),
         )
@@ -798,9 +799,15 @@ def test_the_default_declared_path_produces_its_own_report_with_no_winner(
             assert execution == wired.ledger.load_execution(saved.execution_ledger_hash)
             assert together == report
             assert not (
-                wired.ledger.root / "execution-ledgers" / f"{saved.execution_ledger_hash}.json"
+                wired.ledger.content.artifact_path(
+                    category="execution-ledgers", content_hash=saved.execution_ledger_hash
+                )
             ).is_file()
-            assert not (wired.ledger.root / "reports" / f"{saved.report_hash}.json").is_file()
+            assert not (
+                wired.ledger.content.artifact_path(
+                    category="reports", content_hash=saved.report_hash
+                )
+            ).is_file()
             assert wired.ledger.load_execution(saved.execution_ledger_hash) == execution
             assert wired.ledger.load_report(saved.report_hash) == report
     finally:
@@ -1003,7 +1010,9 @@ def test_a_real_legacy_program_shape_loads_but_cannot_replay(tmp_path: Path) -> 
             },
         )
         legacy_hash = canonical_hash(legacy_identity)
-        legacy_path = wired.ledger.root / "programs" / f"{legacy_hash}.json"
+        legacy_path = wired.ledger.content.artifact_path(
+            category="programs", content_hash=legacy_hash
+        )
         legacy_path.parent.mkdir(parents=True, exist_ok=True)
         legacy_path.write_bytes(
             json.dumps(
@@ -1026,7 +1035,9 @@ def test_a_real_legacy_program_shape_loads_but_cannot_replay(tmp_path: Path) -> 
         legacy_result_hash = canonical_hash(
             {k: v for k, v in legacy_result.items() if k != "action"}
         )
-        result_path = wired.ledger.root / "results" / f"{legacy_result_hash}.json"
+        result_path = wired.ledger.content.artifact_path(
+            category="results", content_hash=legacy_result_hash
+        )
         result_path.parent.mkdir(parents=True, exist_ok=True)
         result_path.write_bytes(
             json.dumps(
@@ -1079,7 +1090,9 @@ def test_a_sealed_output_that_does_not_follow_from_the_inputs_fails(tmp_path: Pa
             if k != "action"
         } | {"execution_ledger_hash": forged_ledger_hash}
         forged_result_hash = canonical_hash(forged_result_identity)
-        (wired.ledger.root / "results" / f"{forged_result_hash}.json").write_bytes(
+        (
+            wired.ledger.content.artifact_path(category="results", content_hash=forged_result_hash)
+        ).write_bytes(
             json.dumps(
                 {
                     **forged_result_identity,
@@ -1148,7 +1161,9 @@ def test_a_missing_result_is_a_refusal_not_a_verified_readback(tmp_path: Path) -
     with WorkspaceApplicationSession.acquire(workspace) as session:
         wired = _wire(session)
         with pytest.raises(ValueError, match="result_not_reopenable"):
-            exact_readback(wired.ledger, workspace_id="qa-final", result_hash="f" * 64)
+            exact_readback(
+                wired.ledger, workspace_id="qa-final", result_hash=fixture_digest("finalization f")
+            )
 
 
 # ================== row 11: a development window cannot reach the fixture
@@ -1210,6 +1225,7 @@ def test_the_candidate_freezes_only_what_the_development_run_published(
         candidate = _candidate(wired)
         result = wired.ledger.load_result(wired.result_hash)
         ledger = wired.ledger.load_execution(result.execution_ledger_hash)
+        assert wired.store.find_candidate_for_result(result.result_hash) == candidate.candidate_hash
 
     assert candidate.development_result_hash == result.result_hash
     assert candidate.execution_ledger_hash == ledger.ledger_hash
@@ -1357,7 +1373,7 @@ def test_a_continuation_refuses_a_boundary_it_cannot_restore(tmp_path: Path) -> 
             wired.ledger.root
             / "lanes"
             / "boundary-weights"
-            / f"{boundary.pretrade_weights_hash}.parquet"
+            / f"{blake3_filename(boundary.pretrade_weights_hash)}.parquet"
         )
         assert lane.is_file()
         lane.unlink()
@@ -1484,7 +1500,7 @@ def test_a_pending_protected_result_is_absent_from_every_public_index(
             wired.ledger.find_program_for(
                 holdings_spec_hash=candidate.holdings_spec_hash,
                 authorities_hash=wired.ledger.load_program(candidate.program_hash).authorities_hash
-                or "0" * 64,
+                or fixture_digest("missing authorities"),
             ).program_hash
             == candidate.program_hash
         )
@@ -1518,7 +1534,8 @@ def test_closure_is_what_moves_the_protected_artifacts_into_the_public_store(
         assert (
             wired.ledger.find_program_for(
                 holdings_spec_hash=pending_program.holdings_spec_hash,
-                authorities_hash=pending_program.authorities_hash or "0" * 64,
+                authorities_hash=pending_program.authorities_hash
+                or fixture_digest("missing authorities"),
             )
             is None
         )
@@ -1526,7 +1543,8 @@ def test_closure_is_what_moves_the_protected_artifacts_into_the_public_store(
         assert (
             wired.ledger.find_program_for(
                 holdings_spec_hash=development_program.holdings_spec_hash,
-                authorities_hash=development_program.authorities_hash or "0" * 64,
+                authorities_hash=development_program.authorities_hash
+                or fixture_digest("missing authorities"),
             ).program_hash
             == candidate.program_hash
         )
@@ -1557,8 +1575,8 @@ def test_the_gate_refuses_a_self_consistent_candidate_it_never_saw_frozen(
             program_hash=program.program_hash,
             numerical_input_assembly_hash=program.numerical_input_assembly_hash,
             development_task_id=wired.development_task_id,
-            development_run_hash="7" * 64,
-            control_receipt_hash="8" * 64,
+            development_run_hash=fixture_digest("finalization 7"),
+            control_receipt_hash=fixture_digest("finalization 8"),
             development_result_hash=result.result_hash,
             execution_ledger_hash=execution.ledger_hash,
             economic_ledger_hash=result.economic_ledger_hash,
@@ -1708,7 +1726,7 @@ def test_a_committed_artifact_survives_a_lost_content_file(tmp_path: Path) -> No
             ("packages", finalized.package.package_hash),
             ("handoffs", finalized.handoff.handoff_hash),
         ):
-            content = wired.store.root / category / f"{identity}.json"
+            content = wired.store.content.artifact_path(category=category, content_hash=identity)
             assert content.is_file()
             content.unlink()
 
@@ -1717,7 +1735,11 @@ def test_a_committed_artifact_survives_a_lost_content_file(tmp_path: Path) -> No
 
     assert healed_package == finalized.package
     assert healed_handoff == finalized.handoff
-    assert (wired.store.root / "packages" / f"{finalized.package.package_hash}.json").is_file()
+    assert (
+        wired.store.content.artifact_path(
+            category="packages", content_hash=finalized.package.package_hash
+        )
+    ).is_file()
 
 
 def test_a_stage_reports_only_what_is_already_durable(tmp_path: Path) -> None:
@@ -1768,7 +1790,7 @@ def test_a_replay_with_an_unproved_layer_cannot_be_called_exact() -> None:
         ReadbackLayer(
             layer_id=layer_id,
             disposition="PARTIAL" if layer_id == "one_way_turnover" else "VERIFIED",
-            identity_hash="c" * 64,
+            identity_hash=fixture_digest("finalization c"),
             detail="a layer that was not fully proved",
         )
         for layer_id in REPLAY_LAYERS
@@ -1776,12 +1798,12 @@ def test_a_replay_with_an_unproved_layer_cannot_be_called_exact() -> None:
     with pytest.raises(ValueError, match="replay_claimed_exact_with_an_unproved_layer"):
         StrongReplayReceipt.create(
             workspace_id="qa-final",
-            result_hash="a" * 64,
-            program_hash="b" * 64,
-            numerical_input_assembly_hash="c" * 64,
+            result_hash=fixture_digest("finalization a"),
+            program_hash=fixture_digest("finalization b"),
+            numerical_input_assembly_hash=fixture_digest("finalization c"),
             layers=layers,
-            rederived_economic_ledger_hash="d" * 64,
-            sealed_economic_ledger_hash="d" * 64,
+            rederived_economic_ledger_hash=fixture_digest("finalization d"),
+            sealed_economic_ledger_hash=fixture_digest("finalization d"),
             work=ReadbackWork(backtesting_transitions=1),
             disposition="REPLAYED_EXACT",
         )
@@ -1818,7 +1840,9 @@ def test_a_ledger_without_replay_children_is_refused_before_any_work(
         stripped_result_hash = canonical_hash(
             {k: v for k, v in stripped_result.items() if k != "action"}
         )
-        result_path = wired.ledger.root / "results" / f"{stripped_result_hash}.json"
+        result_path = wired.ledger.content.artifact_path(
+            category="results", content_hash=stripped_result_hash
+        )
         result_path.write_bytes(
             json.dumps(
                 {**stripped_result, "result_hash": stripped_result_hash},
@@ -1857,7 +1881,11 @@ def test_readback_reports_a_finalization_artifact_that_will_not_open(
         )
         # Remove the package's content *and* its index entry, so the healing
         # path cannot reconstruct it either.
-        (wired.store.root / "packages" / f"{finalized.package.package_hash}.json").unlink()
+        (
+            wired.store.content.artifact_path(
+                category="packages", content_hash=finalized.package.package_hash
+            )
+        ).unlink()
         wired.store.committed.path("by-permit", finalized.permit.permit_hash).unlink()
         receipt = exact_readback(
             wired.ledger,
@@ -2129,7 +2157,7 @@ def test_a_replay_without_its_sealed_opening_lane_fails_closed(tmp_path: Path) -
         split.suffix_store.root
         / "lanes"
         / "boundary-weights"
-        / f"{boundary.optimizer_reference_hash}.parquet"
+        / f"{blake3_filename(boundary.optimizer_reference_hash)}.parquet"
     )
     assert lane.exists()
     lane.unlink()
@@ -2339,7 +2367,7 @@ def _serialize_legacy_path(
                 PortfolioExecutionLedger.model_validate({**identity, identity_field: content_hash})
             )
             return content_hash
-        path = store.root / category / f"{content_hash}.json"
+        path = store.content.artifact_path(category=category, content_hash=content_hash)
         path.parent.mkdir(parents=True, exist_ok=True)
         path.write_bytes(
             json.dumps(
@@ -2429,23 +2457,23 @@ def test_a_legacy_program_authorizes_no_reuse_on_any_route(tmp_path: Path) -> No
         # 3. PLAN / unit reuse -- both the by-holdings and the by-plan routes
         legacy.publish_program_index(
             holdings_spec_hash=reopened.holdings_spec_hash,
-            authorities_hash=reopened.authorities_hash or "0" * 64,
+            authorities_hash=reopened.authorities_hash or fixture_digest("missing authorities"),
             program_hash=legacy_program,
         )
         with pytest.raises(ValueError, match="program_assembly_absent_no_reuse"):
             legacy.find_program_for(
                 holdings_spec_hash=reopened.holdings_spec_hash,
-                authorities_hash=reopened.authorities_hash or "0" * 64,
+                authorities_hash=reopened.authorities_hash or fixture_digest("missing authorities"),
             )
         legacy.publish_plan_index(
             spec_hash=wired.spec.spec_hash,
-            authorities_hash=reopened.authorities_hash or "0" * 64,
+            authorities_hash=reopened.authorities_hash or fixture_digest("missing authorities"),
             result_hash=legacy_result,
         )
         with pytest.raises(ValueError, match="program_assembly_absent_no_reuse"):
             legacy.find_planned_result(
                 spec_hash=wired.spec.spec_hash,
-                authorities_hash=reopened.authorities_hash or "0" * 64,
+                authorities_hash=reopened.authorities_hash or fixture_digest("missing authorities"),
             )
         # 4. protected finalization
         with pytest.raises(
@@ -2492,7 +2520,7 @@ def test_the_executor_refuses_a_legacy_program_before_touching_an_index(
                 coverage=_Resolver(_resolved(sessions=DEVELOPMENT_SESSIONS))
                 .resolve_authorities(workspace=workspace, spec=wired.spec)
                 .coverage,
-                authorities_hash=reopened.authorities_hash or "0" * 64,
+                authorities_hash=reopened.authorities_hash or fixture_digest("missing authorities"),
             )
 
 
@@ -2578,9 +2606,9 @@ def test_freezing_refuses_an_unfinished_task(tmp_path: Path) -> None:
             workspace_id="qa-final",
             spec=wired.spec,
             program=program,
-            admission_hash="9" * 64,
-            authorities_hash=program.authorities_hash or "0" * 64,
-            workspace_manifest_hash="a" * 64,
+            admission_hash=fixture_digest("finalization 9"),
+            authorities_hash=program.authorities_hash or fixture_digest("missing authorities"),
+            workspace_manifest_hash=WORKSPACE_MANIFEST_HASH,
             strategy_catalog_hash=_Resolver(_resolved()).strategy_catalog_hash,
             selected_strategy_package_id=TEST_PACKAGE.strategy_id,
         )
@@ -2616,7 +2644,7 @@ def test_freezing_refuses_a_result_the_named_task_did_not_publish(tmp_path: Path
         other = PortfolioResearchApplication(
             workspace_id="qa-final",
             workspace=workspace,
-            manifest_binding=lambda: "a" * 64,
+            manifest_binding=lambda: WORKSPACE_MANIFEST_HASH,
             session=session,
             resolver=_Resolver(_resolved(sessions=PROTECTED_SESSIONS)),
         )
@@ -2670,10 +2698,10 @@ def _forged_package(permit, candidate, fixture, **overrides):  # type: ignore[no
         "candidate_hash": candidate.candidate_hash,
         "continued_from_state_hash": candidate.pre_protected_state.state_hash,
         "fixture_hash": fixture.fixture_hash,
-        "protected_result_hash": "a" * 64,
-        "protected_execution_ledger_hash": "b" * 64,
-        "protected_economic_ledger_hash": "c" * 64,
-        "protected_report_hash": "d" * 64,
+        "protected_result_hash": fixture_digest("finalization a"),
+        "protected_execution_ledger_hash": fixture_digest("finalization b"),
+        "protected_economic_ledger_hash": fixture_digest("finalization c"),
+        "protected_report_hash": fixture_digest("finalization d"),
         "protected_formation_count": len(fixture.sessions),
         "protected_listing_count": len(LISTINGS),
     }
@@ -2718,7 +2746,7 @@ def test_a_package_borrowing_another_finalizations_children_is_refused(
         second_development = PortfolioResearchApplication(
             workspace_id="qa-final",
             workspace=workspace,
-            manifest_binding=lambda: "a" * 64,
+            manifest_binding=lambda: WORKSPACE_MANIFEST_HASH,
             session=session,
             resolver=_Resolver(_resolved(sessions=DEVELOPMENT_SESSIONS[:2])),
         )
@@ -2740,7 +2768,7 @@ def test_a_package_borrowing_another_finalizations_children_is_refused(
             second_candidate,
             _fixture(),
             protected_result_hash=first.package.protected_result_hash,
-            protected_execution_ledger_hash="b" * 64,
+            protected_execution_ledger_hash=fixture_digest("finalization b"),
             protected_economic_ledger_hash=first.package.protected_economic_ledger_hash,
             protected_report_hash=first.package.protected_report_hash,
         )
@@ -2836,7 +2864,7 @@ def test_the_inspection_carries_no_metric_and_no_verdict() -> None:
         class _Leaky(ProtectedPackageInspection):
             cumulative_return: float = 0.0
 
-        _Leaky.create(package_hash="a" * 64)
+        _Leaky.create(package_hash=fixture_digest("finalization a"))
 
 
 # ===================================================================
@@ -2867,7 +2895,8 @@ def _public_discovery_routes(wired: _Finalization, package) -> list[object]:  # 
         lambda: ledger.find_execution_for_program(protected_program),
         lambda: ledger.find_program_for(
             holdings_spec_hash=pending_program.holdings_spec_hash,
-            authorities_hash=pending_program.authorities_hash or "0" * 64,
+            authorities_hash=pending_program.authorities_hash
+            or fixture_digest("missing authorities"),
         ),
         lambda: HostReleasedArtifacts(store=wired.store, public=ledger).open_released(
             package.package_hash
@@ -3034,7 +3063,7 @@ def test_finalization_layers_fail_on_another_finalizations_artifacts(tmp_path: P
         second_development = PortfolioResearchApplication(
             workspace_id="qa-final",
             workspace=workspace,
-            manifest_binding=lambda: "a" * 64,
+            manifest_binding=lambda: WORKSPACE_MANIFEST_HASH,
             session=session,
             resolver=_Resolver(_resolved(sessions=DEVELOPMENT_SESSIONS[:2])),
         )
@@ -3160,7 +3189,7 @@ def test_the_gate_refuses_a_coherent_package_from_another_configuration(
         other_development = PortfolioResearchApplication(
             workspace_id="qa-final",
             workspace=workspace,
-            manifest_binding=lambda: "a" * 64,
+            manifest_binding=lambda: WORKSPACE_MANIFEST_HASH,
             session=session,
             resolver=_Resolver(_resolved(sessions=DEVELOPMENT_SESSIONS)),
         )
@@ -3271,7 +3300,9 @@ def test_the_gate_refuses_a_program_whose_axis_disagrees_with_its_ledger(
             "report_hash": forged_report_hash,
         }
         forged_result_hash = canonical_hash(forged_result_identity)
-        (wired.pending.root / "results" / f"{forged_result_hash}.json").write_bytes(
+        (
+            wired.pending.content.artifact_path(category="results", content_hash=forged_result_hash)
+        ).write_bytes(
             json.dumps(
                 {
                     **forged_result_identity,
@@ -3370,10 +3401,8 @@ def test_the_gate_refuses_a_report_whose_comparison_child_is_absent(tmp_path: Pa
         permit = gate.admit(candidate=candidate, fixture=fixture)
         produced = wired.continuation.evaluate(permit=permit, candidate=candidate)
         report = wired.pending.load_report(produced.report_hash)
-        (
-            wired.pending.root
-            / "benchmark-comparisons"
-            / f"{report.benchmark_comparison_hash}.json"
+        wired.pending.content.artifact_path(
+            category="benchmark-comparisons", content_hash=report.benchmark_comparison_hash
         ).unlink()
         package = FinalPortfolioEvaluationPackage.create(
             permit_hash=permit.permit_hash,
@@ -3508,7 +3537,11 @@ def test_a_deleted_release_marker_unproves_the_closure(tmp_path: Path) -> None:
             finalized.handoff,
         )
         wired.store.committed.path("released", finalized.package.package_hash).unlink()
-        (wired.store.root / "releases" / f"{finalized.release.marker_hash}.json").unlink()
+        (
+            wired.store.content.artifact_path(
+                category="releases", content_hash=finalized.release.marker_hash
+            )
+        ).unlink()
         after = _readback_with(
             wired,
             session,
@@ -3535,7 +3568,7 @@ def test_a_crossed_release_marker_is_refused(tmp_path: Path) -> None:
         second_development = PortfolioResearchApplication(
             workspace_id="qa-final",
             workspace=workspace,
-            manifest_binding=lambda: "a" * 64,
+            manifest_binding=lambda: WORKSPACE_MANIFEST_HASH,
             session=session,
             resolver=_Resolver(_resolved(sessions=DEVELOPMENT_SESSIONS[:2])),
         )
@@ -3616,7 +3649,9 @@ def test_release_stage_verification_reopens_the_marker(tmp_path: Path) -> None:
                 task=record, execution=None, work_item=definition, evidence=item.evidence
             )
             if definition.stage_id in {"claim_protected_permit", "verify_protected_closure"}:
-                forged = item.evidence[0].model_copy(update={"content_hash": "f" * 64})
+                forged = item.evidence[0].model_copy(
+                    update={"content_hash": fixture_digest("finalization f")}
+                )
                 with pytest.raises(PortfolioFinalizationError, match="evidence_not_durable"):
                     adapter.verify_stage(
                         task=record, execution=None, work_item=definition, evidence=(forged,)
@@ -3632,7 +3667,11 @@ def test_release_stage_verification_reopens_the_marker(tmp_path: Path) -> None:
         # With the marker, it verifies.
         adapter.verify_stage(task=record, execution=None, work_item=work_item, evidence=evidence)
         wired.store.committed.path("released", finalized.package.package_hash).unlink()
-        (wired.store.root / "releases" / f"{finalized.release.marker_hash}.json").unlink()
+        (
+            wired.store.content.artifact_path(
+                category="releases", content_hash=finalized.release.marker_hash
+            )
+        ).unlink()
         with pytest.raises(PortfolioFinalizationError, match="release_marker_absent"):
             adapter.verify_stage(
                 task=record, execution=None, work_item=work_item, evidence=evidence
@@ -3649,7 +3688,11 @@ def test_recovery_refuses_to_complete_without_the_release_marker(tmp_path: Path)
         candidate = _candidate(wired)
         finalized = wired.application.finalize(candidate=candidate, fixture=_fixture())
         wired.store.committed.path("released", finalized.package.package_hash).unlink()
-        (wired.store.root / "releases" / f"{finalized.release.marker_hash}.json").unlink()
+        (
+            wired.store.content.artifact_path(
+                category="releases", content_hash=finalized.release.marker_hash
+            )
+        ).unlink()
         # Deleting the marker and asking again re-commits it, because the stage
         # is idempotent -- so the refusal is measured on a store that cannot
         # commit one.
@@ -3677,7 +3720,7 @@ def test_a_secondary_comparator_path_replays_every_layer(tmp_path: Path) -> None
         development = PortfolioResearchApplication(
             workspace_id="qa-spy",
             workspace=workspace,
-            manifest_binding=lambda: "a" * 64,
+            manifest_binding=lambda: WORKSPACE_MANIFEST_HASH,
             session=session,
             resolver=_Resolver(
                 _resolved(benchmark_view="anchor_plus_spy", sessions=DEVELOPMENT_SESSIONS)
@@ -3719,7 +3762,7 @@ def test_a_secondary_comparator_path_without_the_sealed_series_is_refused(
         development = PortfolioResearchApplication(
             workspace_id="qa-spy",
             workspace=workspace,
-            manifest_binding=lambda: "a" * 64,
+            manifest_binding=lambda: WORKSPACE_MANIFEST_HASH,
             session=session,
             resolver=_Resolver(
                 _resolved(benchmark_view="anchor_plus_spy", sessions=DEVELOPMENT_SESSIONS)
@@ -3733,10 +3776,8 @@ def test_a_secondary_comparator_path_without_the_sealed_series_is_refused(
         )
         report = development.ledger.load_report(completed.result.report_hash)
         # The pre-sealing shape: the comparison was never published.
-        (
-            development.ledger.root
-            / "benchmark-comparisons"
-            / f"{report.benchmark_comparison_hash}.json"
+        development.ledger.content.artifact_path(
+            category="benchmark-comparisons", content_hash=report.benchmark_comparison_hash
         ).unlink()
         receipt = strong_replay(
             development.ledger,
@@ -3762,8 +3803,8 @@ def _publish_risk_surface(artifact_root: Path, *, listings: tuple[str, ...]) -> 
     epoch_values: dict[str, object] = {
         "kind": "RiskUniverseEpoch",
         "market_profile_id": "qa-synthetic",
-        "universe_manifest_revision": "1" * 64,
-        "panel_snapshot_hash": "2" * 64,
+        "universe_manifest_revision": fixture_digest("finalization 1"),
+        "panel_snapshot_hash": fixture_digest("finalization 2"),
         "ordered_listing_ids": listings,
         "data_validity_class": "CURRENT_UNIVERSE_RESEARCH_ONLY",
         "minimum_valid_return_sessions": 315,
@@ -3788,7 +3829,7 @@ def _publish_risk_surface(artifact_root: Path, *, listings: tuple[str, ...]) -> 
                 "exit_source_row_hash": canonical_hash(
                     {"listing": listing, "formation": formation.isoformat(), "side": "exit"}
                 ),
-                "action_set_hash": "3" * 64,
+                "action_set_hash": fixture_digest("finalization 3"),
             }
             rows.append({**values, "row_hash": canonical_hash(values)})
     store = RiskReturnArtifactStore(artifact_root)
@@ -3801,7 +3842,7 @@ def _publish_risk_surface(artifact_root: Path, *, listings: tuple[str, ...]) -> 
         "formation_count": 315,
         "return_unit": "one-session-open-to-open-log-return",
         "formula_identity": "split-adjusted-open-plus-dividend-log-gross-return",
-        "source_watermark_hash": "5" * 64,
+        "source_watermark_hash": fixture_digest("finalization 5"),
         "chunks": (chunk,),
         "limitations": ("Synthetic QA surface; carries no scientific claim.",),
     }
@@ -3810,24 +3851,20 @@ def _publish_risk_surface(artifact_root: Path, *, listings: tuple[str, ...]) -> 
     ).model_dump(mode="json", exclude={"surface_hash"})
     surface = CausalRiskReturnSurface(**identity, surface_hash=canonical_hash(identity))
     store.publish_manifest(surface)
-    chunk_path = store.root / "chunks" / f"{chunk.content_hash}.parquet"
+    chunk_path = store.root / "chunks" / f"{blake3_filename(chunk.content_hash)}.parquet"
     return str(surface.surface_hash), chunk_path
 
 
 def _publish_alpha_evidence(root: Path) -> tuple[str, AlphaProductRecipe, Path]:
-    """Write a complete synthetic Alpha package under a synthetic recipe."""
+    """Write a complete synthetic Alpha package for the installed recipe."""
+
+    from alphalattice.kernel.identity import integrity_blake3_path
 
     root.mkdir(parents=True, exist_ok=True)
     daily = root / "iw184-daily-evidence.parquet"
     daily.write_bytes(b"non-reserved synthetic Alpha daily evidence")
-    daily_sha = hashlib.sha256(daily.read_bytes()).hexdigest()
-    recipe_values = INSTALLED_ALPHA_PRODUCT_RECIPE.model_dump(mode="json", exclude={"recipe_hash"})
-    recipe_values["evidence_daily_parquet_sha256"] = daily_sha
-    draft = AlphaProductRecipe.model_construct(**recipe_values, recipe_hash="0" * 64)
-    recipe = AlphaProductRecipe(
-        **recipe_values,
-        recipe_hash=recipe_identity(draft, exclude=frozenset({"recipe_hash"})),
-    )
+    daily_sha = integrity_blake3_path(daily)
+    recipe = INSTALLED_ALPHA_PRODUCT_RECIPE
     vintages = ("2024-01", "2023-10", "2023-07", "2023-04")
     formation = DEVELOPMENT_SESSIONS[-1]
     listings = LISTINGS
@@ -3845,13 +3882,13 @@ def _publish_alpha_evidence(root: Path) -> tuple[str, AlphaProductRecipe, Path]:
             row_sessions=np.asarray([value for value, _listing in rows], dtype="datetime64[D]"),
             row_listing_ids=np.asarray([listing for _value, listing in rows], dtype="<U36"),
         )
-        axis_sha = hashlib.sha256(axis_payload.read_bytes()).hexdigest()
+        axis_sha = integrity_blake3_path(axis_payload)
         (root / "prediction-axes" / f"{vintage}.json").write_text(
             json.dumps(
                 {
                     "kind": "IW184QuarterlyPredictionAxis",
                     "quarter_start": vintage,
-                    "artifact_sha256": axis_sha,
+                    "artifact_digest": axis_sha,
                     "row_count": len(rows),
                     "transform_session_axis_hash": session_axis_hash,
                     "operational_months": list(months),
@@ -3870,15 +3907,15 @@ def _publish_alpha_evidence(root: Path) -> tuple[str, AlphaProductRecipe, Path]:
                 "candidate": recipe.feature_axis_id,
                 "candidate_axis_hash": recipe.feature_axis_hash,
                 "feature_view_id": "SYNTHETIC_NON_RESERVED",
-                "annual_root_hash": "4" * 64,
-                "source_resolution_hash": "5" * 64,
+                "annual_root_hash": "blake3:" + "4" * 64,
+                "source_resolution_hash": "blake3:" + "5" * 64,
                 "recipe_hash": model_recipe_hash,
                 "seed": seed,
                 "quarter_start": vintage,
                 "training_window_sessions": recipe.training_window_sessions,
                 "training_first": "2019-01-02",
                 "training_last": "2023-12-29",
-                "training_session_axis_hash": "6" * 64,
+                "training_session_axis_hash": "blake3:" + "6" * 64,
                 "purge_session": "2024-01-01",
                 "purge_session_count": recipe.purge_sessions,
                 "prediction_months": list(months),
@@ -3891,11 +3928,11 @@ def _publish_alpha_evidence(root: Path) -> tuple[str, AlphaProductRecipe, Path]:
             np.savez(
                 payload,
                 scores=np.linspace(0.0, 1.0, len(rows), dtype=np.float64),
-                identity_hash=np.asarray(identity_hash, dtype="<U64"),
+                identity_hash=np.asarray(identity_hash),
             )
             if first_model_payload is None:
                 first_model_payload = payload
-            artifact_sha = hashlib.sha256(payload.read_bytes()).hexdigest()
+            artifact_sha = integrity_blake3_path(payload)
             estimator_hash = canonical_hash({"estimator": seed, "vintage": vintage})
             (vintage_root / f"seed-{seed}.json").write_text(
                 json.dumps(
@@ -3904,8 +3941,8 @@ def _publish_alpha_evidence(root: Path) -> tuple[str, AlphaProductRecipe, Path]:
                         "ordered_feature_ids_hash": recipe.feature_axis_hash,
                         "identity_hash": identity_hash,
                         "estimator_content_hash": estimator_hash,
-                        "artifact_sha256": artifact_sha,
-                        "prediction_axis_sha256": axis_sha,
+                        "artifact_digest": artifact_sha,
+                        "prediction_axis_digest": axis_sha,
                         "prediction_row_count": len(rows),
                         "training_row_count": recipe.training_window_sessions,
                     }
@@ -3913,7 +3950,7 @@ def _publish_alpha_evidence(root: Path) -> tuple[str, AlphaProductRecipe, Path]:
                 encoding="utf-8",
             )
             seed_lineage[str(seed)] = {
-                "artifact_sha256": artifact_sha,
+                "artifact_digest": artifact_sha,
                 "estimator_content_hash": estimator_hash,
                 "identity_hash": identity_hash,
                 "training_first": identity["training_first"],
@@ -3921,13 +3958,15 @@ def _publish_alpha_evidence(root: Path) -> tuple[str, AlphaProductRecipe, Path]:
                 "training_row_count": recipe.training_window_sessions,
             }
         model_lineage[vintage] = {
-            "prediction_axis_sha256": axis_sha,
+            "prediction_axis_digest": axis_sha,
             "row_count": len(rows),
             "seeds": seed_lineage,
         }
     manifest = {
         "kind": "IW184Fixed1260QuarterlySeed3Vintage4WeightSensitivityDiagnostic",
         "disposition": recipe.evidence_disposition,
+        "schema_version": 2,
+        "recipe_hash": recipe.recipe_hash,
         "definition": {
             "feature_axis": recipe.feature_axis_id,
             "feature_count": recipe.feature_count,
@@ -3943,14 +3982,14 @@ def _publish_alpha_evidence(root: Path) -> tuple[str, AlphaProductRecipe, Path]:
         "daily_evidence": {
             "name": daily.name,
             "row_count": 1,
-            "sha256": daily_sha,
+            "digest": daily_sha,
         },
         "model_lineage": model_lineage,
     }
     path = root / f"{EVIDENCE_PACKAGE_ID}.json"
     path.write_bytes(json.dumps(manifest, sort_keys=True, separators=(",", ":")).encode())
     assert first_model_payload is not None
-    return hashlib.sha256(path.read_bytes()).hexdigest(), recipe, first_model_payload
+    return integrity_blake3_path(path), recipe, first_model_payload
 
 
 def test_upstream_layers_are_proved_by_opening_the_real_artifacts(tmp_path: Path) -> None:
@@ -3978,7 +4017,7 @@ def test_upstream_layers_are_proved_by_opening_the_real_artifacts(tmp_path: Path
         development = PortfolioResearchApplication(
             workspace_id="qa-upstream",
             workspace=workspace,
-            manifest_binding=lambda: "a" * 64,
+            manifest_binding=lambda: WORKSPACE_MANIFEST_HASH,
             session=session,
             resolver=_Resolver(bound, numerical=bound),
         )
@@ -4042,16 +4081,20 @@ def test_an_arbitrary_identity_cannot_be_opened(tmp_path: Path) -> None:
         "ALPHA_EVIDENCE_MANIFEST",
         "RISK_RETURN_SURFACE",
     ):
-        assert opener.open_upstream(role=role, identity_hash="a" * 64) is None
+        assert (
+            opener.open_upstream(role=role, identity_hash=fixture_digest("finalization a")) is None
+        )
     # The installed recipes open, and report *their own* identity -- so a
     # request for a different one is answered, and then fails the comparison.
-    opened = opener.open_upstream(role="ALPHA_RECIPE", identity_hash="a" * 64)
+    opened = opener.open_upstream(
+        role="ALPHA_RECIPE", identity_hash=fixture_digest("finalization a")
+    )
     assert opened is not None
     assert opened.identity_hash == INSTALLED_ALPHA_PRODUCT_RECIPE.recipe_hash
     layer = _upstream_layer(
         "alpha_recipe",
         role="ALPHA_RECIPE",
-        identity="a" * 64,
+        identity=fixture_digest("finalization a"),
         opener=opener,
         proved_detail="opened",
         unreachable_detail="not opened",
@@ -4093,9 +4136,15 @@ def test_the_application_read_back_seam_needs_no_prerequisite(tmp_path: Path) ->
         released = wired.ledger.load_result(finalized.package.protected_result_hash)
         # The release adopts the ledger and the report into the catalog alone.
         assert not (
-            wired.ledger.root / "execution-ledgers" / f"{released.execution_ledger_hash}.json"
+            wired.ledger.content.artifact_path(
+                category="execution-ledgers", content_hash=released.execution_ledger_hash
+            )
         ).exists()
-        assert not (wired.ledger.root / "reports" / f"{released.report_hash}.json").exists()
+        assert not (
+            wired.ledger.content.artifact_path(
+                category="reports", content_hash=released.report_hash
+            )
+        ).exists()
         ledger = wired.ledger.load_execution(released.execution_ledger_hash)
         assert ledger.ledger_hash == released.execution_ledger_hash
         receipt = wired.application.read_back(

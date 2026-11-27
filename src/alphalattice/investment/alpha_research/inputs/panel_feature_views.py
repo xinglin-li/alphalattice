@@ -30,7 +30,7 @@ from alphalattice.capabilities.domain_contracts.sealing import (
     seal_payload_digest,
 )
 from alphalattice.capabilities.quant.sector_history import sector_ids, sector_slices
-from alphalattice.kernel.identity import identity_sha256
+from alphalattice.kernel.identity import BLAKE3_PATTERN, identity_blake3, is_blake3, tagged_blake3
 
 type FloatArray = npt.NDArray[np.float64]
 type BoolArray = npt.NDArray[np.bool_]
@@ -92,7 +92,7 @@ type HistoricalPanelEvidenceViewId = Literal[
 ]
 type ScaleState = Literal["INVALID_NONFINITE_SCALE", "CONSTANT_TRAINING_FEATURE", "VALID_SCALE"]
 
-_HASH = r"^[0-9a-f]{64}$"
+_HASH = BLAKE3_PATTERN
 _NEAR_CONSTANT_THRESHOLD: Final = 1e-8
 INSTALLED_PANEL_VIEW_IDS: Final[tuple[InstalledPanelViewId, ...]] = (
     "RELATIVE_CONTROL",
@@ -180,10 +180,14 @@ def panel_array_hash(values: npt.NDArray[np.generic]) -> str:
             {
                 "dtype": array.dtype.str,
                 "shape": list(array.shape),
-                "finite_mask": identity_sha256(finite.tobytes()).hexdigest(),
-                "finite_values": identity_sha256(
-                    np.ascontiguousarray(np.where(finite, array, 0), dtype=array.dtype).tobytes()
-                ).hexdigest(),
+                "finite_mask": tagged_blake3(identity_blake3(finite.tobytes())),
+                "finite_values": tagged_blake3(
+                    identity_blake3(
+                        np.ascontiguousarray(
+                            np.where(finite, array, 0), dtype=array.dtype
+                        ).tobytes()
+                    )
+                ),
             }
         )
     )
@@ -990,7 +994,7 @@ class PanelFeatureSourceArrays:
             # carries the close-to-close observation those aggregate.
             or self.market_context_values.shape
             not in {(sessions, 8), (sessions, 8 + len(OBSERVED_MARKET_SOURCE_IDS))}
-            or any(len(value) != 64 for value in self.source_identity_hashes.values())
+            or any(not is_blake3(value) for value in self.source_identity_hashes.values())
         ):
             raise PanelFeatureBoundaryError("alpha_research.panel_feature_source_axis_invalid")
         if any(

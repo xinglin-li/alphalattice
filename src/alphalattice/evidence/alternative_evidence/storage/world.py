@@ -36,14 +36,18 @@ from pathlib import Path
 from typing import Any, Final
 
 from alphalattice.capabilities.data.errors import DataError
-from alphalattice.capabilities.domain_contracts.domain.serialization import sha256_hex
 from alphalattice.capabilities.domain_contracts.persistence import fsync_directory, write_new
 from alphalattice.control.workspace_runtime.paths import make_confined_parents, resolve_confined
 from alphalattice.foundation.data_layer import history
 from alphalattice.foundation.data_layer.log import uuid7
 from alphalattice.foundation.data_layer.root import data_root
 from alphalattice.foundation.data_layer.store import as_columns, newest, stage
-from alphalattice.kernel.identity import change_blake3, identity_blake3
+from alphalattice.kernel.identity import (
+    blake3_digest,
+    blake3_filename,
+    change_blake3,
+    identity_blake3,
+)
 
 from ..documents.contracts import AlternativeEvidenceDocumentReference
 from ..publication.artifacts import AlternativeEvidenceArtifactStore
@@ -208,7 +212,8 @@ def _marks(root: Path) -> dict[str, int]:
             with os.scandir(root / category) as entries:
                 for e in entries:
                     if e.name.endswith(".json"):
-                        mark = f"{category}/{e.name.removesuffix('.json')}"
+                        identity = AlternativeEvidenceArtifactStore.file_identity(Path(e.name))
+                        mark = f"{category}/{identity}"
                         marks[mark] = e.stat().st_mtime_ns
     return marks
 
@@ -247,7 +252,11 @@ def _identities(directory: Path) -> list[str]:
     if not directory.is_dir():
         return []
     with os.scandir(directory) as entries:
-        return sorted(e.name.removesuffix(".json") for e in entries if e.name.endswith(".json"))
+        return sorted(
+            AlternativeEvidenceArtifactStore.file_identity(Path(e.name))
+            for e in entries
+            if e.name.endswith(".json")
+        )
 
 
 def _references(
@@ -511,7 +520,7 @@ def original_locator_bodies(
     for reference in _references(artifacts, None):
         if isinstance(reference, AcquiredEvidenceDocument):
             continue
-        name = reference.content_sha256
+        name = reference.content_digest
         if name in seen:
             continue
         seen.add(name)
@@ -519,10 +528,10 @@ def original_locator_bodies(
         if not original.is_file():
             continue
         stored = original.read_bytes()
-        if not stored.startswith(WORLD_OBJECT) or sha256_hex(stored) == name:
+        if not stored.startswith(WORLD_OBJECT) or blake3_digest(stored) == name:
             continue
         content = locator_body(stored, root)
-        if len(content) != reference.content_bytes or sha256_hex(content) != name:
+        if len(content) != reference.content_bytes or blake3_digest(content) != name:
             raise ValueError(f"alternative_evidence.source_object_tampered: {name}")
         yield name, content
 
@@ -533,11 +542,12 @@ def carry_originals(workspace: Path, copy: Path, *, root: Path | None = None) ->
     for name, content in original_locator_bodies(
         workspace / "runtime/artifacts", workspace / _EVIDENCE_WORKSPACE, root=where
     ):
-        relative = f"{_EVIDENCE_WORKSPACE}/{_CARRIED_ORIGINALS}/{name}"
+        filename = blake3_filename(name)
+        relative = f"{_EVIDENCE_WORKSPACE}/{_CARRIED_ORIGINALS}/{filename}"
         make_confined_parents(copy, relative)
         target = resolve_confined(copy, relative)
-        _keep(target.parent, name, content)
-        if sha256_hex(target.read_bytes()) != name:
+        _keep(target.parent, filename, content)
+        if blake3_digest(target.read_bytes()) != name:
             raise ValueError(f"alternative_evidence.source_object_tampered: {name}")
         yield target
 
@@ -546,12 +556,13 @@ def _import_original(
     sources: Path, root: Path, reference: AcquiredEvidenceDocumentReference
 ) -> None:
     """Rehome a verified carried body and remove its transport file when durable."""
-    name = reference.content_sha256
-    member = resolve_confined(sources, f"{_CARRIED_ORIGINALS}/{name}")
+    name = reference.content_digest
+    filename = blake3_filename(name)
+    member = resolve_confined(sources, f"{_CARRIED_ORIGINALS}/{filename}")
     if not member.is_file():
         return
     content = member.read_bytes()
-    if len(content) != reference.content_bytes or sha256_hex(content) != name:
+    if len(content) != reference.content_bytes or blake3_digest(content) != name:
         raise ValueError(f"alternative_evidence.source_object_tampered: {name}")
     digest = identity_blake3(content).hexdigest()
     locator = WORLD_OBJECT + digest.encode("ascii")
@@ -559,7 +570,7 @@ def _import_original(
     locator_body(locator, root)
     make_confined_parents(sources, reference.content_object_path)
     target = resolve_confined(sources, reference.content_object_path)
-    _keep(target.parent, name, locator)
+    _keep(target.parent, filename, locator)
     if target.read_bytes() != locator:
         raise ValueError(f"alternative_evidence.source_object_tampered: {name}")
     member.unlink()

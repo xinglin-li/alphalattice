@@ -28,6 +28,7 @@ from datetime import UTC, datetime
 from hashlib import sha256
 from pathlib import Path
 from typing import Any
+from urllib.parse import urlencode
 from uuid import UUID
 
 import pytest
@@ -49,6 +50,7 @@ from alphalattice.interface.local_application.client import LocalResearchClient
 from alphalattice.interface.local_application.dispatcher import CommandAdmission
 from alphalattice.interface.local_application.web import AdmittedRequest, LocalWebService
 from alphalattice.protocols.actor_execution.answers import AgentAnswerRecord, answer_slot
+from tests._support.identity_fixtures import fixture_digest
 from tests.alternative_evidence_desk.planted_corpus import _CitingActor
 from tests.alternative_evidence_desk.review_dossiers import controlled_answer
 from tests.alternative_evidence_desk.review_http_support import (
@@ -227,7 +229,9 @@ def test_scene_shows_the_same_context_refusals_correction_and_owner_readback(
         message_id="answer-1",
     )
     assert verified["task_verified"] is True
-    binding_changed = client.request({**document, "analysis_context_hash": "a" * 64})
+    binding_changed = client.request(
+        {**document, "analysis_context_hash": fixture_digest("stale analysis context")}
+    )
     assert "external_analysis_binding_changed" in binding_changed["refused"]
     invented = json.loads(json.dumps(answer))
     invented["findings"][0]["cite"] = ["S999"]
@@ -307,9 +311,7 @@ def test_scene_shows_the_same_context_refusals_correction_and_owner_readback(
     page = client.activity(after=start["cursor"], limit=200)
     assert page["disposition"] == "CONTINUED"
     reads = {
-        "/api/report?result_hash=" + selected["result_hash"]: client.request(
-            {"operation": "REPORT", **selected}
-        ),
+        "/api/report?" + urlencode(selected): client.request({"operation": "REPORT", **selected}),
         "/api/status?task_id=" + str(analysis_task): client.request(
             {"operation": "STATUS", "task_id": str(analysis_task)}
         ),

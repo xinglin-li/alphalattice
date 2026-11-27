@@ -66,6 +66,7 @@ from alphalattice.foundation.research_foundation.runtime.delta import (
 from alphalattice.foundation.research_foundation.storage.repository import (
     ResearchFoundationStateRepository,
 )
+from alphalattice.kernel.identity import blake3_filename, blake3_from_filename
 
 PRE_RESEARCH_DELTA_POLICY_HASHES = (
     canonical_hash(
@@ -1069,7 +1070,12 @@ class PreResearchDeltaService:
         compressed = 0
         uncompressed = 0
         for chunk_hash in chunk_hashes:
-            path = self.artifact_root / "feature-panel" / "chunks" / f"{chunk_hash}.parquet"
+            path = (
+                self.artifact_root
+                / "feature-panel"
+                / "chunks"
+                / f"{blake3_filename(chunk_hash)}.parquet"
+            )
             compressed += path.stat().st_size
             metadata = pq.ParquetFile(path).metadata
             uncompressed += sum(
@@ -1080,15 +1086,23 @@ class PreResearchDeltaService:
         reachable_hashes: set[str] = set(chunk_hashes)
         manifests_root = self.artifact_root / "feature-panel" / "manifests"
         for manifest_path in manifests_root.glob("*.json"):
+            manifest_hash = blake3_from_filename(manifest_path.stem)
+            if manifest_hash is None:
+                raise ValueError("artifact content hash must be tagged BLAKE3")
             historic = self.resolver.load_feature_panel_manifest(
-                ArtifactResolver.feature_panel_manifest_uri(manifest_path.stem)
+                ArtifactResolver.feature_panel_manifest_uri(manifest_hash)
             )
             reachable_hashes.update(
                 str(value["chunk_hash"])
                 for value in historic.get("chunks", ())  # type: ignore[index]
             )
         reachable = sum(
-            (self.artifact_root / "feature-panel" / "chunks" / f"{chunk_hash}.parquet")
+            (
+                self.artifact_root
+                / "feature-panel"
+                / "chunks"
+                / f"{blake3_filename(chunk_hash)}.parquet"
+            )
             .stat()
             .st_size
             for chunk_hash in reachable_hashes

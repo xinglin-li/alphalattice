@@ -9,6 +9,7 @@ from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 from alphalattice.capabilities.domain_contracts.identity import canonical_hash
 from alphalattice.capabilities.domain_contracts.sealing import seal_model
+from alphalattice.kernel.identity import BLAKE3_PATTERN
 
 
 class _Contract(BaseModel):  # type: ignore[misc]
@@ -53,7 +54,7 @@ class AlphaMetricPolicy(_Contract):
         "RANK_AND_SPREAD_UNAVAILABLE_NOT_FAILURE"
     )
     turnover_policy: Literal["FORMATION_DECILE_ONE_WAY"] = "FORMATION_DECILE_ONE_WAY"
-    policy_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
+    policy_hash: str = Field(pattern=BLAKE3_PATTERN)
 
     @model_validator(mode="after")  # type: ignore[untyped-decorator]
     def validate_identity(self) -> AlphaMetricPolicy:
@@ -120,7 +121,7 @@ class AlphaFoldMetrics(_Contract):
     rank_ic: AlphaMetricValue
     gross_decile_spread: AlphaMetricValue
     formation_decile_turnover: AlphaMetricValue
-    metrics_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
+    metrics_hash: str = Field(pattern=BLAKE3_PATTERN)
 
     @model_validator(mode="after")  # type: ignore[untyped-decorator]
     def validate_identity(self) -> AlphaFoldMetrics:
@@ -165,7 +166,7 @@ class AlphaCandidateMetrics(_Contract):
     formation_decile_turnover_mean: AlphaMetricValue
     fold_coverage_mean: float = Field(ge=0, le=1, allow_inf_nan=False)
     fold_mse_std: AlphaMetricValue
-    metrics_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
+    metrics_hash: str = Field(pattern=BLAKE3_PATTERN)
 
     @model_validator(mode="after")  # type: ignore[untyped-decorator]
     def validate_identity(self) -> AlphaCandidateMetrics:

@@ -33,6 +33,7 @@ from alphalattice.foundation.research_foundation.contracts import (
     PreResearchDeskSafeProjection,
     ResearchFoundationBinding,
 )
+from tests._support.identity_fixtures import fixture_digest
 from tests.portfolio_strategy_lab.host_requests import _json
 from tests.portfolio_strategy_lab.local_web_support import (
     _resolved,
@@ -224,10 +225,10 @@ def _activate(workspace: Path, *specs) -> None:
                 factor_id=spec.factor_id,
                 specification=spec,
                 preprocessing_recipe="ROBUST_UNIVERSE_Z",
-                feature_plan_hash="a" * 64,
-                trial_id="b" * 64,
-                methodology_hash="c" * 64,
-                packet_hash="d" * 64,
+                feature_plan_hash=fixture_digest("fixture activation plan"),
+                trial_id=fixture_digest("fixture activation trial"),
+                methodology_hash=fixture_digest("fixture activation methodology"),
+                packet_hash=fixture_digest("fixture activation packet"),
                 activated_at=NOW,
             )
             for spec in specs

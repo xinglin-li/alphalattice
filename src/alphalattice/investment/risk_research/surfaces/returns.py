@@ -47,7 +47,13 @@ from alphalattice.investment.risk_research.contracts import (
     RiskUniverseEpoch,
     seal_contract,
 )
-from alphalattice.kernel.identity import integrity_sha256
+from alphalattice.kernel.identity import (
+    blake3_filename,
+    blake3_from_filename,
+    integrity_blake3,
+    is_blake3,
+    tagged_blake3,
+)
 
 type FloatArray = NDArray[np.float64]
 _PREFIX = "playpen://data-operations/risk-returns/"
@@ -121,16 +127,16 @@ class RiskReturnArtifactStore:
 
     @staticmethod
     def _require_hash(value: str) -> None:
-        if len(value) != 64 or any(character not in "0123456789abcdef" for character in value):
+        if not is_blake3(value):
             raise RiskReturnSurfaceError("risk_research.return_artifact_identity_invalid")
 
     def _chunk_path(self, content_hash: str) -> Path:
         self._require_hash(content_hash)
-        return self.root / "chunks" / f"{content_hash}.parquet"
+        return self.root / "chunks" / f"{blake3_filename(content_hash)}.parquet"
 
     def _manifest_path(self, surface_hash: str) -> Path:
         self._require_hash(surface_hash)
-        return self.root / "manifests" / f"{surface_hash}.json"
+        return self.root / "manifests" / f"{blake3_filename(surface_hash)}.json"
 
     @staticmethod
     def chunk_uri(content_hash: str) -> str:
@@ -214,7 +220,7 @@ class RiskReturnArtifactStore:
             first_formation_session=sessions[0],
             last_formation_session=sessions[-1],
             content_hash=content_hash,
-            metadata_hash=integrity_sha256(serialized_metadata).hexdigest(),
+            metadata_hash=tagged_blake3(integrity_blake3(serialized_metadata)),
             uri=self.chunk_uri(content_hash),
         )
 
@@ -241,7 +247,7 @@ class RiskReturnArtifactStore:
         return ArtifactDescriptor(
             kind="causal-risk-return-surface",
             content_hash=surface.surface_hash,
-            metadata_hash=integrity_sha256(content).hexdigest(),
+            metadata_hash=tagged_blake3(integrity_blake3(content)),
             uri=self.manifest_uri(surface.surface_hash),
         )
 
@@ -306,7 +312,10 @@ class RiskReturnArtifactStore:
         """
         root = self.root / "manifests"
         for path in sorted(root.glob("*.json")) if root.is_dir() else ():
-            surface = self.load_manifest(path.stem)
+            digest = blake3_from_filename(path.stem)
+            if digest is None:
+                raise RiskReturnSurfaceError("risk_research.return_artifact_identity_invalid")
+            surface = self.load_manifest(digest)
             if (
                 surface.epoch.panel_snapshot_hash == panel_snapshot_hash
                 and surface.source_watermark_hash == source_watermark_hash
@@ -342,7 +351,7 @@ class RiskReturnArtifactStore:
             sort_keys=True,
             separators=(",", ":"),
         ).encode()
-        if integrity_sha256(serialized).hexdigest() != chunk.metadata_hash:
+        if tagged_blake3(integrity_blake3(serialized)) != chunk.metadata_hash:
             raise RiskReturnSurfaceError("risk_research.return_chunk_metadata_tampered")
         ordered = table.sort_by([("formation_session", "ascending"), ("listing_id", "ascending")])
         if ordered.num_rows == 0 or ordered.num_rows != chunk.row_count:

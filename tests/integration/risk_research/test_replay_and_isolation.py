@@ -27,11 +27,13 @@ from alphalattice.investment.risk_research.experiments.verification import (
     RiskEvidenceVerifier,
 )
 from alphalattice.investment.risk_research.surfaces.artifacts import RiskArtifactStore
+from alphalattice.kernel.identity import blake3_filename
 from alphalattice.protocols.research_authoring.contracts import (
     AuthoringError,
     ResearchExecutionEvidence,
     SealedResearchProgram,
 )
+from tests._support.identity_fixtures import fixture_digest
 from tests._support.researcher_methodology_surface_fixtures import RiskDevelopmentRun
 
 _SURFACES = "development/covariance-surfaces"
@@ -179,7 +181,7 @@ def _artifact_path(run: RiskDevelopmentRun, category: str) -> Path:
 
     prefix = f"playpen://risk-research/{category}/"
     content_hash = _uri(run, category)[len(prefix) :]
-    return _store_root(run.output) / category / f"{content_hash}.json"
+    return _store_root(run.output) / category / f"{blake3_filename(content_hash)}.json"
 
 
 def _reseal(evidence: ResearchExecutionEvidence, **overrides: object) -> ResearchExecutionEvidence:
@@ -256,8 +258,9 @@ def test_deleting_a_terminal_artifact_is_refused(
     [
         (_INPUT_BINDINGS, "lookback_sessions", 7),
         (_SURFACES, "capability_handle", "CASE_STUDY_TAMPERED"),
-        (_DIAGNOSTICS, "recipe_hash", "f" * 64),
+        (_DIAGNOSTICS, "recipe_hash", fixture_digest("f")),
     ],
+    ids=("input-lookback", "surface-capability", "diagnostic-recipe"),
 )
 def test_tampering_with_a_terminal_artifact_is_refused(
     tampered_run: RiskDevelopmentRun,
@@ -291,7 +294,7 @@ def test_a_surface_whose_method_fields_were_edited_cannot_be_read_back(
     target = _artifact_path(tampered_run, _SURFACES)
     payload = json.loads(target.read_text(encoding="utf-8"))
     payload["program_binding"][field] = (
-        "f" * 64 if field.endswith("hash") else "case-study-tampered"
+        fixture_digest("f") if field.endswith("hash") else "case-study-tampered"
     )
     target.write_text(json.dumps(payload), encoding="utf-8")
     with pytest.raises(AuthoringError, match="evidence_artifact_unverifiable"):
@@ -312,7 +315,7 @@ def test_a_surface_paired_with_another_valid_diagnostics_is_refused(
 
     # A genuinely valid diagnostics artifact for a *different* input binding.
     donor = RiskDevelopmentDiagnostics.create(
-        input_binding_hash="e" * 64,
+        input_binding_hash=fixture_digest("e"),
         recipe_hash=payload["recipe_hash"],
         evaluations=tuple(RiskFormationEvaluation(**value) for value in payload["evaluations"]),
     )
@@ -345,8 +348,8 @@ def test_an_input_binding_from_another_authority_is_refused(
 ) -> None:
     """The binding must answer for the authority the Program was sealed against."""
 
-    stray = _reseal(tampered_run.evidence, authority_hash="c" * 64)
-    program = _reseal_program(tampered_run.program, authority_hash="c" * 64)
+    stray = _reseal(tampered_run.evidence, authority_hash=fixture_digest("c"))
+    program = _reseal_program(tampered_run.program, authority_hash=fixture_digest("c"))
     with pytest.raises(AuthoringError, match="evidence_input_binding_authority_mismatch"):
         RiskEvidenceVerifier().verify(
             program=program,
@@ -359,7 +362,7 @@ def test_an_input_binding_from_another_authority_is_refused(
 def test_evidence_naming_a_different_input_binding_is_refused(
     tampered_run: RiskDevelopmentRun,
 ) -> None:
-    stray = _reseal(tampered_run.evidence, desk_input_binding_hash="d" * 64)
+    stray = _reseal(tampered_run.evidence, desk_input_binding_hash=fixture_digest("d"))
     with pytest.raises(AuthoringError, match="evidence_input_binding_mismatch"):
         RiskEvidenceVerifier().verify(
             program=tampered_run.program,
@@ -390,7 +393,7 @@ def test_an_unknown_artifact_uri_is_refused(tampered_run: RiskDevelopmentRun) ->
         tampered_run.evidence,
         artifact_uris=[
             *tampered_run.evidence.artifact_uris,
-            "playpen://something-else/thing/" + "a" * 64,
+            "playpen://something-else/thing/" + fixture_digest("a"),
         ],
     )
     with pytest.raises(AuthoringError, match="evidence_artifact_uri_unknown"):

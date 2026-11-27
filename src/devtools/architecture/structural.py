@@ -1542,8 +1542,8 @@ _FILE_TRUST_PRIMITIVES = frozenset(
     {
         "file_stamp",
         "handle_stamp",
-        "integrity_sha256_path",
-        "integrity_sha256_stream",
+        "integrity_blake3_path",
+        "integrity_blake3_stream",
     }
 )
 _FILE_TRUST_TARGETS = {

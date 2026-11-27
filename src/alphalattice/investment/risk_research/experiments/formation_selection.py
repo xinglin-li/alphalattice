@@ -21,6 +21,7 @@ from typing import Literal, Self
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 from alphalattice.capabilities.domain_contracts.identity import canonical_hash
+from alphalattice.kernel.identity import BLAKE3_PATTERN
 
 LEGACY_TRAILING_FIXED_FORMATIONS = "LEGACY_TRAILING_FIXED_FORMATIONS"
 """The trailing fixed count the development path has always defaulted to.
@@ -63,7 +64,7 @@ class FormationSelectionPolicy(BaseModel):  # type: ignore[misc]
     kind: Literal["FormationSelectionPolicy"] = "FormationSelectionPolicy"
     method_id: Literal["LEGACY_TRAILING_FIXED_FORMATIONS", "BOUND_AUTHORITY_FORMATIONS"]
     trailing_formation_count: int | None = Field(default=None, ge=1)
-    policy_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
+    policy_hash: str = Field(pattern=BLAKE3_PATTERN)
 
     @model_validator(mode="after")  # type: ignore[untyped-decorator]
     def validate_policy(self) -> Self:

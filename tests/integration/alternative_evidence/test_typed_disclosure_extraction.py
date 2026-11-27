@@ -48,6 +48,7 @@ from alphalattice.evidence.alternative_evidence.retrieval.session import (
     MAXIMUM_SPAN_READS,
     MAXIMUM_TYPED_SPAN_READS,
 )
+from tests._support.identity_fixtures import fixture_digest
 from tests.alternative_evidence_desk.document_intelligence_support import (
     _document_with_text as _document,
 )
@@ -1000,7 +1001,7 @@ def test_typed_spans_are_verified_reads_and_the_receipt_accounts_for_them(tmp_pa
                     **receipt.model_dump(mode="json")["typed_disclosures"],
                     "span_handles": [],
                 },
-                "receipt_hash": "0" * 64,
+                "receipt_hash": fixture_digest("unsealed receipt"),
             }
         )
 

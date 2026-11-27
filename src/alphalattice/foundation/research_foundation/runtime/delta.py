@@ -20,6 +20,7 @@ from pydantic import BaseModel, ConfigDict, Field, model_validator
 from alphalattice.capabilities.domain_contracts.identity import canonical_hash
 from alphalattice.capabilities.domain_contracts.sealing import seal_model
 from alphalattice.control.workspace_runtime.mutation_gate import WorkspaceMutationGate
+from alphalattice.kernel.identity import BLAKE3_PATTERN, blake3_filename, is_blake3
 
 
 class _Contract(BaseModel):
@@ -171,8 +172,8 @@ class VerifiedPreResearchHead(_Contract):
     sector_revision: str
     catalog_hash: str
     panel_snapshot_hash: str
-    logical_panel_hash: str | None = Field(default=None, pattern=r"^[0-9a-f]{64}$")
-    logical_semantic_index_hash: str | None = Field(default=None, pattern=r"^[0-9a-f]{64}$")
+    logical_panel_hash: str | None = Field(default=None, pattern=BLAKE3_PATTERN)
+    logical_semantic_index_hash: str | None = Field(default=None, pattern=BLAKE3_PATTERN)
     factor_screening_result_hash: str
     factor_candidate_slate_hash: str
     research_desk_factor_input_hash: str
@@ -182,7 +183,7 @@ class VerifiedPreResearchHead(_Contract):
     ordered_factor_ids: tuple[str, ...] = Field(min_length=1, max_length=55)
     data_state_hash: str
     adjusted_return_revision_cursor: int | None = Field(default=None, ge=0)
-    adjusted_return_revision_chain_hash: str | None = Field(default=None, pattern=r"^[0-9a-f]{64}$")
+    adjusted_return_revision_chain_hash: str | None = Field(default=None, pattern=BLAKE3_PATTERN)
     validity_class: Literal["CURRENT_UNIVERSE_RESEARCH_ONLY"] = "CURRENT_UNIVERSE_RESEARCH_ONLY"
     is_point_in_time_historical: Literal[False] = False
     verified_at: datetime
@@ -252,7 +253,7 @@ class ObservedPreResearchCandidateSnapshot(_Contract):
     listing_observations: tuple[PreResearchListingObservation, ...] = Field(min_length=1)
     sector_revision: str | None
     adjusted_return_revision_cursor: int | None = Field(default=None, ge=0)
-    adjusted_return_revision_chain_hash: str | None = Field(default=None, pattern=r"^[0-9a-f]{64}$")
+    adjusted_return_revision_chain_hash: str | None = Field(default=None, pattern=BLAKE3_PATTERN)
     policy_hashes: tuple[str, ...] = Field(min_length=1)
     observed_at: datetime
     candidate_snapshot_hash: str
@@ -331,11 +332,11 @@ class PreResearchObservedDelta(_Contract):
     target_market_session: date
     base_adjusted_return_revision_cursor: int | None = Field(default=None, ge=0)
     base_adjusted_return_revision_chain_hash: str | None = Field(
-        default=None, pattern=r"^[0-9a-f]{64}$"
+        default=None, pattern=BLAKE3_PATTERN
     )
     observed_adjusted_return_revision_cursor: int | None = Field(default=None, ge=0)
     observed_adjusted_return_revision_chain_hash: str | None = Field(
-        default=None, pattern=r"^[0-9a-f]{64}$"
+        default=None, pattern=BLAKE3_PATTERN
     )
     prior_active_listing_ids: tuple[str, ...]
     additions: tuple[str, ...]
@@ -426,7 +427,7 @@ class PreResearchStagedDelta(_Contract):
     active_set_changed: bool
     revision_disposition: PreResearchRevisionDisposition
     adjusted_return_revision_cursor: int | None = Field(default=None, ge=0)
-    adjusted_return_revision_chain_hash: str | None = Field(default=None, pattern=r"^[0-9a-f]{64}$")
+    adjusted_return_revision_chain_hash: str | None = Field(default=None, pattern=BLAKE3_PATTERN)
     staged_child_hashes: tuple[str, ...]
     staged_delta_hash: str
 
@@ -1500,9 +1501,9 @@ class PreResearchHeadStore:
             return marker
 
     def _path(self, kind: str, content_hash: str) -> Path:
-        if len(content_hash) != 64 or any(char not in "0123456789abcdef" for char in content_hash):
+        if not is_blake3(content_hash):
             raise ValueError("artifact content hash is invalid")
-        return self.root / kind / f"{content_hash}.json"
+        return self.root / kind / f"{blake3_filename(content_hash)}.json"
 
     def _publish(self, kind: str, content_hash: str, value: _Contract) -> str:
         target = self._path(kind, content_hash)
@@ -1511,7 +1512,7 @@ class PreResearchHeadStore:
         serialized = json.dumps(
             payload, ensure_ascii=False, sort_keys=True, separators=(",", ":")
         ).encode("utf-8")
-        staged = target.with_name(f".{content_hash}.{os.getpid()}.tmp")
+        staged = target.with_name(f".{target.name}.{os.getpid()}.tmp")
         if target.exists():
             durable = type(value).model_validate(self._read_json(target))
             if durable.model_dump(

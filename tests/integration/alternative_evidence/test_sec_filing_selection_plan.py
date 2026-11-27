@@ -43,6 +43,7 @@ from alphalattice.evidence.alternative_evidence.sources.sec_edgar import (
     apply_unit_capacity,
     plan_sec_filing_selection,
 )
+from tests._support.identity_fixtures import fixture_digest
 from tests.alternative_evidence_desk.document_intelligence_support import live_admission
 from tests.alternative_evidence_desk.sec_fixture_transport import NOW, SecFixtureTransport
 
@@ -217,7 +218,9 @@ def test_a_filing_read_earlier_gives_its_capacity_to_what_is_new() -> None:
     assert plan.outside_window_event_count == 8
     named = tuple(
         AlternativeEvidenceReadFiling(
-            entity_id="AAPL", accession=accession, publication_hash="a" * 64
+            entity_id="AAPL",
+            accession=accession,
+            publication_hash=fixture_digest("earlier filing publication"),
         )
         for accession in sorted(read)
     )
@@ -255,7 +258,7 @@ def test_an_issuer_that_filed_nothing_in_the_window_has_an_empty_plan() -> None:
     )
     assert read.nothing_filed
     with pytest.raises(ValueError, match="inventory_read_invalid"):
-        SecFilingInventoryRead(plan=plan, read_hash="0" * 64)
+        SecFilingInventoryRead(plan=plan, read_hash=fixture_digest("incorrect inventory read"))
     # The plan says so itself, the one predicate every floor judge reads, and an index
     # read establishes it at its own cutoff and window only. A plan scoped to named accessions
     # reads those, not the window, so it never says so -- even one the index holds nothing for.

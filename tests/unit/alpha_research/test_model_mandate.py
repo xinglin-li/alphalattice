@@ -162,6 +162,7 @@ def test_a_mandate_narrows_to_the_domains_a_family_chose() -> None:
 
 
 def test_catalog_mandate_and_domain_identities_round_trip_and_reject_tamper() -> None:
+    """Sealed mandates round-trip and refuse reordering, invalid routes and forged bindings."""
     catalog, mandate = _multi_capability_mandate()
 
     assert AlphaResearchModelMandate.model_validate(mandate.model_dump(mode="json")) == mandate
@@ -200,7 +201,9 @@ def test_catalog_mandate_and_domain_identities_round_trip_and_reject_tamper() ->
         )
 
     tampered_binding = catalog.binding.model_dump(mode="json")
-    tampered_binding["ordered_capabilities"][0]["numerical_binding_hash"] = "0" * 64
+    tampered_binding["ordered_capabilities"][0]["numerical_binding_hash"] = canonical_hash(
+        "forged numerical binding"
+    )
     tampered_binding["catalog_hash"] = canonical_hash(
         {key: value for key, value in tampered_binding.items() if key != "catalog_hash"}
     )
@@ -411,21 +414,28 @@ def test_catalog_and_mandate_fail_closed_before_adapter_fit() -> None:
 
 
 def test_candidate_and_projection_axes_follow_mandate_policy_not_three() -> None:
+    """The candidate set and its projection use the count chosen by the mandate."""
     _catalog, mandate = _multi_capability_mandate()
     candidate_ids = tuple(f"alpha-candidate-{value:016x}" for value in range(4))
     snapshot = seal_contract(
         CurrentAlphaCandidateSetSnapshot,
         {
-            "program_hash": "1" * 64,
-            "foundation_hash": "2" * 64,
-            "registry_hash": "3" * 64,
-            "qualification_hash": "4" * 64,
+            "program_hash": canonical_hash("fixture program"),
+            "foundation_hash": canonical_hash("fixture foundation"),
+            "registry_hash": canonical_hash("fixture registry"),
+            "qualification_hash": canonical_hash("fixture qualification"),
             "model_mandate_hash": mandate.mandate_hash,
             "target_candidate_count": mandate.target_current_qualified_candidates,
             "ordered_candidate_ids": candidate_ids,
-            "current_score_child_hashes": tuple(str(value) * 64 for value in range(5, 9)),
-            "estimator_state_hashes": tuple(str(value) * 64 for value in range(1, 5)),
-            "stability_assessment_hashes": tuple(str(value) * 64 for value in range(5, 9)),
+            "current_score_child_hashes": tuple(
+                canonical_hash(("score child", value)) for value in candidate_ids
+            ),
+            "estimator_state_hashes": tuple(
+                canonical_hash(("estimator", value)) for value in candidate_ids
+            ),
+            "stability_assessment_hashes": tuple(
+                canonical_hash(("stability", value)) for value in candidate_ids
+            ),
             "limitations": ("Risk remains not admitted.",),
         },
         "snapshot_hash",
@@ -434,7 +444,7 @@ def test_candidate_and_projection_axes_follow_mandate_policy_not_three() -> None
         AlphaGoalResearchSafeProjection,
         {
             "program_hash": snapshot.program_hash,
-            "marker_hash": "9" * 64,
+            "marker_hash": canonical_hash("fixture marker"),
             "goal_target": mandate.target_current_qualified_candidates,
             "current_qualified_count": 4,
             "attempted_spec_count": 7,
@@ -453,13 +463,14 @@ def test_candidate_and_projection_axes_follow_mandate_policy_not_three() -> None
 
 
 def test_recipe_target_policy_must_belong_to_the_program_before_fit() -> None:
+    """A valid target policy outside the Program is refused before the adapter fits."""
     policy = build_alpha_target_policy(
         lane=AlphaTargetLane.SECTOR_RESIDUAL_RANK_GAUSS,
-        sector_revision="a" * 64,
+        sector_revision=canonical_hash("fixture sector revision"),
     )
     with pytest.raises(AlphaTrainingInputAuthorityError) as raised:
         assert_research_recipe_target_authority(
-            program_target_policy_hashes=("f" * 64,),
+            program_target_policy_hashes=(canonical_hash("other target policy"),),
             recipe_target_lanes=(AlphaTargetLane.SECTOR_RESIDUAL_RANK_GAUSS,),
             default_target_policy=None,
             lane_target_policies={AlphaTargetLane.SECTOR_RESIDUAL_RANK_GAUSS: policy},
@@ -472,22 +483,23 @@ def test_recipe_target_policy_must_belong_to_the_program_before_fit() -> None:
 
 
 def test_frozen_goal_artifacts_keep_their_original_hashes() -> None:
+    """BLAKE3 records sealed without later optional fields retain their original identities."""
     program_values = {
         "kind": "AlphaResearchProgram",
-        "foundation_hash": "1" * 64,
-        "logical_panel_hash": "2" * 64,
-        "logical_semantic_index_hash": "3" * 64,
-        "causal_outcome_snapshot_hash": "4" * 64,
-        "pm_plan_hash": "5" * 64,
-        "ordered_listing_ids_hash": "6" * 64,
-        "ordered_factor_ids_hash": "7" * 64,
-        "split_policy_hash": "8" * 64,
-        "metric_policy_hash": "9" * 64,
-        "package_identity_hash": "0" * 64,
-        "stability_policy_hash": "a" * 64,
-        "goal_criteria_hash": "b" * 64,
-        "user_authorization_hash": "c" * 64,
-        "research_goal_hash": "d" * 64,
+        "foundation_hash": canonical_hash("fixture foundation"),
+        "logical_panel_hash": canonical_hash("fixture logical Panel"),
+        "logical_semantic_index_hash": canonical_hash("fixture logical semantic index"),
+        "causal_outcome_snapshot_hash": canonical_hash("fixture execution outcome"),
+        "pm_plan_hash": canonical_hash("fixture PM plan"),
+        "ordered_listing_ids_hash": canonical_hash("fixture listing axis"),
+        "ordered_factor_ids_hash": canonical_hash("fixture Factor axis"),
+        "split_policy_hash": canonical_hash("fixture split policy"),
+        "metric_policy_hash": canonical_hash("fixture metric policy"),
+        "package_identity_hash": canonical_hash("fixture package identity"),
+        "stability_policy_hash": canonical_hash("fixture stability policy"),
+        "goal_criteria_hash": canonical_hash("fixture goal criteria"),
+        "user_authorization_hash": canonical_hash("fixture user authorization"),
+        "research_goal_hash": canonical_hash("fixture research Goal"),
     }
     program_hash = canonical_hash(program_values)
     program = AlphaResearchProgram.model_validate({**program_values, "program_hash": program_hash})
@@ -524,7 +536,7 @@ def test_frozen_goal_artifacts_keep_their_original_hashes() -> None:
 
     progress_values = {
         "kind": "AlphaGoalProgress",
-        "criteria_hash": "b" * 64,
+        "criteria_hash": program.goal_criteria_hash,
         "registry_hash": registry_hash,
         "qualification_hash": None,
         "proposed_count": 0,
@@ -544,16 +556,23 @@ def test_frozen_goal_artifacts_keep_their_original_hashes() -> None:
     assert progress.progress_hash == progress_hash
 
     candidate_ids = tuple(f"agent-linear-{value:016x}" for value in range(3))
+    qualification_hash = canonical_hash("fixture qualification")
     candidate_set_values = {
         "kind": "CurrentAlphaCandidateSetSnapshot",
         "program_hash": program_hash,
-        "foundation_hash": "1" * 64,
-        "registry_hash": "2" * 64,
-        "qualification_hash": "3" * 64,
+        "foundation_hash": program.foundation_hash,
+        "registry_hash": registry_hash,
+        "qualification_hash": qualification_hash,
         "ordered_candidate_ids": candidate_ids,
-        "current_score_child_hashes": ("4" * 64, "5" * 64, "6" * 64),
-        "estimator_state_hashes": ("7" * 64, "8" * 64, "9" * 64),
-        "stability_assessment_hashes": ("a" * 64, "b" * 64, "c" * 64),
+        "current_score_child_hashes": tuple(
+            canonical_hash(("score child", value)) for value in candidate_ids
+        ),
+        "estimator_state_hashes": tuple(
+            canonical_hash(("estimator", value)) for value in candidate_ids
+        ),
+        "stability_assessment_hashes": tuple(
+            canonical_hash(("stability", value)) for value in candidate_ids
+        ),
         "downstream_score_modes": (),
         "limitations": ("Frozen legacy readback.",),
     }
@@ -567,14 +586,14 @@ def test_frozen_goal_artifacts_keep_their_original_hashes() -> None:
     stop_values = {
         "kind": "AlphaResearchScientificStop",
         "program_hash": program_hash,
-        "registry_hash": "2" * 64,
-        "qualification_hash": "3" * 64,
-        "goal_progress_hash": "4" * 64,
-        "attempted_spec_hashes": ("5" * 64, "6" * 64),
+        "registry_hash": registry_hash,
+        "qualification_hash": qualification_hash,
+        "goal_progress_hash": progress_hash,
+        "attempted_spec_hashes": (legacy_spec.spec_hash, canonical_hash("second attempted spec")),
         "current_qualified_count": 1,
         "failure_codes": ("alpha_research.legacy_scientific_stop",),
         "next_research_actions": ("READBACK_ONLY",),
-        "science_policy_hash": "7" * 64,
+        "science_policy_hash": canonical_hash("fixture science policy"),
     }
     stop_hash = canonical_hash(stop_values)
     stop = AlphaResearchScientificStop.model_validate({**stop_values, "stop_hash": stop_hash})
@@ -586,8 +605,8 @@ def test_frozen_goal_artifacts_keep_their_original_hashes() -> None:
         "program_hash": program_hash,
         "goal_progress_hash": progress_hash,
         "registry_hash": registry_hash,
-        "qualification_hash": "3" * 64,
-        "board_hash": "4" * 64,
+        "qualification_hash": qualification_hash,
+        "board_hash": canonical_hash("fixture qualification board"),
         "candidate_set_snapshot_hash": None,
         "scientific_stop_hash": stop_hash,
         "disposition": "NO_STABLE_CURRENT_ALPHA_MODEL",

@@ -35,6 +35,8 @@ from alphalattice.evidence.alternative_evidence.runtime.service import (
 )
 from alphalattice.evidence.alternative_evidence.sources import sec_edgar
 from alphalattice.foundation.data_layer import history
+from alphalattice.kernel.identity import blake3_filename
+from tests._support.identity_fixtures import fixture_digest
 from tests.alternative_evidence_desk.incremental_acquisition_support import (
     AAPL,
     LATER_EIGHT_K,
@@ -260,7 +262,7 @@ def test_a_changed_source_reuses_the_unchanged_derivations_and_selects_afresh(
 
         other_policy = SealedSelections(
             runtime.artifacts,
-            selection_policy_hash="f" * 64,
+            selection_policy_hash=fixture_digest("changed selection policy"),
             program_hash=first["receipt"].query_program_hash,
         )
         production = first["request"].matter_selection_id
@@ -379,7 +381,7 @@ def test_a_reused_selection_is_the_span_set_the_receipt_names(
         receipt = first["receipt"]
         assert receipt.span_set_hash is not None
         store = runtime.artifacts
-        named = store.root / "resolved-span-sets" / f"{receipt.span_set_hash}.json"
+        named = store.root / "resolved-span-sets" / f"{blake3_filename(receipt.span_set_hash)}.json"
         assert named.is_file()
         original_bytes = named.read_bytes()
         substitute = _shifted_span_set(runtime, first)
@@ -513,9 +515,10 @@ def test_an_unchanged_refresh_reuses_a_sealed_selection_without_building_its_ind
         assert runtime.artifacts.exists("retrieval-generations", built.generation_hash)
         # A request under another policy hash builds and selects afresh.
         policy = runtime.analysis_policy_hash
-        monkeypatch.setattr(runtime, "analysis_policy_hash", "0" * 64)
+        policy_hash = fixture_digest("changed analysis policy")
+        monkeypatch.setattr(runtime, "analysis_policy_hash", policy_hash)
         runtime.sealed_selections = SealedSelections(
-            runtime.artifacts, selection_policy_hash="0" * 64, program_hash=query_program_hash()
+            runtime.artifacts, selection_policy_hash=policy_hash, program_hash=query_program_hash()
         )
         third = refresh(NOW + timedelta(hours=2))
         assert len(builds) == 3 and sessions.opened == 2  # the control build above, then this
@@ -527,7 +530,9 @@ def test_an_unchanged_refresh_reuses_a_sealed_selection_without_building_its_ind
         # A named span set that is not the one delivered: refused by name at
         # the build stage, never taken for a miss.
         named = (
-            runtime.artifacts.root / "resolved-span-sets" / f"{first['receipt'].span_set_hash}.json"
+            runtime.artifacts.root
+            / "resolved-span-sets"
+            / f"{blake3_filename(first['receipt'].span_set_hash)}.json"
         )
         original = named.read_bytes()
         substitute = _shifted_span_set(runtime, first)

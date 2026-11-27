@@ -19,7 +19,7 @@ from alphalattice.foundation.market_data_ops.sources.universe import (
     ResearchWhitelistStandard,
     membership_fingerprint,
 )
-from alphalattice.kernel.identity import identity_sha256
+from alphalattice.kernel.identity import identity_blake3, tagged_blake3
 from alphalattice.protocols.research_authoring.selection import load_safe_yaml_document
 
 _LISTING_NAMESPACE = UUID("1d8862b4-a419-4d1a-999d-cf70583f9957")
@@ -204,7 +204,7 @@ def read_market_profile(path: Path) -> MarketProfileDocument:
 
 def _canonical_hash(value: object) -> str:
     payload = json.dumps(value, ensure_ascii=False, sort_keys=True, separators=(",", ":"))
-    return identity_sha256(payload.encode("utf-8")).hexdigest()
+    return tagged_blake3(identity_blake3(payload.encode("utf-8")))
 
 
 def default_qualification_policy_hash(

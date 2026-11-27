@@ -57,12 +57,13 @@ from alphalattice.foundation.factor_research.research_loop.decisions import (
     verify_factor_research_curation,
 )
 from alphalattice.protocols.actor_execution import ActorKind, AgentExecutionBinding
+from tests._support.identity_fixtures import fixture_digest
 from tests.factor_research_pipeline_correctness.case_program import (
     CASE_REVIEW_BINDING_HASH,
     build_case_deterministic_checkpoint,
 )
 
-_HASH = "a" * 64
+_HASH = fixture_digest("actor execution evidence")
 
 
 def _checkpoint() -> FactorResearchDeterministicEvidence:
@@ -234,7 +235,7 @@ def test_a_submission_carrying_an_altered_research_input_is_refused() -> None:
             actor_id="researcher@example.test",
             submission_hash=forged.submission_hash,
         ),
-        decision_policy_hash="9" * 64,
+        decision_policy_hash=fixture_digest("uninstalled Factor decision policy"),
     )
     with pytest.raises(FactorResearchDecisionAuthorityError, match="input_authority_mismatch"):
         verify_factor_research_curation(
@@ -280,7 +281,7 @@ def test_a_resealed_decision_naming_its_own_policy_is_refused() -> None:
         "receipt_hash",
         submission=honest.submission,
         actor_submission=honest.actor_submission,
-        decision_policy_hash="9" * 64,
+        decision_policy_hash=fixture_digest("uninstalled Factor decision policy"),
     )
     assert (
         FactorResearchReviewDecisionReceipt.model_validate_json(resealed.model_dump_json())
@@ -313,7 +314,11 @@ def test_a_recorded_curation_reads_without_recompiling_or_current_admission(monk
     common = dict(
         decision=honest, checkpoint=checkpoint, review_binding_hash=CASE_REVIEW_BINDING_HASH
     )
-    monkeypatch.setattr(decisions, "factor_research_decision_policy_hash", lambda: "f" * 64)
+    monkeypatch.setattr(
+        decisions,
+        "factor_research_decision_policy_hash",
+        lambda: fixture_digest("moved Factor decision policy"),
+    )
     verify_factor_research_curation(**common, recorded_readback=True)
     with pytest.raises(FactorResearchDecisionAuthorityError, match="policy_not_installed"):
         verify_factor_research_curation(**common)
@@ -325,7 +330,9 @@ def test_a_recorded_curation_reads_without_recompiling_or_current_admission(monk
             review_binding_hash=CASE_REVIEW_BINDING_HASH,
         )
     with pytest.raises(FactorResearchDecisionAuthorityError, match="dossier_mismatch"):
-        verify_factor_research_curation(**{**common, "review_binding_hash": "c" * 64})
+        verify_factor_research_curation(
+            **{**common, "review_binding_hash": fixture_digest("wrong Factor review binding")}
+        )
     assert not tuple(tmp_path.iterdir())
 
     def recompiled(**_values):

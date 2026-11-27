@@ -173,6 +173,7 @@ from alphalattice.investment.portfolio_strategy_lab.publication.portfolio_ledger
     PortfolioLedgerStore,
 )
 from alphalattice.kernel.clock import utc_now
+from alphalattice.kernel.identity import BLAKE3_PATTERN
 from alphalattice.oversight.chief_risk_officer.decision.book_evidence import (
     BookSelector,
     CarriedReading,
@@ -884,7 +885,7 @@ class EvidenceTaskAdmission(AlternativeEvidenceContract):
     selector: dict[str, str]
     selection: Literal["EXPLICIT", "DEFAULT"]
     context: EvidenceTaskContext | None = None
-    admission_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
+    admission_hash: str = Field(pattern=BLAKE3_PATTERN)
 
     @model_validator(mode="after")  # type: ignore[untyped-decorator]
     def validate_admission(self) -> Self:

@@ -23,6 +23,7 @@ from alphalattice.investment.alpha_research.experiments.development_contracts im
     seal_current_contract,
 )
 from alphalattice.investment.alpha_research.publication.contracts import AlphaStabilityCheck
+from tests._support.identity_fixtures import fixture_digest
 
 
 def seal_contract(model, identity_field: str, **values):
@@ -30,7 +31,7 @@ def seal_contract(model, identity_field: str, **values):
 
 
 FACTORS = ("f0", "f1", "f2", "f3", "f4", "f5")
-REQUEST_HASH = "1" * 64
+REQUEST_HASH = fixture_digest("stability request")
 
 
 def _sessions(count: int, *, coverage: float = 0.99) -> tuple[AlphaSessionScoreStatistics, ...]:

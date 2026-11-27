@@ -4,7 +4,6 @@ from __future__ import annotations
 
 import json
 from datetime import date, timedelta
-from hashlib import sha256
 from types import SimpleNamespace
 
 import numpy as np
@@ -18,6 +17,7 @@ from alphalattice.investment.alpha_research.publication.artifacts import (
     AlphaCurrentArtifactReadbackError,
     AlphaCurrentArtifactStore,
 )
+from alphalattice.kernel.identity import blake3_digest, blake3_filename, blake3_from_filename
 
 
 def _sessions(count):
@@ -36,7 +36,7 @@ def _publish(
         scope_hash=canonical_hash(scope),
         selection_hash=canonical_hash(selection),
         dependency_prefix_hash=canonical_hash(
-            {name: sha256(value.tobytes()).hexdigest() for name, value in columns.items()}
+            {name: blake3_digest(value.tobytes()) for name, value in columns.items()}
         ),
         formation_sessions=_sessions(len(next(iter(columns.values())))),
         ordered_listing_ids=("A", "B"),
@@ -56,7 +56,7 @@ def _part_layout(head, part):
     identity = canonical_hash(
         {"column_names": head.column_names, "shape": shape, "dtype": "float64"}
     )
-    return f"current/workspace-observation-history/parts/{identity}"
+    return f"current/workspace-observation-history/parts/{blake3_filename(identity)}"
 
 
 def _part_path(head, part):
@@ -149,21 +149,8 @@ def test_semantic_rotations_keep_one_bounded_slot_and_govern_old_head_roots(tmp_
     renamed = {"renamed": _columns(2)["open"], "formula::value": _columns(2)["formula::value"]}
     second = _publish(store, renamed, stable=1, selection="model-two", reuse=first)
     assert first.parts[0].content_hash == second.parts[0].content_hash
-    prefix = "current/workspace-observation-history/parts/"
-    first_layout = prefix + canonical_hash(
-        {
-            "column_names": first.column_names,
-            "shape": (1, len(first.ordered_listing_ids)),
-            "dtype": "float64",
-        }
-    )
-    second_layout = prefix + canonical_hash(
-        {
-            "column_names": second.column_names,
-            "shape": (1, len(second.ordered_listing_ids)),
-            "dtype": "float64",
-        }
-    )
+    first_layout = _part_layout(first, first.parts[0])
+    second_layout = _part_layout(second, second.parts[0])
     first_body = history.alpha_part_body_digest(first.parts[0].content_hash, first_layout)
     second_body = history.alpha_part_body_digest(second.parts[0].content_hash, second_layout)
     assert first_layout != second_layout and first_body != second_body
@@ -173,8 +160,8 @@ def test_semantic_rotations_keep_one_bounded_slot_and_govern_old_head_roots(tmp_
     assert store.load_workspace_observation_history(canonical_hash("slot"))[0] == third
     before = _files(store)
     safe = store.workspace_observation_history_retention()
-    roots = {fact.path.stem for fact in safe.roots}
-    targets = {fact.path.stem for fact in safe.targets}
+    roots = {blake3_from_filename(fact.path.stem) for fact in safe.roots}
+    targets = {blake3_from_filename(fact.path.stem) for fact in safe.targets}
     assert {third.head_hash, second.head_hash, other.head_hash} <= roots
     assert first.head_hash in targets
     assert canonical_hash("slot") in roots and canonical_hash("other-slot") in roots
@@ -187,11 +174,13 @@ def test_semantic_rotations_keep_one_bounded_slot_and_govern_old_head_roots(tmp_
     bounded = store.workspace_observation_history_retention(
         referenced_heads=(first.head_hash,), active_scope_hashes=(canonical_hash("slot"),)
     )
-    assert first.head_hash in {fact.path.stem for fact in bounded.roots}
-    assert canonical_hash("other-slot") in {fact.path.stem for fact in bounded.targets}
+    assert blake3_filename(first.head_hash) in {fact.path.stem for fact in bounded.roots}
+    assert blake3_filename(canonical_hash("other-slot")) in {
+        fact.path.stem for fact in bounded.targets
+    }
     assert not {fact.path for fact in bounded.roots} & {fact.path for fact in bounded.targets}
     for fact in (*bounded.roots, *bounded.targets):
-        assert fact.sha256 == sha256(fact.path.read_bytes()).hexdigest()
+        assert fact.digest == blake3_digest(fact.path.read_bytes())
         assert fact.bytes == fact.path.stat().st_size
     assert _files(store) == before
 
@@ -202,14 +191,14 @@ def test_older_request_does_not_demote_latest_slot(tmp_path):
     marker = next(
         fact
         for fact in store.workspace_observation_history_retention().roots
-        if fact.path.stem == canonical_hash("slot")
+        if fact.path.stem == blake3_filename(canonical_hash("slot"))
     )
     marker_bytes = marker.path.read_bytes()
     historical = _publish(store, _columns(2), stable=1, reuse=current)
     assert historical.formation_sessions == _sessions(2)
     assert marker.path.read_bytes() == marker_bytes
     assert store.load_workspace_observation_history(canonical_hash("slot"))[0] == current
-    assert historical.head_hash in {
+    assert blake3_filename(historical.head_hash) in {
         fact.path.stem for fact in store.workspace_observation_history_retention().targets
     }
 
@@ -222,14 +211,7 @@ def test_capacity_covers_parts_json_and_marker_staging_and_interrupt_keeps_curre
     first = _publish(store, _columns(2), stable=1, capacity=admissions.append)
     part_sizes = []
     for part in first.parts:
-        category = "current/workspace-observation-history/parts/" + canonical_hash(
-            {
-                "column_names": first.column_names,
-                "shape": (part.stop - part.start, len(first.ordered_listing_ids)),
-                "dtype": "float64",
-            }
-        )
-        digest = history.alpha_part_body_digest(part.content_hash, category)
+        digest = history.alpha_part_body_digest(part.content_hash, _part_layout(first, part))
         assert digest is not None
         part_sizes.append(history.array_body_path(digest).stat().st_size)
     assert sorted(admissions) == sorted(
@@ -264,16 +246,16 @@ def test_named_history_missing_or_corrupt_artifacts_refuse_without_read_repair(t
     second = _publish(store, _columns(3), stable=2, reuse=first)
     facts = store.workspace_observation_history_retention().roots
     if target == "marker":
-        path = next(f.path for f in facts if f.path.stem == canonical_hash("slot"))
+        path = next(f.path for f in facts if f.path.stem == blake3_filename(canonical_hash("slot")))
         path.write_bytes(b"{}")
     elif target == "head":
-        path = next(f.path for f in facts if f.path.stem == second.head_hash)
+        path = next(f.path for f in facts if f.path.stem == blake3_filename(second.head_hash))
         path.unlink()
     elif target == "part":
         path = _part_path(second, second.parts[0])
         path.write_bytes(b"corrupt")
     else:
-        path = next(f.path for f in facts if f.path.stem == first.head_hash)
+        path = next(f.path for f in facts if f.path.stem == blake3_filename(first.head_hash))
         path.unlink()
     before = _files(store)
     with pytest.raises(AlphaCurrentArtifactReadbackError, match="workspace_observation_history_"):

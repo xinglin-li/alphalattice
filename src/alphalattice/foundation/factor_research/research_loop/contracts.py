@@ -11,6 +11,7 @@ from alphalattice.foundation.factor_research.inputs.research_input import (
     FactorHorizonResearchInput,
     FactorResearchProposal,
 )
+from alphalattice.kernel.identity import BLAKE3_PATTERN
 from alphalattice.protocols.actor_execution import (
     ActorSubmissionBinding,
 )
@@ -26,10 +27,10 @@ class FactorResearchReviewSubmission(BaseModel):
     model_config = ConfigDict(extra="forbid", frozen=True)
 
     kind: Literal["FactorResearchReviewSubmission"] = "FactorResearchReviewSubmission"
-    dossier_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
+    dossier_hash: str = Field(pattern=BLAKE3_PATTERN)
     proposal: FactorResearchProposal
     research_input: FactorHorizonResearchInput
-    submission_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
+    submission_hash: str = Field(pattern=BLAKE3_PATTERN)
 
     @model_validator(mode="after")  # type: ignore[untyped-decorator]
     def validate_submission(self) -> Self:
@@ -57,8 +58,8 @@ class FactorResearchReviewDecisionReceipt(BaseModel):
     kind: Literal["FactorResearchReviewDecisionReceipt"] = "FactorResearchReviewDecisionReceipt"
     submission: FactorResearchReviewSubmission
     actor_submission: ActorSubmissionBinding
-    decision_policy_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
-    receipt_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
+    decision_policy_hash: str = Field(pattern=BLAKE3_PATTERN)
+    receipt_hash: str = Field(pattern=BLAKE3_PATTERN)
 
     @model_validator(mode="after")  # type: ignore[untyped-decorator]
     def validate_receipt(self) -> Self:

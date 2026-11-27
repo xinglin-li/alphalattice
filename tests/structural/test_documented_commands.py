@@ -8,6 +8,7 @@ from collections.abc import Iterator
 from pathlib import Path
 
 import pytest
+from packaging.version import Version
 
 from devtools.architecture.operation_registry import (
     agent_surface,
@@ -50,6 +51,61 @@ def test_the_userspace_ratchet_refuses_silent_interface_changes(change: str) -> 
     assert any(
         "answer:STATUS.state" in p for p in surface_problems(frozen, live, previous=previous)
     )
+
+
+@pytest.mark.proves("local_application.request_digest_transition_has_exact_scope")
+@pytest.mark.parametrize(
+    ("change", "expected"),
+    [
+        ("released", ""),
+        ("unreleased", ""),
+        ("unannounced", "interface changed"),
+        ("unrecorded", "interface changed"),
+        ("old-live", "live schema differs"),
+        ("dual-live", "live schema differs"),
+        ("edited-type", "invalid digest transition|interface changed"),
+        ("edited-record", "digest transition edited or erased"),
+    ],
+)
+def test_a_request_digest_transition_accepts_only_its_recorded_schema(
+    change: str, expected: str
+) -> None:
+    """A release may change only the recorded digest pattern, with the original schema retained."""
+    key = "request:Request.input_hash"
+    before = {"required": True, "schema": {"type": "string", "pattern": "^[0-9a-f]{64}$"}}
+    after = {"required": True, "schema": {"type": "string", "pattern": "^blake3:[0-9a-f]{64}$"}}
+    row = {
+        "old_schema": before,
+        "new_schema": after,
+        "release": "0.2.10",
+        "reason": "Request references are tagged BLAKE3.",
+    }
+    manifest = {
+        "release": "0.2.9" if change in {"unreleased", "unannounced"} else "0.2.10",
+        "entries": {key: before},
+        "digest_transitions": {} if change == "unrecorded" else {key: row},
+    }
+    previous = json.loads(json.dumps(manifest))
+    live = after
+    if change == "old-live":
+        live = before
+    if change == "dual-live":
+        live = {"required": True, "schema": {"anyOf": [before["schema"], after["schema"]]}}
+    if change == "edited-type":
+        live = after | {"required": False}
+        row["new_schema"] = live
+    if change == "edited-record":
+        row["reason"] = "Edited history"
+    problems = surface_problems(
+        manifest,
+        {key: live},
+        previous=None if change == "edited-type" else previous,
+        unreleased=Version("0.2.10") if change == "unreleased" else None,
+    )
+    assert [
+        finding.split(f"{key}: ", 1)[1].split(";", 1)[0].removesuffix(" from the digest transition")
+        for finding in problems
+    ] == (expected.split("|") if expected else [])
 
 
 def test_retirement_is_announced_before_removal_and_cannot_be_erased() -> None:

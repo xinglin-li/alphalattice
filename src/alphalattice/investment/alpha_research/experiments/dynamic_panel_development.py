@@ -30,13 +30,14 @@ from alphalattice.investment.alpha_research.inputs.dynamic_panel import (
 from alphalattice.investment.alpha_research.inputs.workspace import (
     load_sector_history,
 )
+from alphalattice.kernel.identity import BLAKE3_PATTERN, blake3_filename
 
 from .development_artifacts import AlphaDevelopmentArtifactStore
 
 if TYPE_CHECKING:
     import pandas as pd
 
-_HASH = r"^[0-9a-f]{64}$"
+_HASH = BLAKE3_PATTERN
 
 
 class DynamicPanelDevelopmentError(ValueError):
@@ -221,7 +222,7 @@ class DynamicPanelAlphaDevelopmentService:
         methodology_path = (
             self._feature_artifact_root
             / DEVELOPMENT_METHODOLOGY_SURFACE_CATEGORY
-            / methodology.surface_hash
+            / blake3_filename(methodology.surface_hash)
             / methodology.transformed_parquet_relative_path
         )
         relative_frame = self._ordered_frame(

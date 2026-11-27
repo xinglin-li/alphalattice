@@ -91,6 +91,8 @@ from alphalattice.evidence.alternative_evidence.runtime.history import (
     receipt_matter_selection_id,
 )
 from alphalattice.foundation.data_layer import history
+from alphalattice.kernel.identity import blake3_filename, blake3_from_filename
+from tests._support.identity_fixtures import fixture_digest
 from tests.alternative_evidence_desk.document_intelligence_support import (
     _document_with_text,
     _registry,
@@ -795,9 +797,11 @@ def test_the_integrated_selection_seals_one_receipt_with_its_routing(
         assert len(bindings) == memo.computed
         assert successor.routing.comparison_bindings() == bindings
         store = runtime.artifacts.root / "filing-comparisons"
-        assert {p.stem for p in store.glob("*.json")} == set(bindings.values())
+        assert {blake3_from_filename(p.stem) for p in store.glob("*.json")} == set(
+            bindings.values()
+        )
         closure, record_hash = next(iter(bindings.items()))
-        bound_file = store / f"{record_hash}.json"
+        bound_file = store / f"{blake3_filename(record_hash)}.json"
         original = bound_file.read_bytes()
         sealed = FilingComparisonRecord.model_validate_json(original)
         assert sealed.comparison_hash == closure and sealed.record_hash == record_hash
@@ -844,7 +848,7 @@ def test_the_integrated_selection_seals_one_receipt_with_its_routing(
                 continued()
         finally:
             bound_file.write_bytes(original)
-        (store / f"{rewritten.record_hash}.json").write_bytes(
+        (store / f"{blake3_filename(rewritten.record_hash)}.json").write_bytes(
             rewritten.model_dump_json().encode("utf-8")
         )
         reused_before, computed_before = memo.reused, memo.computed
@@ -853,7 +857,7 @@ def test_the_integrated_selection_seals_one_receipt_with_its_routing(
         assert beside.routing.correspondences == routing.correspondences
         assert beside.routing.comparison_bindings() == bindings, "the bound record, not the rewrite"
         assert memo.reused > reused_before and memo.computed == computed_before
-        (store / f"{rewritten.record_hash}.json").unlink()
+        (store / f"{blake3_filename(rewritten.record_hash)}.json").unlink()
         # The bound record's own seals disagreeing (a unit's basis altered
         # under the bound name) is refused by the contract, never recomputed.
         bound_file.write_bytes(original.replace(b'"basis":"', b'"basis":"altered ', 1))
@@ -865,7 +869,7 @@ def test_the_integrated_selection_seals_one_receipt_with_its_routing(
         # A verified record that answers another closure under the bound name.
         (other_hash,) = [h for h in bindings.values() if h != record_hash][:1] or [None]
         if other_hash is not None:
-            bound_file.write_bytes((store / f"{other_hash}.json").read_bytes())
+            bound_file.write_bytes((store / f"{blake3_filename(other_hash)}.json").read_bytes())
             try:
                 with pytest.raises(ValueError, match="artifact_tampered"):
                     continued()
@@ -910,8 +914,8 @@ def test_the_integrated_selection_seals_one_receipt_with_its_routing(
                         include={
                             "entity_id",
                             "family",
-                            "later_content_sha256",
-                            "earlier_content_sha256",
+                            "later_content_digest",
+                            "earlier_content_digest",
                             "earlier_units_hash",
                             "comparison_rules_id",
                             "structure_rules_id",
@@ -990,10 +994,12 @@ def test_the_integrated_selection_seals_one_receipt_with_its_routing(
         placed_receipt = (
             runtime.artifacts.root
             / "retrieval-access-receipts"
-            / f"{admitted_receipt.receipt_hash}.json"
+            / f"{blake3_filename(admitted_receipt.receipt_hash)}.json"
         )
         placed_set = (
-            runtime.artifacts.root / "resolved-span-sets" / f"{admitted_receipt.span_set_hash}.json"
+            runtime.artifacts.root
+            / "resolved-span-sets"
+            / f"{blake3_filename(admitted_receipt.span_set_hash)}.json"
         )
         assert placed_receipt.is_file() and placed_set.is_file()
         assert placed_receipt.stat().st_size + placed_set.stat().st_size in admitted_bytes, (
@@ -1622,7 +1628,7 @@ def test_a_chain_reads_its_pending_candidates_and_table_pages_without_a_search(
         # sealed under has moved) never continues the prior plan silently:
         # the continuation refuses by name, and nothing of the plan is read.
         sealed_under = runtime.analysis_policy_hash
-        runtime.analysis_policy_hash = "0" * 64
+        runtime.analysis_policy_hash = fixture_digest("changed analysis policy")
         try:
             with pytest.raises(ValueError, match="litigation_continuation_policy_changed"):
                 runtime.continue_evidence(
@@ -1958,7 +1964,9 @@ def test_a_continuation_reads_the_frontier_and_skips_what_the_chain_has_covered(
                 "candidate_frontier": CandidateFrontier.from_records(
                     (
                         *plan[:stale_index],
-                        plan[stale_index].model_copy(update={"passage_hash": "0" * 64}),
+                        plan[stale_index].model_copy(
+                            update={"passage_hash": fixture_digest("stale passage")}
+                        ),
                         *plan[stale_index + 1 :],
                     )
                 )
@@ -2112,7 +2120,7 @@ def test_a_candidate_is_covered_only_when_its_whole_range_was_delivered() -> Non
         document_handle="DOC-A",
         character_start=0,
         character_end=100,
-        passage_hash="a" * 64,
+        passage_hash=fixture_digest("pending passage"),
         found_by=("Q-LIQUIDITY",),
         best_global_rank=1,
         best_local_rank=1,

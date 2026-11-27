@@ -21,8 +21,9 @@ from alphalattice.capabilities.domain_contracts.sealing import (
     scoped_model_digest,
     seal_model_validated,
 )
+from alphalattice.kernel.identity import BLAKE3_PATTERN
 
-_HASH = r"^[0-9a-f]{64}$"
+_HASH = BLAKE3_PATTERN
 
 
 class AlternativeEvidenceContract(BaseModel):  # type: ignore[misc]

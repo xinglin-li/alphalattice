@@ -77,8 +77,10 @@ from alphalattice.investment.portfolio_strategy_lab.application.decision_updates
     portfolio_update_positions,
 )
 from alphalattice.investment.risk_research.surfaces.returns import RiskReturnSurfaceError
+from alphalattice.kernel.identity import blake3_filename
 from alphalattice.protocols.research_authoring.contracts import AuthoringError
 from devtools.evaluation.committee import fact_findings, thread_findings
+from tests._support.identity_fixtures import fixture_digest
 from tests.portfolio_strategy_lab.node_runner import run_node
 from tests.portfolio_strategy_lab.synthetic_numerical import (
     HASH,
@@ -172,22 +174,26 @@ def risk_source(
     rows = {d: i for i, d in enumerate(days)}
     state = SimpleNamespace(positions=positions, k=days.index(session), days=days, table=table)
     state.sessions, state.bars, state.listings = days, set(listings), listings
+    surface_hash = fixture_digest("committee Risk surface")
+    manifest_revision = fixture_digest("committee universe")
     authority = SimpleNamespace(
-        authority_hash=uuid4().hex * 2,
-        risk_return_surface_hash=uuid4().hex * 2,
-        sector_map_hash="b" * 64,
+        authority_hash=fixture_digest(uuid4().hex),
+        risk_return_surface_hash=surface_hash,
+        sector_map_hash=fixture_digest("committee sector map"),
     )
     classification = SimpleNamespace(
-        map_hash="b" * 64,
-        sector_revision="d" * 64,
-        manifest_revision="e" * 64,
+        map_hash=authority.sector_map_hash,
+        sector_revision=fixture_digest("committee sector revision"),
+        manifest_revision=manifest_revision,
         entries=[
             SimpleNamespace(listing_id=v, sector_name=v[-1], sector_key=None) for v in listings
         ],
     )
     surface = SimpleNamespace(
-        surface_hash="c" * 64,
-        epoch=SimpleNamespace(ordered_listing_ids=listings, universe_manifest_revision="u"),
+        surface_hash=surface_hash,
+        epoch=SimpleNamespace(
+            ordered_listing_ids=listings, universe_manifest_revision=manifest_revision
+        ),
     )
 
     def carried(_universe: Any, listing: Any, sessions: Any, _sources: Any) -> Any:
@@ -214,7 +220,10 @@ def risk_source(
     )
     history = SimpleNamespace(reclassifications=(), current={v: v[-1] for v in listings})
     stores = SimpleNamespace(load_manifest=lambda _hash: surface)
-    relative_path = f"artifacts/portfolio-strategy-lab/{context.CATEGORY}/{'a' * 64}.json"
+    relative_path = (
+        f"artifacts/portfolio-strategy-lab/{context.CATEGORY}/"
+        f"{blake3_filename(authority.authority_hash)}.json"
+    )
     monkeypatch.setattr(context.PortfolioResearchArtifactStore, "load", lambda *_a, **_k: authority)
     monkeypatch.setattr(
         context.PanelClosureArtifactStore, "load_model", lambda *_a, **_k: classification
@@ -251,13 +260,15 @@ def test_each_saved_books_listing_axis_keeps_its_own_sector_labels(tmp_path, mon
     request.addfinalizer(context.configure_projection_memos)
     body = {
         "portfolio_source": {
-            "input_binding_hash": uuid4().hex * 2,
-            "panel_snapshot_hash": "b" * 64,
-            "universe_revision": "c" * 64,
+            "input_binding_hash": fixture_digest(uuid4().hex),
+            "panel_snapshot_hash": fixture_digest("saved book panel"),
+            "universe_revision": fixture_digest("saved book universe"),
         },
         "position": {"session": "2024-01-03"},
     }
-    history = SectorHistory("d" * 64, {"one": "Technology", "two": "Energy"})
+    history = SectorHistory(
+        fixture_digest("saved book sector history"), {"one": "Technology", "two": "Energy"}
+    )
     monkeypatch.setattr(context, "factor_input_paths", lambda *_: (tmp_path, tmp_path))
     monkeypatch.setattr(
         context.MarketDataRepository,
@@ -267,7 +278,11 @@ def test_each_saved_books_listing_axis_keeps_its_own_sector_labels(tmp_path, mon
     monkeypatch.setattr(
         context.ArtifactResolver,
         "load_feature_panel_manifest",
-        lambda *_: {"safe_summary": {"lineage": {"manifest_revision": "c" * 64}}},
+        lambda *_: {
+            "safe_summary": {
+                "lineage": {"manifest_revision": fixture_digest("saved book universe")}
+            }
+        },
     )
     monkeypatch.setattr(
         execution,

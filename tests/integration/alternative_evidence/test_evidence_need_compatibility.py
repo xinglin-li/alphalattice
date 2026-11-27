@@ -7,11 +7,10 @@ DELIVERED, never continued by a current plan -- while every current writer
 records a state and the write boundary refuses a reference without one.
 
 The historical fixture is the current writer's own record with the
-`target_state` member removed from its REFERENCE needs: byte-for-byte the
-serialization of `486cea54`, whose contract had no such field (an absent
-optional member is what that writer emitted, and the identity hash of the
-two dumps is the same). `fixtures/candidate-receipt-486cea54.json` retains
-one such receipt beside the test, produced the same way."""
+`target_state` member removed from its REFERENCE needs. This preserves the
+reference shape of `486cea54` under current tagged identities. The retained
+`fixtures/candidate-receipt-486cea54.json` bytes exercise refusal of retired
+unqualified identities."""
 
 from __future__ import annotations
 
@@ -19,6 +18,7 @@ from pathlib import Path
 from typing import Any
 
 import pytest
+from pydantic import ValidationError
 
 from alphalattice.capabilities.domain_contracts.project_layout import resolve_playpen_root
 from alphalattice.evidence.alternative_evidence.analysis import packet as packet_module
@@ -118,15 +118,11 @@ def test_a_historical_candidate_record_reads_unchanged_and_is_never_completed_or
         )
         assert readback.receipt_hash == historical_receipt.receipt_hash
         assert readback == historical_receipt
-        retained = AlternativeEvidenceRetrievalAccessReceipt.model_validate_json(
-            FIXTURE.read_bytes()
-        )
-        assert retained.litigation_matters is not None
-        assert retained.litigation_matters.historical_reference_needs > 0
-        assert all(
-            n.target_state is None
-            for n in retained.litigation_matters.needs
-            if n.kind == "REFERENCE"
+        with pytest.raises(ValidationError, match="string_pattern_mismatch") as retired:
+            AlternativeEvidenceRetrievalAccessReceipt.model_validate_json(FIXTURE.read_bytes())
+        assert any(
+            item["loc"] == ("receipt_hash",) and item["type"] == "string_pattern_mismatch"
+            for item in retired.value.errors()
         )
         # The summary discloses them as unspecified; nothing counts them delivered.
         summary = packet_module.litigation_matter_summary(historical_receipt)

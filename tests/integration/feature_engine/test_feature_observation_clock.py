@@ -97,6 +97,7 @@ from alphalattice.foundation.feature_engine.producers.factors.catalog import (
 from alphalattice.foundation.feature_engine.producers.factors.specifications import (
     build_installed_factor_formula_specifications,
 )
+from alphalattice.kernel.identity import blake3_filename
 from alphalattice.protocols.research_authoring.contracts import DecisionCutoff, MarketPhase
 
 ANNUALIZATION = math.sqrt(252.0)
@@ -1420,7 +1421,7 @@ def _publish_probe_panel(root: Path, *, catalog: FeatureCatalog) -> str:
 def _retarget_manifest(root: Path, snapshot_hash: str, mutate: Callable[[dict], None]) -> str:
     """Republish one manifest with a forged field under its own honest hash."""
 
-    path = root / "feature-panel" / "manifests" / f"{snapshot_hash}.json"
+    path = root / "feature-panel" / "manifests" / f"{blake3_filename(snapshot_hash)}.json"
     payload = json.loads(path.read_text(encoding="utf-8"))
     payload.pop("snapshot_hash")
     mutate(payload)

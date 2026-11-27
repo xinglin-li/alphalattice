@@ -12,12 +12,11 @@ import subprocess
 import tarfile
 import tempfile
 from collections.abc import Sequence
+from hashlib import sha256
 from pathlib import Path
 from typing import Any
 from urllib.request import urlopen
 from zipfile import ZipFile
-
-from alphalattice.capabilities.domain_contracts.domain.serialization import sha256_hex
 
 ROOT = Path(__file__).resolve().parents[3]
 REGISTRY_INPUTS = (
@@ -56,7 +55,7 @@ def _checked_archive(kit: Path, name: str, pin: dict[str, str]) -> Path:
     else:
         with urlopen(pin["url"], timeout=30) as response:
             payload = response.read()
-    if sha256_hex(payload) != pin["sha256"]:
+    if sha256(payload).hexdigest() != pin["sha256"]:
         raise ValueError(f"Weaver development input digest differs: {name}")
     if not cached:
         _publish(path, payload)

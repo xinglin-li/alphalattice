@@ -43,6 +43,8 @@ from alphalattice.foundation.market_data_ops.sources.providers import (
     SectorObservation,
 )
 from alphalattice.foundation.market_data_ops.storage.duckdb import MarketDataRepository
+from alphalattice.kernel.identity import blake3_filename
+from tests._support.identity_fixtures import fixture_digest
 
 NOW = datetime(2026, 8, 3, 12, tzinfo=UTC)
 
@@ -108,7 +110,7 @@ def test_sector_map_publication_failure_prevents_store_activation(tmp_path, monk
                 provider_symbol="AAA",
             ),
         ),
-        revision_sha256="d" * 64,
+        revision_sha256=fixture_digest("failure-manifest"),
         universe_membership_basis="CURRENT_ACTIVE_SURVIVORS",
         is_point_in_time_historical=False,
     )
@@ -129,8 +131,8 @@ def test_sector_map_publication_failure_prevents_store_activation(tmp_path, monk
             "provider_symbol": "AAA",
             "sector_name": "Technology",
             "sector_key": "technology",
-            "payload_hash": "a" * 64,
-            "evidence_hash": "b" * 64,
+            "payload_hash": fixture_digest("sector-payload"),
+            "evidence_hash": fixture_digest("sector-evidence"),
         },
     )
 
@@ -195,7 +197,7 @@ def test_sector_staging_is_resumable_and_commits_only_at_fan_in(tmp_path, refres
         manifest_id="yaml-sector-staging-fixture",
         profile=profile,
         listings=listings,
-        revision_sha256="e" * 64,
+        revision_sha256=fixture_digest("staging-manifest"),
         universe_membership_basis="CURRENT_ACTIVE_SURVIVORS",
         is_point_in_time_historical=False,
     )
@@ -310,7 +312,10 @@ def test_reachability_reports_orphans_without_deleting(tmp_path) -> None:
         chunk = resolver.publish_feature_panel_chunk(
             table=table,
             content_hash=chunk_hash,
-            metadata={"panel_binding_hash": "a" * 64, "calendar_year": "2026"},
+            metadata={
+                "panel_binding_hash": fixture_digest("panel-binding"),
+                "calendar_year": "2026",
+            },
         )
         payload = {
             "kind": "FeaturePanelSnapshotManifest",
@@ -334,6 +339,8 @@ def test_reachability_reports_orphans_without_deleting(tmp_path) -> None:
     assert resolver.inspect_feature_panel_snapshot(rooted.uri) == {"seed": "rooted"}
     # Classification is observational. No method in this case can remove the orphan.
     orphan_path = (
-        tmp_path / "artifacts" / "feature-panel" / "chunks" / f"{orphan_chunk.content_hash}.parquet"
+        resolver.root
+        / "feature-panel/chunks"
+        / f"{blake3_filename(orphan_chunk.content_hash)}.parquet"
     )
     assert orphan_path.exists()

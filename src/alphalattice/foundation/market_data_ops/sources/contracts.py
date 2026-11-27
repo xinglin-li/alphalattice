@@ -2,12 +2,13 @@
 
 from __future__ import annotations
 
-import re
 from dataclasses import dataclass
 from datetime import date, datetime
 from typing import Literal
 
 from pydantic import BaseModel, ConfigDict, Field
+
+from alphalattice.kernel.identity import BLAKE3_PATTERN, is_blake3
 
 
 @dataclass(frozen=True)
@@ -29,7 +30,7 @@ class CandidateDataRecheck:
         """
         if (
             any(
-                re.fullmatch(r"[0-9a-f]{64}", value) is None
+                not is_blake3(value)
                 for value in (
                     self.prior_onboarding_id,
                     self.candidate_manifest_hash,
@@ -128,7 +129,7 @@ class DataRemediationProposal(BaseModel):
 
     run_id: str
     case_token: str
-    evidence_hash: str = Field(pattern=r"^[a-f0-9]{64}$")
+    evidence_hash: str = Field(pattern=BLAKE3_PATTERN)
     option_id: str = Field(pattern=r"^[a-z][a-z0-9_-]{2,119}$")
     rationale: str = Field(min_length=1, max_length=1200)
 

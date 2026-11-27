@@ -7,6 +7,7 @@ from types import MappingProxyType
 
 import numpy as np
 
+from alphalattice.capabilities.domain_contracts.identity import canonical_hash
 from alphalattice.investment.alpha_research.inputs.panel_feature_materialization import (
     fold_role_materialization_key,
     materialize_panel_feature_projection,
@@ -43,14 +44,20 @@ def test_shared_role_cache_mutates_source_recipe_and_consuming_windows() -> None
         raw_simple_execution_returns=raw,
         sector_context_values=readonly(rng.normal(size=(60, 2, 5))),
         market_context_values=readonly(rng.normal(size=(60, 8))),
-        source_identity_hashes=MappingProxyType({"panel": "a" * 64, "outcome": "b" * 64}),
+        source_identity_hashes=MappingProxyType(
+            {
+                "panel": canonical_hash("fixture panel"),
+                "outcome": canonical_hash("fixture outcome"),
+            }
+        ),
     )
     plan = preflight_panel_feature_plan(
         source=source, selected_method_ids=("RELATIVE_CONTROL",), maximum_aggregation_span=1
     )
     cache = {}
+    program_hash = canonical_hash("fixture program")
 
-    def project(training, transforms, shared, *, program="c" * 64):
+    def project(training, transforms, shared, *, program=program_hash):
         return materialize_panel_feature_projection(
             plan=plan,
             method_id="RELATIVE_CONTROL",
@@ -65,7 +72,7 @@ def test_shared_role_cache_mutates_source_recipe_and_consuming_windows() -> None
     training, transforms = sessions[5:25], sessions[40:50]
     first = project(training, transforms, cache)
     entries = dict(cache)
-    again = project(training, transforms, cache, program="d" * 64)
+    again = project(training, transforms, cache, program=canonical_hash("other program"))
     assert cache.keys() == entries.keys()
     assert all(cache[k] is entries[k] for k in entries)
     np.testing.assert_array_equal(first.training_features, again.training_features)
@@ -82,16 +89,19 @@ def test_shared_role_cache_mutates_source_recipe_and_consuming_windows() -> None
     key = fold_role_materialization_key(plan, role, training, transforms)
     for name in source.source_identity_hashes:
         identities = dict(source.source_identity_hashes)
-        identities[name] = "e" * 64
+        identities[name] = canonical_hash(("changed source", name))
         changed = replace(
             plan, source=replace(source, source_identity_hashes=MappingProxyType(identities))
         )
         assert fold_role_materialization_key(changed, role, training, transforms) != key
     changed = replace(
-        plan, preflight=plan.preflight.model_copy(update={"preflight_hash": "e" * 64})
+        plan,
+        preflight=plan.preflight.model_copy(
+            update={"preflight_hash": canonical_hash("changed preflight")}
+        ),
     )
     assert fold_role_materialization_key(changed, role, training, transforms) != key
-    changed_role = role.model_copy(update={"selection_hash": "e" * 64})
+    changed_role = role.model_copy(update={"selection_hash": canonical_hash("changed selection")})
     assert fold_role_materialization_key(plan, changed_role, training, transforms) != key
     for control in ("threads", "workers", "batch", "cache"):
         assert control not in signature(fold_role_materialization_key).parameters

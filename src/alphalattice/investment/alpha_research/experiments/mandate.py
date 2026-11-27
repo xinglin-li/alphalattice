@@ -23,6 +23,7 @@ from alphalattice.investment.alpha_research.targets.execution_outcome import (
     AlphaTargetLane,
     AlphaTargetPolicy,
 )
+from alphalattice.kernel.identity import BLAKE3_PATTERN
 
 
 class _Contract(BaseModel):  # type: ignore[misc]
@@ -41,10 +42,10 @@ class AlphaResearchModelRecipe(_Contract):
     """One Host-admitted model recipe bound to its research target lane."""
 
     kind: Literal["AlphaResearchModelRecipe"] = "AlphaResearchModelRecipe"
-    search_domain_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
+    search_domain_hash: str = Field(pattern=BLAKE3_PATTERN)
     recipe: AlphaModelRecipeEnvelope
     target_lane: AlphaTargetLane | None = None
-    target_method_binding_hash: str | None = Field(default=None, pattern=r"^[0-9a-f]{64}$")
+    target_method_binding_hash: str | None = Field(default=None, pattern=BLAKE3_PATTERN)
     """Which target-bound method admitted this model, for a lane-free target.
 
     Present, it enters ``research_recipe_hash`` -- and therefore ``spec_hash``
@@ -59,7 +60,7 @@ class AlphaResearchModelRecipe(_Contract):
     a new field must not rotate identities that are already sealed.
     """
 
-    research_recipe_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
+    research_recipe_hash: str = Field(pattern=BLAKE3_PATTERN)
 
     @classmethod
     def create(
@@ -123,13 +124,13 @@ class AlphaDevelopmentModelMethodBinding(_Contract):
     """
 
     kind: Literal["AlphaDevelopmentModelMethodBinding"] = "AlphaDevelopmentModelMethodBinding"
-    model_recipe_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
-    search_domain_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
+    model_recipe_hash: str = Field(pattern=BLAKE3_PATTERN)
+    search_domain_hash: str = Field(pattern=BLAKE3_PATTERN)
     target_recipe_id: str = Field(min_length=1, max_length=96)
-    target_method_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
-    target_recipe_binding_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
-    outcome_method_binding_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
-    binding_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
+    target_method_hash: str = Field(pattern=BLAKE3_PATTERN)
+    target_recipe_binding_hash: str = Field(pattern=BLAKE3_PATTERN)
+    outcome_method_binding_hash: str = Field(pattern=BLAKE3_PATTERN)
+    binding_hash: str = Field(pattern=BLAKE3_PATTERN)
 
     @classmethod
     def create(
@@ -336,7 +337,7 @@ class AlphaModelCapabilityMandate(_Contract):
     kind: Literal["AlphaModelCapabilityMandate"] = "AlphaModelCapabilityMandate"
     catalog_binding: AlphaModelCatalogBinding
     ordered_search_domains: tuple[AlphaModelSearchDomainEnvelope, ...] = Field(min_length=1)
-    mandate_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
+    mandate_hash: str = Field(pattern=BLAKE3_PATTERN)
 
     @classmethod
     def create(
@@ -413,7 +414,7 @@ class AlphaResearchModelMandate(_Contract):
     refinement_batch_max_size: int = Field(ge=1)
     max_batch_count: int = Field(ge=1)
     max_unique_new_recipes: int = Field(ge=1)
-    mandate_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
+    mandate_hash: str = Field(pattern=BLAKE3_PATTERN)
 
     @classmethod
     def create(

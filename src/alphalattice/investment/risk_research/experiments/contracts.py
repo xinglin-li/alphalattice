@@ -22,8 +22,9 @@ from typing import Literal, Self
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 from alphalattice.capabilities.domain_contracts.identity import canonical_hash
+from alphalattice.kernel.identity import BLAKE3_PATTERN
 
-_HASH_PATTERN = r"^[0-9a-f]{64}$"
+_HASH_PATTERN = BLAKE3_PATTERN
 
 RISK_EXPERIMENT_KIND = "risk.covariance-development"
 """The authored kind this Desk answers for.

@@ -21,7 +21,7 @@ from __future__ import annotations
 from collections.abc import Mapping
 from pathlib import Path
 from threading import Lock
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 
 from alphalattice.capabilities.domain_contracts.environment import (
     duckdb_thread_config,
@@ -29,12 +29,14 @@ from alphalattice.capabilities.domain_contracts.environment import (
     thread_share,
 )
 from alphalattice.kernel import storage
+from alphalattice.kernel.identity import identity_blake3, tagged_blake3
 from alphalattice.kernel.resources import cpu_width, current_resource_lease
 
 if TYPE_CHECKING:
     import duckdb
 
 _LOCK = Lock()
+_DIGEST_REGISTRATION = Lock()
 _THREADS: list[int] = []
 
 
@@ -65,6 +67,35 @@ def configure_duckdb(connection: duckdb.DuckDBPyConnection) -> duckdb.DuckDBPyCo
     return connection
 
 
+def _identity_batch(values: Any) -> Any:
+    """Apply the hashing owner's tagged identity to DuckDB's UTF-8 values."""
+    import pyarrow as pa  # lazy: only an active digest batch needs Arrow.
+
+    return pa.array(
+        [tagged_blake3(identity_blake3(value.encode("utf-8"))) for value in values.to_pylist()],
+        type=pa.string(),
+    )
+
+
+def _register_blake3_sql(connection: duckdb.DuckDBPyConnection) -> None:
+    from duckdb.sqltypes import VARCHAR  # lazy: the driver has just opened DuckDB.
+
+    connection.create_function(
+        "alphalattice_blake3", _identity_batch, [VARCHAR], VARCHAR, type="arrow"
+    )
+
+
+def install_blake3_sql(connection: duckdb.DuckDBPyConnection) -> None:
+    """Install the digest on an already open instance whose queries or views use it."""
+    with _DIGEST_REGISTRATION:
+        current = connection.execute(
+            "SELECT 1 FROM duckdb_functions() WHERE function_name = 'alphalattice_blake3'"
+            " AND database_name = 'system' AND function_type = 'scalar' AND internal"
+        ).fetchall()
+        if not current:
+            _register_blake3_sql(connection)
+
+
 class _DuckDB:
     """The DuckDB driver the storage port opens every instance through (kernel.storage)."""
 
@@ -75,7 +106,15 @@ class _DuckDB:
         import duckdb  # lazy: DuckDB loads at the first open, not at the driver's install
 
         connection = duckdb.connect(target, read_only=read_only, config=dict(config))
-        return connection if target == storage.MEMORY else configure_duckdb(connection)
+        try:
+            if target == storage.MEMORY:
+                # The process's shared in-memory instance installs once, before opening cursors.
+                _register_blake3_sql(connection)
+                return connection
+            return configure_duckdb(connection)
+        except BaseException:
+            connection.close()
+            raise
 
 
 DRIVER = _DuckDB()

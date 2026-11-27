@@ -47,6 +47,7 @@ from alphalattice.foundation.market_data_ops.sources.sector_forward import (
     sector_effective_session,
 )
 from alphalattice.foundation.market_data_ops.storage.duckdb import MarketDataRepository
+from tests._support.identity_fixtures import fixture_digest
 from tests.workspace_maintenance.acquisition_manifest import acquisition_manifest
 
 MONDAY, TUESDAY, WEDNESDAY, THURSDAY = (date(2026, 8, day) for day in (3, 4, 5, 6))
@@ -263,11 +264,12 @@ def _map(revision: str, sectors: dict[str, str]) -> SectorRevisionMap:
         )
         for listing, sector in sorted(sectors.items())
     )
+    manifest_revision = fixture_digest("manifest-revision")
     draft = SectorRevisionMap.model_construct(
-        manifest_revision="d" * 64, sector_revision=revision, entries=entries, map_hash="0" * 64
+        manifest_revision=manifest_revision, sector_revision=revision, entries=entries, map_hash=""
     )
     return SectorRevisionMap(
-        manifest_revision="d" * 64,
+        manifest_revision=manifest_revision,
         sector_revision=revision,
         entries=entries,
         map_hash=canonical_hash(draft.model_dump(mode="json", exclude={"map_hash"})),
@@ -302,9 +304,9 @@ def test_the_ledger_rebuilds_a_history_and_folds_what_came_before_the_rule(
     folds into the backfill; a copy of what it reads answers the same history elsewhere."""
 
     store = PanelClosureArtifactStore(ArtifactResolver(tmp_path / "artifacts"))
-    one = _map("1" * 64, {"a": "Technology", "b": "Technology"})
-    two = _map("2" * 64, {"a": "Energy", "b": "Technology"})
-    three = _map("3" * 64, {"a": "Energy", "b": "Health"})
+    one = _map(fixture_digest("initial-sector-revision"), {"a": "Technology", "b": "Technology"})
+    two = _map(fixture_digest("backfilled-revision"), {"a": "Energy", "b": "Technology"})
+    three = _map(fixture_digest("forward-revision"), {"a": "Energy", "b": "Health"})
     for value in (one, two, three):
         store.publish_json(
             category="sector-maps", content_hash=value.map_hash, payload=durable_payload(value)
@@ -347,7 +349,7 @@ def test_the_forward_treatment_is_stated_only_where_a_reclassification_is_in_for
         build_sector_target_recipe,
     )
 
-    revision = "e" * 64
+    revision = fixture_digest("sector-revision")
     for lane in AlphaTargetLane:
         backfilled = build_alpha_target_policy(lane=lane, sector_revision=revision)
         stated = build_alpha_target_policy(
@@ -562,12 +564,17 @@ def test_a_risk_surface_designs_a_formation_by_the_sectors_in_force() -> None:
             ("c", "Technology", "technology"),
         )
     )
+    manifest_revision = fixture_digest("manifest-revision")
+    sector_revision = fixture_digest("sector-revision")
     draft = SectorRevisionMap.model_construct(
-        manifest_revision="d" * 64, sector_revision="e" * 64, entries=entries, map_hash="0" * 64
+        manifest_revision=manifest_revision,
+        sector_revision=sector_revision,
+        entries=entries,
+        map_hash="",
     )
     classification = SectorRevisionMap(
-        manifest_revision="d" * 64,
-        sector_revision="e" * 64,
+        manifest_revision=manifest_revision,
+        sector_revision=sector_revision,
         entries=entries,
         map_hash=canonical_hash(draft.model_dump(mode="json", exclude={"map_hash"})),
     )
@@ -580,9 +587,15 @@ def test_a_risk_surface_designs_a_formation_by_the_sectors_in_force() -> None:
 
     def surface(moves: tuple[SectorReclassification, ...]):  # type: ignore[no-untyped-def]
         current = {"a": "Energy", "b": "Technology", "c": "Technology"}
-        history = SectorHistory("e" * 64, current, moves)
+        history = SectorHistory(sector_revision, current, moves)
         inputs = RiskDecompositionInputs.at(
-            formation, sessions, listings, returns, classification, "3" * 64, history
+            formation,
+            sessions,
+            listings,
+            returns,
+            classification,
+            fixture_digest("returns"),
+            history,
         )
         return RiskSurfaceProducer().produce(inputs).surface
 

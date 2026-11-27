@@ -46,7 +46,7 @@ from alphalattice.foundation.feature_engine.storage.repositories import (
 from alphalattice.foundation.market_data_ops.sources.manifest import UniverseManifest
 from alphalattice.foundation.market_data_ops.storage.duckdb import MarketDataRepository
 from alphalattice.investment.alpha_research.evaluation.contracts import AlphaMetricPolicy
-from alphalattice.kernel.identity import identity_sha256
+from alphalattice.kernel.identity import blake3_digest, is_blake3
 from alphalattice.protocols.research_authoring.contracts import (
     AuthoringError,
     ResearchExperimentEnvelope,
@@ -114,7 +114,7 @@ def exploration_sample_size(handle: str) -> int | None:
 
 
 def _rank(listing_id: str) -> str:
-    return identity_sha256(f"alphalattice.exploration-sample:{listing_id}".encode()).hexdigest()
+    return blake3_digest(f"alphalattice.exploration-sample:{listing_id}".encode())
 
 
 def panel_sector_labels(
@@ -232,8 +232,7 @@ class InstalledResearchSnapshot:
         """
         if (
             not self.handle
-            or len(self.panel_snapshot_hash) != 64
-            or any(value not in "0123456789abcdef" for value in self.panel_snapshot_hash)
+            or not is_blake3(self.panel_snapshot_hash)
             or self.handle == CURRENT_SNAPSHOT_HANDLE
         ):
             raise ValueError("research_authoring.installed_snapshot_invalid")
@@ -521,7 +520,7 @@ class WorkspaceResearchAuthorityResolver:
         installed = self._installed_snapshots.get(handle)
         if installed is not None:
             return installed
-        if len(handle) != 64 or any(character not in "0123456789abcdef" for character in handle):
+        if not is_blake3(handle):
             raise AuthoringError("research_authoring.snapshot_handle_unresolved")
         return str(handle)
 

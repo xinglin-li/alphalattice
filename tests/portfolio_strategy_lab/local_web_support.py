@@ -89,11 +89,11 @@ from tests.portfolio_strategy_lab.node_runner import run_node
 
 SCRIPT = Path(__file__).resolve().parents[2] / "scripts/run_alphalattice.py"
 
-_HASH = "a" * 64
+_HASH = "blake3:" + "a" * 64
 
 TEST_PACKAGE = FrozenStrategyPackage.create(
     strategy_id="SYNTHETIC_SINGLE_BOOK",
-    alpha_recipe_hash="b" * 64,
+    alpha_recipe_hash="blake3:" + "b" * 64,
     policy_binding="REQUEST_SELECTED",
     frozen_policy=None,
     component_plan=(
@@ -101,7 +101,7 @@ TEST_PACKAGE = FrozenStrategyPackage.create(
             component_id="SYNTHETIC_SCORE",
             allocation_basis_points=10_000,
             family_id="SYNTHETIC",
-            recipe_hash="b" * 64,
+            recipe_hash="blake3:" + "b" * 64,
             target_recipe="SYNTHETIC_FORWARD_EXCESS",
             objective="ONE_SCORE_PER_FORMATION",
         ),
@@ -110,7 +110,7 @@ TEST_PACKAGE = FrozenStrategyPackage.create(
     score_sources=(
         ScoreSourceCapability(
             mode="HISTORICAL_ARRAY_REPLAY",
-            evidence_identity_hash="c" * 64,
+            evidence_identity_hash="blake3:" + "c" * 64,
             description="Synthetic recorded scores",
         ),
     ),
@@ -359,8 +359,8 @@ def _formation_scores(count: int, formation_index: int, block: int) -> np.ndarra
 def _resolved(
     weight_rule: str = "mu.iv1",
     benchmark_view: str = "anchor_only",
-    tradability_hash: str = "f" * 64,
-    outcome_hash: str = "1" * 64,
+    tradability_hash: str = "blake3:" + "f" * 64,
+    outcome_hash: str = "blake3:" + "1" * 64,
     listing_count: int = 80,
     sessions: tuple[date, ...] | None = None,
     *,
@@ -493,11 +493,11 @@ def _resolved(
         policy_recipe_hash=policy_recipe,
         policy_catalog_hash=policy_catalog,
         policy_adapter_binding_hash=policy_binding,
-        alpha_recipe_hash="b" * 64,
-        alpha_evidence_manifest_hash="c" * 64,
+        alpha_recipe_hash="blake3:" + "b" * 64,
+        alpha_evidence_manifest_hash="blake3:" + "c" * 64,
         risk_recipe_hash=INSTALLED_RISK_DECOMPOSITION_RECIPE.recipe_hash,
-        risk_return_surface_hash="d" * 64,
-        sector_map_hash="e" * 64,
+        risk_return_surface_hash="blake3:" + "d" * 64,
+        sector_map_hash="blake3:" + "e" * 64,
         tradability_decision_hash=tradability_hash,
         execution_outcome_manifest_hash=outcome_hash,
     )
@@ -613,13 +613,13 @@ def _session_keyed_resolved(
         policy_recipe_hash=policy_recipe,
         policy_catalog_hash=policy_catalog,
         policy_adapter_binding_hash=policy_binding,
-        alpha_recipe_hash="b" * 64,
-        alpha_evidence_manifest_hash="c" * 64,
+        alpha_recipe_hash="blake3:" + "b" * 64,
+        alpha_evidence_manifest_hash="blake3:" + "c" * 64,
         risk_recipe_hash=INSTALLED_RISK_DECOMPOSITION_RECIPE.recipe_hash,
-        risk_return_surface_hash="d" * 64,
-        sector_map_hash="e" * 64,
-        tradability_decision_hash="f" * 64,
-        execution_outcome_manifest_hash="1" * 64,
+        risk_return_surface_hash="blake3:" + "d" * 64,
+        sector_map_hash="blake3:" + "e" * 64,
+        tradability_decision_hash="blake3:" + "f" * 64,
+        execution_outcome_manifest_hash="blake3:" + "1" * 64,
     )
 
 

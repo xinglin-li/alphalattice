@@ -29,6 +29,8 @@ from alphalattice.foundation.data_layer import history, history_execution_outcom
 from alphalattice.foundation.data_layer.upgrade import PROGRESS, Family, UpgradeRunner
 from alphalattice.interface.local_application import cli
 from alphalattice.interface.local_application.client import LocalResearchConnection
+from alphalattice.kernel.identity import blake3_filename
+from tests._support.identity_fixtures import fixture_digest
 from tests.portfolio_strategy_lab.host_requests import _json, _request
 
 TEST_SOURCE = "src/alphalattice/control/product_host/composition/first_start.py"
@@ -494,31 +496,35 @@ def test_a_committed_chunk_with_no_file_is_upgraded_only_if_the_catalog_lacks_it
     def publish(category: str, payload: dict[str, Any], name: str) -> str:
         """Write `payload` as the outcome store's files hold it; returns its address."""
         (outcomes / category).mkdir(parents=True, exist_ok=True)
-        (outcomes / category / f"{payload[name]}.json").write_text(json.dumps(payload))
+        (outcomes / category / f"{blake3_filename(payload[name])}.json").write_text(
+            json.dumps(payload)
+        )
         return f"{address}{category}/{payload[name]}"
 
     day = date(2025, 1, 2)
-    chunks = {
-        split: CausalExecutionOutcomeChunk(
+    chunks = {}
+    metadata_hash = fixture_digest("execution outcome chunk metadata")
+    for split in ("DEVELOPMENT", "SEALED_HOLDOUT"):
+        content_hash = fixture_digest(("execution outcome chunk", split))
+        location = split.casefold().replace("_", "-")
+        chunks[split] = CausalExecutionOutcomeChunk(
             split=split,
             year=2025,
             row_count=1,
             first_formation_session=day,
             last_formation_session=day,
-            content_hash=digit * 64,
-            metadata_hash="f" * 64,
-            uri=f"{address}{split.casefold().replace('_', '-')}/chunks/{digit * 64}",
+            content_hash=content_hash,
+            metadata_hash=metadata_hash,
+            uri=f"{address}{location}/chunks/{content_hash}",
         )
-        for split, digit in (("DEVELOPMENT", "a"), ("SEALED_HOLDOUT", "b"))
-    }
     values = {
         "research_cadence": "DAILY",
         "market_as_of": date(2025, 1, 5),
         "listing_ids": ("listing",),
         "listing_set_hash": canonical_hash(("listing",)),
-        "schedule_hash": "1" * 64,
-        "ordered_session_triples_hash": "2" * 64,
-        "source_rows_semantic_hash": "3" * 64,
+        "schedule_hash": fixture_digest("execution outcome schedule"),
+        "ordered_session_triples_hash": fixture_digest("ordered execution sessions"),
+        "source_rows_semantic_hash": fixture_digest("execution outcome source rows"),
         "data_validity_class": "CURRENT_UNIVERSE_RESEARCH_ONLY",
         "development_chunks": (chunks["DEVELOPMENT"],),
         "sealed_holdout_chunks": (chunks["SEALED_HOLDOUT"],),
@@ -575,7 +581,12 @@ def test_a_committed_chunk_with_no_file_is_upgraded_only_if_the_catalog_lacks_it
                 chunk.content_hash, pa.Table.from_pylist(listed, schema)
             )
         if case == "a folder in its place":
-            (outcomes / "development" / "chunks" / f"{'a' * 64}.parquet").mkdir(parents=True)
+            (
+                outcomes
+                / "development"
+                / "chunks"
+                / f"{blake3_filename(chunks['DEVELOPMENT'].content_hash)}.parquet"
+            ).mkdir(parents=True)
         if case == "a catalog fault":
 
             def fault(_digest: str) -> str:

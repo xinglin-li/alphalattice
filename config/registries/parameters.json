@@ -1,14 +1,29 @@
 {
 "entries": {
+"src/alphalattice/capabilities/domain_contracts/identity_successors.py::_audit_digest::64": {
+"class": "METHOD",
+"count": 1,
+"description": "Audit-only untagged SHA-256 predecessors have 64 hexadecimal characters."
+},
 "src/alphalattice/foundation/data_layer/knowledge.py::num_threads::8": {
 "class": "LIMIT",
 "count": 1,
 "description": "Tantivy divides its default 128 MB writer arena across admitted workers and requires 15 MB per worker; eight is the largest valid width without growing the arena."
 },
+"src/alphalattice/foundation/data_layer/backup.py::MANIFEST_VERSION::3": {
+"class": "METHOD",
+"count": 1,
+"description": "Version three introduces tagged BLAKE3 seals in the backup manifest."
+},
 "src/alphalattice/interface/local_application/portfolio_request_fields/__init__.py::_FAMILIES_HELD::8": {
 "class": "LIMIT",
 "count": 1,
 "description": "A process keeps one request family's field definitions for each of the 8 families."
+},
+"src/alphalattice/investment/alpha_research/scores/heterogeneous_replay.py::schema_version::2": {
+"class": "METHOD",
+"count": 1,
+"description": "Version two binds the score closure with tagged BLAKE3 digests."
 },
 "src/alphalattice/investment/portfolio_strategy_lab/application/strategy_package.py::_ROOTS_HELD::8": {
 "class": "LIMIT",
@@ -4497,21 +4512,25 @@
 "class": "LIMIT",
 "count": 1
 },
-"src/alphalattice/foundation/market_data_ops/runtime/universe_onboarding.py::policy_hash::2700": {
+"src/alphalattice/foundation/market_data_ops/runtime/universe_onboarding.py::policy::2700": {
 "class": "METHOD",
-"count": 1
+"count": 1,
+"description": "The persisted retry delay after a third hydration deferral, in seconds."
 },
-"src/alphalattice/foundation/market_data_ops/runtime/universe_onboarding.py::policy_hash::30": {
+"src/alphalattice/foundation/market_data_ops/runtime/universe_onboarding.py::policy::30": {
 "class": "METHOD",
-"count": 1
+"count": 1,
+"description": "The persisted upper bound on jitter added to hydration retry delays, in seconds."
 },
-"src/alphalattice/foundation/market_data_ops/runtime/universe_onboarding.py::policy_hash::300": {
+"src/alphalattice/foundation/market_data_ops/runtime/universe_onboarding.py::policy::300": {
 "class": "METHOD",
-"count": 1
+"count": 1,
+"description": "The persisted first retry delay in the hydration policy, in seconds."
 },
-"src/alphalattice/foundation/market_data_ops/runtime/universe_onboarding.py::policy_hash::900": {
+"src/alphalattice/foundation/market_data_ops/runtime/universe_onboarding.py::policy::900": {
 "class": "METHOD",
-"count": 1
+"count": 1,
+"description": "The persisted second retry delay in the hydration policy, in seconds."
 },
 "src/alphalattice/foundation/market_data_ops/runtime/universe_onboarding.py::retry_budget::2": {
 "class": "LIMIT",
@@ -6537,10 +6556,6 @@
 "class": "METHOD",
 "count": 1
 },
-"src/alphalattice/investment/alpha_research/inputs/surfaces.py::_encoded_hashes::64": {
-"class": "METHOD",
-"count": 1
-},
 "src/alphalattice/investment/alpha_research/inputs/surfaces.py::_training_binding_source_hashes::64": {
 "class": "METHOD",
 "count": 1
@@ -6561,17 +6576,14 @@
 "class": "METHOD",
 "count": 1
 },
-"src/alphalattice/investment/alpha_research/inputs/surfaces.py::estimate_fold_bytes::128": {
-"class": "METHOD",
-"count": 1
-},
 "src/alphalattice/investment/alpha_research/inputs/surfaces.py::estimate_fold_bytes::16": {
 "class": "METHOD",
 "count": 1
 },
 "src/alphalattice/investment/alpha_research/inputs/surfaces.py::estimate_fold_bytes::2": {
 "class": "METHOD",
-"count": 1
+"count": 2,
+"description": "Each row has two completeness masks and two full tagged provenance digests."
 },
 "src/alphalattice/investment/alpha_research/inputs/surfaces.py::estimate_fold_bytes::8": {
 "class": "METHOD",
@@ -6581,13 +6593,10 @@
 "class": "METHOD",
 "count": 1
 },
-"src/alphalattice/investment/alpha_research/inputs/surfaces.py::estimate_surface_bytes::128": {
-"class": "METHOD",
-"count": 1
-},
 "src/alphalattice/investment/alpha_research/inputs/surfaces.py::estimate_surface_bytes::2": {
 "class": "METHOD",
-"count": 1
+"count": 2,
+"description": "Each row has two completeness masks and two full tagged provenance digests."
 },
 "src/alphalattice/investment/alpha_research/inputs/surfaces.py::estimate_surface_bytes::4": {
 "class": "METHOD",
@@ -8784,6 +8793,11 @@
 "src/alphalattice/investment/portfolio_strategy_lab/policies/post_observed_authority.py::resolve_frozen_book_components::20": {
 "class": "METHOD",
 "count": 1
+},
+"src/alphalattice/investment/portfolio_strategy_lab/policies/post_observed_authority.py::schema_version::2": {
+"class": "METHOD",
+"count": 1,
+"description": "Version two uses tagged BLAKE3 digests throughout the authority contract."
 },
 "src/alphalattice/investment/portfolio_strategy_lab/policies/post_observed_authority.py::sensitivity_cost_bps_per_side::10": {
 "class": "METHOD",
@@ -13014,7 +13028,7 @@
 "count": 1,
 "description": "The most threads a lake statement fans out to, past which extra threads cost more than they gain."
 },
-"src/alphalattice/foundation/data_layer/root.py::SCHEMA_VERSION::16": {
+"src/alphalattice/foundation/data_layer/root.py::SCHEMA_VERSION::17": {
 "class": "METHOD",
 "count": 1,
 "description": "The PRAGMA user_version of databases this code creates, and the version it refuses any other database for."

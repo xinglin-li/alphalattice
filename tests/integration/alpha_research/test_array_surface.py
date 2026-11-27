@@ -28,6 +28,7 @@ from alphalattice.investment.alpha_research.inputs.observations import (
 )
 from alphalattice.investment.alpha_research.inputs.surfaces import AlphaArraySurfaceBudget
 from alphalattice.investment.alpha_research.scores import refit as current_refit_module
+from tests._support.identity_fixtures import fixture_digest
 
 GIB = 1024**3
 MIB = 1024**2
@@ -198,13 +199,12 @@ def test_arrow_float_conversion_preserves_signed_zero_and_nan_payload() -> None:
 
 
 def test_fixed_width_hash_encoding_never_silently_truncates() -> None:
-    accepted = surface_module._encoded_hashes(pa.array(["a", "b" * 64]))
-    assert bytes(accepted[0]).decode("ascii") == "a"
-    assert bytes(accepted[1]).decode("ascii") == "b" * 64
-    with pytest.raises(AlphaArrayBoundaryError, match="array_surface_axis_mismatch"):
-        surface_module._encoded_hashes(pa.array(["c" * 65]))
-    with pytest.raises(AlphaArrayBoundaryError, match="array_surface_axis_mismatch"):
-        surface_module._encoded_hashes(pa.array(["dé"]))
+    digest = "blake3:" + "b" * 64
+    accepted = surface_module._encoded_hashes(pa.array([digest, None]))
+    assert accepted.tolist() == [digest.encode("ascii"), b"None"]
+    for invalid in (digest[7:], digest + "c", "blake3:" + "g" * 64, "d?"):
+        with pytest.raises(AlphaArrayBoundaryError, match="array_surface_axis_mismatch"):
+            surface_module._encoded_hashes(pa.array([invalid]))
 
 
 def test_hash_decoding_can_be_omitted_for_numerical_only_consumers(
@@ -218,7 +218,7 @@ def test_hash_decoding_can_be_omitted_for_numerical_only_consumers(
         listing_index={"A": 0},
         values=np.asarray(((1.0,),), dtype=np.float64),
         present=np.asarray((True,), dtype=np.bool_),
-        row_hashes=np.asarray((b"a",), dtype="S64"),
+        row_hashes=surface_module._encoded_hashes(pa.array(["blake3:" + "a" * 64])),
         read_count=1,
     )
 
@@ -256,7 +256,7 @@ def test_current_state_computes_score_statistics_once(monkeypatch) -> None:
 
     monkeypatch.setattr(current_refit_module, "_score_statistics", observed)
     current_refit_module._linear_state(
-        request_hash="a" * 64,
+        request_hash=fixture_digest("score-statistics-request"),
         candidate_id="model.ridge.test",
         family_id="ridge",
         arrays=arrays,

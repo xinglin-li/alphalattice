@@ -26,6 +26,8 @@ from alphalattice.control.product_host.composition.task_recovery import (
     task_attention,
 )
 from alphalattice.control.task_control.contracts import TaskLifecycle, TaskRecord, TaskRecoveryLink
+from alphalattice.kernel.identity import blake3_filename
+from tests._support.identity_fixtures import fixture_digest
 from tests.workspace_task_runner.task_control_support import task_contract
 
 NOW = datetime(2026, 9, 29, 12, tzinfo=UTC)
@@ -180,7 +182,7 @@ def test_an_incident_record_keeps_its_key_seals_its_lifecycle_and_refuses_a_chan
     )
     store.put(still_open)
     assert [record.state for record in store.records()] == ["OPEN", "RESOLVED"]
-    path = tmp_path / "runtime" / "guanyin" / "incidents" / f"{key}.json"
+    path = tmp_path / "runtime" / "guanyin" / "incidents" / f"{blake3_filename(key)}.json"
     path.write_text(path.read_text(encoding="utf-8").replace('"RESOLVED"', '"OPEN"', 1), "utf-8")
     with pytest.raises(ValueError, match="incident_record_unreadable"):
         store.get(key)
@@ -194,7 +196,7 @@ def test_attention_resolves_only_the_exact_stopped_task_version() -> None:
     resolved = _incident(
         stopped,
         state="RESOLVED",
-        key="a" * 64,
+        key=fixture_digest("resolved incident"),
         resolved_task_record_hash=stopped.record_hash,
     )
 
@@ -210,12 +212,16 @@ def test_attention_resolves_only_the_exact_stopped_task_version() -> None:
     assert later_fact.unresolved and later_fact.resolution == "STOPPED"
     assert later_fact.task_record_hash == later_failure.record_hash
 
-    open_incident = _incident(later_failure, state="OPEN", key="b" * 64)
+    open_incident = _incident(
+        later_failure, state="OPEN", key=fixture_digest("later open incident")
+    )
     with_open = task_attention(later_failure, incidents=(resolved, open_incident))
     assert with_open.unresolved and with_open.resolution == "STOPPED"
     assert with_open.incident_key == open_incident.key
 
-    same_version_open = _incident(stopped, state="OPEN", key="e" * 64)
+    same_version_open = _incident(
+        stopped, state="OPEN", key=fixture_digest("same version open incident")
+    )
     resolved_and_open = task_attention(stopped, incidents=(resolved, same_version_open))
     assert resolved_and_open.unresolved and resolved_and_open.resolution == "STOPPED"
     assert resolved_and_open.incident_key == same_version_open.key
@@ -224,7 +230,9 @@ def test_attention_resolves_only_the_exact_stopped_task_version() -> None:
 def test_legacy_resolved_incident_keeps_its_seal_but_does_not_clear_attention() -> None:
     """A pre-binding resolved incident remains readable, with no invented Task-version proof."""
     stopped = _task_record()
-    legacy = _incident(stopped, state="RESOLVED", key="c" * 64)
+    legacy = _incident(
+        stopped, state="RESOLVED", key=fixture_digest("incident before resolution proof")
+    )
     legacy_json = legacy.model_dump(mode="json")
     assert "resolved_task_record_hash" not in legacy_json
     restored = IncidentRecord.model_validate_json(json.dumps(legacy_json))
@@ -240,7 +248,7 @@ def test_attention_requires_a_current_explicit_link_and_a_succeeded_child() -> N
     unrelated = _task_record(lifecycle=TaskLifecycle.SUCCEEDED, salt="unrelated")
     stale_link = TaskRecoveryLink.create(
         source_task_id=stopped.task_id,
-        source_record_hash="f" * 64,
+        source_record_hash=fixture_digest("stale stopped task record"),
         admission_request={"operation": "FACTOR_PLAN"},
         successor_task_id=unrelated.task_id,
         recorded_at=NOW,
@@ -292,7 +300,7 @@ def test_attention_requires_a_current_explicit_link_and_a_succeeded_child() -> N
             _incident(
                 stopped,
                 state="RESOLVED",
-                key="d" * 64,
+                key=fixture_digest("incident with pending successor"),
                 resolved_task_record_hash=stopped.record_hash,
             ),
         ),
@@ -317,11 +325,11 @@ def test_attention_contract_requires_resolution_and_proof_fields() -> None:
         TaskAttentionFact(
             unresolved=False,
             resolution="STOPPED",
-            task_record_hash="a" * 64,
+            task_record_hash=fixture_digest("attention task record"),
         )
     with pytest.raises(ValueError, match="canonical child facts"):
         TaskAttentionFact(
             unresolved=False,
             resolution="SUCCESSOR_SUCCEEDED",
-            task_record_hash="a" * 64,
+            task_record_hash=fixture_digest("attention task record"),
         )

@@ -37,7 +37,7 @@ import numpy as np
 
 from alphalattice.capabilities.domain_contracts.identity import canonical_hash
 from alphalattice.capabilities.domain_contracts.project_layout import resolve_playpen_root
-from alphalattice.kernel.identity import change_sha256, integrity_sha256
+from alphalattice.kernel.identity import identity_blake3, integrity_sha256_lock, tagged_blake3
 
 from .contracts import (
     AlphaModelAdapter,
@@ -366,8 +366,8 @@ def contract_key(model_id: str, *, root: Path | None = None) -> str:
             "declaration": declaration.model_dump(mode="json", by_alias=True),
             "numerical_binding_hash": adapter.describe_numerical_binding().numerical_binding_hash,
             "domain": domain.model_dump(mode="json"),
-            "module_source_sha256": change_sha256(source).hexdigest(),
-            "lock_sha256": integrity_sha256((checkout / "uv.lock").read_bytes()).hexdigest(),
+            "module_source_digest": tagged_blake3(identity_blake3(source)),
+            "lock_sha256": integrity_sha256_lock((checkout / "uv.lock").read_bytes()),
         }
     )
     return key

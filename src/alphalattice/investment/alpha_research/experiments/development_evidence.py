@@ -50,6 +50,7 @@ from alphalattice.investment.alpha_research.experiments.development_contracts im
     AlphaDevelopmentSurfaceManifest,
     LegacyAlphaCandidateFoldEvidence,
 )
+from alphalattice.kernel.identity import is_blake3
 from alphalattice.protocols.research_authoring.contracts import (
     AuthoringError,
     ResearchExecutionEvidence,
@@ -59,8 +60,6 @@ _RECEIPT_URI_PREFIX = AlphaDevelopmentArtifactStore.uri(
     f"current/{ALPHA_DEVELOPMENT_EXECUTION_RECEIPT_CATEGORY}", "0" * 64
 )[:-64]
 """The one URI spelling, taken from the store rather than restated beside it."""
-
-_HASH_CHARACTERS = frozenset("0123456789abcdef")
 
 
 def alpha_development_receipt_uri(receipt_hash: str) -> str:
@@ -81,7 +80,7 @@ def alpha_development_receipt_handle(uri: str) -> str:
     """
 
     handle = uri[len(_RECEIPT_URI_PREFIX) :] if uri.startswith(_RECEIPT_URI_PREFIX) else uri
-    if len(handle) != 64 or not set(handle).issubset(_HASH_CHARACTERS):
+    if not is_blake3(handle):
         raise AuthoringError("alpha_research.development_receipt_handle_invalid")
     return handle
 

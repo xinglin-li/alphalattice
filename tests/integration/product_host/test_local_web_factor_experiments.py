@@ -2363,7 +2363,7 @@ def test_a_feature_is_tried_in_one_request_and_reopened_when_asked_again(complet
         assert_trial_reads_during_saves(ops.trials, trial_id)
 
         # Name and keep damaged records; restart reuses unchanged steps.
-        record = root / "runtime" / "feature-trials" / f"{trial_id}.json"
+        record = ops.trials._path(trial_id)
         record.write_bytes(record.read_bytes()[:40])
         damaged = _json(live, f"/api/feature-trials/readback?feature_trial_id={trial_id}")
         assert damaged["failure_code"] == "feature_trial.record_damaged", damaged

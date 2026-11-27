@@ -19,6 +19,7 @@ an identity.
 
 from __future__ import annotations
 
+import re
 from collections.abc import Iterable, Mapping
 from dataclasses import dataclass
 from datetime import date
@@ -64,6 +65,7 @@ from alphalattice.investment.risk_research.surfaces.decomposition import (
     RiskAllocationProjection,
     RiskAttributionProjection,
 )
+from alphalattice.kernel.identity import BLAKE3_PATTERN
 
 type MergeSemantics = Literal[
     "SINGLE_COMPONENT_BOOK",
@@ -159,11 +161,11 @@ class ComponentPlanEntry(_Contract):
     component_id: str = Field(min_length=1)
     allocation_basis_points: int = Field(gt=0, le=ALLOCATION_BASIS_POINTS_TOTAL)
     family_id: str = Field(min_length=1)
-    recipe_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
+    recipe_hash: str = Field(pattern=BLAKE3_PATTERN)
     target_recipe: str = Field(min_length=1)
     objective: str = Field(min_length=1)
     model_lifecycle_hash: str | None = Field(
-        default=None, pattern=r"^[0-9a-f]{64}$", exclude_if=lambda value: value is None
+        default=None, pattern=BLAKE3_PATTERN, exclude_if=lambda value: value is None
     )
 
 
@@ -174,7 +176,7 @@ class ScoreSourceCapability(_Contract):
 
     kind: Literal["ScoreSourceCapability"] = "ScoreSourceCapability"
     mode: ScoreSourceMode
-    evidence_identity_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
+    evidence_identity_hash: str = Field(pattern=BLAKE3_PATTERN)
     """The exact evidence or model-set identity this mode reopens.
 
     It is the Program's `alpha_evidence_manifest_hash` for a run in this mode, so
@@ -261,9 +263,9 @@ class PackagePolicyIdentity(_Contract):
     """The three policy identities one request compiles to under one package."""
 
     kind: Literal["PackagePolicyIdentity"] = "PackagePolicyIdentity"
-    policy_recipe_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
-    policy_catalog_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
-    policy_adapter_binding_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
+    policy_recipe_hash: str = Field(pattern=BLAKE3_PATTERN)
+    policy_catalog_hash: str = Field(pattern=BLAKE3_PATTERN)
+    policy_adapter_binding_hash: str = Field(pattern=BLAKE3_PATTERN)
 
 
 class FrozenStrategyPackage(_Contract):
@@ -275,7 +277,7 @@ class FrozenStrategyPackage(_Contract):
 
     kind: Literal["FrozenStrategyPackage"] = "FrozenStrategyPackage"
     strategy_id: str = Field(min_length=1)
-    alpha_recipe_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
+    alpha_recipe_hash: str = Field(pattern=BLAKE3_PATTERN)
     """The Alpha formation/score authority this package forms books from.
 
     The *Alpha* recipe, and only that. Whole-strategy identity is
@@ -303,7 +305,7 @@ class FrozenStrategyPackage(_Contract):
     controls: PackageControlSurface
     claim_limits: tuple[str, ...] = Field(min_length=1)
     provenance: tuple[str, ...] = Field(min_length=1)
-    package_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
+    package_hash: str = Field(pattern=BLAKE3_PATTERN)
 
     @classmethod
     def create(cls, **values: object) -> Self:
@@ -419,20 +421,20 @@ class StrategyDisclosure(_Contract):
     """
 
     kind: Literal["StrategyDisclosure"] = "StrategyDisclosure"
-    report_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
-    program_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
+    report_hash: str = Field(pattern=BLAKE3_PATTERN)
+    program_hash: str = Field(pattern=BLAKE3_PATTERN)
     strategy_id: str = Field(min_length=1)
-    package_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
-    alpha_recipe_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
+    package_hash: str = Field(pattern=BLAKE3_PATTERN)
+    alpha_recipe_hash: str = Field(pattern=BLAKE3_PATTERN)
     score_source_mode: ScoreSourceMode
-    score_source_authority_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
+    score_source_authority_hash: str = Field(pattern=BLAKE3_PATTERN)
     score_source_description: str = Field(min_length=1)
     component_plan: tuple[ComponentPlanEntry, ...] = Field(min_length=1)
     merge_semantics: MergeSemantics
     risk_disposition: RiskDisposition
     claim_limits: tuple[str, ...] = Field(min_length=1)
     provenance: tuple[str, ...] = Field(min_length=1)
-    disclosure_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
+    disclosure_hash: str = Field(pattern=BLAKE3_PATTERN)
 
     @classmethod
     def compile(
@@ -800,10 +802,6 @@ def tranche_recipe_of(spec: PortfolioResearchSpec) -> TrancheBookRecipe:
     )
 
 
-def _hex64(value: str) -> bool:
-    return len(value) == 64 and all(character in "0123456789abcdef" for character in value)
-
-
 class InstalledPackageBinding:
     """One installed package, its score sources, and how it admits a request.
 
@@ -862,7 +860,7 @@ class InstalledPackageBinding:
                 raise StrategyPackageError(
                     "portfolio_application.package_score_source_authority_mismatch"
                 )
-        if not _hex64(source_identity_hash):
+        if re.fullmatch(BLAKE3_PATTERN, source_identity_hash) is None:
             raise StrategyPackageError("portfolio_application.package_source_identity_invalid")
         self._package = package
         self._sources: Mapping[ScoreSourceMode, StrategyScoreSource] = dict(sources)

@@ -48,7 +48,7 @@ from alphalattice.investment.risk_research.surfaces.artifacts import (
     RiskArtifactStore,
 )
 from alphalattice.investment.risk_research.surfaces.decomposition import RiskAllocationProjection
-from alphalattice.kernel.identity import identity_sha256
+from alphalattice.kernel.identity import identity_blake3, tagged_blake3
 
 from .upstream import (
     PortfolioUpstreamAuthorityError,
@@ -238,9 +238,9 @@ def _allocation_projection(
                 "recipe_hash": str(surface.recipe_hash),
                 "formation_session": session.isoformat(),
                 "ordered_listing_ids": list(listing_ids),
-                "per_name_volatility": identity_sha256(
-                    np.ascontiguousarray(lane, dtype="<f8").tobytes()
-                ).hexdigest(),
+                "per_name_volatility": tagged_blake3(
+                    identity_blake3(np.ascontiguousarray(lane, dtype="<f8").tobytes())
+                ),
             }
         ),
     )

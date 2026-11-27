@@ -34,21 +34,11 @@ from alphalattice.investment.alpha_research.scores.product_recipe import (
     PRODUCT_ESTIMATOR_POINT,
     AlphaEstimatorParameterPoint,
 )
-from alphalattice.kernel.identity import identity_sha256
+from alphalattice.kernel.identity import BLAKE3_PATTERN, blake3_digest, is_blake3
 
 HETEROGENEOUS_STRATEGY_ID: Final = "FOUR_COMPONENT_BOOK"
 _RECIPE_SEAL: Final = frozenset({"recipe_hash"})
 _STRATEGY_SEAL: Final = frozenset({"strategy_hash"})
-SUCCESSOR_PACKAGE_HASH: Final = "89a9e84b2035d36b59b0f76a087c777fe8fd997973fd67aee1a7e28d3f4aafb7"
-SUCCESSOR_REPLAY_RESULT_HASH: Final = (
-    "956e0932d9d1c0c07eb538adeaca46e7ddba9ea37a6c288245461fafb5f71df5"
-)
-SUCCESSOR_REPORT_CONTRACT_HASH: Final = (
-    "dc56d3bcfdaa464cbd295f48cb3163ee9530e62f5e87c276add6cfcb146a53ed"
-)
-SUCCESSOR_VALIDATION_CONTRACT_HASH: Final = (
-    "c747925f2c5b6f6fd6b248bef8cb75f79a29968c799abf290e4692397dcaaea0"
-)
 
 ComponentId = Literal[
     "G0_IW184",
@@ -77,8 +67,8 @@ class HeterogeneousLiveScoreClosureReceipt(BaseModel):  # type: ignore[misc]
 
     kind: Literal["HeterogeneousLiveScoreClosureReceipt"] = "HeterogeneousLiveScoreClosureReceipt"
     formation_session: date
-    strategy_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
-    book_recipe_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
+    strategy_hash: str = Field(pattern=BLAKE3_PATTERN)
+    book_recipe_hash: str = Field(pattern=BLAKE3_PATTERN)
     component_model_set_hashes: dict[ComponentId, str]
     component_projection_hashes: dict[ComponentId, str]
     raw_prediction_maximum_gaps: dict[ComponentId, float]
@@ -88,8 +78,8 @@ class HeterogeneousLiveScoreClosureReceipt(BaseModel):  # type: ignore[misc]
     decision_eligible_count: int = Field(ge=1)
     target_name_count: int = Field(ge=1)
     target_weight_sum: float
-    target_weights_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
-    consumed_score_receipt_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
+    target_weights_hash: str = Field(pattern=BLAKE3_PATTERN)
+    consumed_score_receipt_hash: str = Field(pattern=BLAKE3_PATTERN)
     fit_count: Literal[0] = 0
     prediction_call_count: Literal[96] = 96
     portfolio_decision_count: Literal[1] = 1
@@ -98,7 +88,7 @@ class HeterogeneousLiveScoreClosureReceipt(BaseModel):  # type: ignore[misc]
     pointer_mutation_count: Literal[0] = 0
     source_readback_unchanged: Literal[True] = True
     disposition: Literal["READY"] = "READY"
-    receipt_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
+    receipt_hash: str = Field(pattern=BLAKE3_PATTERN)
 
     @classmethod
     def seal(cls, values: Mapping[str, object]) -> Self:
@@ -140,7 +130,7 @@ class HeterogeneousLiveScoreClosureReceipt(BaseModel):  # type: ignore[misc]
             or tuple(self.raw_prediction_maximum_gaps) != COMPONENT_IDS
             or tuple(self.aggregate_score_maximum_gaps) != COMPONENT_IDS
             or any(
-                len(value) != 64 or any(character not in "0123456789abcdef" for character in value)
+                not is_blake3(value)
                 for value in (
                     *self.component_model_set_hashes.values(),
                     *self.component_projection_hashes.values(),
@@ -274,7 +264,6 @@ class HeterogeneousAlphaComponentRecipe(_Contract):
             "target_cross_section",
             "score_consumer",
             "objective",
-            "evidence_disposition",
         }
     )
     """Names and words the recipe hash leaves out: what they describe is bound by the hashes,
@@ -283,13 +272,11 @@ class HeterogeneousAlphaComponentRecipe(_Contract):
     kind: Literal["HeterogeneousAlphaComponentRecipe"] = "HeterogeneousAlphaComponentRecipe"
     component_id: ComponentId
     family_id: str = Field(min_length=2)
-    research_recipe_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
-    parent_recipe_hash: str | None = Field(default=None, pattern=r"^[0-9a-f]{64}$")
+    parent_recipe_hash: str | None = Field(default=None, pattern=BLAKE3_PATTERN)
     feature_axis_id: str = Field(min_length=1)
-    feature_axis_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
+    feature_axis_hash: str = Field(pattern=BLAKE3_PATTERN)
     feature_count: int = Field(ge=1)
     ordered_feature_ids: tuple[str, ...] = ()
-    source_binding_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
     target_recipe: str = Field(min_length=1)
     target_cross_section: str = Field(min_length=1)
     candidate_semantics: str = Field(min_length=1)
@@ -304,11 +291,12 @@ class HeterogeneousAlphaComponentRecipe(_Contract):
     vintage_weights: tuple[int, ...] = (4, 3, 2, 1)
     live_model_count: Literal[12] = 12
     score_aggregation: ScoreAggregationSemantics
-    evidence_disposition: Literal["FROZEN_RESEARCH_PACKAGE_ADMITTED_AS_SUCCESSOR"] = (
-        "FROZEN_RESEARCH_PACKAGE_ADMITTED_AS_SUCCESSOR"
-    )
-    evidence_daily_parquet_sha256: str = Field(pattern=r"^[0-9a-f]{64}$")
-    recipe_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
+    recipe_hash: str = Field(pattern=BLAKE3_PATTERN)
+
+    @property
+    def research_recipe_hash(self) -> str:
+        """The recipe the component's research and model lifecycle bind."""
+        return self.parent_recipe_hash or self.recipe_hash
 
     @classmethod
     def create(cls, **values: object) -> Self:
@@ -368,18 +356,15 @@ def _component_recipes() -> tuple[HeterogeneousAlphaComponentRecipe, ...]:
         "vintage_count": 4,
         "vintage_weights": (4, 3, 2, 1),
         "live_model_count": 12,
-        "evidence_disposition": "FROZEN_RESEARCH_PACKAGE_ADMITTED_AS_SUCCESSOR",
     }
     return (
         HeterogeneousAlphaComponentRecipe.create(
             component_id="G0_IW184",
             family_id="BROAD_FEATURE_MODEL",
-            research_recipe_hash=g0.recipe_hash,
             parent_recipe_hash=g0.recipe_hash,
             feature_axis_id=g0.feature_axis_id,
             feature_axis_hash=g0.feature_axis_hash,
             feature_count=g0.feature_count,
-            source_binding_hash=g0.source_candidate_manifest_sha256,
             target_recipe="EXACT_FROZEN_G0_H1_WHOLE_UNIVERSE_TARGET",
             target_cross_section="UNIVERSE_RETURN_NORMALIZATION",
             candidate_semantics="ALL_ELIGIBLE_FULL_UNIVERSE",
@@ -390,18 +375,15 @@ def _component_recipes() -> tuple[HeterogeneousAlphaComponentRecipe, ...]:
             score_aggregation=(
                 "PER_MODEL_PERCENTILE_0_1_THEN_EQUAL_SEED_MEAN_THEN_WEIGHTED_VINTAGE_MEAN"
             ),
-            evidence_daily_parquet_sha256="c8a02ce9637a2799acb7faf64153450e7fe934ef06abeb601b659f28efafcd87",
             **common,
         ),
         HeterogeneousAlphaComponentRecipe.create(
             component_id="G2_R0_TREND",
             family_id="TREND_REBOUND_LGBM",
-            research_recipe_hash="145f2cdc492e2c12dae67426eb5753f8d73a4295681ae5bc474ab9aa17ae0e28",
             feature_axis_id="TREND_FEATURE_AXIS",
             feature_axis_hash=canonical_hash(list(_TREND_CANDIDATE_FEATURES)),
             feature_count=len(_TREND_CANDIDATE_FEATURES),
             ordered_feature_ids=_TREND_CANDIDATE_FEATURES,
-            source_binding_hash="bb06155d2282cd5992988d134c2d108005f9b7f23e9410f1a1af9ac537a89392",
             target_recipe="T1_H3_PURE_TOTAL_RETURN_Z",
             target_cross_section="WHOLE_UNIVERSE_MAD_3_5_MEAN_CENTER_SAMPLE_STD_Z",
             candidate_semantics="FORMATION_CLOSE_RAW_12_1_TOP100_WITH_BOUNDARY_TIES_MINIMUM_100",
@@ -413,18 +395,15 @@ def _component_recipes() -> tuple[HeterogeneousAlphaComponentRecipe, ...]:
                 "EQUAL_RAW_SEED_MEAN_THEN_CANDIDATE_PERCENTILE_1_N_TO_1_THEN_"
                 "WEIGHTED_VINTAGE_MEAN_WITH_OUTSIDER_MINUS_ONE"
             ),
-            evidence_daily_parquet_sha256="9649fb62fc01793ad9b5fc51b64b9567fdfd33c4b4acd57b6b619c542ce589f6",
             **common,
         ),
         HeterogeneousAlphaComponentRecipe.create(
             component_id="G6_R0_FAST_REBOUND",
             family_id="FAST_REBOUND_RECAPTURE",
-            research_recipe_hash="a2896193b0575e37d4ad99ed5b2bdbdd29bab9a333298e9bddaaaa5f251ee61f",
             feature_axis_id="REBOUND_CONTEXT_AXIS",
             feature_axis_hash=canonical_hash(list(_FAST_REBOUND_FEATURES)),
             feature_count=len(_FAST_REBOUND_FEATURES),
             ordered_feature_ids=_FAST_REBOUND_FEATURES,
-            source_binding_hash="bb06155d2282cd5992988d134c2d108005f9b7f23e9410f1a1af9ac537a89392",
             target_recipe="EXACT_FROZEN_G0_H1_WHOLE_UNIVERSE_TARGET",
             target_cross_section="UNIVERSE_RETURN_NORMALIZATION",
             candidate_semantics="ALL_ELIGIBLE_FULL_UNIVERSE",
@@ -436,18 +415,15 @@ def _component_recipes() -> tuple[HeterogeneousAlphaComponentRecipe, ...]:
                 "EQUAL_RAW_SEED_MEAN_THEN_CANDIDATE_PERCENTILE_1_N_TO_1_THEN_"
                 "WEIGHTED_VINTAGE_MEAN_WITH_OUTSIDER_MINUS_ONE"
             ),
-            evidence_daily_parquet_sha256="d489c43ba240903ed214776deaedff3260b2907cf315f2c693be107fae64eb7e",
             **common,
         ),
         HeterogeneousAlphaComponentRecipe.create(
             component_id="G7_R1_CONTEXTUAL_MOMENTUM",
             family_id="CONTEXTUAL_MOMENTUM_LGBM",
-            research_recipe_hash="df313e2cc6aaa5c6ea10bb91c8c537d0fd83dd1c436db34cf57311b85aad02b3",
             feature_axis_id="MOMENTUM_CONTEXT_AXIS",
             feature_axis_hash=canonical_hash(list(_CONTEXTUAL_MOMENTUM_FEATURES)),
             feature_count=len(_CONTEXTUAL_MOMENTUM_FEATURES),
             ordered_feature_ids=_CONTEXTUAL_MOMENTUM_FEATURES,
-            source_binding_hash="bb06155d2282cd5992988d134c2d108005f9b7f23e9410f1a1af9ac537a89392",
             target_recipe="MOMENTUM_CONTINUATION_H1_Z",
             target_cross_section="CANDIDATE_ONLY_MAD_3_5_MEAN_CENTER_SAMPLE_STD_Z",
             candidate_semantics=(
@@ -461,7 +437,6 @@ def _component_recipes() -> tuple[HeterogeneousAlphaComponentRecipe, ...]:
                 "EQUAL_RAW_SEED_MEAN_THEN_CANDIDATE_PERCENTILE_1_N_TO_1_THEN_"
                 "WEIGHTED_VINTAGE_MEAN_WITH_OUTSIDER_MINUS_ONE"
             ),
-            evidence_daily_parquet_sha256="f908b81b103cca2c2d1ff44da59f13b2cd4084437835d3eaca3d0f761d88f045",
             **common,
         ),
     )
@@ -475,9 +450,7 @@ class HeterogeneousAlphaStrategyRecipe(_Contract):
 
     kind: Literal["HeterogeneousAlphaStrategyRecipe"] = "HeterogeneousAlphaStrategyRecipe"
     strategy_id: Literal["FOUR_COMPONENT_BOOK"] = HETEROGENEOUS_STRATEGY_ID
-    predecessor_recipe_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
-    successor_package_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
-    successor_replay_result_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
+    predecessor_recipe_hash: str = Field(pattern=BLAKE3_PATTERN)
     components: tuple[HeterogeneousAlphaComponentRecipe, ...]
     allocation_basis_points: tuple[int, ...] = (2500, 2500, 2500, 2500)
     component_consumer: Literal["FOUR_INDEPENDENT_TOP35_EXIT70_TRANCHE3_BOOKS"] = (
@@ -491,13 +464,11 @@ class HeterogeneousAlphaStrategyRecipe(_Contract):
     risk_for_weights: Literal["NONE_EQUAL_WEIGHT_COMPONENT_BOOKS"] = (
         "NONE_EQUAL_WEIGHT_COMPONENT_BOOKS"
     )
-    report_contract_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
-    validation_contract_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
-    strategy_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
+    strategy_hash: str = Field(pattern=BLAKE3_PATTERN)
 
     @classmethod
     def installed(cls) -> Self:
-        """Seal the installed four-component equal-budget strategy and its frozen receipts.
+        """Seal the installed four-component equal-budget strategy.
 
         Each component receives 2500 basis points and maintains an independent equal-weight book.
         Post-trade listing weights merge before economic recalculation; the installed declaration
@@ -511,8 +482,6 @@ class HeterogeneousAlphaStrategyRecipe(_Contract):
             "kind": "HeterogeneousAlphaStrategyRecipe",
             "strategy_id": HETEROGENEOUS_STRATEGY_ID,
             "predecessor_recipe_hash": INSTALLED_ALPHA_PRODUCT_RECIPE.recipe_hash,
-            "successor_package_hash": SUCCESSOR_PACKAGE_HASH,
-            "successor_replay_result_hash": SUCCESSOR_REPLAY_RESULT_HASH,
             "components": [value.model_dump(mode="json") for value in _component_recipes()],
             "allocation_basis_points": [2500, 2500, 2500, 2500],
             "component_consumer": "FOUR_INDEPENDENT_TOP35_EXIT70_TRANCHE3_BOOKS",
@@ -520,8 +489,6 @@ class HeterogeneousAlphaStrategyRecipe(_Contract):
             "weighting_rule": "ew",
             "hazard_overlay": "NONE",
             "risk_for_weights": "NONE_EQUAL_WEIGHT_COMPONENT_BOOKS",
-            "report_contract_hash": SUCCESSOR_REPORT_CONTRACT_HASH,
-            "validation_contract_hash": SUCCESSOR_VALIDATION_CONTRACT_HASH,
         }
         draft = cls.model_construct(**values, strategy_hash="0" * 64)
         return cls(**values, strategy_hash=recipe_identity(draft, exclude=_STRATEGY_SEAL))
@@ -630,38 +597,10 @@ def strategy_recipe_is_current(recorded: str, installed: str) -> bool:
 LIVE_MODEL_VINTAGES: Final[tuple[str, ...]] = ("2026-07", "2026-04", "2026-01", "2025-10")
 """The four live vintages, newest first, of the admitted child model set."""
 
-LIVE_SCORE_CLOSURE_RECEIPT_HASH: Final = (
-    "e7a58ee330567147ac95f87119c0514e6ba9b47b39d8f433e89746b05cb580b5"
-)
-"""The Gate M closure that reopened all 48 children and scored them at zero gap."""
-
-LIVE_SOURCE_READBACK_SHA256: Final = (
-    "ecb5e2b679d7779f723ee7b41510b9d78338c6421f7badc1a5b0fe2256f9617b"
-)
-"""The Gate M source readback: every file the closure was allowed to derive from."""
-
-LIVE_MODEL_CLOSURE_MANIFEST_HASH: Final = (
-    "570780576859cc649f1d19dce48382dc74b9231a07be93e3b656998ccd2b5b42"
-)
-"""The Gate L manifest that reconstructed and admitted the twelve G0 children."""
-
-LIVE_COMPONENT_MODEL_SET_HASHES: Final[dict[ComponentId, str]] = {
-    "G0_IW184": "fdf50ae203586a2ab314ddfe5d563ae863692041eb68ea9486e778a0c3ea2132",
-    "G2_R0_TREND": "ebd48211e4c2d7ec70b3b8dc15ed6fcd8f60f56e7ffe5171afee9039ed808eb1",
-    "G6_R0_FAST_REBOUND": "8cadf2a8344b4f86d12644bb71778a19216357a985869172aa7fb4110c7111d8",
-    "G7_R1_CONTEXTUAL_MOMENTUM": "b2d982a99c072059f32ed5805dd23c83398c01b9f9de883bc0b8c92b12bf599b",
-}
-"""The four live model-set identities, as `HeterogeneousLiveModelSet` over content hashes.
-
-The three specialists' are the values in the Gate M receipt. G0's is the same
-formula over the twelve Gate L children; the receipt names G0 by its Gate L
-manifest hash instead, and the sealed closure manifest binds both.
-"""
-
 
 def array_value_hash(values: npt.ArrayLike) -> str:
-    """The identity of one float lane: sha256 over its little-endian float64 bytes."""
-    return identity_sha256(np.ascontiguousarray(values, dtype="<f8").tobytes()).hexdigest()
+    """The identity of one float lane over its little-endian float64 bytes."""
+    return blake3_digest(np.ascontiguousarray(values, dtype="<f8").tobytes())
 
 
 class HeterogeneousChildModelIdentity(_Contract):
@@ -670,11 +609,11 @@ class HeterogeneousChildModelIdentity(_Contract):
     kind: Literal["HeterogeneousChildModelIdentity"] = "HeterogeneousChildModelIdentity"
     vintage: str = Field(pattern=r"^\d{4}-\d{2}$")
     seed: int
-    recipe_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
-    content_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
+    recipe_hash: str = Field(pattern=BLAKE3_PATTERN)
+    content_hash: str = Field(pattern=BLAKE3_PATTERN)
     """The estimator payload's own content identity, the thing a reopen proves."""
 
-    lineage_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
+    lineage_hash: str = Field(pattern=BLAKE3_PATTERN)
     """The fit and prediction receipt that produced the payload."""
 
 
@@ -690,8 +629,8 @@ class HeterogeneousComponentModelSet(_Contract):
 
     kind: Literal["HeterogeneousComponentModelSet"] = "HeterogeneousComponentModelSet"
     component_id: ComponentId
-    recipe_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
-    feature_axis_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
+    recipe_hash: str = Field(pattern=BLAKE3_PATTERN)
+    feature_axis_hash: str = Field(pattern=BLAKE3_PATTERN)
     feature_count: int = Field(ge=1)
     ordered_feature_ids: tuple[str, ...] = ()
     seeds: tuple[int, ...]
@@ -700,7 +639,7 @@ class HeterogeneousComponentModelSet(_Contract):
     candidate_semantics: str = Field(min_length=1)
     score_aggregation: ScoreAggregationSemantics
     children: tuple[HeterogeneousChildModelIdentity, ...]
-    model_set_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
+    model_set_hash: str = Field(pattern=BLAKE3_PATTERN)
     """The live model-set identity Gate M sealed: recipe plus content hashes, in order."""
 
     @classmethod
@@ -808,10 +747,10 @@ class HeterogeneousSurfaceBinding(_Contract):
     component_id: ComponentId
     vintage: str = Field(pattern=r"^\d{4}-\d{2}$")
     formation_session: date
-    source_binding_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
+    source_binding_hash: str = Field(pattern=BLAKE3_PATTERN)
     """Where the values came from: the matrix or projection identity of that vintage."""
 
-    feature_values_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
+    feature_values_hash: str = Field(pattern=BLAKE3_PATTERN)
     """The exact values, as the live surface itself hashes them."""
 
 
@@ -820,7 +759,7 @@ class HeterogeneousLaneValueBinding(_Contract):
 
     kind: Literal["HeterogeneousLaneValueBinding"] = "HeterogeneousLaneValueBinding"
     formation_session: date
-    value_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
+    value_hash: str = Field(pattern=BLAKE3_PATTERN)
 
 
 class HeterogeneousModelSetAuthority(_Contract):
@@ -841,21 +780,21 @@ class HeterogeneousModelSetAuthority(_Contract):
     """
 
     kind: Literal["HeterogeneousModelSetAuthority"] = "HeterogeneousModelSetAuthority"
-    strategy_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
+    strategy_hash: str = Field(pattern=BLAKE3_PATTERN)
     score_source_mode: Literal["CURRENT_MODEL_SCORING"] = "CURRENT_MODEL_SCORING"
-    closure_manifest_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
-    closure_receipt_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
+    closure_manifest_hash: str = Field(pattern=BLAKE3_PATTERN)
+    closure_receipt_hash: str = Field(pattern=BLAKE3_PATTERN)
     """The Gate M receipt that reopened this exact child set and reported zero gap."""
 
-    numerical_environment_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
+    numerical_environment_hash: str = Field(pattern=BLAKE3_PATTERN)
     live_vintages: tuple[str, ...]
     formation_sessions: tuple[date, ...] = Field(min_length=1)
-    listing_axis_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
+    listing_axis_hash: str = Field(pattern=BLAKE3_PATTERN)
     components: tuple[HeterogeneousComponentModelSet, ...]
     surface_bindings: tuple[HeterogeneousSurfaceBinding, ...] = Field(min_length=1)
-    momentum_source_identity_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
+    momentum_source_identity_hash: str = Field(pattern=BLAKE3_PATTERN)
     momentum_value_bindings: tuple[HeterogeneousLaneValueBinding, ...] = Field(min_length=1)
-    authority_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
+    authority_hash: str = Field(pattern=BLAKE3_PATTERN)
 
     @classmethod
     def create(cls, **values: object) -> Self:
@@ -1052,13 +991,8 @@ __all__ = [
     "COMPONENT_IDS",
     "HETEROGENEOUS_STRATEGY_ID",
     "INSTALLED_HETEROGENEOUS_ALPHA_STRATEGY",
-    "LIVE_COMPONENT_MODEL_SET_HASHES",
-    "LIVE_MODEL_CLOSURE_MANIFEST_HASH",
     "LIVE_MODEL_VINTAGES",
-    "LIVE_SCORE_CLOSURE_RECEIPT_HASH",
-    "LIVE_SOURCE_READBACK_SHA256",
     "STRATEGY_ROLE",
-    "SUCCESSOR_PACKAGE_HASH",
     "ComponentId",
     "HeterogeneousAlphaComponentRecipe",
     "HeterogeneousAlphaError",

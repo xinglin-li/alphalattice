@@ -14,6 +14,7 @@ from alphalattice.investment.portfolio_strategy_lab.optimizer.service import (
     PortfolioOptimizer,
     solver_numerical_environment,
 )
+from alphalattice.kernel.identity import BLAKE3_PATTERN
 
 from .contracts import (
     PORTFOLIO_POLICY_PACKAGE,
@@ -33,7 +34,7 @@ class MinimumVarianceDevelopmentRecipe(BaseModel):  # type: ignore[misc]
     top_k: Literal[100] = 100
     maximum_weight: float = Field(default=0.02, gt=0.0, le=1.0)
     sector_capacity: float | None = Field(default=None, gt=0.0, le=1.0)
-    recipe_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
+    recipe_hash: str = Field(pattern=BLAKE3_PATTERN)
 
     @classmethod
     def create(cls, **values: object) -> Self:

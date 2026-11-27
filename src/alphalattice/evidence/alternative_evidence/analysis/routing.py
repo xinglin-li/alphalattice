@@ -30,7 +30,7 @@ from dataclasses import dataclass, field
 from datetime import date, datetime
 from typing import Protocol
 
-from alphalattice.kernel.identity import integrity_sha256
+from alphalattice.kernel.identity import blake3_digest
 
 from ..documents.comparison import (
     COMPARISON_RULES_ID,
@@ -1035,23 +1035,18 @@ def _compare_pair(
         return compare_filings(entity_id=entity_id, later=later_units, earlier=earlier_units)
     for document in (later, earlier):
         if document.document_key not in digests:
-            digests[document.document_key] = integrity_sha256(
-                document.text.encode("utf-8")
-            ).hexdigest()
+            digests[document.document_key] = blake3_digest(document.text.encode("utf-8"))
 
     def units_hash(units: Sequence[ComparableUnit]) -> str:
         return FilingComparisonRecord.units_hash_of(
-            tuple(
-                (u.handle, u.family, integrity_sha256(u.text.encode("utf-8")).hexdigest())
-                for u in units
-            )
+            tuple((u.handle, u.family, blake3_digest(u.text.encode("utf-8"))) for u in units)
         )
 
     closure = {
         "entity_id": entity_id,
         "family": family,
-        "later_content_sha256": digests[later.document_key],
-        "earlier_content_sha256": digests[earlier.document_key],
+        "later_content_digest": digests[later.document_key],
+        "earlier_content_digest": digests[earlier.document_key],
         "later_units_hash": units_hash(later_units),
         "earlier_units_hash": units_hash(earlier_units),
         "comparison_rules_id": COMPARISON_RULES_ID,

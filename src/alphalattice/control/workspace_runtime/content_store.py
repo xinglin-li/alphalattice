@@ -65,7 +65,15 @@ from alphalattice.control.workspace_runtime.verified_facts import (
     record_file_fact,
 )
 from alphalattice.kernel.execution import execution_port
-from alphalattice.kernel.identity import FileDigestTrust, change_xxh3_128_hex, integrity_sha256
+from alphalattice.kernel.identity import (
+    FileDigestTrust,
+    blake3_filename,
+    blake3_from_filename,
+    change_xxh3_128_hex,
+    integrity_blake3,
+    is_blake3,
+    tagged_blake3,
+)
 from alphalattice.kernel.resources import worker_width
 
 _WINDOWS_REPLACE_ATTEMPTS = 6
@@ -747,16 +755,12 @@ class ContentAddressedStoreError(ValueError):
 
 
 def columns_digest(columns: Mapping[str, npt.NDArray[Any]]) -> str:
-    """The digest numerical columns are named by: SHA-256 over their C-order bytes, in order.
-
-    One column's digest is that of its packed bytes, the name its ``.bin`` lane had, so a
-    lane keeps its identity across the type change.
-    """
+    """Name numerical columns by BLAKE3 over their ordered C-order buffers."""
     with span("hash", "columns"):
-        digest = integrity_sha256()
+        digest = integrity_blake3()
         for values in columns.values():
-            digest.update(np.ascontiguousarray(values).tobytes())
-        return digest.hexdigest()
+            digest.update(memoryview(np.ascontiguousarray(values)).cast("B"))
+        return tagged_blake3(digest)
 
 
 _INSTALLED_COLUMNS_DIGEST = columns_digest
@@ -838,16 +842,30 @@ class ContentAddressedStore:
 
     @staticmethod
     def require_hash(value: str) -> None:
-        """Require exactly 64 lowercase hexadecimal identity characters.
+        """Require a tagged BLAKE3 identity.
 
         Args:
             value: Identity string to validate.
 
         Raises:
-            ContentAddressedStoreError: The value is not a lowercase SHA-256 representation.
+            ContentAddressedStoreError: The value is not a tagged BLAKE3 digest.
         """
-        if len(value) != 64 or any(character not in "0123456789abcdef" for character in value):
+        if not is_blake3(value):
             raise ContentAddressedStoreError("content_store.identity_invalid")
+
+    @staticmethod
+    def _portable_path(path: Path) -> Path:
+        components = path.parts[1:] if path.is_absolute() else path.parts
+        if any(":" in component for component in components):
+            raise ContentAddressedStoreError("content_store.path_component_invalid")
+        return path
+
+    def artifact_path(self, *, category: str, content_hash: str, extension: str = "json") -> Path:
+        """Resolve the stored file for a content identity."""
+        self.require_hash(content_hash)
+        return self._portable_path(
+            self.root / category / f"{blake3_filename(content_hash)}.{extension}"
+        )
 
     def atomic_write(self, path: Path, content: bytes) -> None:
         """Check capacity and atomically replace the target with exact content bytes.
@@ -855,7 +873,10 @@ class ContentAddressedStore:
         Args:
             path: Physical file path owned by the caller.
             content: Exact bytes to publish through a same-directory temporary file.
+        Raises:
+            ContentAddressedStoreError: A path component contains a colon.
         """
+        self._portable_path(path)
         if self.capacity is not None:
             self.capacity(len(content))
         with span("write", "content_store"):
@@ -903,7 +924,7 @@ class ContentAddressedStore:
             content = json.dumps(
                 value.model_dump(mode="json"), sort_keys=True, separators=(",", ":")
             ).encode()
-        target = self.root / category / f"{content_hash}.json"
+        target = self.artifact_path(category=category, content_hash=content_hash)
         if target.is_file() and target.read_bytes() != content:
             raise ContentAddressedStoreError("content_store.identity_reused")
         if not target.is_file():
@@ -934,7 +955,7 @@ class ContentAddressedStore:
                 address.
         """
         self.require_hash(content_hash)
-        target = self.root / category / f"{content_hash}.json"
+        target = self.artifact_path(category=category, content_hash=content_hash)
         nested = _VERIFIED_SOURCE_BUILD.get()
         payload_size = 0
 
@@ -1001,7 +1022,9 @@ class ContentAddressedStore:
         if len(shapes) != 1:
             raise ContentAddressedStoreError("content_store.columns_invalid")
         content_hash = columns_digest(arrays)
-        target = self.root / category / f"{content_hash}.parquet"
+        target = self.artifact_path(
+            category=category, content_hash=content_hash, extension="parquet"
+        )
         kind = _column_kind(self)
         if target.is_file():
             if kind is None or file_fact(target, kind) != content_hash:
@@ -1027,19 +1050,21 @@ class ContentAddressedStore:
                 kind,
                 content_hash,
                 written=True,
-                _content=integrity_sha256(payload).hexdigest(),
+                _content=tagged_blake3(integrity_blake3(payload)),
             )
         return content_hash
 
     def holds_columns(self, *, category: str, content_hash: str) -> bool:
         """Whether this store holds the Parquet table a digest names."""
-        self.require_hash(content_hash)
-        return (self.root / category / f"{content_hash}.parquet").is_file()
+        return self.artifact_path(
+            category=category, content_hash=content_hash, extension="parquet"
+        ).is_file()
 
     def load_columns(self, *, category: str, content_hash: str) -> dict[str, npt.NDArray[Any]]:
         """Read one table's columns, flat; in full proof, prove its digest names them."""
-        self.require_hash(content_hash)
-        target = self.root / category / f"{content_hash}.parquet"
+        target = self.artifact_path(
+            category=category, content_hash=content_hash, extension="parquet"
+        )
         if _FULL_PROOF.get() is None:
             return self._columns(target)
         kind = _column_kind(self)
@@ -1053,38 +1078,18 @@ class ContentAddressedStore:
         return columns
 
     def load_packed_bytes(self, *, category: str, content_hash: str) -> bytes:
-        """The bytes a lane's digest names: its columns' C-order bytes, in order.
-
-        A legacy store holds them as a ``.bin`` file, read as it is.
-        """
-        self.require_hash(content_hash)
-        target = self.root / category / f"{content_hash}.parquet"
-        if _FULL_PROOF.get() is None:
-            if not target.is_file():
-                return self._legacy(category, content_hash)
-            return b"".join(values.tobytes() for values in self._columns(target).values())
-        kind = _column_kind(self)
-        if not target.is_file():
-            payload, stat = self._legacy(category, content_hash), None
-        else:
-            stat = os.stat(target)
-            columns, content = self._stable_columns(target)
-            payload = b"".join(values.tobytes() for values in columns.values())
-            if kind is not None and file_fact(target, kind, _content=content) == content_hash:
-                return payload
-        with span("hash", "packed"):
-            if integrity_sha256(payload).hexdigest() != content_hash:
-                raise ContentAddressedStoreError("content_store.artifact_tampered")
-        if stat is not None and kind is not None:
-            record_file_fact(target, kind, content_hash, stat=stat, _content=content)
-        return payload
+        """Return the stored columns' C-order bytes, in order."""
+        columns = self.load_columns(category=category, content_hash=content_hash)
+        return b"".join(values.tobytes() for values in columns.values())
 
     def publish_document(self, *, category: str, payload: bytes, extension: str) -> str:
         """Write one JSON document or rendered page, named by the digest of its bytes."""
         if extension not in {"json", "html"}:
             raise ContentAddressedStoreError("content_store.document_type_invalid")
-        content_hash = integrity_sha256(payload).hexdigest()
-        target = self.root / category / f"{content_hash}.{extension}"
+        content_hash = tagged_blake3(integrity_blake3(payload))
+        target = self.artifact_path(
+            category=category, content_hash=content_hash, extension=extension
+        )
         if target.is_file() and target.read_bytes() != payload:
             raise ContentAddressedStoreError("content_store.identity_reused")
         if not target.is_file():
@@ -1092,21 +1097,21 @@ class ContentAddressedStore:
         return content_hash
 
     def load_document(self, *, category: str, content_hash: str, extension: str) -> bytes:
-        """Read one document; in full proof, prove it is the one asked for.
-
-        A legacy store's is ``.bin``.
-        """
-        self.require_hash(content_hash)
-        target = self.root / category / f"{content_hash}.{extension}"
+        """Read one document and verify its identity in full proof."""
+        target = self.artifact_path(
+            category=category, content_hash=content_hash, extension=extension
+        )
         try:
             with span("read", "document"):
                 payload = target.read_bytes()
-        except FileNotFoundError:
-            payload = self._legacy(category, content_hash)
+        except FileNotFoundError as error:
+            raise ContentAddressedStoreError(
+                f"content_store.artifact_missing:{content_hash}"
+            ) from error
         if _FULL_PROOF.get() is None:
             return payload
         with span("hash", "document"):
-            if integrity_sha256(payload).hexdigest() != content_hash:
+            if tagged_blake3(integrity_blake3(payload)) != content_hash:
                 raise ContentAddressedStoreError("content_store.artifact_tampered")
         return payload
 
@@ -1124,7 +1129,7 @@ class ContentAddressedStore:
                 }
         except FileNotFoundError as error:
             raise ContentAddressedStoreError(
-                f"content_store.artifact_missing:{target.stem}"
+                f"content_store.artifact_missing:{blake3_from_filename(target.stem)}"
             ) from error
         except (OSError, pa.ArrowException) as error:
             raise ContentAddressedStoreError("content_store.artifact_tampered") from error
@@ -1139,20 +1144,10 @@ class ContentAddressedStore:
             return columns, before
         except FileNotFoundError as error:
             raise ContentAddressedStoreError(
-                f"content_store.artifact_missing:{target.stem}"
+                f"content_store.artifact_missing:{blake3_from_filename(target.stem)}"
             ) from error
         except OSError as error:
             raise ContentAddressedStoreError("content_store.artifact_tampered") from error
-
-    def _legacy(self, category: str, content_hash: str) -> bytes:
-        # A store written in a legacy format packed its lanes, documents and pages as `.bin` bytes;
-        # read only, until the formats registry names their upgrader.
-        try:
-            return (self.root / category / f"{content_hash}.bin").read_bytes()
-        except FileNotFoundError as error:
-            raise ContentAddressedStoreError(
-                f"content_store.artifact_missing:{content_hash}"
-            ) from error
 
 
 _INSTALLED_COLUMN_READER = ContentAddressedStore._columns
@@ -1214,16 +1209,18 @@ class CommittedIndex:
 
         Args:
             index: Caller-owned index namespace.
-            key: Lowercase hexadecimal SHA-256 index key.
+            key: Tagged BLAKE3 index key.
 
         Returns:
             Index namespace/key JSON path.
 
         Raises:
-            ContentAddressedStoreError: The index key is not a lowercase SHA-256 representation.
+            ContentAddressedStoreError: The index key is not a tagged BLAKE3 digest.
         """
         self.content.require_hash(key)
-        return self.root / "index" / index / f"{key}.json"
+        return self.content._portable_path(
+            self.root / "index" / index / f"{blake3_filename(key)}.json"
+        )
 
     def commit[ContractT: BaseModel](
         self, kind: CommittedKind[ContractT], key: str, value: ContractT

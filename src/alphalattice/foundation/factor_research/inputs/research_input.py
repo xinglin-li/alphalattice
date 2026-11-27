@@ -14,6 +14,7 @@ from alphalattice.foundation.factor_research.evaluation.oos_evidence import (
 )
 from alphalattice.foundation.factor_research.evaluation.redundancy import FactorRedundancyStructure
 from alphalattice.foundation.factor_research.programs.sealed import seal_contract
+from alphalattice.kernel.identity import BLAKE3_PATTERN
 
 
 class FactorResearchInputBoundaryError(ValueError):
@@ -49,8 +50,8 @@ class FactorResearchProposalChoice(_Contract):
 
     factor_id: str = Field(min_length=1)
     role: FactorResearchCandidateRole
-    evidence_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
-    cluster_id: str = Field(pattern=r"^[0-9a-f]{64}$")
+    evidence_hash: str = Field(pattern=BLAKE3_PATTERN)
+    cluster_id: str = Field(pattern=BLAKE3_PATTERN)
     rationale: str = Field(min_length=1, max_length=500)
 
 
@@ -67,11 +68,11 @@ class FactorResearchProposal(_Contract):
     """
 
     kind: Literal["FactorResearchProposal"] = "FactorResearchProposal"
-    evidence_report_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
-    redundancy_structure_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
+    evidence_report_hash: str = Field(pattern=BLAKE3_PATTERN)
+    redundancy_structure_hash: str = Field(pattern=BLAKE3_PATTERN)
     choices: tuple[FactorResearchProposalChoice, ...]
     limitations_acknowledged: tuple[str, ...]
-    proposal_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
+    proposal_hash: str = Field(pattern=BLAKE3_PATTERN)
 
     @model_validator(mode="after")  # type: ignore[untyped-decorator]
     def validate_proposal(self) -> FactorResearchProposal:
@@ -105,7 +106,7 @@ class FactorResearchExclusion(_Contract):
     factor_id: str = Field(min_length=1)
     classification: FactorEvidenceClassification
     reason_codes: tuple[str, ...]
-    evidence_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
+    evidence_hash: str = Field(pattern=BLAKE3_PATTERN)
 
 
 class FactorEvidenceReference(_Contract):
@@ -117,7 +118,7 @@ class FactorEvidenceReference(_Contract):
     """
 
     factor_id: str = Field(min_length=1)
-    evidence_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
+    evidence_hash: str = Field(pattern=BLAKE3_PATTERN)
 
 
 class FactorRedundancyClusterReference(_Contract):
@@ -129,8 +130,8 @@ class FactorRedundancyClusterReference(_Contract):
         member_factor_ids: Nonempty factor axis belonging to the cluster.
     """
 
-    cluster_id: str = Field(pattern=r"^[0-9a-f]{64}$")
-    cluster_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
+    cluster_id: str = Field(pattern=BLAKE3_PATTERN)
+    cluster_hash: str = Field(pattern=BLAKE3_PATTERN)
     member_factor_ids: tuple[str, ...] = Field(min_length=1)
 
 
@@ -158,16 +159,16 @@ class FactorHorizonResearchInput(_Contract):
     horizon_sessions: Literal[1] = 1
     formation_frequency: Literal["DAILY"] = "DAILY"
     execution_timing: Literal["NEXT_COMMON_SESSION_OPEN"] = "NEXT_COMMON_SESSION_OPEN"
-    evidence_report_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
-    redundancy_structure_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
-    proposal_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
+    evidence_report_hash: str = Field(pattern=BLAKE3_PATTERN)
+    redundancy_structure_hash: str = Field(pattern=BLAKE3_PATTERN)
+    proposal_hash: str = Field(pattern=BLAKE3_PATTERN)
     core_factor_ids: tuple[str, ...]
     conditional_factor_ids: tuple[str, ...]
     excluded_factors: tuple[FactorResearchExclusion, ...]
     complete_factor_evidence_refs: tuple[FactorEvidenceReference, ...] = Field(min_length=1)
     redundancy_cluster_refs: tuple[FactorRedundancyClusterReference, ...] = Field(min_length=1)
     limitations: tuple[str, ...]
-    input_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
+    input_hash: str = Field(pattern=BLAKE3_PATTERN)
 
     @model_validator(mode="after")  # type: ignore[untyped-decorator]
     def validate_input(self) -> FactorHorizonResearchInput:

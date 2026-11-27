@@ -47,6 +47,7 @@ from alphalattice.foundation.factor_research.programs.walk_forward import (
 )
 from alphalattice.foundation.feature_engine.contracts import panel_member_counts
 from alphalattice.foundation.feature_engine.panels.reader import FeaturePanelReadRequest
+from alphalattice.kernel.identity import BLAKE3_PATTERN
 
 
 class FactorResearchProgramBoundaryError(ValueError):
@@ -93,9 +94,9 @@ class FactorResearchProgramSpec(_Contract):
     """
 
     kind: Literal["FactorResearchProgramSpec"] = "FactorResearchProgramSpec"
-    feature_panel_snapshot_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
+    feature_panel_snapshot_hash: str = Field(pattern=BLAKE3_PATTERN)
     feature_panel_manifest_ref: str = Field(min_length=1)
-    causal_outcome_snapshot_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
+    causal_outcome_snapshot_hash: str = Field(pattern=BLAKE3_PATTERN)
     causal_outcome_manifest_ref: str = Field(min_length=1)
     factor_ids: tuple[str, ...] = Field(min_length=1)
     frozen_at: datetime
@@ -111,7 +112,7 @@ class FactorResearchProgramSpec(_Contract):
     whole Panel. The targets stay the whole cross-section's, so a
     sample changes which names are ranked, not what a name's target is. Absent from the
     identity of a whole-Panel program, so every program sealed before it keeps its hash."""
-    program_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
+    program_hash: str = Field(pattern=BLAKE3_PATTERN)
 
     @model_validator(mode="after")  # type: ignore[untyped-decorator]
     def validate_spec(self) -> FactorResearchProgramSpec:
@@ -183,8 +184,8 @@ class FactorResearchDeterministicEvidence(_Contract):
     feature_batch_count: int = Field(ge=1)
     feature_row_count: int = Field(ge=1)
     target_row_count: int = Field(ge=1)
-    execution_binding_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
-    checkpoint_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
+    execution_binding_hash: str = Field(pattern=BLAKE3_PATTERN)
+    checkpoint_hash: str = Field(pattern=BLAKE3_PATTERN)
 
     @model_validator(mode="after")  # type: ignore[untyped-decorator]
     def validate_checkpoint(self) -> FactorResearchDeterministicEvidence:

@@ -42,6 +42,7 @@ from alphalattice.evidence.alternative_evidence.sources.sec_edgar import (
     SecOfficialTransport,
 )
 from alphalattice.kernel.config import current as process_config
+from alphalattice.kernel.identity import blake3_hex
 
 SEC_USER_AGENT_VARIABLE = "SEC_USER_AGENT"
 SEC_CONTACT = "sec-contact.json"
@@ -127,7 +128,7 @@ class EvidenceSourceConsent:
         digest: str = canonical_hash(
             [self.documents_per_issuer, self.total_documents, self.total_bytes]
         )
-        return "consent-" + digest[:16]
+        return "consent-" + blake3_hex(digest)[:16]
 
     def body(self) -> dict[str, object]:
         """The consent as its owner answers it."""

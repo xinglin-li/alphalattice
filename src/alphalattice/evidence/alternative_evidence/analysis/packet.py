@@ -25,7 +25,7 @@ from datetime import date
 from typing import NamedTuple
 
 from alphalattice.capabilities.domain_contracts.identity import canonical_hash
-from alphalattice.kernel.identity import identity_sha256
+from alphalattice.kernel.identity import identity_blake3
 
 from ..contracts import (
     AlternativeEvidenceClass,
@@ -3753,7 +3753,7 @@ def render_evidence_packet(
     def limitation_codes(limitations: Sequence[str]) -> list[str]:
         codes = []
         for sentence in limitations:
-            code = f"L-{identity_sha256(sentence.encode('utf-8')).hexdigest()[:8]}"
+            code = f"L-{identity_blake3(sentence.encode('utf-8')).hexdigest()[:8]}"
             limitation_texts[code] = sentence
             codes.append(code)
         return codes

@@ -8,7 +8,6 @@ research manifest, and leaves user-selected research as a later task.
 from __future__ import annotations
 
 import json
-import re
 import time
 from collections.abc import Callable, Iterator, Mapping, Sequence
 from concurrent.futures import Future, ThreadPoolExecutor, as_completed
@@ -55,7 +54,7 @@ from alphalattice.foundation.market_data_ops.storage.duckdb import (
 )
 from alphalattice.kernel.clock import observation_time
 from alphalattice.kernel.execution import execution_port
-from alphalattice.kernel.identity import identity_sha256
+from alphalattice.kernel.identity import identity_blake3, is_blake3, tagged_blake3
 from alphalattice.kernel.resources import worker_width
 
 
@@ -201,7 +200,7 @@ def _onboarding_id(
         payload += "|selected-candidates:" + ",".join(requested_listing_ids)
     if retry_of is not None:
         payload += "|retry-of:" + retry_of
-    return identity_sha256(payload.encode("utf-8")).hexdigest()
+    return tagged_blake3(identity_blake3(payload.encode("utf-8")))
 
 
 def _listing_calendar(bootstrap: CurrentUniverseBootstrap) -> dict[str, str]:
@@ -316,7 +315,7 @@ class CurrentUniverseOnboarding:
         if set(self.requested_listing_ids) == known_listing_ids:
             self.requested_listing_ids = ()
         if self.retry_of is not None and (
-            not self.requested_listing_ids or re.fullmatch(r"[0-9a-f]{64}", self.retry_of) is None
+            not self.requested_listing_ids or not is_blake3(self.retry_of)
         ):
             raise ValueError("data.candidate_recheck_reference_invalid")
         selected = set(self.requested_listing_ids) or known_listing_ids
@@ -1082,41 +1081,35 @@ class CurrentUniverseOnboarding:
         )
         if not affected:
             affected = tuple(sorted(item.listing_id for item, _exc in failures))
-        affected_hash = identity_sha256("|".join(affected).encode("utf-8")).hexdigest()
+        affected_hash = tagged_blake3(identity_blake3("|".join(affected).encode("utf-8")))
         defer_count = self.store.hydration_defer_count(self.onboarding_id)
         backoff_seconds = (300, 900, 2700)[min(defer_count, 2)]
         jitter_seconds = (
             int(
-                identity_sha256(f"{self.onboarding_id}:{defer_count}".encode()).hexdigest()[:8],
+                identity_blake3(f"{self.onboarding_id}:{defer_count}".encode()).hexdigest()[:8],
                 16,
             )
             % 31
         )
-        policy_hash = identity_sha256(
-            json.dumps(
-                {
-                    "chunk_size": self.hydration_chunk_size,
-                    "retry_delay_seconds": (300, 900, 2700),
-                    "maximum_jitter_seconds": 30,
-                    "degradation": "halve_to_one",
-                },
-                sort_keys=True,
-                separators=(",", ":"),
-            ).encode("utf-8")
-        ).hexdigest()
+        policy = {
+            "chunk_size": self.hydration_chunk_size,
+            "retry_delay_seconds": (300, 900, 2700),
+            "maximum_jitter_seconds": 30,
+            "degradation": "halve_to_one",
+        }
+        policy_hash = tagged_blake3(
+            identity_blake3(json.dumps(policy, sort_keys=True, separators=(",", ":")).encode())
+        )
         retry_after = observed_at + timedelta(seconds=backoff_seconds + jitter_seconds)
-        deferred_id = identity_sha256(
-            "|".join(
-                (
-                    self.onboarding_id,
-                    failure_code,
-                    observed_at.isoformat(),
-                    str(workers),
-                    affected_hash,
-                    policy_hash,
-                )
-            ).encode("utf-8")
-        ).hexdigest()
+        retry_parts = (
+            self.onboarding_id,
+            failure_code,
+            observed_at.isoformat(),
+            str(workers),
+            affected_hash,
+            policy_hash,
+        )
+        deferred_id = tagged_blake3(identity_blake3("|".join(retry_parts).encode("utf-8")))
         deferred = HydrationDeferred(
             onboarding_id=self.onboarding_id,
             deferred_retry_id=deferred_id,
@@ -1618,7 +1611,7 @@ class CurrentUniverseOnboarding:
             sort_keys=True,
             separators=(",", ":"),
         )
-        return identity_sha256(encoded.encode("utf-8")).hexdigest()
+        return tagged_blake3(identity_blake3(encoded.encode("utf-8")))
 
     def _outcome(
         self,

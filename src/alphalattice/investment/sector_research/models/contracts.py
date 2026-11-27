@@ -34,6 +34,7 @@ from alphalattice.capabilities.domain_contracts.identity import canonical_hash
 from alphalattice.capabilities.domain_contracts.source_identity import (
     switched_source_identity,
 )
+from alphalattice.kernel.identity import BLAKE3_PATTERN, is_blake3
 
 from ..contracts import FloatArray, SectorResearchError
 
@@ -61,7 +62,7 @@ class SectorForecastRecipe(_Contract):
     method_id: str = Field(min_length=1, max_length=96)
     recipe_schema_id: str = Field(min_length=1, max_length=128)
     parameters: dict[str, int]
-    recipe_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
+    recipe_hash: str = Field(pattern=BLAKE3_PATTERN)
 
     @classmethod
     def create(
@@ -169,10 +170,10 @@ class SectorNumericalBinding(_Contract):
     method_id: str = Field(min_length=1, max_length=96)
     forecast_content_format_id: str = Field(min_length=1, max_length=128)
     implementation_component_ids: tuple[str, ...] = Field(min_length=1)
-    implementation_content_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
-    numerical_environment_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
+    implementation_content_hash: str = Field(pattern=BLAKE3_PATTERN)
+    numerical_environment_hash: str = Field(pattern=BLAKE3_PATTERN)
     deterministic_policy: dict[str, str]
-    numerical_binding_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
+    numerical_binding_hash: str = Field(pattern=BLAKE3_PATTERN)
 
     @classmethod
     def create(
@@ -301,7 +302,7 @@ class BoundSectorForecastInput:
                 label clocks are invalid.
         """
         if (
-            len(self.target_evidence_hash) != 64
+            not is_blake3(self.target_evidence_hash)
             or not self.ordered_sectors
             or self.ordered_sectors != tuple(sorted(set(self.ordered_sectors)))
             or self.training_values.ndim != 2
@@ -415,8 +416,8 @@ class SectorForecastCapabilityIdentity(_Contract):
 
     method_id: str = Field(min_length=1, max_length=96)
     recipe_schema_id: str = Field(min_length=1, max_length=128)
-    numerical_binding_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
-    admitted_recipe_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
+    numerical_binding_hash: str = Field(pattern=BLAKE3_PATTERN)
+    admitted_recipe_hash: str = Field(pattern=BLAKE3_PATTERN)
     """The frozen singleton recipe, inside catalog identity rather than beside it.
 
     Without this the catalog stated only that an *implementation* was installed,
@@ -438,7 +439,7 @@ class SectorForecastCatalogBinding(_Contract):
     """
 
     ordered_capabilities: tuple[SectorForecastCapabilityIdentity, ...] = Field(min_length=1)
-    catalog_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
+    catalog_hash: str = Field(pattern=BLAKE3_PATTERN)
 
     @model_validator(mode="after")  # type: ignore[untyped-decorator]
     def validate_identity(self) -> Self:

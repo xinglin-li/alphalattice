@@ -64,6 +64,7 @@ from alphalattice.investment.portfolio_strategy_lab.policies.tranche_book import
 from alphalattice.investment.portfolio_strategy_lab.reporting.risk import (
     PortfolioRiskAttributionFacts,
 )
+from alphalattice.kernel.identity import BLAKE3_PATTERN
 
 type ScoreSourceMode = Literal["HISTORICAL_ARRAY_REPLAY", "CURRENT_MODEL_SCORING"]
 """How the selected frozen package supplies formation scores."""
@@ -127,7 +128,7 @@ class PortfolioResearchSpec(_Contract):
     sector_forecast_disposition: Literal["SECTOR_FORECAST_NOT_CONSUMED"] = (
         "SECTOR_FORECAST_NOT_CONSUMED"
     )
-    spec_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
+    spec_hash: str = Field(pattern=BLAKE3_PATTERN)
 
     @classmethod
     def create(
@@ -303,7 +304,7 @@ class PortfolioControlReceipt(_Contract):
     """
 
     kind: Literal["PortfolioControlReceipt"] = "PortfolioControlReceipt"
-    control_catalog_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
+    control_catalog_hash: str = Field(pattern=BLAKE3_PATTERN)
     catalog_control_ids: tuple[str, ...] = ()
     """The catalog order this historical receipt was created against.
 
@@ -314,7 +315,7 @@ class PortfolioControlReceipt(_Contract):
     selected: tuple[tuple[str, str], ...] = Field(min_length=1)
     """`(control_id, rendered value)` for every installed control, in catalog order."""
 
-    receipt_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
+    receipt_hash: str = Field(pattern=BLAKE3_PATTERN)
 
     @classmethod
     def of(cls, spec: PortfolioResearchSpec) -> Self:
@@ -468,15 +469,15 @@ class PortfolioExecutionProgram(_Contract):
     """
 
     kind: Literal["PortfolioExecutionProgram"] = "PortfolioExecutionProgram"
-    holdings_spec_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
-    authorities_hash: str | None = Field(default=None, pattern=r"^[0-9a-f]{64}$")
+    holdings_spec_hash: str = Field(pattern=BLAKE3_PATTERN)
+    authorities_hash: str | None = Field(default=None, pattern=BLAKE3_PATTERN)
     """The exact PLAN authority receipt this Program was compiled against.
 
     `None` is accepted only when the Program hash proves the pre-binding legacy
     shape. Current lookup and execution paths require the field.
     """
 
-    strategy_package_hash: str | None = Field(default=None, pattern=r"^[0-9a-f]{64}$")
+    strategy_package_hash: str | None = Field(default=None, pattern=BLAKE3_PATTERN)
     """The exact installed frozen strategy this run was compiled under.
 
     Whole-strategy identity lives here rather than being read out of
@@ -497,16 +498,16 @@ class PortfolioExecutionProgram(_Contract):
     they must never share a ledger.
     """
 
-    policy_recipe_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
-    policy_catalog_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
-    policy_adapter_binding_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
-    alpha_recipe_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
-    alpha_evidence_manifest_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
-    risk_recipe_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
-    risk_return_surface_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
-    sector_map_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
-    tradability_decision_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
-    execution_outcome_manifest_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
+    policy_recipe_hash: str = Field(pattern=BLAKE3_PATTERN)
+    policy_catalog_hash: str = Field(pattern=BLAKE3_PATTERN)
+    policy_adapter_binding_hash: str = Field(pattern=BLAKE3_PATTERN)
+    alpha_recipe_hash: str = Field(pattern=BLAKE3_PATTERN)
+    alpha_evidence_manifest_hash: str = Field(pattern=BLAKE3_PATTERN)
+    risk_recipe_hash: str = Field(pattern=BLAKE3_PATTERN)
+    risk_return_surface_hash: str = Field(pattern=BLAKE3_PATTERN)
+    sector_map_hash: str = Field(pattern=BLAKE3_PATTERN)
+    tradability_decision_hash: str = Field(pattern=BLAKE3_PATTERN)
+    execution_outcome_manifest_hash: str = Field(pattern=BLAKE3_PATTERN)
     """Both bound because both decide fills.
 
     Eligibility and realised outcomes can be corrected while the session and
@@ -514,9 +515,9 @@ class PortfolioExecutionProgram(_Contract):
     corrected authority reopen a ledger built from the superseded one.
     """
 
-    public_path_source_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
-    formation_sessions_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
-    ordered_listing_ids_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
+    public_path_source_hash: str = Field(pattern=BLAKE3_PATTERN)
+    formation_sessions_hash: str = Field(pattern=BLAKE3_PATTERN)
+    ordered_listing_ids_hash: str = Field(pattern=BLAKE3_PATTERN)
     formation_start: date
     formation_end: date
     formation_count: int = Field(gt=0)
@@ -525,7 +526,7 @@ class PortfolioExecutionProgram(_Contract):
     sector_forecast_disposition: Literal["SECTOR_FORECAST_NOT_CONSUMED"] = (
         "SECTOR_FORECAST_NOT_CONSUMED"
     )
-    continued_from_state_hash: str | None = Field(default=None, pattern=r"^[0-9a-f]{64}$")
+    continued_from_state_hash: str | None = Field(default=None, pattern=BLAKE3_PATTERN)
     """The sealed boundary a continuation starts from; `None` for a flat start.
 
     Part of the Program because it is a numerical input like any other: the same
@@ -534,7 +535,7 @@ class PortfolioExecutionProgram(_Contract):
     ledger through the by-program index and never notice it had.
     """
 
-    numerical_input_assembly_hash: str | None = Field(default=None, pattern=r"^[0-9a-f]{64}$")
+    numerical_input_assembly_hash: str | None = Field(default=None, pattern=BLAKE3_PATTERN)
     """One stored digest over every bound input that decides a number.
 
     Stored rather than derived. A derived property proves only that the reader
@@ -548,7 +549,7 @@ class PortfolioExecutionProgram(_Contract):
     nothing to compare a rederivation against.
     """
 
-    program_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
+    program_hash: str = Field(pattern=BLAKE3_PATTERN)
 
     @classmethod
     def create(cls, **values: object) -> Self:
@@ -652,11 +653,11 @@ class SealedPortfolioBoundaryState(_Contract):
     formation_session: date
     """The formation this boundary sits after, so continuity is checkable."""
 
-    pretrade_weights_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
+    pretrade_weights_hash: str = Field(pattern=BLAKE3_PATTERN)
     pretrade_cash: float
-    optimizer_reference_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
+    optimizer_reference_hash: str = Field(pattern=BLAKE3_PATTERN)
     optimizer_reference_cash: float
-    sleeve_weights_hash: str | None = Field(default=None, pattern=r"^[0-9a-f]{64}$")
+    sleeve_weights_hash: str | None = Field(default=None, pattern=BLAKE3_PATTERN)
     """The policy's book-scale sleeves, or `None` for a policy that holds none.
 
     Absent is a real answer here rather than a gap: a recipe with no sleeve
@@ -675,7 +676,7 @@ class SealedPortfolioBoundaryState(_Contract):
     the one that was frozen.
     """
 
-    boundary_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
+    boundary_hash: str = Field(pattern=BLAKE3_PATTERN)
 
     @classmethod
     def create(cls, **values: object) -> Self:
@@ -701,14 +702,14 @@ class PortfolioExecutionLedger(_Contract):
     """Continuous post-fill path, keyed by one exact execution program."""
 
     kind: Literal["PortfolioExecutionLedger"] = "PortfolioExecutionLedger"
-    program_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
+    program_hash: str = Field(pattern=BLAKE3_PATTERN)
     formation_sessions: tuple[date, ...]
     ordered_listing_ids: tuple[str, ...]
-    executed_weights_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
+    executed_weights_hash: str = Field(pattern=BLAKE3_PATTERN)
     executed_weights_shape: tuple[int, int]
-    pre_cap_weights_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
+    pre_cap_weights_hash: str = Field(pattern=BLAKE3_PATTERN)
     pre_cap_weights_shape: tuple[int, int]
-    final_weights_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
+    final_weights_hash: str = Field(pattern=BLAKE3_PATTERN)
     gross_simple_returns: tuple[float, ...]
     one_way_turnovers: tuple[float, ...]
     decision_modes: tuple[str, ...]
@@ -743,7 +744,7 @@ class PortfolioExecutionLedger(_Contract):
     answer that.
     """
 
-    target_weights_hash: str | None = Field(default=None, pattern=r"^[0-9a-f]{64}$")
+    target_weights_hash: str | None = Field(default=None, pattern=BLAKE3_PATTERN)
     """The capped decision targets, one row per formation.
 
     The *input* to `execute_orders`, not its output, and that distinction is the
@@ -753,12 +754,12 @@ class PortfolioExecutionLedger(_Contract):
     and call that agreement.
     """
 
-    realized_simple_returns_hash: str | None = Field(default=None, pattern=r"^[0-9a-f]{64}$")
+    realized_simple_returns_hash: str | None = Field(default=None, pattern=BLAKE3_PATTERN)
     """The per-name outcome matrix drift consumes; the ledger seals only an
     aggregate of it otherwise, which is not enough to rederive the drifted book
     every later turnover is charged against."""
 
-    execution_available_hash: str | None = Field(default=None, pattern=r"^[0-9a-f]{64}$")
+    execution_available_hash: str | None = Field(default=None, pattern=BLAKE3_PATTERN)
     """Which names could be traded at each formation: what turns an order into a
     fill or a miss."""
 
@@ -771,7 +772,7 @@ class PortfolioExecutionLedger(_Contract):
     """The state the path ended at, in full. `final_weights_hash` above is one of
     its five components and is kept because existing readers cite it."""
 
-    ledger_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
+    ledger_hash: str = Field(pattern=BLAKE3_PATTERN)
 
     @model_validator(mode="after")  # type: ignore[untyped-decorator]
     def validate_identity(self) -> Self:
@@ -838,8 +839,8 @@ class PortfolioEconomicLedger(_Contract):
     """Cost-only descendant; changing cost never rotates holdings."""
 
     kind: Literal["PortfolioEconomicLedger"] = "PortfolioEconomicLedger"
-    execution_ledger_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
-    cost_assumption_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
+    execution_ledger_hash: str = Field(pattern=BLAKE3_PATTERN)
+    cost_assumption_hash: str = Field(pattern=BLAKE3_PATTERN)
     cost_bps_per_side: str
     platform_one_way_cost_bps: str
     net_simple_returns: tuple[float, ...]
@@ -866,7 +867,7 @@ class PortfolioEconomicLedger(_Contract):
     coefficient would be a worse answer than the honest absence.
     """
 
-    economic_ledger_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
+    economic_ledger_hash: str = Field(pattern=BLAKE3_PATTERN)
 
     @model_validator(mode="after")  # type: ignore[untyped-decorator]
     def validate_identity(self) -> Self:
@@ -916,7 +917,7 @@ class OwnerCoverage(_Contract):
     first_session: date
     last_session: date
     session_count: int = Field(gt=0)
-    session_axis_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
+    session_axis_hash: str = Field(pattern=BLAKE3_PATTERN)
     """The exact ordered axis, so an interior gap cannot pass as agreement.
 
     Endpoints and a count are not enough to intersect two owners: a lane missing
@@ -924,7 +925,7 @@ class OwnerCoverage(_Contract):
     Wednesday, and the watermark would then claim support neither of them has.
     """
 
-    identity_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
+    identity_hash: str = Field(pattern=BLAKE3_PATTERN)
 
     @classmethod
     def of(
@@ -990,7 +991,7 @@ class PortfolioSupportCoverage(_Contract):
     window those models were fitted on.
     """
 
-    coverage_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
+    coverage_hash: str = Field(pattern=BLAKE3_PATTERN)
 
     @classmethod
     def create(cls, **values: object) -> Self:
@@ -1075,7 +1076,7 @@ class PortfolioScheduleGuard(_Contract):
     schedule_phase_refusal: Literal["SCHEDULE_PHASE_SELECTION_REFUSED"] = (
         "SCHEDULE_PHASE_SELECTION_REFUSED"
     )
-    guard_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
+    guard_hash: str = Field(pattern=BLAKE3_PATTERN)
 
     @classmethod
     def create(cls, **values: object) -> Self:
@@ -1143,13 +1144,13 @@ class PortfolioStudyWindowGuard(_Contract):
     full_support_end: date
     full_support_session_count: int = Field(gt=0)
     is_full_support: bool
-    coverage_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
+    coverage_hash: str = Field(pattern=BLAKE3_PATTERN)
     may_select_or_promote: Literal[False] = False
     may_carry_claim_authority: Literal[False] = False
     prefix_formation_count: int = Field(ge=0)
     """Formations before the window that establish opening state and are never discarded."""
 
-    guard_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
+    guard_hash: str = Field(pattern=BLAKE3_PATTERN)
 
     @classmethod
     def create(cls, **values: object) -> Self:
@@ -1270,15 +1271,15 @@ class PortfolioBenchmarkComparison(_Contract):
     """The declared benchmark descendant. Rebuilt by the view, never by a fill."""
 
     kind: Literal["PortfolioBenchmarkComparison"] = "PortfolioBenchmarkComparison"
-    execution_ledger_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
-    economic_ledger_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
+    execution_ledger_hash: str = Field(pattern=BLAKE3_PATTERN)
+    economic_ledger_hash: str = Field(pattern=BLAKE3_PATTERN)
     primary_benchmark: Literal["ELIGIBLE_UNIVERSE_EQUAL_WEIGHT"] = PRIMARY_BENCHMARK
     secondary_benchmark_view: PortfolioBenchmarkView
     primary_simple_returns: tuple[float, ...]
     secondary_benchmark_id: str | None = None
     secondary_simple_returns: tuple[float, ...] | None = None
     secondary_disposition: str = Field(min_length=1)
-    comparison_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
+    comparison_hash: str = Field(pattern=BLAKE3_PATTERN)
 
     @classmethod
     def create(cls, **values: object) -> Self:
@@ -1452,10 +1453,10 @@ class PortfolioWindowEndBook(_Contract):
     up would be the one who found out. Not turnover; see the class note.
     """
 
-    listing_axis_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
+    listing_axis_hash: str = Field(pattern=BLAKE3_PATTERN)
     """The exact ordered listing axis these weights were read over."""
 
-    book_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
+    book_hash: str = Field(pattern=BLAKE3_PATTERN)
 
     @classmethod
     def create(cls, **values: object) -> Self:
@@ -1524,10 +1525,10 @@ class PortfolioDeclaredPathReport(_Contract):
     """Typed report projection over one declared path; it performs no selection."""
 
     kind: Literal["PortfolioDeclaredPathReport"] = "PortfolioDeclaredPathReport"
-    program_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
-    execution_ledger_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
-    economic_ledger_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
-    benchmark_comparison_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
+    program_hash: str = Field(pattern=BLAKE3_PATTERN)
+    execution_ledger_hash: str = Field(pattern=BLAKE3_PATTERN)
+    economic_ledger_hash: str = Field(pattern=BLAKE3_PATTERN)
+    benchmark_comparison_hash: str = Field(pattern=BLAKE3_PATTERN)
     report_unit: PortfolioReportUnit
     ledger_coverage: PortfolioLedgerCoverage
     """The continuous path this report is a view of, stated as an interval.
@@ -1577,7 +1578,7 @@ class PortfolioDeclaredPathReport(_Contract):
     """The selected report unit's rows over the selected window; empty is truthful."""
 
     limitations: tuple[str, ...]
-    report_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
+    report_hash: str = Field(pattern=BLAKE3_PATTERN)
 
     @model_validator(mode="after")  # type: ignore[untyped-decorator]
     def validate_geometry(self) -> Self:
@@ -1639,20 +1640,20 @@ class PortfolioResearchResult(_Contract):
 
     kind: Literal["PortfolioResearchResult"] = "PortfolioResearchResult"
     action: Literal["PUBLISHED", "REUSED_EXACT"]
-    spec_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
+    spec_hash: str = Field(pattern=BLAKE3_PATTERN)
     """The whole request. Two specs can share a program and still differ here."""
 
-    program_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
-    execution_ledger_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
-    economic_ledger_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
-    report_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
+    program_hash: str = Field(pattern=BLAKE3_PATTERN)
+    execution_ledger_hash: str = Field(pattern=BLAKE3_PATTERN)
+    economic_ledger_hash: str = Field(pattern=BLAKE3_PATTERN)
+    report_hash: str = Field(pattern=BLAKE3_PATTERN)
     report_uri: str
     html_uri: str
     export_command: str | None = None
     """A legacy result's command, whose hash covers its words; a current result's command
     is composed from its Task's request when read, so grammar never moves the result's identity."""
 
-    result_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
+    result_hash: str = Field(pattern=BLAKE3_PATTERN)
 
     @model_validator(mode="after")  # type: ignore[untyped-decorator]
     def validate_identity(self) -> Self:
@@ -1686,15 +1687,15 @@ class PortfolioPlanPreview(BaseModel):  # type: ignore[misc]
 
     kind: Literal["PortfolioPlanPreview"] = "PortfolioPlanPreview"
     workspace_id: str
-    workspace_manifest_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
-    spec_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
-    holdings_spec_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
-    authorities_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
-    strategy_catalog_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
+    workspace_manifest_hash: str = Field(pattern=BLAKE3_PATTERN)
+    spec_hash: str = Field(pattern=BLAKE3_PATTERN)
+    holdings_spec_hash: str = Field(pattern=BLAKE3_PATTERN)
+    authorities_hash: str = Field(pattern=BLAKE3_PATTERN)
+    strategy_catalog_hash: str = Field(pattern=BLAKE3_PATTERN)
     strategy_package_id: str
-    strategy_package_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
+    strategy_package_hash: str = Field(pattern=BLAKE3_PATTERN)
     score_source_mode: ScoreSourceMode
-    control_catalog_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
+    control_catalog_hash: str = Field(pattern=BLAKE3_PATTERN)
     coverage: PortfolioSupportCoverage
     schedule_guard: PortfolioScheduleGuard
     selected_study_start: str
@@ -1769,7 +1770,7 @@ class PortfolioPlanPreview(BaseModel):  # type: ignore[misc]
     publication_count: Literal[0] = 0
     protected_read_count: Literal[0] = 0
     refusals: tuple[str, ...]
-    preview_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
+    preview_hash: str = Field(pattern=BLAKE3_PATTERN)
 
     @property
     def admission_hash(self) -> str:
@@ -1912,7 +1913,7 @@ class PortfolioReadouts(BaseModel):  # type: ignore[misc]
         "CONCENTRATION_DESCRIPTOR_NOT_A_CAPACITY_ESTIMATE"
     )
     industry_attribution_available: bool
-    readouts_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
+    readouts_hash: str = Field(pattern=BLAKE3_PATTERN)
 
     @classmethod
     def create(cls, **values: object) -> Self:

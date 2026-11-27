@@ -74,7 +74,7 @@ def test_the_frozen_scientific_identity() -> None:
     assert recipe.vintage_weights == (4, 3, 2, 1)
     assert recipe.feature_count == 184
     assert recipe.feature_axis_hash == (
-        "7d307c7637b046da4fca9eb05e5e19946635ab58e4a8904c115d6b7b7091d976"
+        "blake3:9e62897cc818e4ce66cced6f372dd990973b787219a060d9a0bcdbd44a022809"
     )
 
 
@@ -110,7 +110,7 @@ def test_vintage_weights_must_decay_from_the_newest_vintage() -> None:
 
 def test_identity_is_tamper_evident() -> None:
     payload = INSTALLED_ALPHA_PRODUCT_RECIPE.model_dump(mode="json")
-    payload["feature_axis_hash"] = "0" * 64
+    payload["feature_axis_hash"] = "blake3:" + "0" * 64
     with pytest.raises(ValidationError, match="product_recipe_identity_invalid"):
         AlphaProductRecipe.model_validate(payload)
 

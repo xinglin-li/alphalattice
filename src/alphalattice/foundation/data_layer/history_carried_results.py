@@ -25,6 +25,7 @@ from alphalattice.foundation.data_layer.history_runtime import (
     own_root,
 )
 from alphalattice.foundation.data_layer.root import data_root
+from alphalattice.kernel.identity import blake3_filename, blake3_from_filename
 
 CARRIED_RESULTS: Final = Path("runtime") / "carried-results"
 """Where a workspace's copy carries the catalog results its workspace keeps, one Parquet file per
@@ -85,7 +86,7 @@ def _carry_results(workspace: Path, copy: Path) -> int:
         else:
             profile, table = read_portfolio_result(kind, digest, result_table=result_table)
         metadata = {_CARRIED_PROFILE: json.dumps(profile, sort_keys=True).encode()}
-        target = copy / CARRIED_RESULTS / kind / f"{digest}.parquet"
+        target = copy / CARRIED_RESULTS / kind / f"{blake3_filename(digest)}.parquet"
         target.parent.mkdir(parents=True, exist_ok=True)
         staged = target.with_name(f".{target.name}.{os.getpid()}.tmp")
         pq.write_table(table.replace_schema_metadata(metadata), staged, compression="zstd")
@@ -113,10 +114,14 @@ def _import_carried_results(folder: Path, checks: Mapping[str, CarriedCheck]) ->
     import pyarrow.parquet as pq  # lazy: the data extra
 
     for path in files:
-        kind, digest = path.parent.name, path.stem
-        named = len(digest) == 64 and not set(digest) - set("0123456789abcdef")
+        kind, digest = path.parent.name, blake3_from_filename(path.stem)
         check = checks.get(kind)
-        if kind not in _CARRIED_TABLES or path.suffix != ".parquet" or not named or check is None:
+        if (
+            kind not in _CARRIED_TABLES
+            or path.suffix != ".parquet"
+            or digest is None
+            or check is None
+        ):
             raise DataError(
                 f"the copy carries {path.name} under {kind}, which no result here is",
                 code="data_layer.carried_result_invalid",

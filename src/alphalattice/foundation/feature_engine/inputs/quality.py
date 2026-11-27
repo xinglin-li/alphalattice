@@ -26,6 +26,7 @@ from alphalattice.foundation.market_data_ops.sources.universe import (
     ORIGINAL_RESEARCH_WHITELIST_STANDARD,
 )
 from alphalattice.foundation.market_data_ops.storage.duckdb import CurrentUniverseQualityAdmission
+from alphalattice.kernel.identity import is_blake3
 
 
 def qualify_materialized_features(
@@ -249,10 +250,7 @@ class FeatureInputQualityEvaluator:
             raise ValueError("feature-input evaluation range is reversed")
         if not len(raw_closes):
             raise ValueError("feature-input evaluation requires raw closes")
-        if action_evidence_hash is not None and (
-            len(action_evidence_hash) != 64
-            or any(c not in "0123456789abcdef" for c in action_evidence_hash)
-        ):
+        if action_evidence_hash is not None and not is_blake3(action_evidence_hash):
             raise ValueError("feature-input action evidence hash is invalid")
         # Unique and ordered is strictly increasing.
         if not bool(np.all(raw_closes.sessions[1:] > raw_closes.sessions[:-1])):

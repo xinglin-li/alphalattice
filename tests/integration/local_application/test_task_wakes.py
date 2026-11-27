@@ -23,6 +23,7 @@ from alphalattice.interface.local_application.dispatcher import CommandAdmission
 from alphalattice.interface.local_application.portfolio_research import (
     PortfolioResearchOperationRequest as Request,
 )
+from tests._support.identity_fixtures import fixture_digest
 from tests.portfolio_strategy_lab.cli_support import cli_environment
 from tests.workspace_task_runner.task_control_support import compatibility, task_contract
 
@@ -133,7 +134,7 @@ def _run(live, task, *, decision: bool = False) -> dict:  # type: ignore[no-unty
                 TaskEvidence(
                     evidence_kind=kind,
                     reference=f"playpen://wake/{definition.stage_id}/{kind}",
-                    content_hash="a" * 64,
+                    content_hash=fixture_digest(("wake evidence", definition.stage_id, kind)),
                 )
                 for kind in definition.required_evidence_kinds
             )

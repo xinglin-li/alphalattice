@@ -45,6 +45,7 @@ from alphalattice.capabilities.portfolio_backtesting.contracts import (
     PortfolioTargetDecision,
     PortfolioWalkForwardError,
 )
+from alphalattice.kernel.identity import BLAKE3_PATTERN
 
 from .buffered_equal_weight import whole_book_hysteresis_selection
 from .contracts import (
@@ -155,7 +156,7 @@ class TrancheBookRecipe(BaseModel):  # type: ignore[misc]
     sleeve_cap_equal_weight_multiple: float = SLEEVE_CAP_EQUAL_WEIGHT_MULTIPLE
     aggregate_name_cap: float = AGGREGATE_NAME_CAP
     sleeve_share_policy: Literal["EQUAL_NOTIONAL_AT_EACH_FORMATION"] = SLEEVE_SHARE_POLICY
-    recipe_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
+    recipe_hash: str = Field(pattern=BLAKE3_PATTERN)
 
     @classmethod
     def create(

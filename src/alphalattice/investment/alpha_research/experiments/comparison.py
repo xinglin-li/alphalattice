@@ -6,7 +6,7 @@ from collections.abc import Mapping
 from typing import Any
 
 from alphalattice.capabilities.domain_contracts.identity import canonical_hash
-from alphalattice.kernel.identity import identity_sha256
+from alphalattice.kernel.identity import identity_blake3, tagged_blake3
 from alphalattice.protocols.research_authoring.contracts import AuthoringError
 
 from .development_evidence import AlphaDevelopmentVerifiedGraph
@@ -225,7 +225,7 @@ def _availability_hash(available: Any) -> str:
     rows or making a saved-evidence readback proportional to JSON serialization.
     """
 
-    return identity_sha256(available.astype("uint8", copy=False).tobytes(order="C")).hexdigest()
+    return tagged_blake3(identity_blake3(available.astype("uint8", copy=False).tobytes(order="C")))
 
 
 def _target_values(binding: Any) -> dict[str, object]:

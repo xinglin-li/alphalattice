@@ -50,11 +50,12 @@ from alphalattice.investment.portfolio_strategy_lab.policies.post_observed_autho
 from alphalattice.investment.portfolio_strategy_lab.publication.artifacts import (
     PortfolioResearchArtifactStore,
 )
+from alphalattice.kernel.identity import BLAKE3_PATTERN, blake3_from_filename
 
 CATEGORY = "lifecycle-research-authorities"
 LANES = "lifecycle-research-lanes"
 ARTIFACT_KEY = "LIFECYCLE_RESEARCH_STRATEGY_AUTHORITY"
-_HASH = r"^[0-9a-f]{64}$"
+_HASH = BLAKE3_PATTERN
 type FloatArray = npt.NDArray[np.float64]
 
 
@@ -276,13 +277,19 @@ class LifecycleResearchScoreSource:
                 invalid.
         """
         path = manifest_path.resolve()
-        if path.parent.name != CATEGORY or path.parent.parent.name != "portfolio-strategy-lab":
+        digest = blake3_from_filename(path.stem)
+        if (
+            digest is None
+            or path.suffix != ".json"
+            or path.parent.name != CATEGORY
+            or path.parent.parent.name != "portfolio-strategy-lab"
+        ):
             raise StrategyPackageError("portfolio_application.lifecycle_manifest_path_invalid")
         self.store = PortfolioResearchArtifactStore(path.parents[2])
         self.recipe = recipe
         self.manifest = self.store.load(
             category=CATEGORY,
-            content_hash=path.stem,
+            content_hash=digest,
             model=LifecyclePortfolioAuthority,
             identity_field="authority_hash",
         )

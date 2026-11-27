@@ -29,6 +29,7 @@ from alphalattice.foundation.research_foundation.contracts import (
     ResearchFoundationBinding,
     ResearchFoundationMarker,
 )
+from alphalattice.kernel.identity import is_blake3
 
 _CURRENT_FACTOR_LIMITATIONS = (
     "CURRENT_ACTIVE_SURVIVORS",
@@ -90,7 +91,7 @@ def build_current_research_foundation_binding(
         raise ValueError("current Factor foundation panel lineage is unavailable")
     sector_revision = lineage.get("sector_revision")
     if not all(
-        isinstance(value, str) and len(value) == 64
+        is_blake3(value)
         for value in (logical_panel_hash, logical_semantic_index_hash, sector_revision)
     ):
         raise ValueError("current Factor foundation logical lineage is incomplete")

@@ -16,6 +16,7 @@ from alphalattice.investment.alpha_research.scores.temporal_aggregation import (
     AlphaScoreAggregationError,
     aggregate_trailing_mean,
 )
+from alphalattice.kernel.identity import BLAKE3_PATTERN
 
 type FloatArray = npt.NDArray[np.float64]
 type IntArray = npt.NDArray[np.int64]
@@ -29,7 +30,7 @@ type AlphaScoreFilterInputMode = Literal[
     "CROSS_SECTION_STANDARDIZED_SCORE",
 ]
 
-_HASH = r"^[0-9a-f]{64}$"
+_HASH = BLAKE3_PATTERN
 RAW_SCORE_TEMPORAL_FILTER_METHOD_ID: Final = "RAW_SCORE_TEMPORAL_FILTER"
 EWMA_FORMATION_SCORE_METHOD_ID: Final = "EWMA_FORMATION_SCORE"
 RAW_SCORE_INPUT_MODE: Final = "RAW_SCORE"

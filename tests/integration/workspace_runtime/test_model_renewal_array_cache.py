@@ -4,7 +4,6 @@ from __future__ import annotations
 
 import os
 from collections import Counter
-from hashlib import sha256
 from io import BytesIO
 from pathlib import Path
 from types import SimpleNamespace
@@ -19,6 +18,7 @@ from alphalattice.investment.alpha_research.experiments.development_artifacts im
     AlphaDevelopmentArtifactStore,
 )
 from alphalattice.investment.alpha_research.scores import model_renewal
+from alphalattice.kernel.identity import blake3_digest
 
 
 def _store_with_arrays(root, payload: bytes) -> tuple[AlphaDevelopmentArtifactStore, str]:
@@ -107,7 +107,7 @@ def test_identical_content_at_another_store_root_has_a_distinct_cache_key(tmp_pa
     payload = _payload()
     first_store, first_hash = _store_with_arrays(tmp_path / "one", payload)
     second_store, second_hash = _store_with_arrays(tmp_path / "two", payload)
-    assert first_hash == second_hash == sha256(payload).hexdigest()
+    assert first_hash == second_hash == blake3_digest(payload)
     load = np.load
     calls = 0
     reads = Counter()

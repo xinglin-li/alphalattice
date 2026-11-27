@@ -42,8 +42,9 @@ from alphalattice.interface.local_application.web import (
     SESSION_HEADER,
     LocalWebResponse,
 )
+from tests._support.identity_fixtures import fixture_digest
 
-HASH = "a" * 64
+HASH = fixture_digest("web refusal probe")
 TASK = "00000000-0000-4000-8000-000000000001"
 UUID_FIELDS = frozenset(
     {

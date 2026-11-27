@@ -14,6 +14,7 @@ from alphalattice.capabilities.domain_contracts.sector_treatment import (
     SECTOR_HISTORY_FORWARD,
 )
 from alphalattice.capabilities.validation.enums import RebalanceFrequency
+from alphalattice.kernel.identity import BLAKE3_PATTERN
 
 
 class _ContractModel(BaseModel):
@@ -49,19 +50,19 @@ class ResearchFoundationBinding(_ContractModel):
 
     research_cadence: RebalanceFrequency
     feature_panel_snapshot_hash: str
-    logical_panel_hash: str | None = Field(default=None, pattern=r"^[0-9a-f]{64}$")
-    logical_semantic_index_hash: str | None = Field(default=None, pattern=r"^[0-9a-f]{64}$")
+    logical_panel_hash: str | None = Field(default=None, pattern=BLAKE3_PATTERN)
+    logical_semantic_index_hash: str | None = Field(default=None, pattern=BLAKE3_PATTERN)
     factor_training_outcome_snapshot_hash: str
     factor_screening_result_hash: str
     factor_candidate_slate_hash: str
     research_desk_factor_input_hash: str
-    factor_research_program_hash: str | None = Field(default=None, pattern=r"^[0-9a-f]{64}$")
-    factor_research_evidence_hash: str | None = Field(default=None, pattern=r"^[0-9a-f]{64}$")
-    factor_research_redundancy_hash: str | None = Field(default=None, pattern=r"^[0-9a-f]{64}$")
+    factor_research_program_hash: str | None = Field(default=None, pattern=BLAKE3_PATTERN)
+    factor_research_evidence_hash: str | None = Field(default=None, pattern=BLAKE3_PATTERN)
+    factor_research_redundancy_hash: str | None = Field(default=None, pattern=BLAKE3_PATTERN)
     prediction_horizon_sessions: Literal[1] | None = None
     execution_timing: Literal["NEXT_COMMON_SESSION_OPEN"] | None = None
     target_semantics: Literal["LOG_EXECUTION_RETURN"] | None = None
-    sector_revision: str | None = Field(default=None, pattern=r"^[0-9a-f]{64}$")
+    sector_revision: str | None = Field(default=None, pattern=BLAKE3_PATTERN)
     sector_point_in_time_qualified: Literal[False] | None = None
     limitations: tuple[str, ...] | None = None
     execution_outcome: ResearchDeskExecutionOutcomeRef
@@ -137,8 +138,8 @@ class ResearchFoundationMarker(_ContractModel):
     foundation_ref: str
     research_cadence: RebalanceFrequency
     factor_screening_result_hash: str
-    factor_research_program_hash: str | None = Field(default=None, pattern=r"^[0-9a-f]{64}$")
-    factor_research_input_hash: str | None = Field(default=None, pattern=r"^[0-9a-f]{64}$")
+    factor_research_program_hash: str | None = Field(default=None, pattern=BLAKE3_PATTERN)
+    factor_research_input_hash: str | None = Field(default=None, pattern=BLAKE3_PATTERN)
     execution_outcome_marker_hash: str
     marker_hash: str
 
@@ -167,12 +168,12 @@ class ResearchFoundationAdmission(_ContractModel):
     kind: Literal["ResearchFoundationAdmission"] = "ResearchFoundationAdmission"
     foundation: ResearchFoundationBinding
     factor_task_id: str = Field(pattern=r"^[0-9a-f]{8}(-[0-9a-f]{4}){3}-[0-9a-f]{12}$")
-    factor_receipt_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
-    curation_receipt_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
+    factor_receipt_hash: str = Field(pattern=BLAKE3_PATTERN)
+    curation_receipt_hash: str = Field(pattern=BLAKE3_PATTERN)
     input_id: str = Field(min_length=1)
-    input_binding_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
-    factor_input_binding_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
-    admission_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
+    input_binding_hash: str = Field(pattern=BLAKE3_PATTERN)
+    factor_input_binding_hash: str = Field(pattern=BLAKE3_PATTERN)
+    admission_hash: str = Field(pattern=BLAKE3_PATTERN)
 
     @model_validator(mode="after")
     def validate_identity(self) -> ResearchFoundationAdmission:
@@ -207,12 +208,12 @@ class PreResearchDeskSafeProjection(_ContractModel):
     research_cadence: Literal[RebalanceFrequency.DAILY]
     foundation_hash: str
     foundation_marker_hash: str
-    logical_panel_hash: str | None = Field(default=None, pattern=r"^[0-9a-f]{64}$")
-    logical_semantic_index_hash: str | None = Field(default=None, pattern=r"^[0-9a-f]{64}$")
+    logical_panel_hash: str | None = Field(default=None, pattern=BLAKE3_PATTERN)
+    logical_semantic_index_hash: str | None = Field(default=None, pattern=BLAKE3_PATTERN)
     factor_screening_result_hash: str
     factor_candidate_slate_hash: str
     research_desk_factor_input_hash: str
-    factor_research_program_hash: str | None = Field(default=None, pattern=r"^[0-9a-f]{64}$")
+    factor_research_program_hash: str | None = Field(default=None, pattern=BLAKE3_PATTERN)
     prediction_horizon_sessions: Literal[1] | None = None
     execution_timing: Literal["NEXT_COMMON_SESSION_OPEN"] | None = None
     target_semantics: Literal["LOG_EXECUTION_RETURN"] | None = None

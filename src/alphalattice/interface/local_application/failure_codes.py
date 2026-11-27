@@ -24,7 +24,7 @@ from uuid import UUID
 
 from alphalattice.capabilities.domain_contracts.project_layout import command_prefix
 from alphalattice.interface.local_application.cli_contract import schema_request
-from alphalattice.kernel.identity import identity_sha256
+from alphalattice.kernel.identity import identity_blake3
 
 from .cli_contract import error_projection, refusal_words
 
@@ -376,7 +376,7 @@ def _without_empty(
         PortfolioResearchRequestDocument,
     )
 
-    for null in (True, False) if fields else ():
+    for null in (True, False) if fields and all(fields) else ():
         corrected: dict[str, object] = deepcopy(dict(request))
         for *parents, name in fields:
             holder: object = corrected
@@ -490,7 +490,7 @@ def typed_failures(body: dict[str, object]) -> dict[str, object]:
 def _withheld(text: str, *, prefix: str = FAILURE_DETAIL_WITHHELD, incident: bool = True) -> str:
     """`prefix:<incident>`, the incident a digest of the text, which the Host's log keeps."""
 
-    digest = identity_sha256(text.encode("utf-8", "replace")).hexdigest()[:8]
+    digest = identity_blake3(text.encode("utf-8", "replace")).hexdigest()[:8]
     logging.getLogger("alphalattice.local_web").error("%s:%s %s", prefix, digest, text[:2000])
     return f"{prefix}:{digest}" if incident else prefix
 

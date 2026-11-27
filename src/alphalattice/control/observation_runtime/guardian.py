@@ -9,6 +9,7 @@ from typing import Literal
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 from alphalattice.capabilities.domain_contracts.identity import canonical_hash
+from alphalattice.kernel.identity import BLAKE3_PATTERN
 
 
 class _Contract(BaseModel):  # type: ignore[misc]
@@ -68,7 +69,7 @@ class HealthSignal(_Contract):
     observed_at: datetime
     last_heartbeat_at: datetime | None
     heartbeat_age_seconds: float | None = Field(default=None, ge=0)
-    signal_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
+    signal_hash: str = Field(pattern=BLAKE3_PATTERN)
 
     @model_validator(mode="after")  # type: ignore[untyped-decorator]
     def validate_identity(self) -> HealthSignal:
@@ -94,7 +95,7 @@ class RuntimeIncident(_Contract):
         shadow_only: Always true: this record reports rather than remediates.
     """
 
-    incident_id: str = Field(pattern=r"^[0-9a-f]{64}$")
+    incident_id: str = Field(pattern=BLAKE3_PATTERN)
     incident_code: str = Field(min_length=3, max_length=120)
     detected_at: datetime
     stage_id: str | None
@@ -140,10 +141,10 @@ class RuntimeGuardianProjection(_Contract):
 
     kind: Literal["RuntimeGuardianProjection"] = "RuntimeGuardianProjection"
     task_id: str
-    subject_request_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
-    subject_execution_binding_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
+    subject_request_hash: str = Field(pattern=BLAKE3_PATTERN)
+    subject_execution_binding_hash: str = Field(pattern=BLAKE3_PATTERN)
     guardian_mode: Literal["G0_READ_ONLY"] = "G0_READ_ONLY"
-    task_projection_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
+    task_projection_hash: str = Field(pattern=BLAKE3_PATTERN)
     health: HealthSignal
     verified_stage_count: int = Field(ge=0)
     total_stage_count: int = Field(ge=1)
@@ -155,7 +156,7 @@ class RuntimeGuardianProjection(_Contract):
     human_recovery_options: tuple[HumanRecoveryOption, ...]
     active_remediation_attempt_count: Literal[0] = 0
     updated_at: datetime
-    projection_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
+    projection_hash: str = Field(pattern=BLAKE3_PATTERN)
 
     @model_validator(mode="after")  # type: ignore[untyped-decorator]
     def validate_identity(self) -> RuntimeGuardianProjection:

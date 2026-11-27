@@ -14,8 +14,9 @@ from alphalattice.capabilities.domain_contracts.sealing import (
     validate_hash_compatible,
 )
 from alphalattice.capabilities.portfolio_backtesting.contracts import PortfolioTrialMetrics
+from alphalattice.kernel.identity import BLAKE3_PATTERN
 
-_HASH = r"^[0-9a-f]{64}$"
+_HASH = BLAKE3_PATTERN
 _DEVELOPMENT_COUNT = 494
 
 

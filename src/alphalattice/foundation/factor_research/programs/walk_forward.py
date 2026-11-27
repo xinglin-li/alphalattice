@@ -19,6 +19,7 @@ from alphalattice.capabilities.validation.enums import SplitMode
 from alphalattice.capabilities.validation.splitting import build_research_split, verify_plan_hash
 from alphalattice.foundation.factor_research.inputs.execution_target import FactorTargetSurface
 from alphalattice.foundation.factor_research.programs.sealed import seal_contract
+from alphalattice.kernel.identity import BLAKE3_PATTERN
 
 
 class FactorWalkForwardBoundaryError(ValueError):
@@ -56,7 +57,7 @@ class FactorWalkForwardPolicy(_Contract):
     embargo_sessions: int = Field(default=0, ge=0)
     sealed_holdout_sessions: int = Field(default=252, ge=1)
     minimum_folds: int = Field(default=3, ge=1)
-    policy_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
+    policy_hash: str = Field(pattern=BLAKE3_PATTERN)
 
     @model_validator(mode="after")  # type: ignore[untyped-decorator]
     def validate_policy(self) -> FactorWalkForwardPolicy:
@@ -93,13 +94,13 @@ class FactorWalkForwardPlan(_Contract):
     """
 
     kind: Literal["FactorWalkForwardPlan"] = "FactorWalkForwardPlan"
-    policy_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
-    target_surface_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
+    policy_hash: str = Field(pattern=BLAKE3_PATTERN)
+    target_surface_hash: str = Field(pattern=BLAKE3_PATTERN)
     formal_split: ResearchSplitPlan
     formal_session_count: int = Field(ge=1)
     consumed_development_session_count: int = Field(ge=1)
-    label_availability_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
-    plan_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
+    label_availability_hash: str = Field(pattern=BLAKE3_PATTERN)
+    plan_hash: str = Field(pattern=BLAKE3_PATTERN)
 
     @model_validator(mode="after")  # type: ignore[untyped-decorator]
     def validate_plan(self) -> FactorWalkForwardPlan:

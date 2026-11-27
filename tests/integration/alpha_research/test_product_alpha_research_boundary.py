@@ -52,6 +52,7 @@ from alphalattice.investment.alpha_research.targets.execution_outcome import (
     AlphaTargetLane,
     build_alpha_target_policy,
 )
+from tests._support.identity_fixtures import fixture_digest
 from tests.alpha_research.fixtures import research_foundation_binding
 from tests.autonomous_alpha_consumer.external_consumer import (
     ADAPTER_ID,
@@ -160,7 +161,7 @@ def _plan_and_workspace() -> tuple[AlphaFoldArrayPlan, _ArrayWorkspace]:
     foundation = research_foundation_binding(FACTOR_IDS)
     target_policy = build_alpha_target_policy(
         lane=AlphaTargetLane.SECTOR_RESIDUAL_RANK_GAUSS,
-        sector_revision="6" * 64,
+        sector_revision=fixture_digest("external consumer sector revision"),
     )
     commitment = build_alpha_fold_commitment(window)
     binding = build_alpha_training_input_binding(
@@ -288,7 +289,7 @@ def test_standalone_contracts_round_trip_and_reject_tamper() -> None:
         AlphaModelCapabilityMandate.model_validate(tampered_mandate)
 
     tampered_program = program.model_dump(mode="json")
-    tampered_program["ordered_feature_ids_hash"] = "7" * 64
+    tampered_program["ordered_feature_ids_hash"] = fixture_digest("wrong ordered features")
     with pytest.raises(ValidationError, match="ALPHA_DEVELOPMENT_PROGRAM_IDENTITY_INVALID"):
         AlphaDevelopmentProgram.model_validate(tampered_program)
 
@@ -303,7 +304,7 @@ def test_wrong_program_or_economic_surface_fails_before_fit(tmp_path: Path) -> N
         for name in type(program).model_fields
         if name != "program_hash"
     }
-    program_values["ordered_feature_ids_hash"] = "7" * 64
+    program_values["ordered_feature_ids_hash"] = fixture_digest("wrong ordered features")
     wrong_program = seal_contract(
         AlphaDevelopmentProgram,
         program_values,
@@ -362,7 +363,7 @@ def test_target_fold_metric_package_and_catalog_mismatch_are_authority_failures(
 
     alternate_target = build_alpha_target_policy(
         lane=AlphaTargetLane.LOG_RETURN_RANK_GAUSS,
-        sector_revision="6" * 64,
+        sector_revision=fixture_digest("external consumer sector revision"),
     )
     production_shaped_split_policy = seal_contract(
         AlphaDevelopmentSplitPolicy,
@@ -381,7 +382,7 @@ def test_target_fold_metric_package_and_catalog_mismatch_are_authority_failures(
     )
     changes = (
         {"target_policy": alternate_target},
-        {"split_hash": "8" * 64},
+        {"split_hash": fixture_digest("wrong split")},
         {"split_policy": production_shaped_split_policy},
     )
     for index, change in enumerate(changes):
@@ -421,7 +422,9 @@ def test_target_fold_metric_package_and_catalog_mismatch_are_authority_failures(
         ("package_identity", "package_hash"),
     ):
         payload = program.model_dump(mode="json")
-        payload[nested_field][identity_field] = "7" * 64
+        payload[nested_field][identity_field] = fixture_digest(
+            ("tampered nested authority", identity_field)
+        )
         with pytest.raises(ValidationError):
             AlphaDevelopmentProgram.model_validate(payload)
 

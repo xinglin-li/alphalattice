@@ -33,7 +33,6 @@ from contextlib import contextmanager
 from dataclasses import asdict, dataclass, replace
 from datetime import date, datetime, timedelta
 from functools import cache, partial
-from hashlib import sha256
 from pathlib import Path
 from typing import Any
 from uuid import uuid4
@@ -97,6 +96,7 @@ from alphalattice.investment.risk_research.surfaces.returns import (
     CausalRiskReturnSurfacePublisher,
     RiskReturnArtifactStore,
 )
+from alphalattice.kernel.identity import blake3_digest
 from devtools.architecture.structural import (
     dependency_closure,
     discover_module_dependencies,
@@ -280,7 +280,7 @@ class SeededWalkProvider:
             provider_symbol=provider_symbol,
             sector_name=sector,
             sector_key=sector.casefold(),
-            payload_hash=(sector.encode().hex() * 16)[:64],
+            payload_hash=canonical_hash(sector),
         )
 
 
@@ -313,11 +313,11 @@ def _bootstrap(
     return CurrentUniverseBootstrap(
         source_manifest=replace(
             provisional,
-            content_hash=sha256(
+            content_hash=blake3_digest(
                 json.dumps(
                     document, ensure_ascii=False, sort_keys=True, separators=(",", ":")
                 ).encode()
-            ).hexdigest(),
+            ),
         ),
         standard=standard,
     )

@@ -28,6 +28,8 @@ from alphalattice.interface.local_application.portfolio_research import (
 from alphalattice.investment.portfolio_strategy_lab.application.contracts import (
     PortfolioResearchSpec,
 )
+from alphalattice.kernel.identity import blake3_filename
+from tests._support.identity_fixtures import fixture_digest
 from tests.portfolio_strategy_lab.host_requests import _json, _request
 from tests.portfolio_strategy_lab.local_web_support import _agent, _resolved, _Resolver
 
@@ -71,8 +73,8 @@ def test_a_trial_the_owner_refuses_to_compare_claims_no_change(tmp_path):
         clock=lambda: datetime(2026, 9, 30, tzinfo=UTC),
     )
     trial = FeatureTrial(
-        trial_id="a" * 64,
-        feature_plan_hash="b" * 64,
+        trial_id=fixture_digest("feature trial"),
+        feature_plan_hash=fixture_digest("feature plan"),
         baseline_task_id=str(baseline),
         baseline_alpha_task_id=str(baseline),
         caller="HUMAN",
@@ -104,6 +106,7 @@ def test_trial_and_feature_listings_keep_readable_siblings_with_damaged_records(
     from alphalattice.control.product_host.research_authoring.feature_research import (
         ResearchFeatureDefinitions,
     )
+    from alphalattice.kernel.identity import blake3_filename
 
     class Builds:
         def definitions(self):
@@ -118,8 +121,8 @@ def test_trial_and_feature_listings_keep_readable_siblings_with_damaged_records(
     )
     trials.root.mkdir(parents=True)
     healthy = FeatureTrial(
-        trial_id="a" * 64,
-        feature_plan_hash="d" * 64,
+        trial_id="blake3:" + "a" * 64,
+        feature_plan_hash="blake3:" + "d" * 64,
         baseline_task_id="task-1",
         baseline_alpha_task_id="task-1",
         caller="HUMAN",
@@ -127,11 +130,13 @@ def test_trial_and_feature_listings_keep_readable_siblings_with_damaged_records(
         state="RUNNING",
         feature_factor_ids=("formula_x",),
     )
-    healthy_path = trials.root / f"{healthy.trial_id}.json"
+    healthy_path = trials.root / f"{blake3_filename(healthy.trial_id)}.json"
     healthy_path.write_text(healthy.model_dump_json(), encoding="utf-8")
-    malformed_path = trials.root / f"{'b' * 64}.json"
+    malformed_id = "blake3:" + "b" * 64
+    malformed_path = trials.root / f"{blake3_filename(malformed_id)}.json"
     malformed_path.write_text("{", encoding="utf-8")
-    unreadable_path = trials.root / f"{'c' * 64}.json"
+    unreadable_id = "blake3:" + "c" * 64
+    unreadable_path = trials.root / f"{blake3_filename(unreadable_id)}.json"
     unreadable_path.write_text("{}", encoding="utf-8")
     read_bytes = Path.read_bytes
 
@@ -144,8 +149,8 @@ def test_trial_and_feature_listings_keep_readable_siblings_with_damaged_records(
     listed = trials.listing()
     assert [row["feature_trial_id"] for row in listed["trials"]] == [healthy.trial_id]
     assert [row["feature_trial_id"] for row in listed["damaged"]] == [
-        malformed_path.stem,
-        unreadable_path.stem,
+        malformed_id,
+        unreadable_id,
     ]
     for row in listed["damaged"]:
         assert row["status"] == "REFUSED"
@@ -179,22 +184,25 @@ def test_a_trial_offers_its_own_read_and_once_completed_each_review():
     )
 
     trial = FeatureTrial(
-        trial_id="a" * 64,
-        feature_plan_hash="b" * 64,
+        trial_id=fixture_digest("feature trial"),
+        feature_plan_hash=fixture_digest("feature plan"),
         baseline_task_id="c",
         baseline_alpha_task_id="c",
         caller="HUMAN",
         requested_at=datetime(2026, 10, 1, tzinfo=UTC),
         feature_factor_ids=("formula_x",),
     )
-    show = {"operation": "FEATURE_TRIAL_READBACK", "feature_trial_id": "a" * 64}
+    show = {
+        "operation": "FEATURE_TRIAL_READBACK",
+        "feature_trial_id": fixture_digest("feature trial"),
+    }
     assert trial_requests(trial) == {"show": show}
     done = trial.model_copy(update={"state": "COMPLETED"})
     assert trial_requests(done) == {
         "show": show,
         "review": {
             "operation": "FEATURE_REVIEW",
-            "feature_plan_hash": "b" * 64,
+            "feature_plan_hash": fixture_digest("feature plan"),
             "feature_factor_id": "formula_x",
         },
     }
@@ -224,8 +232,8 @@ def test_a_review_packets_trial_says_whether_its_alpha_studies_were_compared(tmp
             return {"comparison": {"feature": feature, "alpha_without_and_with": self.alpha}}
 
     trial = FeatureTrial(
-        trial_id="a" * 64,
-        feature_plan_hash="b" * 64,
+        trial_id=fixture_digest("feature trial"),
+        feature_plan_hash=fixture_digest("feature plan"),
         baseline_task_id="t-1",
         baseline_alpha_task_id="t-1",
         caller="HUMAN",
@@ -465,7 +473,9 @@ def test_each_flow_names_its_prerequisites_and_the_way_on(tmp_path):
     folder = "research-experiments/factor-one"
     receipts = tmp_path / folder / FACTOR_DEVELOPMENT_CURATION_CATEGORY / "checkpoint"
     receipts.mkdir(parents=True)
-    (receipts / ("c" * 64 + ".json")).write_text("{}", encoding="utf-8")
+    (receipts / (blake3_filename("blake3:" + "c" * 64) + ".json")).write_text(
+        "{}", encoding="utf-8"
+    )
 
     def study(
         n,
@@ -505,13 +515,18 @@ def test_each_flow_names_its_prerequisites_and_the_way_on(tmp_path):
         binding_hash=binding,
         workspace=tmp_path,
     )
-    assert held["FACTOR_STUDY"] == [{"task_id": "t-1", "curation_receipt_hashes": ["c" * 64]}]
+    receipt_hash = "blake3:" + "c" * 64
+    assert held["FACTOR_STUDY"] == [{"task_id": "t-1", "curation_receipt_hashes": [receipt_hash]}]
+    offered = prerequisites("ALPHA_STUDY", held, input_id="input", binding_hash=binding)
+    assert offered["next_requests"]["handoff"]["curation_receipt_hash"] == receipt_hash
     assert held["ALPHA_STUDY"] == [{"task_id": "t-3", "factor_task_id": "t-1"}]
     assert [row["task_id"] for row in held["RISK_STUDY"]] == [f"t-{n}" for n in range(16, 11, -1)]
     assert held["BOOK"] == [{"task_id": "t-30", "alpha_task_id": "t-3"}]
     receipts = tmp_path / "factor-0" / FACTOR_DEVELOPMENT_CURATION_CATEGORY / "checkpoint"
     receipts.mkdir(parents=True)
-    (receipts / ("c" * 64 + ".json")).write_text("{}", encoding="utf-8")
+    (receipts / (blake3_filename("blake3:" + "c" * 64) + ".json")).write_text(
+        "{}", encoding="utf-8"
+    )
     studies = [
         study(n, "factor.screening-development", output_workspace=f"factor-{n}") for n in range(7)
     ]
@@ -529,7 +544,7 @@ def test_each_flow_names_its_prerequisites_and_the_way_on(tmp_path):
         "handoff": {
             "operation": "EXPERIMENT_HANDOFF_PREVIEW",
             "task_id": "t-0",
-            "curation_receipt_hash": "c" * 64,
+            "curation_receipt_hash": receipt_hash,
         }
     }
 
@@ -1068,8 +1083,8 @@ def _check_book_support_refusal(live, monkeypatch):
     [
         (None, None, False),
         ("MODEL_TRAINING_INPUT_PLAN", None, True),
-        ("EXPERIMENT_CONTROLS", "b" * 64, True),
-        ("EXPERIMENT_CONTROLS", "f" * 64, False),
+        ("EXPERIMENT_CONTROLS", fixture_digest("selected experiment binding"), True),
+        ("EXPERIMENT_CONTROLS", fixture_digest("unknown experiment binding"), False),
     ],
     ids=("book-support", "training-component", "risk-known-binding", "risk-unknown-binding"),
 )
@@ -1095,7 +1110,9 @@ def test_a_support_refusal_is_worded_with_its_cause_and_the_books_way_on(
     assert host is not None
     manifest = host.workspace_manifest.with_bindings(
         experiment_inputs=(
-            ResearchWorkspaceExperimentInput(input_id="selected", binding_hash="b" * 64),
+            ResearchWorkspaceExperimentInput(
+                input_id="selected", binding_hash=fixture_digest("selected experiment binding")
+            ),
         )
     )
     publish_research_workspace_manifest(live.workspace, manifest)
@@ -1142,13 +1159,13 @@ def test_prepared_training_inputs_offer_their_components_study(tmp_path):
 
     plan = ModelTrainingInputPlan.create(
         workspace_id="w",
-        workspace_manifest_hash="m" * 64,
+        workspace_manifest_hash=fixture_digest("training workspace manifest"),
         input_id="factor-development",
-        input_binding_hash="b" * 64,
+        input_binding_hash=fixture_digest("training input binding"),
         component_ids=("G2_R0_TREND",),
         listing_count=466,
         source_session_count=1264,
-        implementation_hash="i" * 64,
+        implementation_hash=fixture_digest("training implementation"),
     )
     task = SimpleNamespace(lifecycle=TaskLifecycle.SUCCEEDED, failure_code=None)
     session = SimpleNamespace(
@@ -1164,7 +1181,7 @@ def test_prepared_training_inputs_offer_their_components_study(tmp_path):
     assert controls == {
         "operation": "EXPERIMENT_CONTROLS",
         "research_input_id": "factor-development",
-        "input_binding_hash": "b" * 64,
+        "input_binding_hash": fixture_digest("training input binding"),
         "experiment_kind": "alpha.model-development",
         "component_id": "G2_R0_TREND",
     }
@@ -1215,10 +1232,13 @@ def test_strategy_risk_recovery_keeps_history_ranges_and_selected_input(tmp_path
         PortfolioResearchOperationRequest,
     )
 
-    binding, first, last = ("b" * 64, date(2022, 10, 3), date(2022, 10, 7))
+    binding = fixture_digest("selected experiment binding")
+    first, last = date(2022, 10, 3), date(2022, 10, 7)
     manifest = ResearchWorkspaceManifest.research_only("risk").with_bindings(
         experiment_inputs=(
-            ResearchWorkspaceExperimentInput(input_id="first", binding_hash="a" * 64),
+            ResearchWorkspaceExperimentInput(
+                input_id="first", binding_hash=fixture_digest("earlier experiment binding")
+            ),
             ResearchWorkspaceExperimentInput(input_id="selected", binding_hash=binding),
         )
     )
@@ -1374,7 +1394,7 @@ def _research_update_plan(package: str, target: Any) -> Any:
         ResearchWorkspaceScoreInput,
     )
 
-    fixture = "a" * 64
+    fixture = fixture_digest("research update authority")
     binding = WorkspaceDataUpdateBinding.seal(
         profile_file_hash=fixture, data_policy_hash=fixture, feature_catalog_hash=fixture
     )
@@ -1661,7 +1681,11 @@ def test_completed_update_metadata_keeps_exact_target_claim_and_sealed_lookup(
     history = _json(live, "/api/research-history")["entries"]
     revisions = {row["book"]["update_publication_hash"]: row["final_delivery"] for row in history}
     assert revisions == {prior.content_hash: False, publication.content_hash: True}
-    stored = owner.ledger.content.root / "decision-candidates" / f"{publication.content_hash}.json"
+    stored = (
+        owner.ledger.content.root
+        / "decision-candidates"
+        / f"{blake3_filename(publication.content_hash)}.json"
+    )
     payload = json.loads(stored.read_text(encoding="utf-8"))
     payload["published_at"] = "2026-10-03T00:00:00+00:00"
     stored.write_text(json.dumps(payload), encoding="utf-8")

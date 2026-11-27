@@ -46,6 +46,7 @@ from alphalattice.capabilities.data.errors import DataError
 from alphalattice.capabilities.domain_contracts.identity import canonical_hash
 from alphalattice.capabilities.domain_contracts.identity_successors import is_current, latest
 from alphalattice.capabilities.domain_contracts.sealing import seal_payload_digest
+from alphalattice.kernel.identity import blake3_filename, blake3_from_filename
 
 from ..analysis.contracts import (
     CONTEXT_COMPLETE_SELECTION_RULES_ID,
@@ -136,7 +137,9 @@ class RecordDays:
         if self._known is None:
             known: dict[str, date | None] = {}
             for path in self._days.iterdir() if self._days.is_dir() else ():
-                day, _, identity = path.name.partition(".")
+                day, _, filename = path.name.partition(".")
+                if (identity := blake3_from_filename(filename)) is None:
+                    continue
                 try:
                     known[identity] = date.fromisoformat(day)
                 except ValueError:
@@ -150,7 +153,7 @@ class RecordDays:
         known = self._index()
         if known.get(identity) != day:
             self._days.mkdir(parents=True, exist_ok=True)
-            (self._days / f"{day.isoformat()}.{identity}").touch()
+            (self._days / f"{day.isoformat()}.{blake3_filename(identity)}").touch()
             known[identity] = day
 
     def by_day(self, moment: datetime | None) -> tuple[tuple[str, ...], ...]:
@@ -160,7 +163,12 @@ class RecordDays:
         when ``moment`` is ``None``. Place unknown days first.
         """
         names = (
-            [path.stem for path in self._records.glob("*.json")] if self._records.is_dir() else []
+            [
+                AlternativeEvidenceArtifactStore.file_identity(path)
+                for path in self._records.glob("*.json")
+            ]
+            if self._records.is_dir()
+            else []
         )
         known = self._index()
         for identity in names:
@@ -508,7 +516,9 @@ class SealedSelections:
             for path in sorted(root.glob("*.json")) if root.is_dir() else ():
                 try:
                     receipt = self._artifacts.load(
-                        RECEIPT_CATEGORY, path.stem, AlternativeEvidenceRetrievalAccessReceipt
+                        RECEIPT_CATEGORY,
+                        self._artifacts.file_identity(path),
+                        AlternativeEvidenceRetrievalAccessReceipt,
                     )
                 except (ValueError, FileNotFoundError):
                     continue
@@ -913,7 +923,9 @@ def sealed_field(
     """
 
     def read(identity: str) -> datetime:
-        body = json.loads((artifacts.root / category / f"{identity}.json").read_bytes())
+        body = json.loads(
+            (artifacts.root / category / f"{blake3_filename(identity)}.json").read_bytes()
+        )
         return datetime.fromisoformat(str(body[field]))
 
     return read

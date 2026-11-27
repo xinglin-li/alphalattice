@@ -15,7 +15,7 @@ from alphalattice.capabilities.domain_contracts.identity import canonical_hash
 from alphalattice.capabilities.quant.cross_section import (
     median_mad_winsor,
 )
-from alphalattice.kernel.identity import identity_sha256
+from alphalattice.kernel.identity import BLAKE3_PATTERN, identity_blake3, tagged_blake3
 
 from .execution_outcome import AlphaTargetBoundaryError
 
@@ -36,7 +36,7 @@ _REQUIRED_COLUMNS = frozenset(
         "simple_economic_return",
     }
 )
-_HASH = r"^[0-9a-f]{64}$"
+_HASH = BLAKE3_PATTERN
 
 
 class _Contract(BaseModel):  # type: ignore[misc]
@@ -167,7 +167,7 @@ def total_return_array_identity(values: FloatArray) -> str:
             {
                 "dtype": str(contiguous.dtype),
                 "shape": list(contiguous.shape),
-                "content": identity_sha256(contiguous.tobytes()).hexdigest(),
+                "content": tagged_blake3(identity_blake3(contiguous.tobytes())),
             }
         )
     )

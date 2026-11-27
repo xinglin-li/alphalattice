@@ -19,11 +19,6 @@ identity, ``FeatureKernelRegistry.installed_capability_hash``), the catalog cont
 editing an admission rule moves catalog identity, not the arithmetic) and, for the controls, the
 registry mechanics every extension value passes through.
 
-The switch from byte closures kept every identity. ``config/identity-switch.json`` records each
-component's rule value and the byte value it had when the rule replaced the bytes; while its rule
-value is the recorded one, a component keeps the byte value every Panel and catalog binding was
-sealed under (``switched_identity``). A changed rule is a new identity; a comment never is.
-
 A Panel and a catalog binding compare these values by equality, so the value they bind is held at
 its recorded origin (LAWS.md ID1): a change recorded in ``config/identity-successors/`` under
 the component's role as keeping every value it computes leaves the bound value where it was,
@@ -152,22 +147,17 @@ which are governance: an admission edit moves catalog identity, not the transfor
 
 
 def feature_component_identity(
-    component: str,
     *,
     owners: tuple[str, ...],
     excluded: frozenset[str],
     semantic_owner: str,
     numerical_role: str,
 ) -> str:
-    """The identity of one Feature component: its rule closure, kept at its byte value.
+    """The identity of one Feature component's rule closure.
 
     Owners inside ``alphalattice`` are walked by the rule; an owner outside it, a method an
     external consumer registers, is hashed as its own syntax, found through the import system.
-    While the rule value is the one the switch recorded, the component keeps the byte value it
-    had then, so what was sealed before the switch stays current.
-
     Args:
-        component: The switch table's key for this component.
         owners: The modules that compute its values.
         excluded: The modules its walk skips.
         semantic_owner: Who owns the identity.
@@ -177,7 +167,7 @@ def feature_component_identity(
         The identity.
 
     Raises:
-        ValueError: If an owner cannot be found or the switch table cannot be read.
+        ValueError: If an owner cannot be found.
     """
     inside = tuple(owner for owner in owners if owner.startswith("alphalattice."))
     outside: dict[str, str] = {}
@@ -187,7 +177,7 @@ def feature_component_identity(
         spec = find_spec(owner)
         if spec is None or spec.origin is None:
             raise ValueError("feature_engine.factor_arithmetic_owner_unresolved")
-        outside[owner] = source_identity.source_syntax_sha256(Path(spec.origin))
+        outside[owner] = source_identity.source_syntax_digest(Path(spec.origin))
     rule = str(
         canonical_hash(
             {
@@ -203,7 +193,7 @@ def feature_component_identity(
             }
         )
     )
-    return source_identity.switched_identity(component, rule, root=_ROOT)
+    return rule
 
 
 def control_arithmetic_rule_identity() -> str:
@@ -213,7 +203,6 @@ def control_arithmetic_rule_identity() -> str:
         The switched rule value: what the controls' role reads.
     """
     return feature_component_identity(
-        "FACTOR_VALUE:controls",
         owners=SHARED_FACTOR_ARITHMETIC_OWNERS,
         excluded=WALK_EXCLUDED | frozenset(EXTENSION_KERNEL_OWNERS),
         semantic_owner="feature_engine.producers",
@@ -256,7 +245,6 @@ def method_family_rule_identity(method_family: str, owners: tuple[str, ...]) -> 
     if not owners:
         raise ValueError("feature_engine.factor_method_family_owners_required")
     return feature_component_identity(
-        f"FACTOR_VALUE:{method_family}",
         owners=(*SHARED_FACTOR_ARITHMETIC_OWNERS, *EXTENSION_KERNEL_OWNERS, *owners),
         excluded=WALK_EXCLUDED,
         semantic_owner="feature_engine.producers.factors",

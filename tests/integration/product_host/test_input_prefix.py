@@ -344,14 +344,14 @@ def test_repeat_source_proofs_in_a_process_hash_no_unchanged_store_file(
     monkeypatch.setattr(verified_facts, "wall_time", lambda: now / 1e9)
     monkeypatch.setattr(verified_facts, "wall_time_ns", lambda: now)
     hashed: Counter[Path] = Counter()
-    whole = strategy_score_inputs.file_sha256
+    whole = strategy_score_inputs.verified_file_digest
 
     def counted(path):  # type: ignore[no-untyped-def]
-        if path.exists() and verified_facts.file_fact(path, "sha256") is None:
+        if path.exists() and verified_facts.file_fact(path, "digest") is None:
             hashed[path] += 1
         return whole(path)
 
-    monkeypatch.setattr(strategy_score_inputs, "file_sha256", counted)
+    monkeypatch.setattr(strategy_score_inputs, "verified_file_digest", counted)
     source_hash = workspace_score_source_identity(input_workspace)
     prepared = prepare_workspace_component_inputs(
         input_workspace,

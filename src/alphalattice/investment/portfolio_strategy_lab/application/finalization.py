@@ -43,6 +43,7 @@ from alphalattice.investment.portfolio_strategy_lab.application.contracts import
     PortfolioExecutionLedger,
     SealedPortfolioBoundaryState,
 )
+from alphalattice.kernel.identity import BLAKE3_PATTERN
 
 PROTECTED_FIXTURE_DISPOSITION: Literal["ISOLATED_SYNTHETIC_NON_RESERVED_FIXTURE"] = (
     "ISOLATED_SYNTHETIC_NON_RESERVED_FIXTURE"
@@ -117,12 +118,12 @@ class SealedPreProtectedState(_Contract):
     """
 
     kind: Literal["SealedPreProtectedState"] = "SealedPreProtectedState"
-    execution_ledger_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
+    execution_ledger_hash: str = Field(pattern=BLAKE3_PATTERN)
     last_formation_session: date
     formation_count: int = Field(gt=0)
-    formation_axis_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
-    listing_axis_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
-    final_weights_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
+    formation_axis_hash: str = Field(pattern=BLAKE3_PATTERN)
+    listing_axis_hash: str = Field(pattern=BLAKE3_PATTERN)
+    final_weights_hash: str = Field(pattern=BLAKE3_PATTERN)
     """One component of the boundary below, kept because existing readers cite
     it by this name. `terminal_boundary` is the whole state."""
 
@@ -138,7 +139,7 @@ class SealedPreProtectedState(_Contract):
     cumulative_gross_wealth: float = Field(gt=0.0)
     cumulative_one_way_turnover: float = Field(ge=0.0)
     missed_execution_count: int = Field(ge=0)
-    state_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
+    state_hash: str = Field(pattern=BLAKE3_PATTERN)
 
     @classmethod
     def of(cls, ledger: PortfolioExecutionLedger) -> Self:
@@ -210,9 +211,9 @@ class FrozenPortfolioCandidate(_Contract):
 
     kind: Literal["FrozenPortfolioCandidate"] = "FrozenPortfolioCandidate"
     workspace_id: str = Field(min_length=1, max_length=120)
-    spec_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
-    holdings_spec_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
-    control_receipt_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
+    spec_hash: str = Field(pattern=BLAKE3_PATTERN)
+    holdings_spec_hash: str = Field(pattern=BLAKE3_PATTERN)
+    control_receipt_hash: str = Field(pattern=BLAKE3_PATTERN)
     """The exact installed control values the development report was sealed with.
 
     Sealed on the candidate so closure can check the *configuration* a protected
@@ -222,8 +223,8 @@ class FrozenPortfolioCandidate(_Contract):
     every other identity still looks plausible.
     """
 
-    program_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
-    numerical_input_assembly_hash: str | None = Field(default=None, pattern=r"^[0-9a-f]{64}$")
+    program_hash: str = Field(pattern=BLAKE3_PATTERN)
+    numerical_input_assembly_hash: str | None = Field(default=None, pattern=BLAKE3_PATTERN)
     """One digest over every input the Program bound that decides a number.
 
     `None` for a predecessor Program compiled before those inputs were bound. A
@@ -233,7 +234,7 @@ class FrozenPortfolioCandidate(_Contract):
     """
 
     development_task_id: str = Field(min_length=1, max_length=64)
-    development_run_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
+    development_run_hash: str = Field(pattern=BLAKE3_PATTERN)
     """The verified completed-run projection this candidate was frozen against.
 
     A free-form task id is a claim; this is the identity of what Task Control
@@ -243,13 +244,13 @@ class FrozenPortfolioCandidate(_Contract):
     finished, or published something else.
     """
 
-    development_result_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
-    execution_ledger_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
-    economic_ledger_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
-    report_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
+    development_result_hash: str = Field(pattern=BLAKE3_PATTERN)
+    execution_ledger_hash: str = Field(pattern=BLAKE3_PATTERN)
+    economic_ledger_hash: str = Field(pattern=BLAKE3_PATTERN)
+    report_hash: str = Field(pattern=BLAKE3_PATTERN)
     pre_protected_state: SealedPreProtectedState
     frozen_at: datetime
-    candidate_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
+    candidate_hash: str = Field(pattern=BLAKE3_PATTERN)
 
     @classmethod
     def create(cls, **values: object) -> Self:
@@ -312,9 +313,9 @@ class CompletedDevelopmentRun(_Contract):
     task_id: str = Field(min_length=1, max_length=64)
     task_kind: str = Field(min_length=1, max_length=120)
     lifecycle: str = Field(min_length=1, max_length=40)
-    spec_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
-    program_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
-    authorities_hash: str | None = Field(default=None, pattern=r"^[0-9a-f]{64}$")
+    spec_hash: str = Field(pattern=BLAKE3_PATTERN)
+    program_hash: str = Field(pattern=BLAKE3_PATTERN)
+    authorities_hash: str | None = Field(default=None, pattern=BLAKE3_PATTERN)
     published_result_hashes: tuple[str, ...] = Field(min_length=1)
     """Every result identity the task's verified stage receipts name.
 
@@ -322,7 +323,7 @@ class CompletedDevelopmentRun(_Contract):
     "this task published that result" checkable at all.
     """
 
-    projection_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
+    projection_hash: str = Field(pattern=BLAKE3_PATTERN)
 
     @classmethod
     def create(cls, **values: object) -> Self:
@@ -393,19 +394,19 @@ class PortfolioCandidateFreezeReceipt(_Contract):
 
     kind: Literal["PortfolioCandidateFreezeReceipt"] = "PortfolioCandidateFreezeReceipt"
     workspace_id: str = Field(min_length=1, max_length=120)
-    candidate_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
+    candidate_hash: str = Field(pattern=BLAKE3_PATTERN)
     development_task_id: str = Field(min_length=1, max_length=64)
-    development_run_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
-    development_result_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
-    program_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
-    spec_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
-    control_receipt_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
-    numerical_input_assembly_hash: str | None = Field(default=None, pattern=r"^[0-9a-f]{64}$")
-    execution_ledger_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
-    economic_ledger_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
-    pre_protected_state_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
+    development_run_hash: str = Field(pattern=BLAKE3_PATTERN)
+    development_result_hash: str = Field(pattern=BLAKE3_PATTERN)
+    program_hash: str = Field(pattern=BLAKE3_PATTERN)
+    spec_hash: str = Field(pattern=BLAKE3_PATTERN)
+    control_receipt_hash: str = Field(pattern=BLAKE3_PATTERN)
+    numerical_input_assembly_hash: str | None = Field(default=None, pattern=BLAKE3_PATTERN)
+    execution_ledger_hash: str = Field(pattern=BLAKE3_PATTERN)
+    economic_ledger_hash: str = Field(pattern=BLAKE3_PATTERN)
+    pre_protected_state_hash: str = Field(pattern=BLAKE3_PATTERN)
     frozen_at: datetime
-    receipt_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
+    receipt_hash: str = Field(pattern=BLAKE3_PATTERN)
 
     @classmethod
     def of(cls, candidate: FrozenPortfolioCandidate) -> Self:
@@ -477,9 +478,9 @@ class ProtectedFixture(_Contract):
     fixture_id: str = Field(min_length=1, max_length=120)
     disposition: Literal["ISOLATED_SYNTHETIC_NON_RESERVED_FIXTURE"] = PROTECTED_FIXTURE_DISPOSITION
     sessions: tuple[date, ...] = Field(min_length=1)
-    listing_axis_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
-    session_axis_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
-    fixture_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
+    listing_axis_hash: str = Field(pattern=BLAKE3_PATTERN)
+    session_axis_hash: str = Field(pattern=BLAKE3_PATTERN)
+    fixture_hash: str = Field(pattern=BLAKE3_PATTERN)
 
     @classmethod
     def of(cls, *, fixture_id: str, sessions: tuple[date, ...], listings: tuple[str, ...]) -> Self:
@@ -540,12 +541,12 @@ class ProtectedEvaluationPermit(_Contract):
     """
 
     kind: Literal["ProtectedEvaluationPermit"] = "ProtectedEvaluationPermit"
-    candidate_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
-    configuration_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
-    pre_protected_state_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
+    candidate_hash: str = Field(pattern=BLAKE3_PATTERN)
+    configuration_hash: str = Field(pattern=BLAKE3_PATTERN)
+    pre_protected_state_hash: str = Field(pattern=BLAKE3_PATTERN)
     fixture: ProtectedFixture
     issued_at: datetime
-    permit_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
+    permit_hash: str = Field(pattern=BLAKE3_PATTERN)
 
     @classmethod
     def create(cls, **values: object) -> Self:
@@ -595,11 +596,11 @@ class FinalPortfolioEvaluationPackage(_Contract):
     """
 
     kind: Literal["FinalPortfolioEvaluationPackage"] = "FinalPortfolioEvaluationPackage"
-    permit_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
-    candidate_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
-    continued_from_state_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
-    fixture_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
-    protected_result_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
+    permit_hash: str = Field(pattern=BLAKE3_PATTERN)
+    candidate_hash: str = Field(pattern=BLAKE3_PATTERN)
+    continued_from_state_hash: str = Field(pattern=BLAKE3_PATTERN)
+    fixture_hash: str = Field(pattern=BLAKE3_PATTERN)
+    protected_result_hash: str = Field(pattern=BLAKE3_PATTERN)
     """The sealed result the release promotes, named here rather than looked up.
 
     A lookup would need an index from report to result, and an index is one more
@@ -607,9 +608,9 @@ class FinalPortfolioEvaluationPackage(_Contract):
     about what it contains; this makes it exact about what gets published.
     """
 
-    protected_execution_ledger_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
-    protected_economic_ledger_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
-    protected_report_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
+    protected_execution_ledger_hash: str = Field(pattern=BLAKE3_PATTERN)
+    protected_economic_ledger_hash: str = Field(pattern=BLAKE3_PATTERN)
+    protected_report_hash: str = Field(pattern=BLAKE3_PATTERN)
     protected_formation_count: int = Field(gt=0)
     protected_listing_count: int = Field(gt=0)
     """The decision axis width the protected path ran on.
@@ -620,7 +621,7 @@ class FinalPortfolioEvaluationPackage(_Contract):
     """
 
     visibility: Literal["PENDING_CLOSURE"] = "PENDING_CLOSURE"
-    package_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
+    package_hash: str = Field(pattern=BLAKE3_PATTERN)
 
     @classmethod
     def create(cls, **values: object) -> Self:
@@ -668,11 +669,11 @@ class ProtectedPackageInspection(_Contract):
     """
 
     kind: Literal["ProtectedPackageInspection"] = "ProtectedPackageInspection"
-    package_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
+    package_hash: str = Field(pattern=BLAKE3_PATTERN)
     absent_children: tuple[str, ...] = ()
     """Child identities the package names that could not be opened at all."""
 
-    result_spec_hash: str | None = Field(default=None, pattern=r"^[0-9a-f]{64}$")
+    result_spec_hash: str | None = Field(default=None, pattern=BLAKE3_PATTERN)
     """The request the protected result was sealed under.
 
     Configuration is not a detail of a protected package: cost, study window,
@@ -681,14 +682,14 @@ class ProtectedPackageInspection(_Contract):
     different evaluation wearing the permitted one's shape.
     """
 
-    program_holdings_spec_hash: str | None = Field(default=None, pattern=r"^[0-9a-f]{64}$")
-    report_control_receipt_hash: str | None = Field(default=None, pattern=r"^[0-9a-f]{64}$")
+    program_holdings_spec_hash: str | None = Field(default=None, pattern=BLAKE3_PATTERN)
+    report_control_receipt_hash: str | None = Field(default=None, pattern=BLAKE3_PATTERN)
     program_formation_start: date | None = None
     program_formation_end: date | None = None
     program_formation_count: int | None = Field(default=None, ge=0)
-    program_formation_sessions_hash: str | None = Field(default=None, pattern=r"^[0-9a-f]{64}$")
+    program_formation_sessions_hash: str | None = Field(default=None, pattern=BLAKE3_PATTERN)
     program_listing_count: int | None = Field(default=None, ge=0)
-    program_ordered_listing_ids_hash: str | None = Field(default=None, pattern=r"^[0-9a-f]{64}$")
+    program_ordered_listing_ids_hash: str | None = Field(default=None, pattern=BLAKE3_PATTERN)
     """What the Program itself claims about the axis it was compiled for.
 
     Reported separately from the ledger's axis, and compared against it, because
@@ -697,8 +698,8 @@ class ProtectedPackageInspection(_Contract):
     window, and nothing that reads only one of the two would notice.
     """
 
-    ledger_formation_sessions_hash: str | None = Field(default=None, pattern=r"^[0-9a-f]{64}$")
-    ledger_ordered_listing_ids_hash: str | None = Field(default=None, pattern=r"^[0-9a-f]{64}$")
+    ledger_formation_sessions_hash: str | None = Field(default=None, pattern=BLAKE3_PATTERN)
+    ledger_ordered_listing_ids_hash: str | None = Field(default=None, pattern=BLAKE3_PATTERN)
     ledger_listing_count: int | None = Field(default=None, ge=0)
     """The ledger's axis, hashed the way the *Program* hashes its own.
 
@@ -707,23 +708,23 @@ class ProtectedPackageInspection(_Contract):
     ordering, and comparing across the two functions would compare nothing.
     """
 
-    result_program_hash: str | None = Field(default=None, pattern=r"^[0-9a-f]{64}$")
-    result_execution_ledger_hash: str | None = Field(default=None, pattern=r"^[0-9a-f]{64}$")
-    result_economic_ledger_hash: str | None = Field(default=None, pattern=r"^[0-9a-f]{64}$")
-    result_report_hash: str | None = Field(default=None, pattern=r"^[0-9a-f]{64}$")
-    ledger_program_hash: str | None = Field(default=None, pattern=r"^[0-9a-f]{64}$")
-    economic_execution_ledger_hash: str | None = Field(default=None, pattern=r"^[0-9a-f]{64}$")
-    report_program_hash: str | None = Field(default=None, pattern=r"^[0-9a-f]{64}$")
-    report_execution_ledger_hash: str | None = Field(default=None, pattern=r"^[0-9a-f]{64}$")
-    report_economic_ledger_hash: str | None = Field(default=None, pattern=r"^[0-9a-f]{64}$")
-    report_comparison_hash: str | None = Field(default=None, pattern=r"^[0-9a-f]{64}$")
-    comparison_execution_ledger_hash: str | None = Field(default=None, pattern=r"^[0-9a-f]{64}$")
-    comparison_economic_ledger_hash: str | None = Field(default=None, pattern=r"^[0-9a-f]{64}$")
-    program_continued_from_state_hash: str | None = Field(default=None, pattern=r"^[0-9a-f]{64}$")
-    initial_boundary_hash: str | None = Field(default=None, pattern=r"^[0-9a-f]{64}$")
+    result_program_hash: str | None = Field(default=None, pattern=BLAKE3_PATTERN)
+    result_execution_ledger_hash: str | None = Field(default=None, pattern=BLAKE3_PATTERN)
+    result_economic_ledger_hash: str | None = Field(default=None, pattern=BLAKE3_PATTERN)
+    result_report_hash: str | None = Field(default=None, pattern=BLAKE3_PATTERN)
+    ledger_program_hash: str | None = Field(default=None, pattern=BLAKE3_PATTERN)
+    economic_execution_ledger_hash: str | None = Field(default=None, pattern=BLAKE3_PATTERN)
+    report_program_hash: str | None = Field(default=None, pattern=BLAKE3_PATTERN)
+    report_execution_ledger_hash: str | None = Field(default=None, pattern=BLAKE3_PATTERN)
+    report_economic_ledger_hash: str | None = Field(default=None, pattern=BLAKE3_PATTERN)
+    report_comparison_hash: str | None = Field(default=None, pattern=BLAKE3_PATTERN)
+    comparison_execution_ledger_hash: str | None = Field(default=None, pattern=BLAKE3_PATTERN)
+    comparison_economic_ledger_hash: str | None = Field(default=None, pattern=BLAKE3_PATTERN)
+    program_continued_from_state_hash: str | None = Field(default=None, pattern=BLAKE3_PATTERN)
+    initial_boundary_hash: str | None = Field(default=None, pattern=BLAKE3_PATTERN)
     formation_sessions: tuple[date, ...] = ()
-    listing_axis_hash: str | None = Field(default=None, pattern=r"^[0-9a-f]{64}$")
-    inspection_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
+    listing_axis_hash: str | None = Field(default=None, pattern=BLAKE3_PATTERN)
+    inspection_hash: str = Field(pattern=BLAKE3_PATTERN)
 
     @classmethod
     def create(cls, **values: object) -> Self:
@@ -792,18 +793,18 @@ class PortfolioValidationReceipt(_Contract):
     """
 
     kind: Literal["PortfolioValidationReceipt"] = "PortfolioValidationReceipt"
-    permit_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
-    candidate_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
-    package_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
-    fixture_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
-    pre_protected_state_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
+    permit_hash: str = Field(pattern=BLAKE3_PATTERN)
+    candidate_hash: str = Field(pattern=BLAKE3_PATTERN)
+    package_hash: str = Field(pattern=BLAKE3_PATTERN)
+    fixture_hash: str = Field(pattern=BLAKE3_PATTERN)
+    pre_protected_state_hash: str = Field(pattern=BLAKE3_PATTERN)
     closure: ClosureDisposition
     claim_limits: tuple[str, ...] = Field(min_length=1)
     reselection_disposition: Literal["PROTECTED_EVIDENCE_MAY_NOT_RETURN_TO_SELECTION_OR_TUNING"] = (
         CLAIM_LIMIT_NO_RESELECTION
     )
     sealed_at: datetime
-    receipt_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
+    receipt_hash: str = Field(pattern=BLAKE3_PATTERN)
 
     @classmethod
     def create(cls, **values: object) -> Self:
@@ -869,15 +870,15 @@ class ValidatedPortfolioHandoff(_Contract):
     kind: Literal["ValidatedPortfolioHandoff"] = "ValidatedPortfolioHandoff"
     workspace_id: str = Field(min_length=1, max_length=120)
     finalization_task_id: str = Field(min_length=1, max_length=64)
-    candidate_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
-    package_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
-    validation_receipt_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
-    released_report_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
+    candidate_hash: str = Field(pattern=BLAKE3_PATTERN)
+    package_hash: str = Field(pattern=BLAKE3_PATTERN)
+    validation_receipt_hash: str = Field(pattern=BLAKE3_PATTERN)
+    released_report_hash: str = Field(pattern=BLAKE3_PATTERN)
     strategy_discovery_disposition: Literal["HANDOFF_MAY_NOT_RETURN_TO_STRATEGY_DISCOVERY"] = (
         "HANDOFF_MAY_NOT_RETURN_TO_STRATEGY_DISCOVERY"
     )
     released_at: datetime
-    handoff_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
+    handoff_hash: str = Field(pattern=BLAKE3_PATTERN)
 
     @classmethod
     def create(cls, **values: object) -> Self:
@@ -935,13 +936,13 @@ class ReleasedPortfolioArtifacts(_Contract):
 
     kind: Literal["ReleasedPortfolioArtifacts"] = "ReleasedPortfolioArtifacts"
     workspace_id: str = Field(min_length=1, max_length=120)
-    package_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
-    validation_receipt_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
-    handoff_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
-    released_result_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
-    released_report_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
+    package_hash: str = Field(pattern=BLAKE3_PATTERN)
+    validation_receipt_hash: str = Field(pattern=BLAKE3_PATTERN)
+    handoff_hash: str = Field(pattern=BLAKE3_PATTERN)
+    released_result_hash: str = Field(pattern=BLAKE3_PATTERN)
+    released_report_hash: str = Field(pattern=BLAKE3_PATTERN)
     released_at: datetime
-    marker_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
+    marker_hash: str = Field(pattern=BLAKE3_PATTERN)
 
     @classmethod
     def create(cls, **values: object) -> Self:
@@ -992,12 +993,12 @@ class ProtectedContinuationResult(_Contract):
     """
 
     kind: Literal["ProtectedContinuationResult"] = "ProtectedContinuationResult"
-    permit_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
-    continued_from_state_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
-    protected_result_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
-    execution_ledger_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
-    economic_ledger_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
-    report_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
+    permit_hash: str = Field(pattern=BLAKE3_PATTERN)
+    continued_from_state_hash: str = Field(pattern=BLAKE3_PATTERN)
+    protected_result_hash: str = Field(pattern=BLAKE3_PATTERN)
+    execution_ledger_hash: str = Field(pattern=BLAKE3_PATTERN)
+    economic_ledger_hash: str = Field(pattern=BLAKE3_PATTERN)
+    report_hash: str = Field(pattern=BLAKE3_PATTERN)
     formation_count: int = Field(gt=0)
     listing_count: int = Field(gt=0)
     backtesting_owner: Literal["SHARED_PORTFOLIO_BACKTESTING"] = "SHARED_PORTFOLIO_BACKTESTING"
@@ -1007,7 +1008,7 @@ class ProtectedContinuationResult(_Contract):
     quietly grew its own mechanics would produce numbers nobody could compare.
     """
 
-    result_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
+    result_hash: str = Field(pattern=BLAKE3_PATTERN)
 
     @classmethod
     def create(cls, **values: object) -> Self:

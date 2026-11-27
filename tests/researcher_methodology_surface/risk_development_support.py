@@ -28,6 +28,7 @@ from alphalattice.investment.risk_research.experiments.window import (
 from alphalattice.protocols.research_authoring.contracts import (
     ResolvedResearchAuthority,
 )
+from tests._support.identity_fixtures import fixture_digest
 from tests.researcher_methodology_surface.real_workspace import RealRiskWorkspace
 
 PLAYPEN_ROOT = Path(__file__).resolve().parents[2]
@@ -55,7 +56,7 @@ def _bounded_authority(
         sessions=requested,
         # The authority's own watermark scope. It is bound into identity and is
         # deliberately never compared with the surface's.
-        source_watermark_hash="0" * 64,
+        source_watermark_hash=fixture_digest("risk authority watermark"),
     )
     return authority, requested
 

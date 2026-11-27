@@ -575,11 +575,13 @@ def test_the_resolved_inputs_must_match_the_backtesting_session_axis() -> None:
 
 
 def test_the_walk_records_every_risk_lane_it_consumed() -> None:
+    from alphalattice.kernel.identity import is_blake3
+
     provider = _provider(count=4)
     _drive(provider, formations=4, growth=np.zeros(LISTINGS))
     consumed = provider.consumed_risk_projection_hashes
     assert len(consumed) == 4
-    assert all(len(value) == 64 for value in consumed)
+    assert all(is_blake3(value) for value in consumed)
 
 
 def test_the_executor_holds_no_covariance_matrix() -> None:

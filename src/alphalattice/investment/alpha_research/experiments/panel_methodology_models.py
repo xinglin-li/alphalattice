@@ -65,12 +65,13 @@ from alphalattice.investment.alpha_research.inputs.panel_feature_views import (
     HistoricalPanelEvidenceViewId,
     InstalledPanelViewId,
 )
+from alphalattice.kernel.identity import BLAKE3_PATTERN
 
 type FloatArray = npt.NDArray[np.float64]
 type BoolArray = npt.NDArray[np.bool_]
 type IntArray = npt.NDArray[np.int64]
 type ModelFamilyId = Literal["RIDGE", "ELASTIC_NET", "LIGHTGBM"]
-_HASH = r"^[0-9a-f]{64}$"
+_HASH = BLAKE3_PATTERN
 _CONTROL_VIEW_ID: Final[InstalledPanelViewId] = "RELATIVE_CONTROL"
 _RIDGE_ALPHAS = (0.1, 1.0, 10.0, 100.0)
 _ELASTIC_MULTIPLIERS = (0.02, 0.05, 0.2, 0.5)

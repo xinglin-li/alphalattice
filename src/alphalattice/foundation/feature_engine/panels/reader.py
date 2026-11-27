@@ -13,13 +13,13 @@ import pyarrow.parquet as pq
 
 from alphalattice.capabilities.domain_contracts.bounded_memo import BoundedMemo
 from alphalattice.control.workspace_runtime.artifacts import ArtifactResolver
+from alphalattice.control.workspace_runtime.verified_facts import verified_file_digest
 from alphalattice.foundation.feature_engine.contracts import canonical_hash, listing_set_digest
 from alphalattice.foundation.feature_engine.panels.identity import (
     panel_chunk_hash,
     panel_rows_match_their_hashes,
     panel_schema_hash,
 )
-from alphalattice.kernel.identity import integrity_sha256
 
 if TYPE_CHECKING:
     pass
@@ -482,7 +482,7 @@ class FeaturePanelReader:
             raise ValueError("feature panel chunk logical content hash mismatch")
         # The row hashes are bound; the values must be the ones they were hashed from
         # (LAWS.md EV2), checked once per file content in this process.
-        digest = integrity_sha256(Path(str(path)).read_bytes()).hexdigest()
+        digest = verified_file_digest(Path(str(path)))
         if digest not in _VALUES_VERIFIED:
             if not panel_rows_match_their_hashes(
                 parquet.read(), row_hash_factor_ids=row_hash_factor_ids

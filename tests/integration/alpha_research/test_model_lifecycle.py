@@ -6,7 +6,6 @@ from collections import Counter
 from contextlib import contextmanager
 from dataclasses import replace
 from datetime import date, timedelta
-from hashlib import sha256
 from io import BytesIO
 from pathlib import Path
 from threading import Barrier, Lock, get_ident
@@ -43,6 +42,8 @@ from alphalattice.investment.alpha_research.scores.product_lifecycle import (
     resolve_alpha_refit_plan,
 )
 from alphalattice.investment.alpha_research.scores.product_replay import live_vintages
+from alphalattice.kernel.identity import blake3_digest, blake3_filename
+from tests._support.identity_fixtures import fixture_digest
 
 COMPONENT = INSTALLED_HETEROGENEOUS_ALPHA_STRATEGY.component("G6_R0_FAST_REBOUND")
 
@@ -60,7 +61,7 @@ def test_declared_periods_resolve_training_without_changing_the_executor(interva
         vintage=vintage,
         sessions=days,
         component_recipe_hash=COMPONENT.recipe_hash,
-        source_binding_hash="a" * 64,
+        source_binding_hash=fixture_digest("a"),
         ordered_listing_ids=("a", "b"),
         ordered_feature_ids=COMPONENT.ordered_feature_ids,
     )
@@ -93,10 +94,10 @@ def _assert_staged_refit_plan_identity(plan, monkeypatch):
         assert plan.verify_identity() is plan
         reread = type(plan).model_validate_json(plan.model_dump_json())
         assert reread == plan and reread is not plan
-        modified = plan.model_copy(update={"source_binding_hash": "b" * 64})
+        modified = plan.model_copy(update={"source_binding_hash": fixture_digest("b")})
         with pytest.raises(ValueError, match="model_lifecycle_identity_invalid"):
             modified.verify_identity()
-    assert seen == ["a" * 64, "b" * 64]
+    assert seen == [fixture_digest("a"), fixture_digest("b")]
 
 
 def _source(day_count=250):
@@ -115,7 +116,7 @@ def _source(day_count=250):
         volume=rng.uniform(1000, 2000, close.shape),
         market_context_values=rng.normal(size=(len(days), 3)),
         sector_trend_values=rng.normal(size=(len(days), 1)),
-        source_binding_hash="b" * 64,
+        source_binding_hash=fixture_digest("b"),
     )
 
 
@@ -133,8 +134,10 @@ def retained_lifecycle_admission(tmp_path):
         targets=np.log(source.close / source.open),
         eligible=np.ones(source.close.shape, dtype=np.bool_),
     )
-    old = publish_training_observations(store, **args, target_authority_hash="c" * 64)
-    current = publish_training_observations(store, **args, target_authority_hash="d" * 64)
+    old = publish_training_observations(store, **args, target_authority_hash=fixture_digest("c"))
+    current = publish_training_observations(
+        store, **args, target_authority_hash=fixture_digest("d")
+    )
     assert old.content_hash != current.content_hash
     assert old.array_file_hash == current.array_file_hash
     rule = AlphaModelLifecycleRecipe.create(
@@ -173,7 +176,7 @@ def retained_lifecycle_admission(tmp_path):
         formation_start=date(2025, 10, 1),
         formation_end=date(2025, 10, 1),
         maximum_fit_attempts=0,
-        environment_hash="e" * 64,
+        environment_hash=fixture_digest("e"),
     )
     root = tmp_path / "admission"
     root.mkdir()
@@ -258,7 +261,7 @@ def test_admission_verifies_unique_arrays_in_parallel_after_serial_bindings(
 
     def counted_load(stream, *args, **kwargs):
         archive = load(stream, *args, **kwargs)
-        identity = sha256(stream.getvalue()).hexdigest()
+        identity = blake3_digest(stream.getvalue())
         return checked_archive(archive, identity) if identity in hashes else archive
 
     monkeypatch.setattr(Path, "open", counted_open)
@@ -322,9 +325,9 @@ def test_admission_refuses_array_tamper_before_reading_initial_children(
         lifecycle_hash=authority.lifecycle.content_hash,
         vintage=prepared.plan.vintage,
         seed=1729,
-        estimator_hash="f" * 64,
-        payload_hash="f" * 64,
-        source_index_hash="f" * 64,
+        estimator_hash=fixture_digest("f"),
+        payload_hash=fixture_digest("f"),
+        source_index_hash=fixture_digest("f"),
         environment_hash=authority.environment_hash,
     )
     authority = AlphaModelLifecycleAdmission.create(
@@ -396,7 +399,7 @@ def test_admission_refuses_array_tamper_before_reading_initial_children(
 
     def counted_load(stream, *args, **kwargs):
         archive = load(stream, *args, **kwargs)
-        identity = sha256(stream.getvalue()).hexdigest()
+        identity = blake3_digest(stream.getvalue())
         return checked_archive(archive, identity) if identity in hashes else archive
 
     monkeypatch.setattr(Path, "open", counted_open)
@@ -426,7 +429,7 @@ def test_admission_decodes_every_npz_member_without_pickle(
     stream = BytesIO()
     np.savez(stream, features=np.zeros((1, 1)), untrusted=np.array([{}], dtype=object))
     payload = stream.getvalue()
-    identity = sha256(payload).hexdigest()
+    identity = blake3_digest(payload)
     assert (
         store._publish_packed_bytes(category="current/lifecycle-arrays", payload=payload)
         == identity
@@ -441,9 +444,11 @@ def test_admission_decodes_every_npz_member_without_pickle(
             "array_file_hash": identity,
         }
     )
-    (store.root / "current/lifecycle-prepared-refits" / f"{prepared.content_hash}.json").write_text(
-        prepared.model_dump_json(), encoding="utf-8", newline="\n"
-    )
+    (
+        store.root
+        / "current/lifecycle-prepared-refits"
+        / f"{blake3_filename(prepared.content_hash)}.json"
+    ).write_text(prepared.model_dump_json(), encoding="utf-8", newline="\n")
     authority = AlphaModelLifecycleAdmission.create(
         **{
             **{
@@ -517,7 +522,7 @@ def _training_inputs(store, source, eligible):
         store,
         observation_hash=obs.snapshot_hash,
         target_method_id=COMPONENT.target_recipe,
-        target_authority_hash="c" * 64,
+        target_authority_hash=fixture_digest("c"),
         label_available_sessions=tuple(
             day + timedelta(days=1) for day in source.formation_sessions
         ),
@@ -544,7 +549,7 @@ def test_maturity_and_budget_refuse_before_fit(tmp_path: Path, monkeypatch, temp
                 store,
                 observation_hash=obs.snapshot_hash,
                 target_method_id=COMPONENT.target_recipe,
-                target_authority_hash="c" * 64,
+                target_authority_hash=fixture_digest("c"),
                 label_available_sessions=labels.label_available_sessions,
                 targets=targets,
                 eligible=np.ones(targets.shape, dtype=np.bool_),
@@ -781,25 +786,25 @@ def test_legacy_panel_and_package_component_identities_do_not_rotate():
     payload = {
         "data_snapshot_handle": "current",
         "universe_handle": "us-current-index-research",
-        "panel_snapshot_hash": "1" * 64,
+        "panel_snapshot_hash": fixture_digest("1"),
         "panel_manifest_ref": "playpen://panel/fixture",
-        "universe_revision_sha256": "2" * 64,
+        "universe_revision_sha256": fixture_digest("2"),
         "ordered_listing_ids": ["one", "two"],
         "sessions": ["2026-07-01"],
-        "source_watermark_hash": "3" * 64,
+        "source_watermark_hash": fixture_digest("3"),
     }
     legacy = ResolvedResearchAuthority(**payload, authority_hash=canonical_hash(payload))
     assert legacy.model_dump(mode="json", exclude={"authority_hash"}) == payload
     with pytest.raises(ValueError, match="source_authority_shape_invalid"):
         ResolvedResearchAuthority.create(
-            **payload, training_snapshot_hash="4" * 64, training_manifest_ref="training"
+            **payload, training_snapshot_hash=fixture_digest("4"), training_manifest_ref="training"
         )
     component = {
         "kind": "ComponentPlanEntry",
         "component_id": "component",
         "allocation_basis_points": 10000,
         "family_id": "family",
-        "recipe_hash": "1" * 64,
+        "recipe_hash": fixture_digest("1"),
         "target_recipe": "target",
         "objective": "objective",
     }
@@ -911,7 +916,7 @@ def test_source_successor_keeps_old_period_and_cannot_reset_fit_permission(tmp_p
     args = dict(
         observation_hash=snapshot.snapshot_hash,
         target_method_id=COMPONENT.target_recipe,
-        target_authority_hash="a" * 64,
+        target_authority_hash=fixture_digest("lifecycle target authority"),
         label_available_sessions=tuple(
             day + timedelta(days=1) for day in source.formation_sessions
         ),
@@ -948,12 +953,13 @@ def test_source_successor_keeps_old_period_and_cannot_reset_fit_permission(tmp_p
         formation_start=date(2025, 7, 1),
         formation_end=date(2025, 7, 1),
         maximum_fit_attempts=0,
-        environment_hash="b" * 64,
+        environment_hash=fixture_digest("lifecycle environment"),
         fit_vintages=("2025-07", "2025-10"),
         training_factor_ids=("fixture",),
         renewal_through=date(2025, 12, 1),
     )
-    newer = publish_training_observations(store, **args, training_support_hash="c" * 64)
+    support_hash = fixture_digest("renewed training support")
+    newer = publish_training_observations(store, **args, training_support_hash=support_hash)
     updated = renew_lifecycle_admission(
         store, previous=base, observations=newer, through=date(2025, 7, 2)
     )
@@ -978,7 +984,7 @@ def test_source_successor_keeps_old_period_and_cannot_reset_fit_permission(tmp_p
     changed = targets.copy()
     changed[180] += 1
     correction = publish_training_observations(
-        store, **{**args, "targets": changed}, training_support_hash="c" * 64
+        store, **{**args, "targets": changed}, training_support_hash=support_hash
     )
     with pytest.raises(ValueError, match="correction_not_admitted"):
         renew_lifecycle_admission(
@@ -1021,7 +1027,7 @@ def _verify_captured_successors(
     installed = store._path("current/lifecycle-admissions", base.content_hash, "json")
     binding = ResearchWorkspaceScoreInput(
         strategy_package_id="synthetic",
-        strategy_package_hash="d" * 64,
+        strategy_package_hash=fixture_digest("captured successor package"),
         authority_relative_path=installed.relative_to(workspace).as_posix(),
         authority_hash=base.content_hash,
         source_kind="RECORDED_INPUT_SNAPSHOT",
@@ -1120,9 +1126,9 @@ def test_context_history_uses_each_dates_reference_not_the_latest_roster(monkeyp
                 holding_end_sessions=ends,
                 listing_ids=ids,
                 raw_log_returns=raw,
-                target_evidence_hash="a" * 64,
+                target_evidence_hash=fixture_digest("a"),
                 sector_by_listing_id=sectors,
-                sector_revision="b" * 64,
+                sector_revision=fixture_digest("b"),
                 reference_eligible=mask,
             )
         work = {row["detail"]: row["count"] for row in readout(ledger)["spans"]}
@@ -1227,7 +1233,7 @@ def test_context_history_uses_each_dates_reference_not_the_latest_roster(monkeyp
             raw_simple_execution_returns=matrices[2],
             sector_context_values=contexts[1],
             market_context_values=contexts[2],
-            source_identity_hashes=MappingProxyType({"fixture": "c" * 64}),
+            source_identity_hashes=MappingProxyType({"fixture": fixture_digest("c")}),
             reference_eligible=reference,
         )
         plan = preflight_panel_feature_plan(
@@ -1246,7 +1252,7 @@ def test_context_history_uses_each_dates_reference_not_the_latest_roster(monkeyp
         result = materialize_panel_feature_projection(
             plan=plan,
             method_id="RELATIVE_CONTROL",
-            program_hash="d" * 64,
+            program_hash=fixture_digest("d"),
             fold_index=0,
             boundary_id="OUTER",
             training_sessions=days[100:200],

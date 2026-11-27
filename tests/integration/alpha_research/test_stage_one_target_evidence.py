@@ -49,11 +49,12 @@ from alphalattice.investment.alpha_research.targets.unbounded import (
     build_unbounded_sensitivity_target_recipe,
     compile_unbounded_sensitivity_target_surface,
 )
+from tests._support.identity_fixtures import fixture_digest
 
 CASE_ROOT = Path(__file__).resolve().parents[3] / "tests/researcher_methodology_surface"
 PLAYPEN_ROOT = CASE_ROOT.parents[1]
 
-_SECTOR_REVISION = "a" * 64
+_SECTOR_REVISION = fixture_digest("a")
 
 
 def test_the_one_session_publication_policy_did_not_move() -> None:
@@ -63,7 +64,10 @@ def test_the_one_session_publication_policy_did_not_move() -> None:
     assert policy.admitted_recipe_ids == (ONE_SESSION_RECIPE_ID,)
     assert policy.development_split_semantics == "NON_OVERLAPPING_SINGLE_SESSION_LABEL"
     assert policy.publication_scope == "DEVELOPMENT_AND_SEALED_HOLDOUT"
-    assert policy.policy_hash == "ac847376d78540416c725a94defacadb2458ffdb1132caae7430dfb94ba26823"
+    assert (
+        policy.policy_hash
+        == "blake3:89c1a14948426528ca9e73416377aecda3d9d792c9bedf45196b4de12b1b5cb5"
+    )
 
 
 def test_five_session_admission_is_a_second_policy_scoped_to_development() -> None:
@@ -89,10 +93,10 @@ def test_the_development_only_manifest_cannot_carry_a_sealed_chunk() -> None:
                 "research_cadence": "DAILY",
                 "market_as_of": "2026-01-05",
                 "listing_ids": ["AAA"],
-                "listing_set_hash": "b" * 64,
-                "schedule_hash": "c" * 64,
-                "ordered_session_triples_hash": "d" * 64,
-                "source_rows_semantic_hash": "e" * 64,
+                "listing_set_hash": fixture_digest("b"),
+                "schedule_hash": fixture_digest("c"),
+                "ordered_session_triples_hash": fixture_digest("d"),
+                "source_rows_semantic_hash": fixture_digest("e"),
                 "price_basis": "open_split_adjusted",
                 "return_formula_identity": "five-session",
                 "corporate_action_identity": "provider-split-adjusted-open-and-period-dividend",
@@ -105,15 +109,15 @@ def test_the_development_only_manifest_cannot_carry_a_sealed_chunk() -> None:
                         "row_count": 1,
                         "first_formation_session": "2026-01-05",
                         "last_formation_session": "2026-01-05",
-                        "content_hash": "f" * 64,
-                        "metadata_hash": "0" * 64,
+                        "content_hash": fixture_digest("f"),
+                        "metadata_hash": fixture_digest("0"),
                         "uri": "playpen://x",
                     }
                 ],
                 "development_formation_count": 1,
                 "maturity_lag_sessions": 6,
                 "limitations": [],
-                "snapshot_hash": "1" * 64,
+                "snapshot_hash": fixture_digest("1"),
             }
         )
 
@@ -270,10 +274,10 @@ def _arm(arm_id: str, *, role: str, outcome: str, split: str) -> AlphaComparison
     return AlphaComparisonArm(
         arm_id=arm_id,
         target_recipe_id="SECTOR_RESIDUAL_CROSS_SECTIONAL_STD_Z",
-        target_method_hash="a" * 64,
+        target_method_hash=fixture_digest("a"),
         execution_outcome_recipe_id=outcome,
-        causal_outcome_snapshot_hash="b" * 64,
-        outcome_method_binding_hash="c" * 64,
+        causal_outcome_snapshot_hash=fixture_digest("b"),
+        outcome_method_binding_hash=fixture_digest("c"),
         maturity_lag_sessions=2,
         split_policy_hash=split,
         evaluation_policy_id="ALPHA_DEFAULT",
@@ -286,29 +290,32 @@ def test_the_comparison_program_refuses_a_pair_on_two_clocks() -> None:
 
     arms = (
         _arm(
-            "ref", role="CANONICAL_BOUNDED_REFERENCE", outcome=ONE_SESSION_RECIPE_ID, split="d" * 64
+            "ref",
+            role="CANONICAL_BOUNDED_REFERENCE",
+            outcome=ONE_SESSION_RECIPE_ID,
+            split=fixture_digest("d"),
         ),
         _arm(
             "ctl",
             role="UNBOUNDED_SENSITIVITY_CONTROL",
             outcome=FIVE_SESSION_RECIPE_ID,
-            split="d" * 64,
+            split=fixture_digest("d"),
         ),
         _arm(
             "cand",
             role="LONGER_HORIZON_CANDIDATE",
             outcome=FIVE_SESSION_RECIPE_ID,
-            split="e" * 64,
+            split=fixture_digest("e"),
         ),
     )
     with pytest.raises(ValueError, match="pair_clock_mismatch"):
         AlphaTargetPreprocessingComparisonProgram.create(
             ordered_arms=arms,
-            common_authority_hash="f" * 64,
-            feature_panel_snapshot_hash="2" * 64,
-            factor_development_receipt_hash="3" * 64,
+            common_authority_hash=fixture_digest("f"),
+            feature_panel_snapshot_hash=fixture_digest("2"),
+            factor_development_receipt_hash=fixture_digest("3"),
             ordered_feature_ids=("factor.a",),
-            ordered_listing_ids_hash="0" * 64,
+            ordered_listing_ids_hash=fixture_digest("0"),
             model_capability_handle="capability-1",
             model_recipe=_installed_model_recipe()[0],
             model_search_domain_hash=_installed_model_recipe()[1],
@@ -324,23 +331,29 @@ def test_the_comparison_program_fixes_arm_order_before_anything_runs() -> None:
             "ctl",
             role="UNBOUNDED_SENSITIVITY_CONTROL",
             outcome=ONE_SESSION_RECIPE_ID,
-            split="d" * 64,
+            split=fixture_digest("d"),
         ),
         _arm(
-            "ref", role="CANONICAL_BOUNDED_REFERENCE", outcome=ONE_SESSION_RECIPE_ID, split="d" * 64
+            "ref",
+            role="CANONICAL_BOUNDED_REFERENCE",
+            outcome=ONE_SESSION_RECIPE_ID,
+            split=fixture_digest("d"),
         ),
         _arm(
-            "cand", role="LONGER_HORIZON_CANDIDATE", outcome=FIVE_SESSION_RECIPE_ID, split="e" * 64
+            "cand",
+            role="LONGER_HORIZON_CANDIDATE",
+            outcome=FIVE_SESSION_RECIPE_ID,
+            split=fixture_digest("e"),
         ),
     )
     with pytest.raises(ValueError, match="arm_order_invalid"):
         AlphaTargetPreprocessingComparisonProgram.create(
             ordered_arms=arms,
-            common_authority_hash="f" * 64,
-            feature_panel_snapshot_hash="2" * 64,
-            factor_development_receipt_hash="3" * 64,
+            common_authority_hash=fixture_digest("f"),
+            feature_panel_snapshot_hash=fixture_digest("2"),
+            factor_development_receipt_hash=fixture_digest("3"),
             ordered_feature_ids=("factor.a",),
-            ordered_listing_ids_hash="0" * 64,
+            ordered_listing_ids_hash=fixture_digest("0"),
             model_capability_handle="capability-1",
             model_recipe=_installed_model_recipe()[0],
             model_search_domain_hash=_installed_model_recipe()[1],

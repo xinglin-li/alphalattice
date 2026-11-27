@@ -13,6 +13,7 @@ from alphalattice.interface.local_application.portfolio_research import (
     PortfolioResearchOperationRequest,
     PortfolioResearchRequestDocument,
 )
+from tests._support.identity_fixtures import fixture_digest
 
 
 def test_readback_route_keeps_current_replay_and_foundation_admission_strict(monkeypatch, tmp_path):
@@ -57,13 +58,13 @@ def test_readback_route_keeps_current_replay_and_foundation_admission_strict(mon
     ):
         response = app.operate(
             PortfolioResearchOperationRequest(
-                operation=operation, foundation_admission_hash="a" * 64
+                operation=operation, foundation_admission_hash=fixture_digest("a")
             ),
             caller="EXTERNAL_AUTOMATION",
         )
         assert response == {
             "status": "REFUSED",
-            "foundation_admission_hash": "a" * 64,
+            "foundation_admission_hash": fixture_digest("a"),
             "failure_code": "research_foundation.admission_artifact_unavailable",
             "numerical_call_count": 0,
             "detail": (

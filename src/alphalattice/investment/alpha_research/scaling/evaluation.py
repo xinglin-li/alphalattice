@@ -8,6 +8,7 @@ from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 from alphalattice.capabilities.domain_contracts.identity import canonical_hash
 from alphalattice.capabilities.domain_contracts.sealing import seal_model
+from alphalattice.kernel.identity import BLAKE3_PATTERN
 
 
 class _Contract(BaseModel):  # type: ignore[misc]
@@ -18,13 +19,13 @@ class CrossSectionalScaleMethodEvidence(_Contract):
     """Seal one dispersion method accuracy and scale-ratio summary on common observations."""
 
     recipe_id: str
-    recipe_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
-    forecast_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
+    recipe_hash: str = Field(pattern=BLAKE3_PATTERN)
+    forecast_hash: str = Field(pattern=BLAKE3_PATTERN)
     common_observation_count: int = Field(ge=1)
     mean_absolute_error: float = Field(ge=0.0, allow_inf_nan=False)
     normalized_mean_absolute_error: float = Field(ge=0.0, allow_inf_nan=False)
     mean_forecast_to_realized_ratio: float = Field(gt=0.0, allow_inf_nan=False)
-    evidence_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
+    evidence_hash: str = Field(pattern=BLAKE3_PATTERN)
 
     @classmethod
     def create(cls, **values: object) -> Self:
@@ -63,14 +64,14 @@ class CrossSectionalScaleComparisonEvidence(_Contract):
     """Seal primary scale comparisons, a selected recipe and the HAR trigger disposition."""
 
     kind: Literal["CrossSectionalScaleComparisonEvidence"] = "CrossSectionalScaleComparisonEvidence"
-    target_evidence_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
+    target_evidence_hash: str = Field(pattern=BLAKE3_PATTERN)
     horizon_sessions: Literal[1, 5]
     primary_methods: tuple[CrossSectionalScaleMethodEvidence, ...] = Field(min_length=3)
     selected_primary_recipe_id: str
-    selected_primary_recipe_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
+    selected_primary_recipe_hash: str = Field(pattern=BLAKE3_PATTERN)
     har_disposition: Literal["TRIGGERED", "NOT_TRIGGERED"]
     har_trigger_reason: str
-    evidence_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
+    evidence_hash: str = Field(pattern=BLAKE3_PATTERN)
 
     @model_validator(mode="after")  # type: ignore[untyped-decorator]
     def validate_identity(self) -> Self:

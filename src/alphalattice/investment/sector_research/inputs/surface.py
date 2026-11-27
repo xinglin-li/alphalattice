@@ -25,7 +25,7 @@ from alphalattice.capabilities.quant.cross_section import (
     median_mad_winsor,
 )
 from alphalattice.capabilities.quant.sector_history import sector_positions, sector_treatment_of
-from alphalattice.kernel.identity import identity_sha256
+from alphalattice.kernel.identity import identity_blake3, integrity_blake3, tagged_blake3
 
 from .contracts import (
     SectorContextManifest,
@@ -313,9 +313,11 @@ def compile_sector_context_surface(
                     "source": source_surface_hash,
                     "sessions": event_sessions,
                     "listings": listings,
-                    "reference_mask": identity_sha256(
-                        np.ascontiguousarray(reference_eligible).tobytes()
-                    ).hexdigest(),
+                    "reference_mask": tagged_blake3(
+                        identity_blake3(
+                            memoryview(np.ascontiguousarray(reference_eligible)).cast("B")
+                        )
+                    ),
                     "reference_reduction": "COMPACT_SESSION_ROWS",
                 },
                 digest=canonical_hash,
@@ -394,7 +396,7 @@ def compile_sector_context_surface(
         sector_ids=sectors,
         available_row_count=int(np.isfinite(values).all(axis=2).sum()),
         table_content_hash=table_hash,
-        payload_sha256=identity_sha256(payload).hexdigest(),
+        payload_digest=tagged_blake3(integrity_blake3(payload)),
     )
     return SectorContextSurface(manifest=manifest, values=values), table, payload
 

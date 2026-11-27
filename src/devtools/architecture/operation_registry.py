@@ -41,6 +41,7 @@ from alphalattice.interface.local_application.cli_contract import (
     worded,
 )
 from alphalattice.kernel.config import Change, override
+from alphalattice.kernel.identity import BLAKE3_PATTERN
 from devtools.architecture import structural
 from devtools.architecture.neutral_changes import source_syntax_tree
 from devtools.architecture.registries import refusal_entries
@@ -205,8 +206,46 @@ def _compatible(before: Any, after: Any, key: str = "") -> bool:
     return bool(before == after)
 
 
+def _tag_digest_schema(value: Any) -> Any:
+    if isinstance(value, dict):
+        return {
+            key: BLAKE3_PATTERN
+            if key == "pattern" and part == r"^[0-9a-f]{64}$"
+            else _tag_digest_schema(part)
+            for key, part in value.items()
+        }
+    if isinstance(value, list):
+        return [_tag_digest_schema(part) for part in value]
+    return value
+
+
+def _digest_transition(key: str, row: Any, frozen: Any, *, retired: bool) -> Version | None:
+    """Read one request transition whose sole schema change is the digest pattern."""
+    if (
+        not key.startswith(("request:Request.", "request:Request/"))
+        or retired
+        or not isinstance(row, dict)
+        or row.keys() != {"old_schema", "new_schema", "release", "reason"}
+        or not isinstance(frozen, dict)
+        or row["old_schema"] != frozen
+        or row["new_schema"] == frozen
+        or row["new_schema"] != _tag_digest_schema(frozen)
+        or not isinstance(row["reason"], str)
+        or not row["reason"].strip()
+    ):
+        return None
+    try:
+        return Version(row["release"])
+    except (TypeError, ValueError):
+        return None
+
+
 def surface_problems(
-    manifest: dict[str, Any], live: dict[str, Any], *, previous: dict[str, Any] | None = None
+    manifest: dict[str, Any],
+    live: dict[str, Any],
+    *,
+    previous: dict[str, Any] | None = None,
+    unreleased: Version | None = None,
 ) -> list[str]:
     """Refuse silent interface loss, including edits that erase frozen obligations."""
 
@@ -244,8 +283,28 @@ def surface_problems(
     for key in (previous or {}).get("retirements", {}):
         if key not in retirements:
             out.append(f"{prefix} {key}: retirement erased; retain its history")
+    transitions = manifest.get("digest_transitions", {})
+    if not isinstance(transitions, dict):
+        return [*out, f"{prefix} digest_transitions: expected a mapping"]
+    for key, record in (previous or {}).get("digest_transitions", {}).items():
+        if transitions.get(key) != record:
+            out.append(f"{prefix} {key}: digest transition edited or erased; retain its history")
+    active = set()
+    for key, row in transitions.items():
+        cutover = _digest_transition(key, row, frozen.get(key), retired=key in retirements)
+        if cutover is None:
+            out.append(f"{prefix} {key}: invalid digest transition")
+            continue
+        if release < cutover and unreleased != cutover:
+            continue
+        active.add(key)
+        observed = live.get(key)
+        expected = row["new_schema"]
+        valid = _compatible(expected, observed) if release > cutover else expected == observed
+        if not valid:
+            out.append(f"{prefix} {key}: live schema differs from the digest transition")
     for key, value in frozen.items():
-        if not _compatible(value, live.get(key)) and key not in retirements:
+        if key not in active and key not in retirements and not _compatible(value, live.get(key)):
             out.append(f"{prefix} {key}: interface changed; restore or declare Deprecated")
     return out
 
@@ -263,8 +322,11 @@ def userspace_problems(root: Path) -> list[str]:
     previous = json.loads(old.stdout) if old.returncode == 0 else None
     project = tomllib.loads((root / "pyproject.toml").read_text(encoding="utf-8"))["project"]
     manifest["release"] = project["version"]
-    out = surface_problems(manifest, agent_surface(root), previous=previous)
     notes = (root / "docs/public-source/release-notes.md").read_text(encoding="utf-8")
+    # The release notes name the in-development target before the package version is bumped.
+    upcoming = re.findall(r"^## (\d+\.\d+\.\d+) \(unreleased\)$", notes, re.M)
+    unreleased = Version(upcoming[0]) if len(upcoming) == 1 else None
+    out = surface_problems(manifest, agent_surface(root), previous=previous, unreleased=unreleased)
     for key, row in manifest["retirements"].items():
         section = re.search(rf"### {row['status']}\n(.*?)(?=\n### |\n## |\Z)", notes, re.S)
         if not section or key not in section[1] or row["reason"] not in section[1]:

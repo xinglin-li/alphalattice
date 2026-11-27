@@ -31,7 +31,7 @@ from alphalattice.control.product_host.composition.research_workspace import (
 from alphalattice.control.product_host.composition.task_kinds import (
     EVIDENCE_INSTALL_TASK_KIND as EVIDENCE_INSTALL_TASK_KIND,
 )
-from alphalattice.control.workspace_runtime.verified_facts import file_sha256
+from alphalattice.control.workspace_runtime.verified_facts import verified_file_digest
 from alphalattice.evidence.alternative_evidence.contracts import (
     WHOLE_FILING_BYTES,
     AlternativeEvidenceClass,
@@ -50,6 +50,7 @@ from alphalattice.evidence.alternative_evidence.runtime.task_adapter import (
 from alphalattice.evidence.alternative_evidence.sources.recorded import (
     RecordedEvidenceDocument,
 )
+from alphalattice.kernel.identity import BLAKE3_PATTERN
 from alphalattice.oversight.chief_risk_officer.portfolio_evidence.contracts import (
     AdmittedListingTickerAuthority,
 )
@@ -64,7 +65,7 @@ from alphalattice.evidence.alternative_evidence.sources.admission import (
 )
 
 EVIDENCE_REVIEW_MANIFEST_SCHEMA = "evidence-review-workspace-authority"
-_HASH = r"^[0-9a-f]{64}$"
+_HASH = BLAKE3_PATTERN
 
 
 class _Contract(BaseModel):  # type: ignore[misc]
@@ -75,7 +76,7 @@ class EvidenceReviewArtifactBinding(_Contract):
     """One confined JSON child and both its byte and contract identities."""
 
     relative_path: str = Field(min_length=1, max_length=1024)
-    file_sha256: str = Field(pattern=_HASH)
+    file_digest: str = Field(pattern=_HASH)
     content_hash: str = Field(pattern=_HASH)
 
     @model_validator(mode="after")  # type: ignore[untyped-decorator]
@@ -470,7 +471,7 @@ def verify_evidence_review_workspace(
     """Open and verify local authority children without claiming a Provider."""
     root = workspace.resolve()
     manifest_path = _confined(root, binding.relative_path)
-    if _file_digest(manifest_path) != binding.file_sha256:
+    if _file_digest(manifest_path) != binding.file_digest:
         raise ResearchWorkspaceError("evidence_review.manifest_file_identity_invalid")
     manifest = _read_model(manifest_path, EvidenceReviewWorkspaceManifest)
     registry = _read_bound(
@@ -513,7 +514,7 @@ def _read_bound[T: BaseModel](
     identity_field: str,
 ) -> T:
     path = _confined(root, binding.relative_path)
-    if _file_digest(path) != binding.file_sha256:
+    if _file_digest(path) != binding.file_digest:
         raise ResearchWorkspaceError("evidence_review.child_file_identity_invalid")
     value = _read_model(path, model)
     if getattr(value, identity_field, None) != binding.content_hash:
@@ -550,7 +551,7 @@ def _confined(root: Path, relative_path: str) -> Path:
 def _file_digest(path: Path) -> str:
     """The file's digest through the file-trust owner: hashed only when its stamp changed."""
     try:
-        return file_sha256(path)
+        return verified_file_digest(path)
     except OSError as error:
         raise ResearchWorkspaceError("evidence_review.artifact_unreadable") from error
 

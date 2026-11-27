@@ -8,6 +8,8 @@ from uuid import UUID
 
 from pydantic import AfterValidator, AwareDatetime, BaseModel, ConfigDict, StringConstraints
 
+from alphalattice.kernel.identity import BLAKE3_PATTERN
+
 type SchemaVersion = Literal["1"]
 
 
@@ -28,7 +30,7 @@ ShortString = Annotated[
     str,
     StringConstraints(strip_whitespace=True, min_length=1, max_length=256),
 ]
-Sha256Hex = Annotated[str, StringConstraints(pattern=r"^[0-9a-f]{64}$")]
+Blake3Identity = Annotated[str, StringConstraints(pattern=BLAKE3_PATTERN)]
 
 
 class DomainModel(BaseModel):  # type: ignore[misc]

@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import re
 from collections.abc import Iterable, Mapping
 from datetime import datetime
 from functools import cache
@@ -13,6 +12,7 @@ from pydantic import BaseModel, ConfigDict, Field
 
 from alphalattice.capabilities.domain_contracts.identity import canonical_hash
 from alphalattice.capabilities.domain_contracts.project_layout import runtime_json
+from alphalattice.kernel.identity import BLAKE3_PATTERN, is_blake3
 
 
 @cache
@@ -136,7 +136,7 @@ def _observed_question(
         not isinstance(code, str)
         or code not in _catalog()
         or not isinstance(digest, str)
-        or re.fullmatch(r"[0-9a-f]{64}", digest) is None
+        or not is_blake3(digest)
         or scope is None
         or record.get("state") not in {"ASKED", "ANSWERED"}
         or not isinstance(row.get("correlation_ids"), list | tuple)
@@ -251,7 +251,7 @@ class PersonConfirmation(BaseModel):  # type: ignore[misc]
     """The one-line question the agent asked, as it asked it."""
     words: str = Field(min_length=1, max_length=600)
     """The person's answer, verbatim, never paraphrased."""
-    decision_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
+    decision_hash: str = Field(pattern=BLAKE3_PATTERN)
     """The request it answers, without this confirmation."""
     nonce: str | None = Field(default=None, pattern=r"^[0-9a-f]{32}$")
     """For the person's next yes to a decision already made: the nonce its refusal named."""

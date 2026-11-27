@@ -1,4 +1,3 @@
-import hashlib
 import json
 from dataclasses import replace
 from datetime import UTC, date, datetime
@@ -23,6 +22,7 @@ from alphalattice.foundation.market_data_ops.sources.universe import (
     bootstrap_from_candidate_manifest_document,
     candidate_manifest_document,
 )
+from alphalattice.kernel.identity import identity_blake3, tagged_blake3
 
 TEST_SOURCE = "src/alphalattice/foundation/market_data_ops/sources/universe.py"
 PROFILE = """schema: alphalattice.playpen.market-profile
@@ -69,29 +69,29 @@ def _document(years: int, listings: int = 100) -> dict[str, object]:
     document = candidate_manifest_document(manifest)
     document.pop("content_hash")
     sealed = json.dumps(document, ensure_ascii=False, sort_keys=True, separators=(",", ":"))
-    return document | {"content_hash": hashlib.sha256(sealed.encode()).hexdigest()}
+    return document | {"content_hash": tagged_blake3(identity_blake3(sealed.encode("utf-8")))}
 
 
 @pytest.mark.proves("market_data_ops.a_standard_names_its_history_floor")
 def test_the_original_standard_keeps_every_identity_it_recorded(tmp_path: Path) -> None:
-    """The original's ten-year floor, its document and its manifests' identities are the ones
-    develop recorded before the floor became the standard's (base 9567e1f95)."""
+    """The original keeps its history and Factor floors and the identities of its candidate
+    document, acquisition manifest and quality policy."""
     document = _document(10)
     assert "minimum_history_calendar_years" not in document
     assert document["content_hash"] == (
-        "4a53139ab50646a4f76575549d49d64d65283d2add31dd933554992681d7f801"
+        "blake3:7ee89427657c526f9f88c8fede599a70c0865c3ee9862551772430ec360b6c47"
     )
     bootstrap = bootstrap_from_candidate_manifest_document(document)
     assert bootstrap.standard == ORIGINAL_RESEARCH_WHITELIST_STANDARD
     acquisition = build_current_index_acquisition_manifest(_profile(tmp_path), bootstrap)
     assert acquisition.revision_sha256 == (
-        "600f527a33ca40f946e2de61c05cfa9caad13b2e9853068530d33c0777139880"
+        "blake3:643506e49257b723fcbfbc676dd700cf677deca3d7ebb3402dda8adc3683e8d4"
     )
     assert acquisition.qualification_obligations == ()
     assert (
         acquisition.qualification_policy_hash
         == default_qualification_policy_hash()
-        == ("44137559f37df492a0dea326ec5cbcf85e850813ba8295f8253a0ca14a2e493e")
+        == "blake3:40816021483ae831e473521a425fcd818a826d37d925024e2d8843f3cde4d716"
     )
     assert history_floor(date(2026, 9, 10), bootstrap.standard) == date(2016, 9, 10)
     assert history_floor(date(2028, 2, 29)) == date(2018, 2, 28)

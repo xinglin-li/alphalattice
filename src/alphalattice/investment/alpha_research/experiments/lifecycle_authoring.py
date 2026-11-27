@@ -497,7 +497,7 @@ def verify_lifecycle_research(
             or value.component.recipe_hash != receipt.component_recipe_hash
             or projection.formation_session.isoformat() != day
             or projection.projection_hash != projection_hash
-            or projection.evidence_manifest_sha256 != value.content_hash
+            or projection.evidence_manifest_digest != value.content_hash
             or projection.live_vintages != value.lifecycle.vintages(value.formation)
             or projection.live_vintages != value.lifecycle.vintages(projection.formation_session)
             or projection.model_identity_hashes != tuple(c.estimator_hash for c in value.children)

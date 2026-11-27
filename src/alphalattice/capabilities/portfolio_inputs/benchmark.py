@@ -23,11 +23,12 @@ from alphalattice.foundation.market_data_ops.publication.projection import (
     action_set_hash as actions_hash,
 )
 from alphalattice.foundation.market_data_ops.storage.duckdb import MarketDataRepository
+from alphalattice.kernel.identity import BLAKE3_PATTERN, blake3_from_filename
 
 if TYPE_CHECKING:
     from alphalattice.foundation.data_layer.upgrade import Family, UpgradeRunner
 
-_HASH = r"^[0-9a-f]{64}$"
+_HASH = BLAKE3_PATTERN
 _BENCHMARK_SERIES = ("log_returns", "simple_returns")
 
 
@@ -463,7 +464,7 @@ def portfolio_benchmark_upgrade_family(holder: Callable[[Path], str | None]) -> 
                 if not path.resolve().is_relative_to(workspace):
                     raise ValueError("portfolio_benchmark.upgrade_path_invalid")
                 surface = PortfolioBenchmarkSurface.model_validate_json(path.read_bytes())
-                if surface.surface_hash != path.stem:
+                if surface.surface_hash != blake3_from_filename(path.stem):
                     raise ValueError("portfolio_benchmark.lineage_invalid")
                 yield held, surface
 

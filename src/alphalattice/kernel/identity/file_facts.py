@@ -1,4 +1,4 @@
-"""File digests trusted until the file's stamp changes: the one record of each file's SHA-256."""
+"""File digests trusted until the file's stamp changes."""
 
 from __future__ import annotations
 
@@ -9,13 +9,13 @@ import weakref
 from _thread import LockType
 from collections.abc import Callable, MutableMapping
 from contextlib import AbstractContextManager
-from io import BufferedReader, BytesIO
+from dataclasses import dataclass
 from pathlib import Path
 from stat import S_ISREG
 from threading import Lock
-from typing import BinaryIO, Protocol, cast
+from typing import BinaryIO, Protocol
 
-from ._digests import integrity_sha256_stream
+from ._digests import integrity_blake3, integrity_blake3_stream, is_blake3, tagged_blake3
 
 if os.name == "nt":
     import ctypes
@@ -37,20 +37,20 @@ RACY_SECONDS = 2.0
 """How old the newest modification or change time must be before a digest is kept."""
 
 
-def integrity_sha256_path(path: Path) -> str:
-    """Digest the opened file's bytes for an integrity comparison."""
+def integrity_blake3_path(path: Path) -> str:
+    """Verify the raw bytes read from an open file."""
     with path.open("rb") as handle:
-        return integrity_sha256_stream(handle).hexdigest()
+        return tagged_blake3(integrity_blake3_stream(handle))
 
 
 def whole_digest(handle: BinaryIO, kept: list[bytes] | None = None) -> str:
-    """The SHA-256 of the open file's whole content. With `kept`, the content is read into it and
+    """The BLAKE3 of the open file's whole content. With `kept`, the content is read into it and
     the digest taken of those very bytes, so a caller that needs both reads the file once."""
     handle.seek(0)
     if kept is not None:
         kept.append(handle.read())
-        handle = BytesIO(kept[-1])
-    return integrity_sha256_stream(cast(BufferedReader, handle)).hexdigest()
+        return tagged_blake3(integrity_blake3(kept[-1]))
+    return tagged_blake3(integrity_blake3_stream(handle))
 
 
 def file_stamp(path: Path) -> tuple[int, int, int, int, int]:
@@ -79,8 +79,15 @@ def handle_stamp(handle: BinaryIO) -> tuple[int, int, int, int, int]:
 
 Stamp = tuple[int, int, int, int, int]
 """A file's identity, size and both change clocks (``file_stamp``)."""
-TrustEntry = tuple[Stamp, str]
-"""A file's stamp when its digest was taken, and the digest."""
+
+
+@dataclass(frozen=True, slots=True)
+class TrustEntry:
+    """A file's stamp, tagged digest and whether the digest covers its raw bytes."""
+
+    stamp: Stamp
+    digest: str
+    whole_file: bool
 
 
 class _FileHandle(ctypes.Structure):
@@ -107,14 +114,6 @@ def _file_handle(path: Path) -> tuple[object, ...] | None:
     return (mount.value, handle.handle_type, bytes(handle.f_handle[: handle.handle_bytes]))
 
 
-def _tag(digest: str) -> str | None:
-    """A recorded digest's tag (``blake3``), or None for an untagged SHA-256 of the bytes."""
-    tag, separator, _ = digest.partition(":")
-    return tag if separator else None
-
-
-ANY = "*"
-"""`held`'s tag that takes a digest of either tag."""
 _SEALED: list[Callable[[Path, str], None]] = []
 
 
@@ -142,7 +141,7 @@ class TrustStore(Protocol):
 
 
 class FileDigestTrust:
-    """The one record of each file's SHA-256: taken once after its write and trusted until its
+    """The one record of each file's BLAKE3: taken once after its write and trusted until its
     stamp changes.
 
     A read takes the recorded digest while the file's stamp equals the recorded one and is
@@ -242,7 +241,7 @@ class FileDigestTrust:
     @staticmethod
     def fresh_digest(path: Path, *, handle: BinaryIO | None = None) -> str:
         """Prove bytes from the file itself instead of answering a stored digest."""
-        return integrity_sha256_path(path) if handle is None else whole_digest(handle)
+        return integrity_blake3_path(path) if handle is None else whole_digest(handle)
 
     def _settled(self, stamp: Stamp) -> bool:
         return self._time_ns() - max(stamp[-2:]) > RACY_SECONDS * 10**9
@@ -251,13 +250,13 @@ class FileDigestTrust:
         self,
         path: Path,
         *,
-        tag: str | None = None,
+        whole_file: bool = False,
         holding: Callable[[str], bool] | None = None,
     ) -> str | None:
         """The recorded digest while its stamp holds and is settled, else None: never a hash.
 
-        Without `tag`, only an untagged SHA-256 of the file's bytes answers; with one (``blake3``),
-        only a digest its writer recorded under that tag (``sealed``); ``ANY`` takes either.
+        With `whole_file`, require a digest of the file's raw bytes. An artifact's writer can
+        also record its format-specific identity through `sealed`.
         `holding` is asked of the recorded digest before the file is stamped, so a digest it
         refuses, like a file the record names nothing for, answers without a stamp."""
         if not self._trusting():
@@ -265,19 +264,19 @@ class FileDigestTrust:
         entries, key = self._store.place(path)
         with self._lock:
             held = entries.get(key)
-        if held is None or (tag is not ANY and _tag(held[1]) != tag):
+        if held is None or (whole_file and not held.whole_file):
             return None
-        if holding is not None and not holding(held[1]):
+        if holding is not None and not holding(held.digest):
             return None
         try:
             stamp = file_stamp(path)
         except OSError:
             return None
-        if held[0] != stamp:
+        if held.stamp != stamp:
             return None
         if not self._settled(stamp):
             return None
-        return held[1]
+        return held.digest
 
     def named(self, path: Path, observed: os.stat_result) -> str | None:
         """The digest the record names for the file `observed` saw, without opening it: the
@@ -290,11 +289,11 @@ class FileDigestTrust:
             held = entries.get(key)
         if held is None:
             return None
-        stamp = held[0]
+        stamp = held.stamp
         seen = (observed.st_dev, observed.st_ino, observed.st_size, observed.st_mtime_ns)
-        if stamp[:4] != seen or (_tag(held[1]) is None and not self._settled(stamp)):
+        if stamp[:4] != seen or (held.whole_file and not self._settled(stamp)):
             return None
-        return held[1]
+        return held.digest
 
     def verified(
         self,
@@ -336,8 +335,8 @@ class FileDigestTrust:
         if trusting:
             with self._lock:
                 held = entries.get(key)
-            if held is not None and held[0] == before and settled and _tag(held[1]) is None:
-                return held[1], True
+            if held is not None and held.stamp == before and settled and held.whole_file:
+                return held.digest, True
             with self._span("hash", "file_digest"):
                 digest = whole_digest(handle, kept)
         else:
@@ -351,7 +350,7 @@ class FileDigestTrust:
             return digest, False
         if before == after and settled:
             if trusting:
-                self._keep(path, entries, key, (after, digest))
+                self._keep(path, entries, key, TrustEntry(after, digest, whole_file=True))
             return digest, True
         with self._span(
             "verify", "file_stamp_changed" if before != after else "file_stamp_unsettled"
@@ -372,12 +371,14 @@ class FileDigestTrust:
         holds it unshared), keeps no entry: its next read hashes it. With trust off, a writer that
         names its digest is answered without a hash.
         """
+        if digest is not None and not is_blake3(digest):
+            raise ValueError("identity.blake3_digest_invalid")
         if digest is not None and not self._trusting():
             return digest
         try:
             handle = path.open("r+b")
         except OSError:
-            return digest if digest is not None else integrity_sha256_path(path)
+            return digest if digest is not None else integrity_blake3_path(path)
         with handle:
             try:
                 before = handle_stamp(handle)
@@ -395,21 +396,23 @@ class FileDigestTrust:
             if stamp != before:
                 return held
         entries, key = self._store.place(path)
-        self._keep(path, entries, key, (stamp, held))
+        self._keep(path, entries, key, TrustEntry(stamp, held, whole_file=True))
         return held
 
     def sealed(self, path: Path, digest: str) -> None:
         """Record, as its writer just after the atomic rename, the tagged digest it computed for
         what it placed (``blake3:<id>``), with the stamp the file holds now: no hash. A read
         trusts it once its stamp is settled, as any entry; a file not stamped keeps nothing."""
-        if not self._trusting() or _tag(digest) is None:
+        if not is_blake3(digest):
+            raise ValueError("identity.blake3_digest_invalid")
+        if not self._trusting():
             return
         try:
             stamp = file_stamp(path)
         except OSError:
             return
         entries, key = self._store.place(path)
-        self._keep(path, entries, key, (stamp, digest))
+        self._keep(path, entries, key, TrustEntry(stamp, digest, whole_file=False))
 
     def scrub(self, path: Path) -> bool | None:
         """Re-prove a trusted stamp without taking the foreground reader's per-file lock.
@@ -426,9 +429,8 @@ class FileDigestTrust:
             expected = entries.get(key)
         if expected is None:
             return None
-        held_stamp, sealed_digest = expected
-        if _tag(sealed_digest) is not None:
-            return None  # a tagged digest names its owner's form, which its owner proves
+        if not expected.whole_file:
+            return None  # the artifact owner proves its format-specific identity
         try:
             with path.open("rb") as handle:
                 stamp = handle_stamp(handle)
@@ -445,9 +447,9 @@ class FileDigestTrust:
         with self._lock:
             if entries.get(key) != expected:
                 return None
-            if stamp == held_stamp and actual != sealed_digest:
-                entries[key] = (stamp, actual)
-        return actual == sealed_digest
+            if stamp == expected.stamp and actual != expected.digest:
+                entries[key] = TrustEntry(stamp, actual, whole_file=True)
+        return actual == expected.digest
 
     def _keep(
         self, path: Path, entries: MutableMapping[str, TrustEntry], key: str, entry: TrustEntry

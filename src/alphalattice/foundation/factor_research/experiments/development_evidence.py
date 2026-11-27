@@ -46,6 +46,12 @@ from alphalattice.foundation.factor_research.research_loop.contracts import (
 from alphalattice.foundation.factor_research.research_loop.decisions import (
     verify_factor_research_curation,
 )
+from alphalattice.kernel.identity import (
+    BLAKE3_PATTERN,
+    blake3_filename,
+    blake3_from_filename,
+    is_blake3,
+)
 from alphalattice.protocols.research_authoring.contracts import (
     AuthoringError,
     ResearchExecutionEvidence,
@@ -82,8 +88,8 @@ class FactorDevelopmentFactorIdentity(BaseModel):  # type: ignore[misc]
 
     kind: Literal["FactorDevelopmentFactorIdentity"] = "FactorDevelopmentFactorIdentity"
     factor_id: str = Field(min_length=1, max_length=128)
-    implementation_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
-    methodology_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
+    implementation_hash: str = Field(pattern=BLAKE3_PATTERN)
+    methodology_hash: str = Field(pattern=BLAKE3_PATTERN)
 
 
 class FactorDevelopmentInputBinding(BaseModel):  # type: ignore[misc]
@@ -111,18 +117,18 @@ class FactorDevelopmentInputBinding(BaseModel):  # type: ignore[misc]
     right, and a mapping rebuilt and re-sorted at a boundary silently discards it.
     """
 
-    feature_panel_snapshot_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
+    feature_panel_snapshot_hash: str = Field(pattern=BLAKE3_PATTERN)
     feature_panel_manifest_ref: str = Field(min_length=1)
-    causal_outcome_snapshot_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
+    causal_outcome_snapshot_hash: str = Field(pattern=BLAKE3_PATTERN)
     causal_outcome_manifest_ref: str = Field(min_length=1)
-    target_policy_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
-    walk_forward_policy_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
-    screening_policy_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
+    target_policy_hash: str = Field(pattern=BLAKE3_PATTERN)
+    walk_forward_policy_hash: str = Field(pattern=BLAKE3_PATTERN)
+    screening_policy_hash: str = Field(pattern=BLAKE3_PATTERN)
     """The evidence policy: the multiple-testing correction and its thresholds."""
 
-    redundancy_policy_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
-    authority_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
-    binding_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
+    redundancy_policy_hash: str = Field(pattern=BLAKE3_PATTERN)
+    authority_hash: str = Field(pattern=BLAKE3_PATTERN)
+    binding_hash: str = Field(pattern=BLAKE3_PATTERN)
 
     @property
     def context_factor_ids(self) -> tuple[str, ...]:
@@ -217,8 +223,8 @@ class FactorDevelopmentReceipt(BaseModel):  # type: ignore[misc]
     kind: Literal["FactorDevelopmentReceipt"] = "FactorDevelopmentReceipt"
     program: SealedResearchProgram
     input_binding: FactorDevelopmentInputBinding
-    checkpoint_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
-    receipt_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
+    checkpoint_hash: str = Field(pattern=BLAKE3_PATTERN)
+    receipt_hash: str = Field(pattern=BLAKE3_PATTERN)
 
     # Read-through rather than restated. Every one of these used to be a field of
     # its own beside the object that already held it, which is two places for one
@@ -294,10 +300,10 @@ def factor_development_receipt_uri(receipt_hash: str) -> str:
 
 
 def factor_development_receipt_handle(uri: str) -> str:
-    """Recover the receipt hash, admitted as exactly 64 lowercase hex."""
+    """Recover the tagged receipt digest."""
 
     handle = uri[len(_RECEIPT_PREFIX) :] if uri.startswith(_RECEIPT_PREFIX) else uri
-    if len(handle) != 64 or not set(handle).issubset(_HASH_CHARACTERS):
+    if not is_blake3(handle):
         raise AuthoringError("factor_research.development_receipt_handle_invalid")
     return handle
 
@@ -308,24 +314,17 @@ def factor_development_evidence_uri(checkpoint_hash: str) -> str:
     return f"{_URI_PREFIX}{checkpoint_hash}"
 
 
-_HASH_CHARACTERS = frozenset("0123456789abcdef")
-
-
 def factor_development_evidence_handle(uri: str) -> str:
     """Recover the checkpoint hash an authored document may name as a handle.
 
     Accepts either the full URI or the bare hash, because a researcher copying a
     value out of a run report has both in front of them and neither is wrong.
 
-    Admitted as **exactly** 64 lowercase hex and nothing else. Rejecting only
-    path separators left every other malformed value to fail somewhere further
-    in -- as a missing file, or worse as a lookup that happened to succeed -- and
-    a content address that is not a content address should fail at the boundary
-    that owns the spelling.
+    The handle must contain one complete tagged BLAKE3 digest.
     """
 
     handle = uri[len(_URI_PREFIX) :] if uri.startswith(_URI_PREFIX) else uri
-    if len(handle) != 64 or not set(handle).issubset(_HASH_CHARACTERS):
+    if not is_blake3(handle):
         raise AuthoringError("factor_research.development_evidence_handle_invalid")
     return handle
 
@@ -334,7 +333,7 @@ def _publish_json(root: Path, payload: Mapping[str, Any], identity: str, *, conf
     """The shared byte codec and write-once mechanic; callers own admission."""
     root.mkdir(parents=True, exist_ok=True)
     content = json.dumps(payload, sort_keys=True, separators=(",", ":")).encode()
-    target = root / f"{identity}.json"
+    target = root / f"{blake3_filename(identity)}.json"
     if target.exists():
         if target.read_bytes() != content:
             raise AuthoringError(conflict)
@@ -382,7 +381,7 @@ class FactorDevelopmentEvidenceReader:
         """Read exactly the named checkpoint and prove it is the one asked for."""
 
         checkpoint = factor_development_evidence_handle(handle)
-        path = self._root / f"{checkpoint}.json"
+        path = self._root / f"{blake3_filename(checkpoint)}.json"
         if not path.is_file():
             raise AuthoringError("factor_research.development_evidence_unavailable")
         try:
@@ -435,8 +434,10 @@ class FactorDevelopmentReceiptReader:
     def load(
         self, handle: str
     ) -> tuple[FactorDevelopmentReceipt, FactorResearchDeterministicEvidence]:
+        """Read the sealed receipt and its deterministic research evidence by handle."""
+
         receipt_hash = factor_development_receipt_handle(handle)
-        path = self._receipts / f"{receipt_hash}.json"
+        path = self._receipts / f"{blake3_filename(receipt_hash)}.json"
         if not path.is_file():
             raise AuthoringError("factor_research.development_receipt_unavailable")
         try:
@@ -482,7 +483,11 @@ def publish_factor_development_curation(
         review_binding_hash=review_binding_hash,
     )
     checkpoint_handle = factor_development_evidence_handle(checkpoint.checkpoint_hash)
-    root = Path(output_workspace) / FACTOR_DEVELOPMENT_CURATION_CATEGORY / checkpoint_handle
+    root = (
+        Path(output_workspace)
+        / FACTOR_DEVELOPMENT_CURATION_CATEGORY
+        / blake3_filename(checkpoint_handle)
+    )
     _publish_json(
         root,
         receipt.model_dump(mode="json"),
@@ -513,8 +518,10 @@ class FactorDevelopmentCurationReader:
         return self._root
 
     def submissions(self, checkpoint_hash: str) -> tuple[FactorResearchReviewDecisionReceipt, ...]:
+        """Read dated curation submissions kept at the named checkpoint."""
+
         checkpoint = factor_development_evidence_handle(checkpoint_hash)
-        folder = self._root / checkpoint
+        folder = self._root / blake3_filename(checkpoint)
         if not folder.is_dir():
             return ()
         found = []
@@ -525,7 +532,7 @@ class FactorDevelopmentCurationReader:
                 )
             except ValueError as error:
                 raise AuthoringError("factor_research.development_curation_invalid") from error
-            if receipt.receipt_hash != path.stem:
+            if receipt.receipt_hash != blake3_from_filename(path.stem):
                 raise AuthoringError("factor_research.development_curation_identity_conflict")
             found.append(receipt)
         return tuple(found)

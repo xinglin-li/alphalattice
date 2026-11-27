@@ -37,7 +37,7 @@ from pathlib import Path
 from alphalattice.capabilities.domain_contracts.domain.errors import WorkspaceConflictError
 from alphalattice.control.workspace_runtime.lock import WorkspaceLock
 from alphalattice.kernel.clock import utc_now
-from alphalattice.kernel.identity import integrity_sha256
+from alphalattice.kernel.identity import blake3_digest
 
 CAMPAIGN_LEDGER_ROOT = "sec-campaigns"
 """The directory under the artifact root that holds one ledger per campaign."""
@@ -365,7 +365,7 @@ class SecCampaignLedger:
 
 def _line_hash(previous: str, content: dict[str, object]) -> str:
     body = json.dumps({k: v for k, v in content.items() if k != "line_hash"}, sort_keys=True)
-    return integrity_sha256((previous + body).encode("utf-8")).hexdigest()
+    return blake3_digest((previous + body).encode("utf-8"))
 
 
 __all__ = [

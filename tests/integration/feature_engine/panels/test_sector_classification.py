@@ -26,10 +26,13 @@ from alphalattice.foundation.feature_engine.panels.feature_closure_ledger import
 from alphalattice.foundation.feature_engine.panels.sector_classification import classified
 from alphalattice.foundation.market_data_ops.storage import world, world_reads
 from alphalattice.foundation.market_data_ops.storage.duckdb import MarketDataRepository
+from tests._support.identity_fixtures import fixture_digest
 from tests.workspace_maintenance.acquisition_manifest import NOW, acquisition_manifest
 
 TEST_SOURCE = "src/alphalattice/foundation/feature_engine/panels/sector_classification.py"
 NAMES = {"listing-aapl": "Technology", "listing-msft": "Technology"}
+_PAYLOAD = fixture_digest("sector-payload")
+_EVIDENCE = fixture_digest("sector-evidence")
 
 
 def _map(names: dict[str, str]) -> SectorRevisionMap:
@@ -40,14 +43,18 @@ def _map(names: dict[str, str]) -> SectorRevisionMap:
             provider="fixture",
             provider_symbol=listing.removeprefix("listing-").upper(),
             sector_name=name,
-            payload_hash="a" * 64,
-            evidence_hash="b" * 64,
+            payload_hash=_PAYLOAD,
+            evidence_hash=_EVIDENCE,
         )
         for listing, name in sorted(names.items())
     )
     return identified(
         SectorRevisionMap,
-        {"manifest_revision": "1" * 64, "sector_revision": "2" * 64, "entries": entries},
+        {
+            "manifest_revision": fixture_digest("manifest-revision"),
+            "sector_revision": fixture_digest("sector-revision"),
+            "entries": entries,
+        },
         "map_hash",
     )
 
@@ -60,7 +67,17 @@ def _classify(database: Path, names: dict[str, str]) -> None:
         for listing, name in sorted(names.items()):
             connection.execute(
                 "INSERT INTO sector_classification_current VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
-                [listing, "fixture", listing, name, None, "a" * 64, "b" * 64, "c" * 64, NOW],
+                [
+                    listing,
+                    "fixture",
+                    listing,
+                    name,
+                    None,
+                    _PAYLOAD,
+                    _EVIDENCE,
+                    fixture_digest("admitted-sector-revision"),
+                    NOW,
+                ],
             )
     finally:
         connection.close()

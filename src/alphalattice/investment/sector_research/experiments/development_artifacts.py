@@ -34,6 +34,12 @@ from alphalattice.capabilities.domain_contracts.identity import canonical_hash
 from alphalattice.capabilities.domain_contracts.source_identity import (
     switched_source_identity,
 )
+from alphalattice.kernel.identity import (
+    BLAKE3_PATTERN,
+    blake3_filename,
+    blake3_from_filename,
+    is_blake3,
+)
 
 from ..contracts import SectorResearchError, grid_to_matrix, sector_array_identity
 from ..models.contracts import SectorForecastRecipe
@@ -123,11 +129,11 @@ class SectorForecastProgramBinding(_Contract):
     """
 
     kind: Literal["SectorForecastProgramBinding"] = "SectorForecastProgramBinding"
-    target_evidence_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
-    catalog_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
+    target_evidence_hash: str = Field(pattern=BLAKE3_PATTERN)
+    catalog_hash: str = Field(pattern=BLAKE3_PATTERN)
     method_id: str = Field(min_length=1, max_length=96)
-    recipe_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
-    numerical_binding_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
+    recipe_hash: str = Field(pattern=BLAKE3_PATTERN)
+    numerical_binding_hash: str = Field(pattern=BLAKE3_PATTERN)
     training_start: date
     training_end: date
     forecast_start: date
@@ -140,14 +146,14 @@ class SectorForecastProgramBinding(_Contract):
 
     minimum_history_sessions: int = Field(ge=0)
     forecast_formation_sessions: tuple[date, ...] = Field(min_length=1)
-    development_source_closure_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
+    development_source_closure_hash: str = Field(pattern=BLAKE3_PATTERN)
     """The Host execution path's byte identity at run time. Two runs under
     different compiler, selection, evaluation or service code are different
     programs by hash, and the verifier refuses a closure that is no longer the
     installed one -- the same drift rule the per-method numerical binding
     already enforces for the adapter."""
 
-    program_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
+    program_hash: str = Field(pattern=BLAKE3_PATTERN)
 
     @model_validator(mode="after")  # type: ignore[untyped-decorator]
     def validate_identity(self) -> Self:
@@ -194,7 +200,7 @@ class SectorForecastSurface(_Contract):
     identity_class: Literal["DEVELOPMENT_EVIDENCE_ONLY_NEVER_PUBLISHED"] = (
         "DEVELOPMENT_EVIDENCE_ONLY_NEVER_PUBLISHED"
     )
-    target_evidence_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
+    target_evidence_hash: str = Field(pattern=BLAKE3_PATTERN)
     recipe: SectorForecastRecipe
     program_binding: SectorForecastProgramBinding
     ordered_sectors: tuple[str, ...] = Field(min_length=1)
@@ -202,8 +208,8 @@ class SectorForecastSurface(_Contract):
     values: tuple[tuple[float | None, ...], ...] = Field(min_length=1)
     unavailable_reasons: tuple[tuple[str | None, ...], ...] = Field(min_length=1)
     training_row_counts: tuple[int, ...] = Field(min_length=1)
-    values_identity: str = Field(pattern=r"^[0-9a-f]{64}$")
-    surface_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
+    values_identity: str = Field(pattern=BLAKE3_PATTERN)
+    surface_hash: str = Field(pattern=BLAKE3_PATTERN)
 
     @model_validator(mode="after")  # type: ignore[untyped-decorator]
     def validate_identity(self) -> Self:
@@ -261,14 +267,14 @@ class SectorForecastEvaluation(_Contract):
     """
 
     kind: Literal["SectorForecastEvaluation"] = "SectorForecastEvaluation"
-    surface_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
-    target_evidence_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
-    realized_lane_identity: str = Field(pattern=r"^[0-9a-f]{64}$")
+    surface_hash: str = Field(pattern=BLAKE3_PATTERN)
+    target_evidence_hash: str = Field(pattern=BLAKE3_PATTERN)
+    realized_lane_identity: str = Field(pattern=BLAKE3_PATTERN)
     ordered_sectors: tuple[str, ...] = Field(min_length=1)
     evaluated_counts: tuple[int, ...] = Field(min_length=1)
     mean_errors: tuple[float | None, ...] = Field(min_length=1)
     mean_squared_errors: tuple[float | None, ...] = Field(min_length=1)
-    evaluation_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
+    evaluation_hash: str = Field(pattern=BLAKE3_PATTERN)
 
     @model_validator(mode="after")  # type: ignore[untyped-decorator]
     def validate_identity(self) -> Self:
@@ -388,15 +394,15 @@ class SectorExperimentEvidence(_Contract):
     """
 
     kind: Literal["SectorExperimentEvidence"] = "SectorExperimentEvidence"
-    causal_outcome_snapshot_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
-    sector_revision: str = Field(pattern=r"^[0-9a-f]{64}$")
+    causal_outcome_snapshot_hash: str = Field(pattern=BLAKE3_PATTERN)
+    sector_revision: str = Field(pattern=BLAKE3_PATTERN)
     method_id: str = Field(min_length=1, max_length=96)
-    catalog_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
-    target_evidence_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
-    forecast_surface_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
-    evaluation_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
+    catalog_hash: str = Field(pattern=BLAKE3_PATTERN)
+    target_evidence_hash: str = Field(pattern=BLAKE3_PATTERN)
+    forecast_surface_hash: str = Field(pattern=BLAKE3_PATTERN)
+    evaluation_hash: str = Field(pattern=BLAKE3_PATTERN)
     ordered_child_uris: tuple[str, ...] = Field(min_length=3, max_length=3)
-    experiment_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
+    experiment_hash: str = Field(pattern=BLAKE3_PATTERN)
 
     @model_validator(mode="after")  # type: ignore[untyped-decorator]
     def validate_identity(self) -> Self:
@@ -524,12 +530,19 @@ class SectorDevelopmentArtifactStore:
 
     @staticmethod
     def _require_hash(value: str) -> None:
-        if len(value) != 64 or any(character not in "0123456789abcdef" for character in value):
-            raise SectorResearchError("sector_research.artifact_identity_not_sha256")
+        if not is_blake3(value):
+            raise SectorResearchError("sector_research.artifact_identity_field_invalid")
+
+    @staticmethod
+    def _read_filename(path: Path) -> str:
+        digest = blake3_from_filename(path.stem)
+        if digest is None:
+            raise SectorResearchError("sector_research.artifact_identity_field_invalid")
+        return digest
 
     def _path(self, category: str, content_hash: str) -> Path:
         self._require_hash(content_hash)
-        return self.root / category / f"{content_hash}.json"
+        return self.root / category / f"{blake3_filename(content_hash)}.json"
 
     @staticmethod
     def _json_bytes(payload: Mapping[str, object]) -> bytes:
@@ -804,7 +817,7 @@ class SectorDevelopmentArtifactStore:
             root = self.root / category
         if not root.is_dir():
             return ()
-        return tuple(sorted(path.stem for path in root.glob("*.json")))
+        return tuple(sorted(self._read_filename(path) for path in root.glob("*.json")))
 
     # --------------------------------------------------------------- Campaign
     # The Campaign categories are published and read through the same identity
@@ -875,8 +888,9 @@ def sector_results_upgrade_family() -> Family:
         found: set[tuple[str, str]] = set()
         roots = store.root / SECTOR_EXPERIMENT_EVIDENCE_CATEGORY
         for path in documents(roots):
+            experiment_hash = store._read_filename(path)
             experiment = read_legacy(
-                store, SECTOR_EXPERIMENT_EVIDENCE_CATEGORY, path.stem, "experiment_hash"
+                store, SECTOR_EXPERIMENT_EVIDENCE_CATEGORY, experiment_hash, "experiment_hash"
             )
             children = tuple(
                 (category, cast(str, experiment[field])) for category, field in experiment_children
@@ -891,7 +905,7 @@ def sector_results_upgrade_family() -> Family:
                 if store._path(category, digest).is_file()
             )
             if len(retained) == len(children):
-                yield path.stem, retained
+                yield experiment_hash, retained
             else:
                 # A retained experiment must have its complete graph. A newer experiment
                 # may cite a mixture of retained and catalog-only results.
@@ -900,7 +914,7 @@ def sector_results_upgrade_family() -> Family:
                         category,
                         digest,
                         _RESULT_CATEGORIES[category],
-                        experiment=path.stem
+                        experiment=experiment_hash
                         if category == SECTOR_FORECAST_EVALUATION_CATEGORY
                         else None,
                     )
@@ -915,10 +929,11 @@ def sector_results_upgrade_family() -> Family:
             found.update(children)
         for category, identity in _RESULT_CATEGORIES.items():
             for path in documents(store.root / category):
-                if (category, path.stem) not in found:
+                digest = store._read_filename(path)
+                if (category, digest) not in found:
                     yield (
                         None,
-                        ((category, path.stem, read_legacy(store, category, path.stem, identity)),),
+                        ((category, digest, read_legacy(store, category, digest, identity)),),
                     )
 
     def step(runner: UpgradeRunner) -> None:

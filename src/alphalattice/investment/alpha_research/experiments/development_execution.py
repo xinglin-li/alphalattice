@@ -114,7 +114,7 @@ from alphalattice.investment.alpha_research.targets.development import (
     AlphaDevelopmentTargetFoldRecord,
     AlphaDevelopmentTargetMaterializationBinding,
 )
-from alphalattice.kernel.identity import identity_sha256
+from alphalattice.kernel.identity import identity_blake3, tagged_blake3
 from alphalattice.protocols.research_authoring.contracts import (
     AuthoringError,
     DeskExecutionResult,
@@ -137,7 +137,7 @@ def _array_identity(values: npt.NDArray[Any]) -> tuple[str, tuple[int, ...], str
     return (
         str(contiguous.dtype),
         tuple(int(value) for value in contiguous.shape),
-        identity_sha256(contiguous.tobytes()).hexdigest(),
+        tagged_blake3(identity_blake3(contiguous.tobytes())),
     )
 
 

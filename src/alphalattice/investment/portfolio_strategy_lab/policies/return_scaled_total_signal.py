@@ -37,6 +37,7 @@ from alphalattice.investment.portfolio_strategy_lab.optimizer.service import (
     PortfolioOptimizationError,
     PortfolioOptimizer,
 )
+from alphalattice.kernel.identity import BLAKE3_PATTERN
 
 from . import sector_admission
 from .contracts import (
@@ -90,7 +91,7 @@ class ReturnScaledTotalSignalRecipe(BaseModel):  # type: ignore[misc]
     risk_aversion: float = Field(gt=0.0)
     transaction_cost_rate: float = Field(ge=0.0, le=0.05)
     beta_guardrail: float = Field(gt=0.0, le=1.0)
-    recipe_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
+    recipe_hash: str = Field(pattern=BLAKE3_PATTERN)
 
     @property
     def policy_id(self) -> str:

@@ -16,7 +16,7 @@
   proved from its bytes. Deliberately restoring timestamps is outside the accidental-change
   model.
 - A **file fact** binds a value derived from a file's bytes to its kind and the file's
-  SHA-256. xxh3 indexes the complete canonical key; a hit compares that key. It is kept
+  BLAKE3 digest. xxh3 indexes the complete canonical key; a hit compares that key. It is kept
   beside the digests in `runtime/verified-files.jsonl`, or for the process.
 
 A missing fact only costs the full computation: the records are rebuildable caches, and a
@@ -28,7 +28,6 @@ from __future__ import annotations
 import errno
 import json
 import os
-import re
 from collections import deque
 from collections.abc import Callable, Iterable, Iterator, Mapping, MutableMapping
 from contextlib import ExitStack, contextmanager
@@ -50,13 +49,13 @@ from alphalattice.kernel import storage
 from alphalattice.kernel.clock import wall_time, wall_time_ns
 from alphalattice.kernel.config import data_root
 from alphalattice.kernel.identity import (
-    ANY,
     RACY_SECONDS,
     FileDigestTrust,
     TrustEntry,
     bind_sealed,
     change_xxh3_128_hex,
-    integrity_sha256_path,
+    integrity_blake3_path,
+    is_blake3,
     whole_digest,
 )
 
@@ -66,10 +65,7 @@ FILE_TRUST_SCRUB = Path("runtime") / "file-trust-scrub.json"
 _SCRUB_STARTED = '"scrub-start-v1"'
 _SCRUB_CHECKED = '"scrub-checked-v1"'
 _SCRUB_DISCARDED = '"scrub-discard-v1"'
-_SHA256 = re.compile(r"[0-9a-f]{64}")
-_TRUSTED_DIGEST = re.compile(r"(?:blake3:)?[0-9a-f]{64}")
-"""A trust row's digest: an untagged SHA-256 of the bytes, or a writer's ``blake3:`` identity."""
-_CONTENT_KIND = "\x00content-v1:"
+_CONTENT_KIND = "\x00content-v2:"
 _FULL_PROOF: ContextVar[BoundedMemo[tuple[object, ...], object] | None] = ContextVar(
     "content_store_full_proof", default=None
 )
@@ -279,9 +275,9 @@ def _keep_data_root(absolute: Path) -> None:
 
 def held_digest(path: Path, *, holding: Callable[[str], bool] | None = None) -> str | None:
     """The digest the trust record holds for `path` while its stamp holds and is settled, of
-    either tag: an untagged SHA-256 of its bytes, or its writer's ``blake3:``. Never a hash.
+    either the digest of its raw bytes or its writer's artifact identity. Never a hash.
     A recorded digest that `holding` refuses answers None before the file is stamped."""
-    return _DIGEST_TRUST.held(path, tag=ANY, holding=holding)
+    return _DIGEST_TRUST.held(path, holding=holding)
 
 
 def named_digest(path: Path, observed: os.stat_result) -> str | None:
@@ -523,18 +519,17 @@ def _entries(
 
 def _fact_entry(row: list[object]) -> tuple[_Key, _Entry]:
     path, kind, size, mtime, ino, value = row
-    # contract: remove legacy stamp-only handling once workspace journals are compacted.
     if not str(kind).startswith(_CONTENT_KIND):
-        raise ValueError("a legacy stamp cannot establish the bytes of a reusable fact")
+        raise ValueError("a reusable file fact must bind its BLAKE3 digest")
     return (str(path), str(kind)), ((int(size), int(mtime), int(ino)), str(value))
 
 
 def _trust_entry(row: list[object]) -> tuple[str, TrustEntry]:
-    path, dev, ino, size, mtime, changed, digest = row
-    if not isinstance(digest, str) or _TRUSTED_DIGEST.fullmatch(digest) is None:
-        raise ValueError("a trusted digest is a SHA-256 or a writer's blake3: identity")
+    path, dev, ino, size, mtime, changed, digest, whole_file = row
+    if not isinstance(digest, str) or not is_blake3(digest) or not isinstance(whole_file, bool):
+        raise ValueError("a trust row must name a BLAKE3 digest and the bytes it covers")
     stamp = (int(dev), int(ino), int(size), int(mtime), int(changed))
-    return str(path), (stamp, digest)
+    return str(path), TrustEntry(stamp, digest, whole_file)
 
 
 def _append(journal: Path, line: str, *, publish: _Publish | None = None) -> bool:
@@ -598,27 +593,29 @@ def full_proof() -> bool:
     return _FULL_PROOF.get() is not None
 
 
-def sealed_file_holds(path: Path, sha256: str) -> bool:
-    """Whether `path` holds the bytes whose SHA-256 is `sha256`, checked once (git's index).
+def sealed_file_holds(path: Path, digest: str) -> bool:
+    """Whether `path` holds the bytes named by this BLAKE3 file digest.
 
     An ordinary read takes the digest its writer recorded, or an earlier read proved, while the
     file's stamp holds and is settled, and hashes the file otherwise; inside
     ``full_content_proof()`` the bytes are always hashed. False for a missing, unreadable or
     different file.
     """
+    if not is_blake3(digest):
+        return False
     try:
         if full_proof():
             with span("hash", "full_proof"), storage.outside(path):
-                return integrity_sha256_path(path) == sha256
-        return _verified(path) == sha256
+                return integrity_blake3_path(path) == digest
+        return _verified(path) == digest
     except OSError:
         return False
 
 
-def record_sealed_file(path: Path, sha256: str) -> None:
+def record_sealed_file(path: Path, digest: str) -> None:
     """Record, as its writer after the atomic rename, that `path` now holds the bytes it wrote,
-    whose SHA-256 is `sha256`, so no read hashes them again while the file's stamp holds."""
-    _DIGEST_TRUST.written(path, sha256)
+    named by `digest`, so no read hashes them again while the file's stamp holds."""
+    _DIGEST_TRUST.written(path, digest)
 
 
 class FileTrustScrub:
@@ -732,16 +729,18 @@ class FileTrustScrub:
 
 def file_fact(path: Path, kind: str, *, _content: str | None = None) -> str | None:
     """The value proved for this exact file content, or None when absent or unreadable; for
-    ``sha256``, the trusted digest, never a hash."""
+    ``digest``, the trusted digest of the file's raw bytes."""
     try:
         digest = (
             _content
             if _content is not None
-            else (_DIGEST_TRUST.held(path) if kind == "sha256" else _verified(path))
+            else (
+                _DIGEST_TRUST.held(path, whole_file=True) if kind == "digest" else _verified(path)
+            )
         )
     except OSError:
         return None
-    if digest is None or kind == "sha256":
+    if digest is None or kind == "digest":
         return digest
     entries, key = _place(path, _content_kind(kind, digest), shared=_content_shared(kind))
     with _LOCK:
@@ -781,14 +780,14 @@ def record_file_fact(
             _append(root / FILE_FACTS, _line((key, entry)))
 
 
-def file_sha256(
+def verified_file_digest(
     path: Path,
     *,
     written: bool = False,
     handle: BinaryIO | None = None,
     kept: list[bytes] | None = None,
 ) -> str:
-    """The file's SHA-256 through the trust record, read off `handle` when the caller holds the
+    """The file's BLAKE3 through the trust record, read off `handle` when the caller holds the
     file open; a hash taken of it reads its content into `kept` when given. Its `written` writer
     hashes and records it. Inside ``full_content_proof()`` a read hashes the bytes, answering
     nothing kept before."""
@@ -798,18 +797,18 @@ def file_sha256(
         with span("hash", "full_proof"):
             if handle is None:
                 with storage.outside(path):
-                    return integrity_sha256_path(path)
+                    return integrity_blake3_path(path)
             return whole_digest(handle, kept)
     return _verified(path) if handle is None else _DIGEST_TRUST.verified(path, handle, kept=kept)[0]
 
 
 def verified_bytes(path: Path) -> tuple[bytes, str]:
-    """A file's bytes and its SHA-256 through the trust record, both off one open, so the digest
+    """A file's bytes and its BLAKE3 through the trust record, both off one open, so the digest
     answered is that of the bytes returned while the file's stamp holds. A miss, and full proof,
     hash the very bytes returned: the file is read once."""
     kept: list[bytes] = []
     with storage.outside(path), path.open("rb") as handle:
-        digest = file_sha256(path, handle=handle, kept=kept)
+        digest = verified_file_digest(path, handle=handle, kept=kept)
         if kept:
             return kept[-1], digest
         handle.seek(0)
@@ -841,5 +840,8 @@ def _line(item: tuple[_Key, _Entry]) -> str:
 
 
 def _trust_line(item: tuple[str, TrustEntry]) -> str:
-    path, (stamp, digest) = item
-    return json.dumps([path, *stamp, digest], separators=(",", ":")) + "\n"
+    path, entry = item
+    return (
+        json.dumps([path, *entry.stamp, entry.digest, entry.whole_file], separators=(",", ":"))
+        + "\n"
+    )

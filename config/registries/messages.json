@@ -1015,6 +1015,15 @@
         "zh-CN": "即使当前命令环境无法另起独立进程，仍可复用经过验证、匹配的已有宿主。ALREADY_SERVING 只复用经过验证、属于此工作区及实例的 宿主，并保留其权限和空闲策略。工作区活动的观察信息会列出其实例、进程和启动时间；工作台显示同一个 宿主。若连接描述过期或无法验证，请先读取所指出的 宿主 日志并确认持有它的进程，再重试原来的 serve 命令；不要改动连接描述或写入租约。"
       }
     },
+    "research_workspace.manifest_before_blake3.detail": {
+      "owner": "alphalattice.control.product_host.composition",
+      "kind": "MESSAGE",
+      "arguments": [],
+      "words": {
+        "en": "This workspace uses the earlier format. To use this release, start a fresh data root and research workspace.",
+        "zh-CN": "此工作区使用旧版格式。请新建数据根目录和研究工作区，再使用此版本。"
+      }
+    },
     "goal.profile.operation": {
       "owner": "alphalattice.control.observation_runtime",
       "kind": "MESSAGE",

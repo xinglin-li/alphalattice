@@ -34,6 +34,7 @@ from alphalattice.control.product_host.research_authoring.authority import (
 )
 from alphalattice.control.product_host.research_authoring.factor_inputs import (
     compatible_factor_inputs,
+    factor_input_baseline,
     factor_input_paths,
     logical_panel_owner,
     read_factor_bundle,
@@ -65,6 +66,7 @@ from alphalattice.investment.alpha_research.experiments.development_execution im
     AlphaExperimentExecutor,
 )
 from alphalattice.investment.alpha_research.experiments.policies import load_alpha_split_policy
+from alphalattice.kernel.identity import blake3_filename, is_blake3
 from alphalattice.protocols.actor_execution.contracts import ActorKind
 from alphalattice.protocols.research_authoring.contracts import (
     AuthoringError,
@@ -209,9 +211,9 @@ class _AlphaChildAnswer:
 
 def _alpha_staging(workspace: Path, program_hash: str) -> Path:
     """The program's private staging directory survives a stopped Host."""
-    if re.fullmatch(r"[0-9a-f]{64}", program_hash) is None:
+    if not is_blake3(program_hash):
         raise AuthoringError("research_authoring.program_identity_invalid")
-    staging = workspace / ".alpha-child" / program_hash
+    staging = workspace / ".alpha-child" / blake3_filename(program_hash)
     if staging.resolve() != staging:
         raise AuthoringError("alpha_research.child_staging_linked")
     staging.mkdir(parents=True, exist_ok=True)
@@ -278,7 +280,7 @@ class _AlphaChildCheckpoint:
             if source.resolve() != source:
                 raise AuthoringError("alpha_research.child_staging_linked")
             if (content, layout) in parts or not all(
-                re.fullmatch(r"[0-9a-f]{64}", value) for value in (content, digest)
+                is_blake3(value) for value in (content, digest)
             ):
                 raise AuthoringError("alpha_research.child_staging_invalid")
             parts[content, layout] = digest, source
@@ -299,9 +301,7 @@ class _AlphaChildCheckpoint:
             if (
                 source.resolve() != source
                 or digest in output.chunks
-                or not all(
-                    re.fullmatch(r"[0-9a-f]{64}", value) for value in (digest, seal, checksum)
-                )
+                or not all(is_blake3(value) for value in (digest, seal, checksum))
             ):
                 raise AuthoringError("alpha_research.child_staging_invalid")
             output.chunks[digest] = seal, checksum, source
@@ -497,7 +497,8 @@ def prepare_factor_handoff(
         raise AuthoringError("factor_research.prepared_features_new_input_requires_build")
     source, _artifact_root = factor_input_paths(workspace, binding.binding_hash)
     logical_panel_owner(source).verify_snapshot(bundle.panel_snapshot_hash)
-    output = f"research-experiments/alpha-{decision.submission.research_input.input_hash}"
+    input_file = blake3_filename(decision.submission.research_input.input_hash)
+    output = f"research-experiments/alpha-{input_file}"
     if document is not None and yaml_text is not None:
         raise AuthoringError("research_experiment.one_document_required")
     draft = deepcopy(
@@ -549,7 +550,7 @@ def prepare_factor_handoff(
         if feature_input
         else bundle.panel_snapshot_hash,
         "output_workspace": output,
-        "baseline_workspace": f"research-inputs/{binding.binding_hash}/source",
+        "baseline_workspace": factor_input_baseline(binding.binding_hash),
         "publication_intent": "DEVELOPMENT_EVIDENCE_ONLY",
     }
     for key, value in fixed.items():

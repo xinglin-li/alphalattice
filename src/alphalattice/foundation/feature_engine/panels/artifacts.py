@@ -35,7 +35,7 @@ from alphalattice.foundation.feature_engine.panels.identity import (
     panel_schema_hash,
 )
 from alphalattice.foundation.feature_engine.storage.contracts import PanelContentIdentity
-from alphalattice.kernel.identity import identity_sha256
+from alphalattice.kernel.identity import blake3_filename, identity_blake3, tagged_blake3
 
 if TYPE_CHECKING:
     import pandas as pd
@@ -390,7 +390,11 @@ class PanelArtifactCompositionOwner:
         os.replace(staged, target)
 
     def _composition_path(self, panel_binding_hash: str, panel_content_hash: str) -> Path:
-        return self._staging_root / panel_binding_hash / f"{panel_content_hash}.json"
+        return (
+            self._staging_root
+            / blake3_filename(panel_binding_hash)
+            / f"{blake3_filename(panel_content_hash)}.json"
+        )
 
 
 class PanelCompositionSession:
@@ -1148,7 +1152,7 @@ def panel_content_identity(
     availability: Sequence[Mapping[str, object]],
 ) -> PanelContentIdentity:
     """Hash ordered Panel chunks and availability into content identity."""
-    digest = identity_sha256()
+    digest = identity_blake3()
     digest.update(
         json.dumps(
             {
@@ -1197,7 +1201,7 @@ def panel_content_identity(
     if row_count == 0 or not ordered_availability:
         raise ValueError("Panel content identity has no durable rows")
     return PanelContentIdentity(
-        panel_content_hash=digest.hexdigest(),
+        panel_content_hash=tagged_blake3(digest),
         row_count=row_count,
         availability_count=len(ordered_availability),
         history_start=binding.history_start,

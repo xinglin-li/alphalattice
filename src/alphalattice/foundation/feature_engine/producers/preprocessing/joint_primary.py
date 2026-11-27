@@ -27,7 +27,6 @@ from alphalattice.foundation.feature_engine.producers.arithmetic_identity import
     PREPROCESSING_WALK_EXCLUDED,
     feature_component_identity,
 )
-from alphalattice.kernel.identity import identity_sha256
 
 from .adapters import require_uniform_membership
 from .contracts import PanelPreprocessingImplementationBinding
@@ -35,6 +34,7 @@ from .robust_cross_section import (
     SMALL_SECTOR_WARNING_BELOW,
     PanelFactorClipObservation,
     PanelMaterialization,
+    panel_array_digest,
 )
 
 if TYPE_CHECKING:
@@ -67,23 +67,6 @@ FORMULA_PRETRANSFORM_RULES: Final[Mapping[str, FormulaPretransformRuleId]] = {
     "intraday_amplitude": "PER_SESSION_RANK_GAUSSIAN",
     "kurt_63": "PER_SESSION_RANK_GAUSSIAN",
 }
-
-
-def _array_digest(values: np.ndarray) -> str:
-    finite = np.isfinite(values)
-    return str(
-        canonical_hash(
-            {
-                "kind": "PanelArrayDigest",
-                "dtype": str(values.dtype),
-                "shape": list(values.shape),
-                "finite_mask": identity_sha256(np.ascontiguousarray(finite).tobytes()).hexdigest(),
-                "finite_values": identity_sha256(
-                    np.ascontiguousarray(np.where(finite, values, 0.0), dtype=np.float64).tobytes()
-                ).hexdigest(),
-            }
-        )
-    )
 
 
 def _rank_gauss_rows(
@@ -422,8 +405,8 @@ class JointPrimaryCrossSectionKernel:
                         "panel_binding_hash": binding.panel_binding_hash,
                     }
                 )
-            raw_digests.append((factor_id, _array_digest(raw_matrix)))
-            transformed_digests.append((factor_id, _array_digest(score)))
+            raw_digests.append((factor_id, panel_array_digest(raw_matrix)))
+            transformed_digests.append((factor_id, panel_array_digest(score)))
             flat_score = score.reshape(-1)
             rows[factor_id] = pd.Series(flat_score).where(np.isfinite(flat_score), np.nan)
         latest_session = max(cast(str, item["session_date"]) for item in availability)
@@ -482,7 +465,6 @@ _JOINT_PRIMARY_OWNERS = (
 @lru_cache(maxsize=1)
 def _relative_content_hash() -> str:
     return feature_component_identity(
-        "PANEL_PREPROCESSING:joint_primary_relative",
         owners=_JOINT_PRIMARY_OWNERS,
         excluded=PREPROCESSING_WALK_EXCLUDED,
         semantic_owner="feature_engine.producers.preprocessing.joint_primary",
@@ -493,7 +475,6 @@ def _relative_content_hash() -> str:
 @lru_cache(maxsize=1)
 def _interaction_content_hash() -> str:
     return feature_component_identity(
-        "DEVELOPMENT_PANEL_PREPROCESSING:joint_primary_interaction",
         owners=_JOINT_PRIMARY_OWNERS,
         excluded=PREPROCESSING_WALK_EXCLUDED,
         semantic_owner="feature_engine.producers.preprocessing.joint_primary_interaction",
@@ -711,8 +692,8 @@ class JointPrimaryStateInteractionBlockAdapter:
                     ),
                 )
             )
-            raw_pairs.append((factor_id, _array_digest(product)))
-            transformed_pairs.append((factor_id, _array_digest(bounded)))
+            raw_pairs.append((factor_id, panel_array_digest(product)))
+            transformed_pairs.append((factor_id, panel_array_digest(bounded)))
         sector_distribution = {
             sector: sum(value == sector for value in sector_by_listing_id.values())
             for sector in sorted(set(sector_by_listing_id.values()))

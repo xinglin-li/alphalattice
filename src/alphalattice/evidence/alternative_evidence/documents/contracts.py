@@ -8,6 +8,8 @@ from typing import Literal, Self
 
 from pydantic import Field, model_validator
 
+from alphalattice.kernel.identity import BLAKE3_PATTERN
+
 from ..contracts import (
     AlternativeEvidenceClass,
     AlternativeEvidenceContract,
@@ -60,10 +62,10 @@ class AlternativeEvidenceCanonicalDocument(AlternativeEvidenceContract):
     )
     report_period_end: date | None = Field(default=None, exclude_if=lambda value: value is None)
     canonical_markdown: bytes = Field(min_length=1)
-    canonical_content_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
+    canonical_content_hash: str = Field(pattern=BLAKE3_PATTERN)
     character_count: int = Field(ge=1)
     byte_count: int = Field(ge=1)
-    document_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
+    document_hash: str = Field(pattern=BLAKE3_PATTERN)
 
     @model_validator(mode="after")  # type: ignore[untyped-decorator]
     def validate_document(self) -> Self:
@@ -245,18 +247,18 @@ class AlternativeEvidenceDocumentSet(AlternativeEvidenceContract):
     """
 
     kind: Literal["AlternativeEvidenceDocumentSet"] = "AlternativeEvidenceDocumentSet"
-    request_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
-    source_snapshot_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
-    canonicalization_binding_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
+    request_hash: str = Field(pattern=BLAKE3_PATTERN)
+    source_snapshot_hash: str = Field(pattern=BLAKE3_PATTERN)
+    canonicalization_binding_hash: str = Field(pattern=BLAKE3_PATTERN)
     reading_depth: AlternativeEvidenceReadingDepth
     workspace_snapshot_id: str = Field(
         pattern=r"^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$"
     )
-    workspace_snapshot_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
+    workspace_snapshot_hash: str = Field(pattern=BLAKE3_PATTERN)
     documents: tuple[AlternativeEvidenceDocumentReference, ...]
     rejections: tuple[AlternativeEvidenceDocumentRejection, ...]
     published_at: datetime
-    document_set_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
+    document_set_hash: str = Field(pattern=BLAKE3_PATTERN)
 
     @model_validator(mode="after")  # type: ignore[untyped-decorator]
     def validate_document_set(self) -> Self:

@@ -77,7 +77,7 @@ def test_a_planted_claim_beyond_the_excerpt_is_retrievable_with_exact_span(
         document_set.documents[0].workspace_document_id,
         document_set.documents[0].workspace_revision,
     )
-    assert revision.content_sha256
+    assert revision.content_digest
     assert (
         content[spans[0].utf8_byte_start : spans[0].utf8_byte_end].decode("utf-8")
         == spans[0].excerpt

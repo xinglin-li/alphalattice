@@ -37,6 +37,7 @@ from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 from alphalattice.capabilities.domain_contracts.identity import canonical_hash
 from alphalattice.foundation.market_data_ops.sources.contracts import CorporateActionEvent
+from alphalattice.kernel.identity import BLAKE3_PATTERN
 
 from .contracts import (
     _ACTION_ID,
@@ -174,7 +175,7 @@ class ExecutionOutcomeMethodRecipe(_Contract):
         "AXIS_SESSION_HALF_OPEN_ENTRY_EXCLUSIVE_EXIT_INCLUSIVE"
     ] = AXIS_SESSION_HALF_OPEN_ATTRIBUTION  # type: ignore[assignment]
     return_formula_identity: str = Field(min_length=1, max_length=128)
-    recipe_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
+    recipe_hash: str = Field(pattern=BLAKE3_PATTERN)
 
     @model_validator(mode="after")  # type: ignore[untyped-decorator]
     def validate_identity(self) -> Self:
@@ -267,14 +268,14 @@ class ExecutionOutcomeMethodIdentity(_Contract):
     """Pair an installed method ID with its sealed recipe hash."""
 
     recipe_id: str = Field(min_length=1, max_length=96)
-    recipe_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
+    recipe_hash: str = Field(pattern=BLAKE3_PATTERN)
 
 
 class ExecutionOutcomeMethodCatalogBinding(_Contract):
     """Content identity of the explicitly installed outcome methods."""
 
     ordered_recipes: tuple[ExecutionOutcomeMethodIdentity, ...] = Field(min_length=1)
-    catalog_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
+    catalog_hash: str = Field(pattern=BLAKE3_PATTERN)
 
     @model_validator(mode="after")  # type: ignore[untyped-decorator]
     def validate_identity(self) -> Self:
@@ -582,12 +583,12 @@ class ExecutionOutcomeMethodBinding(_Contract):
 
     kind: Literal["ExecutionOutcomeMethodBinding"] = "ExecutionOutcomeMethodBinding"
     recipe_id: str = Field(min_length=1, max_length=96)
-    recipe_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
-    catalog_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
-    publication_policy_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
-    snapshot_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
-    schedule_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
-    ordered_session_triples_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
+    recipe_hash: str = Field(pattern=BLAKE3_PATTERN)
+    catalog_hash: str = Field(pattern=BLAKE3_PATTERN)
+    publication_policy_hash: str = Field(pattern=BLAKE3_PATTERN)
+    snapshot_hash: str = Field(pattern=BLAKE3_PATTERN)
+    schedule_hash: str = Field(pattern=BLAKE3_PATTERN)
+    ordered_session_triples_hash: str = Field(pattern=BLAKE3_PATTERN)
     entry_offset_sessions: int = Field(ge=1)
     exit_offset_sessions: int = Field(ge=2)
     actual_session_span: int = Field(ge=2)
@@ -602,8 +603,8 @@ class ExecutionOutcomeMethodBinding(_Contract):
     ] = AXIS_SESSION_HALF_OPEN_ATTRIBUTION  # type: ignore[assignment]
     return_formula_identity: str = Field(min_length=1, max_length=128)
     source_watermark_hash: str = Field(min_length=1, max_length=128)
-    action_lineage_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
-    binding_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
+    action_lineage_hash: str = Field(pattern=BLAKE3_PATTERN)
+    binding_hash: str = Field(pattern=BLAKE3_PATTERN)
 
     @model_validator(mode="after")  # type: ignore[untyped-decorator]
     def validate_identity(self) -> Self:
@@ -690,7 +691,7 @@ class ExecutionOutcomePublicationPolicy(_Contract):
     string and its position as the default, so the one-session policy's
     ``policy_hash`` -- carried by every seal already on disk -- does not move."""
 
-    policy_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
+    policy_hash: str = Field(pattern=BLAKE3_PATTERN)
 
     @property
     def publication_scope(self) -> Literal["DEVELOPMENT_AND_SEALED_HOLDOUT", "DEVELOPMENT_ONLY"]:
@@ -837,15 +838,15 @@ class ExecutionOutcomeMethodSealMarker(_Contract):
     """
 
     kind: Literal["ExecutionOutcomeMethodSealMarker"] = "ExecutionOutcomeMethodSealMarker"
-    outcome_marker_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
+    outcome_marker_hash: str = Field(pattern=BLAKE3_PATTERN)
     outcome_marker_ref: str = Field(min_length=1)
-    snapshot_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
+    snapshot_hash: str = Field(pattern=BLAKE3_PATTERN)
     manifest_ref: str = Field(min_length=1)
-    binding_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
+    binding_hash: str = Field(pattern=BLAKE3_PATTERN)
     binding_ref: str = Field(min_length=1)
-    catalog_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
-    publication_policy_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
-    seal_marker_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
+    catalog_hash: str = Field(pattern=BLAKE3_PATTERN)
+    publication_policy_hash: str = Field(pattern=BLAKE3_PATTERN)
+    seal_marker_hash: str = Field(pattern=BLAKE3_PATTERN)
 
     @model_validator(mode="after")  # type: ignore[untyped-decorator]
     def validate_identity(self) -> Self:

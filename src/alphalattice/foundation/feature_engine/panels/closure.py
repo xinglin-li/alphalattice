@@ -17,7 +17,7 @@ from pydantic import BaseModel
 
 from alphalattice.capabilities.domain_contracts.identity import canonical_hash
 from alphalattice.control.workspace_runtime.artifacts import ArtifactResolver
-from alphalattice.control.workspace_runtime.verified_facts import file_sha256
+from alphalattice.control.workspace_runtime.verified_facts import verified_file_digest
 from alphalattice.foundation.feature_engine.contracts import (
     PANEL_ROW_IDENTITY_BY_CROSS_SECTION,
     PanelSourceExclusion,
@@ -71,6 +71,7 @@ from alphalattice.foundation.feature_engine.producers.preprocessing.robust_cross
 from alphalattice.foundation.market_data_ops.returns.sector_revision_identity import (
     sector_revision_hash,
 )
+from alphalattice.kernel.identity import blake3_filename
 
 
 @dataclass(frozen=True)
@@ -757,7 +758,9 @@ class PanelClosurePublisher:
         if existed:
             self._reused += 1
         else:
-            self._new_bytes += len(self._store.files.read(f"{category}/{content_hash}.json") or b"")
+            self._new_bytes += len(
+                self._store.files.read(f"{category}/{blake3_filename(content_hash)}.json") or b""
+            )
 
     def _report(self, stage: str, completed: int, total: int, item: str | None) -> None:
         if self._progress is not None:
@@ -862,7 +865,7 @@ def _expected_chunk(item: Mapping[str, object], path: Path) -> ExpectedPanelChun
         row_count=int(cast(int, item["row_count"])),
         chunk_hash=str(item["chunk_hash"]),
         metadata_hash=str(item["metadata_hash"]),
-        physical_sha256=file_sha256(path),
+        physical_digest=verified_file_digest(path),
         byte_count=path.stat().st_size,
         uri=str(item["uri"]),
         origin_binding_hash=str(origin) if origin is not None else None,

@@ -9,7 +9,6 @@ added factor, under its own hash.
 from __future__ import annotations
 
 import json
-import re
 from collections.abc import Mapping, Sequence
 from datetime import datetime
 from typing import Literal
@@ -19,11 +18,11 @@ import duckdb
 from alphalattice.capabilities.data.errors import DataError
 from alphalattice.capabilities.domain_contracts.identity import canonical_hash
 from alphalattice.control.workspace_runtime.database import table_columns, table_info
+from alphalattice.control.workspace_runtime.reader_threads import install_blake3_sql
 from alphalattice.control.workspace_runtime.verified_facts import ensure_year_fact_schema
-from alphalattice.kernel.identity import change_sha256, identity_sha256
+from alphalattice.kernel.identity import identity_blake3, is_blake3, tagged_blake3
 
 FeatureStorageLayout = Literal["CURRENT_BY_ROW_CATALOG", "CURRENT_ONLY", "LEGACY_BY_CATALOG"]
-_HEX = re.compile(r"[0-9a-f]{64}")
 
 
 class FeatureRowCatalogAuthorityError(RuntimeError):
@@ -80,9 +79,11 @@ def cutoff_set_hash(canonical_payload: str) -> str:
     keys and writes the mapping exactly as ``payload`` already spells it --
     without encoding the mapping a second time.
     """
-    return identity_sha256(
-        f'{{"cutoffs":{canonical_payload},"kind":"FeatureInputCutoffSet"}}'.encode()
-    ).hexdigest()
+    return tagged_blake3(
+        identity_blake3(
+            f'{{"cutoffs":{canonical_payload},"kind":"FeatureInputCutoffSet"}}'.encode()
+        )
+    )
 
 
 def refuse_before_0_2_7(tables: Mapping[str, str]) -> None:
@@ -227,6 +228,8 @@ def ensure_feature_current_schema(
     )
     connection.execute("DROP VIEW IF EXISTS feature_daily_runtime")
     if layout == "CURRENT_BY_ROW_CATALOG":
+        if layer is not None:
+            install_blake3_sql(connection)
         connection.execute(
             f"CREATE VIEW feature_daily_runtime AS {_runtime_view(catalog_hash, factors, layer)}"
         )
@@ -244,7 +247,7 @@ def runtime_view_hash(connection: duckdb.DuckDBPyConnection) -> str:
     row = connection.execute(
         "SELECT sql FROM duckdb_views() WHERE view_name = 'feature_daily_runtime' AND NOT internal"
     ).fetchone()
-    return change_sha256(str(row[0] if row is not None else "").encode()).hexdigest()
+    return tagged_blake3(identity_blake3(str(row[0] if row is not None else "").encode()))
 
 
 def layered_row_hash(catalog_hash: str, part_row_hashes: Sequence[str]) -> str:
@@ -260,9 +263,9 @@ def layered_row_hash(catalog_hash: str, part_row_hashes: Sequence[str]) -> str:
     Returns:
         The composed row's hash.
     """
-    return identity_sha256(
-        "|".join(("FeatureLayeredRow", catalog_hash, *part_row_hashes)).encode()
-    ).hexdigest()
+    return tagged_blake3(
+        identity_blake3("|".join(("FeatureLayeredRow", catalog_hash, *part_row_hashes)).encode())
+    )
 
 
 def _layer(
@@ -280,7 +283,7 @@ def _layer(
         or sorted(owned) != sorted(factors)
         or len(set(hashes)) != len(hashes)
         or catalog_hash in hashes
-        or not all(_HEX.fullmatch(value) for value in (catalog_hash, *hashes))
+        or not all(is_blake3(value) for value in (catalog_hash, *hashes))
     ):
         raise ValueError("feature.catalog_layer_invalid")
     return layer
@@ -335,7 +338,7 @@ def _runtime_view(
         SELECT p0.listing_id, p0.session_date, '{catalog_hash}',
                p0.raw_input_hash, p0.action_set_hash,
                p0.market_reference_revision, CAST(json_object({cutoffs}) AS VARCHAR),
-               sha256('FeatureLayeredRow|{catalog_hash}|' || {identities}),
+               system.main.alphalattice_blake3('FeatureLayeredRow|{catalog_hash}|' || {identities}),
                greatest({updated}), CAST(NULL AS VARCHAR), {values}
         FROM feature_daily_current AS p0
         JOIN feature_input_cutoff_set AS c0 ON c0.cutoff_set_hash = p0.cutoff_set_hash{joins}

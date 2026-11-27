@@ -44,9 +44,11 @@ from alphalattice.investment.portfolio_strategy_lab.application.task import (
     PORTFOLIO_PUBLIC_TASK_KIND,
     portfolio_research_task_input,
 )
+from alphalattice.kernel.identity import blake3_filename
 from tests._support.alternative_evidence_desk_fixtures import (
     review_on_the_store as review_on_the_store,
 )
+from tests._support.identity_fixtures import fixture_digest
 from tests.portfolio_strategy_lab.activated_copy import (
     PACKAGE,
     forward_copy,
@@ -100,10 +102,9 @@ def test_history_retains_readable_cro_metadata_beside_a_corrupt_peer(tmp_path, m
         live = book.live
         view = publish_activation_review(live, book.result_hash)
         store = live.review.review_publications.store
-        bad_identity = "e" * 64
-        (store.root / "cro-review-publications" / f"{bad_identity}.json").write_text(
-            "{", encoding="utf-8"
-        )
+        bad_identity = fixture_digest("unreadable CRO review publication")
+        corrupt = store.root / "cro-review-publications" / f"{blake3_filename(bad_identity)}.json"
+        corrupt.write_text("{", encoding="utf-8")
 
         def no_full_read(*_args, **_kwargs):
             raise AssertionError("History metadata opened a full Evidence or CRO read")

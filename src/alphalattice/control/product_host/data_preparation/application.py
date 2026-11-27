@@ -125,6 +125,7 @@ from alphalattice.foundation.market_data_ops.sources.universe import (
 )
 from alphalattice.foundation.market_data_ops.storage.duckdb import MarketDataRepository
 from alphalattice.interface.local_application.dispatcher import CommandAdmission
+from alphalattice.kernel.identity import BLAKE3_PATTERN
 
 TASK_KIND = "workspace_preparation"
 STAGES = ("freeze_sources", "prepare_data", "prepare_features", "publish_inputs", "verify_inputs")
@@ -227,7 +228,7 @@ class ListingActivitySnapshot(BaseModel):  # type: ignore[misc]
     written_at: AwareDatetime
     counts: ListingActivityCounts
     rows: tuple[ListingActivityRow, ...]
-    content_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
+    content_hash: str = Field(pattern=BLAKE3_PATTERN)
 
     @model_validator(mode="after")  # type: ignore[untyped-decorator]
     def validate_bounds(self) -> ListingActivitySnapshot:

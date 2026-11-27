@@ -45,7 +45,6 @@ _OWNERS: Final = (
 def _content_hash() -> str:
     """The identity of the code that computes the universe-centred transformation."""
     identity: str = feature_component_identity(
-        "PANEL_PREPROCESSING:robust_universe_z",
         owners=_OWNERS,
         excluded=PREPROCESSING_WALK_EXCLUDED,
         semantic_owner="feature_engine.producers.preprocessing",

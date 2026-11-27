@@ -35,7 +35,7 @@ from alphalattice.control.product_host.maintenance.data_update import (
     installed_data_update_binding,
     read_workspace_inputs,
 )
-from alphalattice.control.workspace_runtime.verified_facts import file_sha256
+from alphalattice.control.workspace_runtime.verified_facts import verified_file_digest
 from alphalattice.foundation.causal_outcomes.execution.compile import (
     _action_dividends,
     causal_execution_simple_return,
@@ -187,7 +187,7 @@ def _market_source_proof(market: MarketDataRepository) -> tuple[tuple[str, str |
     proof = []
     for path in (market.path, Path(str(market.path) + ".wal")):
         try:
-            digest = file_sha256(path)
+            digest = verified_file_digest(path)
         except FileNotFoundError:
             if path == market.path:
                 raise
@@ -233,7 +233,7 @@ _KERNEL_IDS = sorted(
     spec.factor_id
     for spec in (*session_observation_factor_specs(), *session_liquidity_factor_specs())
 )
-PER_LISTING_REVIEWED = "27d51f63ffd56539840ed4f2a67620a82a7cd1eccfa2aa2435ffebaf0459a701"
+PER_LISTING_REVIEWED = "blake3:5b9854d6b4d063dc3cf0d3862e025820c04954d02f987c1cc3673aed52c93b17"
 """The digest of the extension kernel ids reviewed to compute one listing at a time (each gives a
 listing subset its full frame's bytes; the test names them)."""
 PER_LISTING_EXTENSIONS = (

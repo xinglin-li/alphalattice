@@ -3831,7 +3831,6 @@
     "feature_engine.panels.closure_artifacts:arrow_table_logical_hash": "serializes a table to an in-memory buffer to hash it",
     "market_data_ops.storage.duckdb:_source_prefix_arrow_hash": "serializes a table to an in-memory buffer to hash it",
     "sector_research.inputs.surface:_payload": "serializes a table to an in-memory buffer; the caller's store publishes the bytes",
-    "portfolio_strategy_lab.application.calibration:_legacy_npz_digest": "writes an npz to an in-memory buffer to hash it",
     "task_control.runner:TaskHeartbeatReader": "opens an unswitched heartbeat SQLite file read-only; otherwise queries the held log or a mode=ro attach",
     "task_control.upgrade:_stored_heartbeats": "opens the old heartbeat SQLite file with mode=ro for equality verification before retiring it",
     "product_host.composition.research_update_automation:ResearchUpdateAutomation": "reopens a committed record by its kind and key through CommittedIndex.open; the committed index's own writes are the content-store family's",
@@ -3846,6 +3845,7 @@
     "feature_engine.panels.development_overlay:_prepared_raw_columns": "reads a formula column by its content hash (ResearchFormulaValues.open)",
     "data_layer.history_runtime:held": "opens the data root through HostLog.open, whose class is the data-root family's writer",
     "data_layer.history_runtime:store": "opens the Host's catalog through StorePort.open, whose class is the data-root family's writer",
-    "data_layer.log:attach": "opens log.sqlite read-only (mode=ro), so SQLite refuses its writes"
+    "data_layer.log:attach": "opens log.sqlite read-only (mode=ro), so SQLite refuses its writes",
+    "data_layer.root:require_log_schema": "reads the log schema version through SQLite in mode=ro before any writer opens"
   }
 }

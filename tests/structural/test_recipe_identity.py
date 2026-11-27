@@ -16,9 +16,9 @@ from alphalattice.investment.alpha_research.scores.product_recipe import (
     INSTALLED_ALPHA_PRODUCT_RECIPE,
 )
 from alphalattice.investment.portfolio_strategy_lab.policies.installed_strategies import (
-    BROAD_FEATURE_PACKAGE,
     FROZEN_RESEARCH_BOOK_RECIPES,
     INSTALLED_HETEROGENEOUS_BOOK_RECIPE,
+    broad_feature_package,
     heterogeneous_package,
 )
 
@@ -55,8 +55,8 @@ def _sealed() -> list[tuple[BaseModel, str]]:
         (strategy, "strategy_hash"),
         *((component, "recipe_hash") for component in strategy.components),
         (INSTALLED_HETEROGENEOUS_BOOK_RECIPE, "recipe_hash"),
-        (BROAD_FEATURE_PACKAGE, "package_hash"),
-        (heterogeneous_package(), "package_hash"),
+        (broad_feature_package(strategy.strategy_hash), "package_hash"),
+        (heterogeneous_package(historical_evidence_hash=strategy.strategy_hash), "package_hash"),
     ]
 
 

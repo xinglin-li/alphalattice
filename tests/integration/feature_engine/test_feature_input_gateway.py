@@ -51,6 +51,7 @@ from alphalattice.foundation.market_data_ops.storage.duckdb import (
     CurrentUniverseQualityAdmission,
     MarketDataRepository,
 )
+from tests._support.identity_fixtures import fixture_digest
 from tests.feature_input_gateway.gateway_support import (
     AS_OF,
     NOW,
@@ -225,7 +226,7 @@ def test_pending_quality_case_reopens_exactly_and_changed_evidence_supersedes_it
     ).agent_cases[0]
     assert second == first
     assert len(panel.feature_input_case_documents(manifest.revision_sha256)) == 1
-    changed = replace(evidence[0], evidence_hash="e" * 64)
+    changed = replace(evidence[0], evidence_hash=fixture_digest("superseding-evidence"))
     successor = reopened.assess_and_record(
         **{**facts, "evidence": (changed, *evidence[1:])},
         observed_at=NOW + timedelta(minutes=20),
@@ -522,7 +523,7 @@ def test_human_raw_move_choice_is_consumed_as_a_caveat_not_source_truth(tmp_path
         assert evidence[0].reason_codes == (
             "UNEXPLAINED_RAW_MOVE",
         )  # source evidence not rewritten
-        changed = replace(evidence[0], evidence_hash="c" * 64)
+        changed = replace(evidence[0], evidence_hash=fixture_digest("changed-admission-evidence"))
         disputed = service.assess_and_record(**{**facts, "evidence": (changed, *evidence[1:])})
         assert disputed.assessment is FeatureInputAssessment.DEFERRED
         assert disputed.agent_cases[0].evidence_hash != case.evidence_hash
@@ -757,7 +758,9 @@ def test_macro_retry_exhaustion_creates_one_marketwide_case() -> None:
         temporal_boundary=_temporal(),
         observed_at=NOW,
         macro_retry_exhausted=True,
-        last_known_good_snapshot_ref=(f"playpen://feature-panel/manifests/{'b' * 64}"),
+        last_known_good_snapshot_ref=ArtifactResolver.feature_panel_manifest_uri(
+            fixture_digest("last-known-good-panel")
+        ),
     )
     assert len(result.agent_cases) == 1
     case = result.agent_cases[0]
@@ -828,13 +831,13 @@ def test_forged_stale_and_repeatedly_churning_agent_evidence_fails_closed() -> N
         gateway.validate_agent_selection(
             case,
             run_id=case.run_id,
-            case_token="f" * 64,
+            case_token=fixture_digest("forged-case-token"),
             evidence_hash=case.evidence_hash,
             option_id=case.options[0].option_id,
             current_evidence_hash=case.evidence_hash,
             rediagnosis_count=0,
         )
-    changed_once = replace(original, evidence_hash="1" * 64)
+    changed_once = replace(original, evidence_hash=fixture_digest("changed-once"))
     rediagnosed = gateway.reconcile_stale_case(
         candidate_manifest=manifest,
         prior_case=case,
@@ -842,7 +845,7 @@ def test_forged_stale_and_repeatedly_churning_agent_evidence_fails_closed() -> N
         observed_at=NOW,
     )
     assert rediagnosed.rediagnosis_count == 1  # type: ignore[union-attr]
-    changed_twice = replace(original, evidence_hash="2" * 64)
+    changed_twice = replace(original, evidence_hash=fixture_digest("changed-twice"))
     deferred = gateway.reconcile_stale_case(
         candidate_manifest=manifest,
         prior_case=rediagnosed,  # type: ignore[arg-type]
@@ -888,8 +891,12 @@ def test_quality_evaluator_flags_only_unexplained_raw_move_and_5bps_mismatch(mon
     explained = evaluator.evaluate(**evaluation)
     assert explained.failure_code is None
     assert explained.action_explained is True
-    action_before = evaluator.evaluate(**evaluation, action_evidence_hash="a" * 64)
-    action_after = evaluator.evaluate(**evaluation, action_evidence_hash="b" * 64)
+    action_before = evaluator.evaluate(
+        **evaluation, action_evidence_hash=fixture_digest("action-before")
+    )
+    action_after = evaluator.evaluate(
+        **evaluation, action_evidence_hash=fixture_digest("action-after")
+    )
     assert action_before.evidence_hash != action_after.evidence_hash
     assert action_before.reason_codes == action_after.reason_codes == explained.reason_codes
     hashed: list[object] = []
@@ -971,8 +978,8 @@ def test_quarantine_is_recoverable_and_panel_preflight_blocks_bad_universe() -> 
         provider="fixture",
         range_start=failing.range_start,
         range_end=failing.range_end,
-        evidence_hash="f" * 64,
-        qualification_receipt_hash="1" * 64,
+        evidence_hash=fixture_digest("passing-evidence"),
+        qualification_receipt_hash=fixture_digest("passing-qualification"),
     )
     decision = gateway.requalify(quarantine, passing, observed_at=NOW + timedelta(days=1))
     assert decision.assessment is FeatureInputAssessment.ADMITTED
@@ -1117,7 +1124,7 @@ def test_a_due_quarantine_is_continued_only_over_the_same_anomaly() -> None:
     document = json.dumps(continued.document(), sort_keys=True)
     assert QuarantineContinuation.read_document(document) == continued
     tampered = json.loads(document)
-    tampered["evidence"]["evidence_hash"] = "0" * 64
+    tampered["evidence"]["evidence_hash"] = fixture_digest("changed-evidence")
     with pytest.raises(ValueError, match="continuation_identity_mismatch"):
         QuarantineContinuation.read_document(json.dumps(tampered))
     # The reader never seals a document that lacks its identity: modified
@@ -1338,7 +1345,7 @@ def test_persisted_continuation_reads_back_only_with_its_identity(tmp_path) -> N
                 )
 
         forged = json.loads(stored)
-        forged["evidence"]["evidence_hash"] = "0" * 64
+        forged["evidence"]["evidence_hash"] = fixture_digest("changed-evidence")
         for value in (None, ""):  # absent, empty
             unsealed = dict(forged)
             if value is None:
@@ -1361,7 +1368,10 @@ def test_persisted_continuation_reads_back_only_with_its_identity(tmp_path) -> N
         with market._connect() as connection:
             connection.execute(
                 "UPDATE listing_quarantine SET evidence_hash = ? WHERE quarantine_hash = ?",
-                ["1" * 64, continued.quarantine.quarantine_hash],
+                [
+                    fixture_digest("changed-quarantine-evidence"),
+                    continued.quarantine.quarantine_hash,
+                ],
             )
         with pytest.raises(ValueError, match="continuation_identity_mismatch"):
             application.readback()
@@ -1503,7 +1513,7 @@ def test_unique_verified_alias_and_last_known_good_are_host_bound() -> None:
         _evidence(manifest, failed={0})[0],
         verified_alias_candidate_id="fixture-alias-a",
         verified_alias_provider_symbol="S000.A",
-        verified_alias_evidence_hash="a" * 64,
+        verified_alias_evidence_hash=fixture_digest("verified-alias"),
     )
     alias_case = gateway.assess(
         candidate_manifest=manifest,
@@ -1528,7 +1538,9 @@ def test_unique_verified_alias_and_last_known_good_are_host_bound() -> None:
         temporal_boundary=_temporal(),
         observed_at=NOW,
         macro_retry_exhausted=True,
-        last_known_good_snapshot_ref=f"playpen://feature-panel/manifests/{'b' * 64}",
+        last_known_good_snapshot_ref=ArtifactResolver.feature_panel_manifest_uri(
+            fixture_digest("last-known-good-panel")
+        ),
     ).agent_cases[0]
     old_snapshot = next(
         item
@@ -1567,13 +1579,24 @@ def _publish_reader_fixture(root: Path) -> tuple[ArtifactResolver, str]:
         observed_at=NOW,
     )
     assert admission_result.admission is not None
-    from alphalattice.foundation.feature_engine.panels.identity import hash_panel_rows
+    from alphalattice.foundation.feature_engine.contracts import listing_set_digest
+    from alphalattice.foundation.feature_engine.panels.identity import (
+        hash_panel_rows,
+        panel_chunk_hash,
+        panel_schema_hash,
+    )
+
+    binding_hash = canonical_hash("reader-fixture-binding")
+    content_hash = canonical_hash("reader-fixture-content")
+    catalog_hash = canonical_hash("reader-fixture-catalog")
+    receipt_hash = canonical_hash("reader-fixture-receipt")
+    listing_ids = ("listing-000", "listing-001")
 
     rows = [
         {
             "session_date": date(2025 + index // 2, 1, 2),
-            "listing_id": f"listing-{index % 2:03d}",
-            "materialization_receipt_hash": "4" * 64,
+            "listing_id": listing_ids[index % len(listing_ids)],
+            "materialization_receipt_hash": receipt_hash,
             "factor_a": float(index),
         }
         for index in range(4)
@@ -1585,32 +1608,20 @@ def _publish_reader_fixture(root: Path) -> tuple[ArtifactResolver, str]:
         # hashes its values give, which the reader checks.
         table = hash_panel_rows(
             pa.Table.from_pylist([row for row in rows if row["session_date"].year == year]),
-            manifest_revision="1" * 64,
-            sector_revision="2" * 64,
-            catalog_hash="e" * 64,
-            policy_hash="3" * 64,
+            manifest_revision=canonical_hash("reader-fixture-manifest"),
+            sector_revision=canonical_hash("reader-fixture-sector-revision"),
+            catalog_hash=catalog_hash,
+            policy_hash=canonical_hash("reader-fixture-policy"),
             factor_ids=("factor_a",),
         )
-        current_schema_hash = (
-            __import__("hashlib")
-            .sha256(str(table.schema.remove_metadata()).encode("utf-8"))
-            .hexdigest()
-        )
+        current_schema_hash = panel_schema_hash(table.schema)
         schema_hash = schema_hash or current_schema_hash
-        chunk_hash = canonical_hash(
-            {
-                "panel_binding_hash": "b" * 64,
-                "year": year,
-                "row_count": table.num_rows,
-                "row_hashes": table.column("row_hash").to_pylist(),
-                "schema_hash": current_schema_hash,
-            }
-        )
+        chunk_hash = panel_chunk_hash(table, panel_binding_hash=binding_hash, year=year)
         artifact = resolver.publish_feature_panel_chunk(
             table=table,
             content_hash=chunk_hash,
             metadata={
-                "panel_binding_hash": "b" * 64,
+                "panel_binding_hash": binding_hash,
                 "calendar_year": str(year),
                 "schema_hash": current_schema_hash,
             },
@@ -1631,21 +1642,21 @@ def _publish_reader_fixture(root: Path) -> tuple[ArtifactResolver, str]:
     temporal["temporal_identity_hash"] = reader_temporal.identity_hash()
     payload = {
         "kind": "FeaturePanelSnapshotManifest",
-        "panel_binding_hash": "b" * 64,
-        "panel_content_hash": "c" * 64,
+        "panel_binding_hash": binding_hash,
+        "panel_content_hash": content_hash,
         "history_start": "2025-01-02",
         "as_of_session": "2026-01-02",
         "knowledge_cutoff_at": NOW.isoformat(),
         "temporal_identity_hash": temporal["temporal_identity_hash"],
         "active_listing_count": 2,
-        "listing_set_hash": "d" * 64,
+        "listing_set_hash": listing_set_digest(listing_ids),
         "schema_hash": schema_hash,
         "chunks": chunks,
         "safe_summary": {
             "factor_catalog_summary": {"factor_a": {"available_session_count": 2}},
             "lineage": {
-                "catalog_hash": "e" * 64,
-                "panel_content_hash": "c" * 64,
+                "catalog_hash": catalog_hash,
+                "panel_content_hash": content_hash,
             },
             "temporal_risk": {
                 "universe_temporal_scope": "current-active-survivors",
@@ -1709,7 +1720,7 @@ def test_feature_panel_reader_streams_projected_batches_and_supports_concurrent_
         results = list(pool.map(lambda _: read(), range(4)))
     assert results == [(4, ("session_date", "listing_id", "factor_a"))] * 4
     forged = request.__class__(
-        manifest_ref=f"playpen://feature-panel/manifests/{'0' * 64}",
+        manifest_ref="playpen://feature-panel/manifests/" + canonical_hash("unknown-snapshot"),
         start_session=request.start_session,
         end_session=request.end_session,
         factor_columns=request.factor_columns,

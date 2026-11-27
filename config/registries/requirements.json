@@ -1789,7 +1789,8 @@
       "description": "If a panel chunk's bytes or hash drifted from the binding that wrote it, a reader would accept data under an identity it never had.",
       "owner": "alphalattice.foundation.feature_engine",
       "layer": "integration",
-      "seconds": 5
+      "seconds": 5,
+      "lower_layer": "The writer and reader must verify the same stored chunk on disk."
     },
     "feature_engine.panel_records_sessions_without_a_bar": {
       "description": "A Panel records each listing's sessions without a bar inside its own span, reads its record back only as written, and records nothing when every span is complete.",
@@ -2028,6 +2029,12 @@
       "layer": "integration",
       "seconds": 30,
       "lower_layer": "The smoke runs the checkout's real command, its Host and the Host's loopback in child processes, which the unit layer refuses."
+    },
+    "local_application.request_digest_transition_has_exact_scope": {
+      "description": "Only a release's recorded request digest pattern replaces its frozen schema, and prior transition receipts remain intact.",
+      "owner": "alphalattice.interface.local_application",
+      "layer": "unit",
+      "seconds": 1
     },
     "local_application.research_runs_are_recorded_as_trials": {
       "description": "A sealed research run is a trial with its selection, recipe, evidence artifact and optional running Task; attribution preserves content identity, a direct rerun has no Task, and the history replays ALL EQUAL.",
@@ -2748,6 +2755,13 @@
       "layer": "integration",
       "seconds": 10
     },
+    "product_host.pre_blake3_workspace_is_refused": {
+      "description": "Opening an earlier workspace manifest refuses by name before registering or rewriting it.",
+      "owner": "alphalattice.control.product_host",
+      "layer": "integration",
+      "seconds": 2,
+      "lower_layer": "The real manifest reader opens a file and must preserve its exact bytes on refusal."
+    },
     "product_host.prepared_score_read_reuses_its_capture_world": {
       "description": "A prepared score read takes the capture's world only at its formation while world is unmoved, equals the full reader's values, and is refused once the store changed.",
       "owner": "alphalattice.control.product_host",
@@ -3025,6 +3039,13 @@
       "description": "A frozen Task request must not be recovered from a file whose name does not bind its admitted content.",
       "owner": "alphalattice.control.task_control",
       "layer": "unit",
+      "seconds": 1
+    },
+    "task_control.historical_sha256_task_record_is_refused": {
+      "description": "A historical Task carrying an untagged SHA-256 record identity is refused before it can supply a current Task.",
+      "owner": "alphalattice.control.task_control",
+      "layer": "integration",
+      "lower_layer": "The replay reads the released Task and its associated bind as serialized on disk.",
       "seconds": 1
     },
     "task_control.host_stop_preserves_recovery": {
@@ -3460,6 +3481,13 @@
       "seconds": 5,
       "lower_layer": "It drives the shared check pool from several threads at once, which a unit test of one callback cannot exercise."
     },
+    "workspace_runtime.pre_blake3_artifact_names_are_refused": {
+      "description": "Opening an earlier content-addressed store refuses its SHA-256 artifact names.",
+      "owner": "alphalattice.control.workspace_runtime",
+      "layer": "integration",
+      "seconds": 2,
+      "lower_layer": "The store discovers artifact names by walking real directories."
+    },
     "workspace_runtime.seal_record_survives_a_held_file": {
       "description": "A file another process holds neither stops a store's open while the hold is brief nor kills a worker at its close.",
       "owner": "alphalattice.control.workspace_runtime",
@@ -3500,6 +3528,12 @@
       "layer": "integration",
       "seconds": 5,
       "lower_layer": "It counts decodes and reads across nested owners on real files through the process memory, beyond one function's reach."
+    },
+    "workspace_runtime.tagged_artifact_paths_are_portable": {
+      "description": "A tagged artifact ID round-trips through its portable filename, and the content store refuses any path component containing a colon before writing.",
+      "owner": "alphalattice.control.workspace_runtime",
+      "layer": "unit",
+      "seconds": 1
     }
   }
 }

@@ -146,9 +146,6 @@ from alphalattice.investment.portfolio_strategy_lab.policies.score_risk_cost imp
 from alphalattice.investment.portfolio_strategy_lab.research_loop import (
     panel_methodology_execution,
 )
-from alphalattice.investment.portfolio_strategy_lab.research_loop.fixed_panel_score import (
-    fixed_panel_alpha_source_identity,
-)
 from alphalattice.investment.portfolio_strategy_lab.research_loop.paired_alpha_portfolio import (
     portfolio_solver_call_upper_bound,
     portfolio_study_formation_limit,
@@ -221,52 +218,6 @@ class PanelPortfolioPreflightSource:
         )
 
 
-_INSTALLED_PORTFOLIO_PREFLIGHT_SOURCE = PanelPortfolioPreflightSource(
-    r0_surface_hash="d18f018b1164cae2b1f91b9efc4750cf4fedab7bf2f96f056ca71d8a5a57b955",
-    r1_surface_hash="edeba7ac29317e1e24e0e5950e65054a77be0b43474d005ca57c3b1b5c64c8da",
-    alpha_panel_source_identity=fixed_panel_alpha_source_identity(),
-    total_return_target_evidence_hash="d4a0996d89201f8d8b640362934490ee1ae6a5e12271226ee1f157c8a34887a8",
-    outcome_method_binding_hash="441f9f6b8b737e68ffc4379375ddb0f8edbef649b48621223d7a20c6e0f53573",
-    panel_derivation_recipe_hash="3b1835364218d8a503755723c698caaa4bf551a47b6c1868d26e6344e715bd21",
-    risk_input_binding_hash="e67557d180eb7e7b7086d2b02ff0091673fd7ee3d799299645a88574287b0483",
-    risk_return_surface_hash="3a6a38167f3ab346dede5cc7e75bf3b77eed59308efafb2dfaa34ba4e4c08178",
-    market_tradability_bundle_hash="a8bbab93e82b5ecdbccdda1629311c8c5ba7362f1ee0a5be964940dff17b5ca0",
-    market_universe_epoch_hash="61704785b45cbcd2ad6e07ff6645f4ca116cfc32a4df80bdf4b40da99cb9dd2e",
-    market_sector_revision="be3c6383651785b2a817f889e54f22dca1040489c239480c73e4fc0a6e33701f",
-    market_source_surface_hash="b5908ee6c159cd471effebd941126c01156c4fb4072f8d0bbe30dbbdf2b25cf2",
-    benchmark_surface_hash="4e3db3919f2510a398c0aba38574246475afc8530d17a619d79d5780ac5bd637",
-    state_transition_payload={
-        "binding_hash": "cb6181a1aad175060e01c2ca4e2eb82f3a004f6162cf934e46cd325e70925242",
-        "execution_method_binding_hash": (
-            "441f9f6b8b737e68ffc4379375ddb0f8edbef649b48621223d7a20c6e0f53573"
-        ),
-        "initial_state_semantics": "FLAT_BOOK_ALL_CASH",
-        "mark_availability_policy_hash": (
-            "a4c3cfb97cb35a2df38ea71d5cf25673ae66b021da4c4e4d787cd937da395229"
-        ),
-        "mark_availability_policy_id": "source-authority.provider-daily-bars",
-        "mark_epoch_hash": "a07fb0c8f4a093d1d51e50b6330d9ebc443d77664daf64713e5f31363fbfbe58",
-        "mark_manifest_ref": (
-            "manifests/0513c7c2364eeb4f4059492178beddbe129a6d312e3e11eaadec4373714327de.json"
-        ),
-        "mark_price_basis": "split_adjusted",
-        "mark_source_watermark_hash": (
-            "10a5ef7837cc4b3e3f4519b50756c58d366a39e2defb06d9a01c94f80390544c"
-        ),
-        "mark_surface_hash": "0513c7c2364eeb4f4059492178beddbe129a6d312e3e11eaadec4373714327de",
-        "rebalance_clock": {
-            "binding_hash": "55c9d5709cbbfc2494f57f7f1935844a80e7cc47f03b4a41261691b6ddfa851d",
-            "clock_id": "EVERY_FORMATION",
-            "parameters": [],
-        },
-        "reference_mark_method": "MARKED_TO_MARKET_AT_CLOSE_T",
-        "transition_implementation_hash": (
-            "1224e82acc8d460e10eaebefa0f8dc210bb31367900e717bc24821f724cec8ed"
-        ),
-    },
-)
-
-
 @dataclass(frozen=True, slots=True)
 class PanelMethodologyRuntimeRoots:
     """Host-only locations needed to resolve installed immutable handles."""
@@ -277,9 +228,7 @@ class PanelMethodologyRuntimeRoots:
     portfolio_market_workspace: Path | None = None
     portfolio_tradability_artifact_root: Path | None = None
     risk_return_artifact_root: Path | None = None
-    portfolio_preflight_source: PanelPortfolioPreflightSource = (
-        _INSTALLED_PORTFOLIO_PREFLIGHT_SOURCE
-    )
+    portfolio_preflight_source: PanelPortfolioPreflightSource | None = None
 
 
 def _load_panel_score_readiness(*, output_workspace: Path, root: Any) -> Any:
@@ -544,12 +493,14 @@ def _build_panel_portfolio_metadata_executor(
     authority: Any,
     alpha_root: Any,
     panel_score_readiness: Any,
-    source: PanelPortfolioPreflightSource,
+    source: PanelPortfolioPreflightSource | None,
     receipt: panel_methodology_execution.PanelPortfolioPreflightReceipt | None,
     receipt_load_seconds: float,
 ) -> DeskExperimentExecutor:
     """Compose compact exact-owner metadata for first-time and sealed preflight."""
 
+    if source is None:
+        raise AuthoringError("alpha_research.portfolio_preflight_source_not_installed")
     source = replace(source, r1_surface_hash=None) if request.risk_method_ids == ("R0",) else source
     if roots.r0_evidence_root is None or (
         source.r1_surface_hash is not None and roots.r1_evidence_root is None

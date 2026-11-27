@@ -34,14 +34,14 @@ from alphalattice.interface.local_application.portfolio_research import (
 )
 from alphalattice.interface.local_application.questions import person_question, relayed_question
 from alphalattice.kernel.clock import utc_now
-from alphalattice.kernel.identity import identity_blake3
+from alphalattice.kernel.identity import BLAKE3_PATTERN, identity_blake3, tagged_blake3
 
 type ResearchStage = Literal[
     "DATA_FEATURES", "FACTOR_FOUNDATION", "ALPHA", "RISK", "PORTFOLIO", "EVIDENCE_CRO"
 ]
 type GoalKind = Literal["RESEARCH", "DATA", "OPERATIONS", "REVIEW", "FIRST_USE"]
 _ID = r"^[a-z][a-z0-9_-]{0,63}$"
-_HASH = r"^[0-9a-f]{64}$"
+_HASH = BLAKE3_PATTERN
 
 FIRST_USE_HOURS: Final = 24
 """How long a first-use goal's delegation lasts from its opening."""
@@ -284,7 +284,7 @@ def declaration_hash(declaration: GoalDeclaration, opener: object) -> str:
     DECLARATION_ENCODING, never JSON text; the digest is BLAKE3's."""
     head = b"alphalattice.goal-declaration" + bytes(1) + DECLARATION_ENCODING.to_bytes(2, "big")
     body = _typed(declaration.model_dump(mode="python")) + _typed(opener)
-    return identity_blake3(head + body).hexdigest()
+    return tagged_blake3(identity_blake3(head + body))
 
 
 def _typed(value: object) -> bytes:

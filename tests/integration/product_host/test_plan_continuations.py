@@ -37,6 +37,8 @@ from alphalattice.interface.local_application.dispatcher import CommandSubmissio
 from alphalattice.interface.local_application.portfolio_research import (
     PortfolioResearchRequestDocument,
 )
+from alphalattice.kernel.identity import blake3_filename
+from tests._support.identity_fixtures import fixture_digest
 
 
 def test_an_expired_capture_plan_replans_its_input_or_names_an_unavailable_source(
@@ -46,23 +48,23 @@ def test_an_expired_capture_plan_replans_its_input_or_names_an_unavailable_sourc
     still binds its re-plan. A missing or tampered record never becomes an anchor input."""
     plan = input_capture.ResearchInputCapturePlan.create(
         workspace_id="s1-workspace",
-        workspace_manifest_hash="a" * 64,
+        workspace_manifest_hash=fixture_digest("workspace manifest"),
         input_id="s1-input",
-        anchor_binding_hash="b" * 64,
-        prior_binding_hash="c" * 64,
+        anchor_binding_hash=fixture_digest("anchor binding"),
+        prior_binding_hash=fixture_digest("prior binding"),
         previous_publication_hash=None,
         source=ResearchInputSource(
-            binding_hash="d" * 64,
+            binding_hash=fixture_digest("binding"),
             manifest_revision="source-revision",
-            data_revision_hash="e" * 64,
-            panel_snapshot_hash="f" * 64,
+            data_revision_hash=fixture_digest("data revision"),
+            panel_snapshot_hash=fixture_digest("panel snapshot"),
             panel_through=date(2026, 9, 30),
-            outcome_watermark_hash="1" * 64,
-            outcome_recipe_hash="2" * 64,
-            outcome_policy_hash="3" * 64,
-            materializer_hash="4" * 64,
+            outcome_watermark_hash=fixture_digest("outcome watermark"),
+            outcome_recipe_hash=fixture_digest("outcome recipe"),
+            outcome_policy_hash=fixture_digest("outcome policy"),
+            materializer_hash=fixture_digest("materializer"),
         ),
-        implementation_hash="5" * 64,
+        implementation_hash=fixture_digest("implementation"),
     )
     _exercise_replan(
         tmp_path,
@@ -105,8 +107,8 @@ def _exercise_replan(tmp_path, monkeypatch, owner, plan, make_app, expected, tam
         )
         PortfolioResearchRequestDocument.model_validate(request)
         assert request == offer
-    assert app.replan_requests("0" * 64) == {}
-    path = folder / f"{plan.plan_hash}.json"
+    assert app.replan_requests(fixture_digest("unknown plan")) == {}
+    path = folder / f"{blake3_filename(plan.plan_hash)}.json"
     assert tamper in path.read_text(encoding="utf-8")
     path.write_text(
         path.read_text(encoding="utf-8").replace(tamper, "another-source"),
@@ -165,13 +167,13 @@ def test_an_expired_training_plan_keeps_its_component_input_and_revision(tmp_pat
     expiry still forbids running, and unavailable plans offer no guessed source."""
     plan = model_training.ModelTrainingInputPlan.create(
         workspace_id="s1-workspace",
-        workspace_manifest_hash="a" * 64,
+        workspace_manifest_hash=fixture_digest("workspace manifest"),
         input_id="s1-input",
-        input_binding_hash="b" * 64,
+        input_binding_hash=fixture_digest("input binding"),
         component_ids=("G2_R0_TREND",),
         listing_count=50,
         source_session_count=252,
-        implementation_hash="c" * 64,
+        implementation_hash=fixture_digest("implementation"),
     )
     _exercise_replan(
         tmp_path,
@@ -198,15 +200,15 @@ def test_an_expired_strategy_plan_keeps_its_parents_and_policy(tmp_path, monkeyp
     """regression (S3): a re-plan retains the authored Alpha/Risk parents and policy;
     unavailable or tampered declarations do not silently select other studies."""
     declaration = FrozenPortfolioPreparationRequest(
-        input_binding_hash="b" * 64,
+        input_binding_hash=fixture_digest("input binding"),
         alpha_task_ids=(UUID("00000000-0000-0000-0000-000000000001"),),
         risk_task_id=UUID("00000000-0000-0000-0000-000000000002"),
         unavailable_return_policy="quarantine_listings",
     )
     plan = research_strategy.ResearchStrategyPlan.create(
-        workspace_manifest_hash="a" * 64,
+        workspace_manifest_hash=fixture_digest("workspace manifest"),
         request=declaration,
-        implementation_hash="c" * 64,
+        implementation_hash=fixture_digest("implementation"),
     )
     _exercise_replan(
         tmp_path,
@@ -238,19 +240,19 @@ def test_an_expired_score_plan_keeps_its_package_component_and_session(
     formation; it does not substitute a default package or the latest session."""
     binding = ResearchWorkspaceScoreInput(
         strategy_package_id="s1-package",
-        strategy_package_hash="b" * 64,
+        strategy_package_hash=fixture_digest("strategy package"),
         component_id=component,
         authority_relative_path="artifacts/s1-authority",
-        authority_hash="c" * 64,
+        authority_hash=fixture_digest("authority"),
         source_kind="WORKSPACE_DATA_FEATURE",
     )
     plan = strategy_scoring.StrategyScorePlan.create(
         workspace_id="s1-workspace",
-        workspace_manifest_hash="a" * 64,
+        workspace_manifest_hash=fixture_digest("workspace manifest"),
         binding=binding,
         formation_session=date(2026, 9, 30),
-        source_identity_hash="d" * 64,
-        implementation_hash="e" * 64,
+        source_identity_hash=fixture_digest("source identity"),
+        implementation_hash=fixture_digest("implementation"),
     )
     manifest = ResearchWorkspaceManifest.create(
         workspace_id="s1-workspace",
@@ -285,17 +287,17 @@ def test_an_expired_calibration_plan_keeps_its_package_and_score(tmp_path, monke
     an unavailable retained source cannot choose a newer score or a default package."""
     binding = ResearchWorkspaceCalibrationInput(
         strategy_package_id="s1-package",
-        strategy_package_hash="b" * 64,
-        seed_hash="c" * 64,
+        strategy_package_hash=fixture_digest("strategy package"),
+        seed_hash=fixture_digest("seed"),
         source_kind="WORKSPACE_DATA_FEATURE",
     )
     plan = strategy_calibration.CalibrationPlan.create(
-        workspace_manifest_hash="a" * 64,
+        workspace_manifest_hash=fixture_digest("workspace manifest"),
         binding=binding,
-        score_snapshot_hash="d" * 64,
-        history_score_hashes=("e" * 64,),
-        source_hash="f" * 64,
-        implementation_hash="1" * 64,
+        score_snapshot_hash=fixture_digest("score snapshot"),
+        history_score_hashes=(fixture_digest("prior score"),),
+        source_hash=fixture_digest("source"),
+        implementation_hash=fixture_digest("implementation"),
     )
     _exercise_replan(
         tmp_path,
@@ -317,7 +319,11 @@ def test_an_expired_calibration_plan_keeps_its_package_and_score(tmp_path, monke
     )
 
 
-@pytest.mark.parametrize("requested_input", [None, "b" * 64])
+@pytest.mark.parametrize(
+    "requested_input",
+    [None, fixture_digest("requested portfolio input")],
+    ids=("workspace-default", "explicit-input"),
+)
 def test_a_stopped_portfolio_update_retains_the_requested_input_not_its_resolved_input(
     tmp_path, requested_input
 ):
@@ -340,16 +346,16 @@ def test_a_stopped_portfolio_update_retains_the_requested_input_not_its_resolved
     )
     plan = portfolio_updates.PortfolioUpdatePlan.create(
         strategy_package_id="chosen-package",
-        workspace_manifest_hash="a" * 64,
-        catalog_hash="a" * 64,
-        checkpoint_hash="a" * 64,
-        parent_hash="a" * 64,
-        prepared_input_hash="c" * 64,
+        workspace_manifest_hash=fixture_digest("workspace manifest"),
+        catalog_hash=fixture_digest("catalog"),
+        checkpoint_hash=fixture_digest("checkpoint"),
+        parent_hash=fixture_digest("parent"),
+        prepared_input_hash=fixture_digest("prepared input"),
         requested_input_hash=requested_input,
         observed_through=date(2026, 9, 30),
-        source_hash="a" * 64,
-        market_hash="a" * 64,
-        implementation_hash="a" * 64,
+        source_hash=fixture_digest("source"),
+        market_hash=fixture_digest("market"),
+        implementation_hash=fixture_digest("implementation"),
     )
     task = _stopped_task(portfolio_updates._task_contract(plan))
     _assert_request(
@@ -376,7 +382,7 @@ def test_a_stopped_research_update_retains_the_selected_package_and_target(tmp_p
     )
 
     target = date(2026, 9, 30)
-    fixture = "a" * 64
+    fixture = fixture_digest("research update authority")
     binding = WorkspaceDataUpdateBinding.seal(
         profile_file_hash=fixture,
         data_policy_hash=fixture,
@@ -488,7 +494,7 @@ def test_a_stopped_feature_build_retains_its_authored_definition(tmp_path, prepr
         )
     )
     document = {
-        "input_binding_hash": "a" * 64,
+        "input_binding_hash": fixture_digest("input binding"),
         "base_revision_hash": base.revision_hash,
         "edits": [
             {
@@ -503,7 +509,7 @@ def test_a_stopped_feature_build_retains_its_authored_definition(tmp_path, prepr
     plan = plan_research_feature_change(
         catalog=catalog,
         base=base,
-        source_panel_snapshot_hash="b" * 64,
+        source_panel_snapshot_hash=fixture_digest("source panel snapshot"),
         request=ResearchFeatureChange.model_validate_json(json.dumps(document)),
     )
     definitions = ResearchFeatureDefinitions(tmp_path)
@@ -513,12 +519,12 @@ def test_a_stopped_feature_build_retains_its_authored_definition(tmp_path, prepr
         payload=plan.model_dump(mode="json"),
     )
     payload = {
-        "sessions_hash": "c" * 64,
-        "listing_ids_hash": "d" * 64,
+        "sessions_hash": fixture_digest("sessions"),
+        "listing_ids_hash": fixture_digest("listing ids"),
         "definition_plan_hash": plan.plan_hash,
-        "input_binding_hash": "a" * 64,
-        "implementation_hash": "e" * 64,
-        "source_projection_hash": "f" * 64,
+        "input_binding_hash": fixture_digest("input binding"),
+        "implementation_hash": fixture_digest("implementation"),
+        "source_projection_hash": fixture_digest("source projection"),
         "caller": "INSTALLED_AGENT",
         **({"purpose": "PREPROCESS_VALUES"} if preprocess else {}),
     }
@@ -608,11 +614,11 @@ def test_a_training_replan_refuses_an_ambiguous_component_selection(tmp_path):
             manifest, model_training.PLAN_FIELDS
         ),
         input_id="s1-input",
-        input_binding_hash="b" * 64,
+        input_binding_hash=fixture_digest("input binding"),
         component_ids=("G2_R0_TREND", "G6_R0_FAST_REBOUND"),
         listing_count=50,
         source_session_count=252,
-        implementation_hash="c" * 64,
+        implementation_hash=fixture_digest("implementation"),
     )
     task = _stopped_task(model_training._task_contract(plan, "INSTALLED_AGENT"))
     app = model_training.ModelTrainingInputApplication(
@@ -704,7 +710,10 @@ def test_an_offer_sent_back_as_it_stands_is_admitted_and_keeps_the_first_uses_da
     def answer(digit: str, **update: object) -> dict[str, object]:
         replan = {"operation": "WORKSPACE_PREPARE_PLAN", "recovery_task_id": task}
         update = {"operation": "RESEARCH_UPDATE_PLAN", "strategy_package_id": "BAL", **update}
-        offers = {"replan": {**replan, "recovery_task_hash": digit * 64}, "update": update}
+        offers = {
+            "replan": {**replan, "recovery_task_hash": fixture_digest(("recovery offer", digit))},
+            "update": update,
+        }
         return {"task_id": task, "lifecycle": "BLOCKED", "next_requests": offers}
 
     code = "portfolio_research.recovery_request_not_offered"
@@ -720,13 +729,13 @@ def test_a_full_training_plan_keeps_its_hash_and_a_light_one_names_its_lifecycle
 
     fields = dict(
         workspace_id="s1-workspace",
-        workspace_manifest_hash="a" * 64,
+        workspace_manifest_hash=fixture_digest("workspace manifest"),
         input_id="s1-input",
-        input_binding_hash="b" * 64,
+        input_binding_hash=fixture_digest("input binding"),
         component_ids=("G6_R0_FAST_REBOUND",),
         listing_count=50,
         source_session_count=252,
-        implementation_hash="c" * 64,
+        implementation_hash=fixture_digest("implementation"),
     )
     before = model_training.ModelTrainingInputPlan.create(**fields)
     named = model_training.ModelTrainingInputPlan.create(**fields, model_lifecycle="FULL")
@@ -750,12 +759,13 @@ def test_recovery_provenance_is_paired_typed_and_worded() -> None:
     )
 
     source = UUID(int=83)
-    context = {"recovery_task_id": str(source), "recovery_task_hash": "a" * 64}
+    source_hash = fixture_digest("recovery source task")
+    context = {"recovery_task_id": str(source), "recovery_task_hash": source_hash}
     document = PortfolioResearchRequestDocument.model_validate(
         {"operation": "WORKSPACE_PREPARE_PLAN", **context}
     )
     request = document.to_operation_request()
-    assert request.recovery_task_id == source and request.recovery_task_hash == "a" * 64
+    assert request.recovery_task_id == source and request.recovery_task_hash == source_hash
     assert (
         PortfolioResearchRequestDocument(operation="WORKSPACE_PREPARE_PLAN").recovery_task_id
         is None
@@ -769,7 +779,7 @@ def test_recovery_provenance_is_paired_typed_and_worded() -> None:
         PortfolioResearchOperationRequest(
             operation="WORKSPACE_PREPARE_PLAN",
             recovery_task_id="not-a-task",
-            recovery_task_hash="a" * 64,
+            recovery_task_hash=source_hash,
         )  # type: ignore[arg-type]
     for code in (
         "portfolio_research.recovery_context_pair_required",

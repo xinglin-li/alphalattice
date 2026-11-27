@@ -41,6 +41,7 @@ from alphalattice.investment.portfolio_strategy_lab.application.research_experim
     PortfolioExperimentSource,
 )
 from alphalattice.investment.risk_research.experiments.contracts import RISK_EXPERIMENT_KIND
+from alphalattice.kernel.identity import BLAKE3_PATTERN
 from alphalattice.protocols.actor_execution.contracts import ActorSubmissionBinding
 from alphalattice.protocols.research_authoring.contracts import (
     AuthoringError,
@@ -76,11 +77,11 @@ class AlphaExperimentSource(BaseModel):  # type: ignore[misc]
     model_config = ConfigDict(extra="forbid", frozen=True)
     factor_task_id: UUID
     factor_binding: ResearchWorkspaceExperimentInput
-    factor_receipt_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
-    curation_receipt_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
-    foundation_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
+    factor_receipt_hash: str = Field(pattern=BLAKE3_PATTERN)
+    curation_receipt_hash: str = Field(pattern=BLAKE3_PATTERN)
+    foundation_hash: str = Field(pattern=BLAKE3_PATTERN)
     foundation_admission_hash: str | None = Field(
-        default=None, pattern=r"^[0-9a-f]{64}$", exclude_if=lambda v: v is None
+        default=None, pattern=BLAKE3_PATTERN, exclude_if=lambda v: v is None
     )
 
 

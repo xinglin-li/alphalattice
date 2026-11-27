@@ -28,6 +28,7 @@ from alphalattice.investment.portfolio_strategy_lab.policies.tranche_book import
     rank_bucket_mu,
     sleeve_target_weights,
 )
+from tests._support.identity_fixtures import fixture_digest
 
 
 def test_authored_data_quarantine_preserves_source_and_requires_a_usable_remainder():
@@ -112,6 +113,7 @@ def test_a_support_refusal_names_its_cause_and_where_it_holds():
 
 def test_authored_replay_segments_preserve_holds_state_and_refuse_changed_scores(tmp_path):
     """Control: Authored replay segments preserve holds state and refuse changed scores."""
+    from alphalattice.capabilities.domain_contracts.identity import canonical_hash
     from alphalattice.capabilities.portfolio_backtesting.contracts import (
         MARKED_TO_MARKET_AT_CLOSE_T,
     )
@@ -145,19 +147,19 @@ def test_authored_replay_segments_preserve_holds_state_and_refuse_changed_scores
     returns = np.cos(np.arange(45)[:, None] / 3 + np.arange(80)[None, :] / 9) / 100
     source = owner.PortfolioExperimentSource.create(
         alpha_task_id="fixture",
-        alpha_program_hash="a" * 64,
-        alpha_receipt_hash="b" * 64,
+        alpha_program_hash=canonical_hash("alpha program"),
+        alpha_receipt_hash=canonical_hash("alpha receipt"),
         candidate_id="fixture",
         target_recipe_id="fixture-rank",
-        target_binding_hash="c" * 64,
-        input_binding_hash="d" * 64,
-        panel_snapshot_hash="e" * 64,
-        outcome_snapshot_hash="f" * 64,
-        universe_revision="a" * 64,
+        target_binding_hash=canonical_hash("target binding"),
+        input_binding_hash=canonical_hash("input binding"),
+        panel_snapshot_hash=canonical_hash("panel"),
+        outcome_snapshot_hash=canonical_hash("outcome"),
+        universe_revision=canonical_hash("universe"),
         ordered_listing_ids=listings,
         formation_sessions=sessions,
         score_sessions=scored,
-        score_refs=(("a" * 64, "b" * 64),),
+        score_refs=((canonical_hash("numerical result"), canonical_hash("validation surface")),),
         score_value_hash=canonical_score_value_identity(
             values[[i for i in range(45) if i not in gaps]]
         ),
@@ -166,7 +168,7 @@ def test_authored_replay_segments_preserve_holds_state_and_refuse_changed_scores
         method=MARKED_TO_MARKET_AT_CLOSE_T,
         marks_by_session={s: np.zeros(80) for s in sessions},
         entry_session_by_formation={s: s + timedelta(days=1) for s in sessions},
-        state_transition_binding_hash="a" * 64,
+        state_transition_binding_hash=canonical_hash("state transition binding"),
     )
     inputs = owner.PortfolioExperimentInputs(
         sessions,
@@ -216,7 +218,7 @@ def test_authored_replay_segments_preserve_holds_state_and_refuse_changed_scores
         universe_revision_sha256=source.universe_revision,
         ordered_listing_ids=listings,
         sessions=sessions,
-        source_watermark_hash="a" * 64,
+        source_watermark_hash=canonical_hash("source watermark"),
     )
     document = {
         "experiment": envelope.model_dump(mode="json"),
@@ -261,7 +263,9 @@ def test_authored_replay_segments_preserve_holds_state_and_refuse_changed_scores
     with pytest.raises(ValueError, match="receipt_program_mismatch"):
         verifier.verify(
             program=program,
-            evidence=evidence.model_copy(update={"desk_input_binding_hash": "0" * 64}),
+            evidence=evidence.model_copy(
+                update={"desk_input_binding_hash": canonical_hash("another input binding")}
+            ),
             authority=authority,
             output_workspace=tmp_path / "full",
         )
@@ -302,8 +306,6 @@ def test_authored_replay_segments_preserve_holds_state_and_refuse_changed_scores
         decision=np.ones_like(eligible),
         realized=damaged,
     )
-    from alphalattice.capabilities.domain_contracts.identity import canonical_hash
-
     fallback_inputs = replace(
         inputs,
         decision_eligible=eligible & admitted,
@@ -411,7 +413,7 @@ def test_a_rebalance_never_selects_from_a_pool_smaller_than_the_book(tmp_path):
         listings,
         values,
         np.isfinite(values),
-        (("a" * 64, "b" * 64),),
+        ((fixture_digest("a"), fixture_digest("b")),),
         canonical_score_value_identity(values),
     )
     scores, held = hold_under_scored_formations(published, spec.top_k)
@@ -432,15 +434,15 @@ def test_a_rebalance_never_selects_from_a_pool_smaller_than_the_book(tmp_path):
 
     source = owner.PortfolioExperimentSource.create(
         alpha_task_id="fixture",
-        alpha_program_hash="a" * 64,
-        alpha_receipt_hash="b" * 64,
+        alpha_program_hash=fixture_digest("a"),
+        alpha_receipt_hash=fixture_digest("b"),
         candidate_id="fixture",
         target_recipe_id="fixture-rank",
-        target_binding_hash="c" * 64,
-        input_binding_hash="d" * 64,
-        panel_snapshot_hash="e" * 64,
-        outcome_snapshot_hash="f" * 64,
-        universe_revision="a" * 64,
+        target_binding_hash=fixture_digest("c"),
+        input_binding_hash=fixture_digest("d"),
+        panel_snapshot_hash=fixture_digest("e"),
+        outcome_snapshot_hash=fixture_digest("f"),
+        universe_revision=fixture_digest("a"),
         ordered_listing_ids=listings,
         formation_sessions=sessions,
         score_sessions=scores.sessions,
@@ -455,7 +457,7 @@ def test_a_rebalance_never_selects_from_a_pool_smaller_than_the_book(tmp_path):
         method=MARKED_TO_MARKET_AT_CLOSE_T,
         marks_by_session={s: np.zeros(80) for s in sessions},
         entry_session_by_formation={s: s + timedelta(days=1) for s in sessions},
-        state_transition_binding_hash="a" * 64,
+        state_transition_binding_hash=fixture_digest("a"),
     )
     inputs = owner.PortfolioExperimentInputs(
         sessions,
@@ -494,7 +496,7 @@ def test_a_rebalance_never_selects_from_a_pool_smaller_than_the_book(tmp_path):
         universe_revision_sha256=source.universe_revision,
         ordered_listing_ids=listings,
         sessions=sessions,
-        source_watermark_hash="a" * 64,
+        source_watermark_hash=fixture_digest("a"),
     )
     document = {
         "experiment": envelope.model_dump(mode="json"),

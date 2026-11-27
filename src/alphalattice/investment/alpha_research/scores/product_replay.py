@@ -33,6 +33,7 @@ worktree that only exists on one machine.
 from __future__ import annotations
 
 import json
+import re
 from dataclasses import dataclass, field
 from datetime import date
 from pathlib import Path
@@ -44,7 +45,15 @@ from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 from alphalattice.capabilities.domain_contracts.identity import canonical_hash
 from alphalattice.capabilities.domain_contracts.sealing import seal_payload_digest
-from alphalattice.kernel.identity import identity_sha256, integrity_sha256
+from alphalattice.control.workspace_runtime.verified_facts import (
+    verified_bytes,
+    verified_file_digest,
+)
+from alphalattice.kernel.identity import (
+    BLAKE3_PATTERN,
+    identity_blake3,
+    tagged_blake3,
+)
 
 type FloatArray = npt.NDArray[np.float64]
 type BoolArray = npt.NDArray[np.bool_]
@@ -54,11 +63,6 @@ type ProjectionAggregationSemantics = Literal[
 ]
 
 EVIDENCE_PACKAGE_ID: Final = "iw184-quarterly-5y-ensemble"
-INSTALLED_EVIDENCE_MANIFEST_SHA256: Final = (
-    "ded3268421a00ead39450eaf4cabc1d9cb844dfc7ea5cd8614af4850f1edb284"
-)
-"""Content identity of the exact package manifest admitted by the Stage 8 Gate."""
-
 SEED_MODEL_KIND: Final = "IW184Fixed1260QuarterlySeedModel"
 PREDICTION_AXIS_KIND: Final = "IW184QuarterlyPredictionAxis"
 
@@ -101,19 +105,12 @@ class AlphaProductRecipeView(Protocol):
     live_model_count: int
     score_aggregation: str
     evidence_disposition: str
-    evidence_daily_parquet_sha256: str
-
-
-def _sha256(path: Path) -> str:
-    digest = integrity_sha256()
-    with path.open("rb") as handle:
-        for block in iter(lambda: handle.read(1 << 20), b""):
-            digest.update(block)
-    return digest.hexdigest()
 
 
 def _array_hash(values: npt.NDArray[np.generic], *, dtype: npt.DTypeLike) -> str:
-    return identity_sha256(np.ascontiguousarray(values, dtype=dtype).tobytes()).hexdigest()
+    return tagged_blake3(
+        identity_blake3(memoryview(np.ascontiguousarray(values, dtype=dtype)).cast("B"))
+    )
 
 
 def _frozen(values: npt.ArrayLike, *, dtype: npt.DTypeLike) -> npt.NDArray[np.generic]:
@@ -212,9 +209,9 @@ class PredictionAxisReceipt(BaseModel):  # type: ignore[misc]
 
     kind: Literal["IW184QuarterlyPredictionAxis"]
     quarter_start: str
-    artifact_sha256: str = Field(pattern=r"^[0-9a-f]{64}$")
+    artifact_digest: str = Field(pattern=BLAKE3_PATTERN)
     row_count: int = Field(ge=1)
-    transform_session_axis_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
+    transform_session_axis_hash: str = Field(pattern=BLAKE3_PATTERN)
     operational_months: tuple[str, ...]
     prediction_months: tuple[str, ...]
 
@@ -241,15 +238,15 @@ class DailyEvidenceLineage(BaseModel):  # type: ignore[misc]
 
     name: str
     row_count: int = Field(ge=1)
-    sha256: str = Field(pattern=r"^[0-9a-f]{64}$")
+    digest: str = Field(pattern=BLAKE3_PATTERN)
 
 
 class ManifestSeedLineage(BaseModel):  # type: ignore[misc]
     model_config = ConfigDict(extra="forbid", frozen=True)
 
-    artifact_sha256: str = Field(pattern=r"^[0-9a-f]{64}$")
-    estimator_content_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
-    identity_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
+    artifact_digest: str = Field(pattern=BLAKE3_PATTERN)
+    estimator_content_hash: str = Field(pattern=BLAKE3_PATTERN)
+    identity_hash: str = Field(pattern=BLAKE3_PATTERN)
     training_first: date
     training_last: date
     training_row_count: int = Field(ge=1)
@@ -258,7 +255,7 @@ class ManifestSeedLineage(BaseModel):  # type: ignore[misc]
 class ManifestVintageLineage(BaseModel):  # type: ignore[misc]
     model_config = ConfigDict(extra="forbid", frozen=True)
 
-    prediction_axis_sha256: str = Field(pattern=r"^[0-9a-f]{64}$")
+    prediction_axis_digest: str = Field(pattern=BLAKE3_PATTERN)
     row_count: int = Field(ge=1)
     seeds: dict[str, ManifestSeedLineage]
 
@@ -269,7 +266,9 @@ class ProductEvidenceManifest(BaseModel):  # type: ignore[misc]
     model_config = ConfigDict(extra="ignore", frozen=True)
 
     kind: Literal["IW184Fixed1260QuarterlySeed3Vintage4WeightSensitivityDiagnostic"]
+    schema_version: Literal[2]
     disposition: Literal["DEVELOPMENT_DIAGNOSTIC_CANDIDATE_NOT_INSTALLED"]
+    recipe_hash: str = Field(pattern=BLAKE3_PATTERN)
     definition: EvidenceDefinition
     daily_evidence: DailyEvidenceLineage
     model_lineage: dict[str, ManifestVintageLineage]
@@ -282,29 +281,29 @@ class SeedModelReceipt(BaseModel):  # type: ignore[misc]
 
     kind: Literal["IW184Fixed1260QuarterlySeedModel"]
     candidate: str
-    candidate_axis_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
-    ordered_feature_ids_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
+    candidate_axis_hash: str = Field(pattern=BLAKE3_PATTERN)
+    ordered_feature_ids_hash: str = Field(pattern=BLAKE3_PATTERN)
     feature_view_id: str
-    annual_root_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
-    source_resolution_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
-    recipe_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
-    identity_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
-    estimator_content_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
-    artifact_sha256: str = Field(pattern=r"^[0-9a-f]{64}$")
-    prediction_axis_sha256: str = Field(pattern=r"^[0-9a-f]{64}$")
+    annual_root_hash: str = Field(pattern=BLAKE3_PATTERN)
+    source_resolution_hash: str = Field(pattern=BLAKE3_PATTERN)
+    recipe_hash: str = Field(pattern=BLAKE3_PATTERN)
+    identity_hash: str = Field(pattern=BLAKE3_PATTERN)
+    estimator_content_hash: str = Field(pattern=BLAKE3_PATTERN)
+    artifact_digest: str = Field(pattern=BLAKE3_PATTERN)
+    prediction_axis_digest: str = Field(pattern=BLAKE3_PATTERN)
     seed: int
     quarter_start: str
     prediction_row_count: int = Field(ge=1)
     training_first: date
     training_last: date
-    training_session_axis_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
+    training_session_axis_hash: str = Field(pattern=BLAKE3_PATTERN)
     training_row_count: int = Field(ge=1)
     purge_session: date
     training_window_sessions: int
     purge_session_count: int
     prediction_months: tuple[str, ...]
     operational_months: tuple[str, ...]
-    transform_session_axis_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
+    transform_session_axis_hash: str = Field(pattern=BLAKE3_PATTERN)
     score_aggregation: str
 
     @model_validator(mode="after")  # type: ignore[untyped-decorator]
@@ -371,7 +370,7 @@ class LoadedSeedModel:
 class AlphaEvidenceClosure:
     """Read-only proof that the manifest and every child it names reopened."""
 
-    manifest_sha256: str
+    manifest_digest: str
     child_count: int
     closure_hash: str
 
@@ -388,42 +387,56 @@ class AdmittedProductEvidence:
 
     root: Path
     recipe: AlphaProductRecipeView
-    expected_manifest_sha256: str
+    expected_manifest_digest: str
     _manifest: ProductEvidenceManifest | None = field(default=None, repr=False)
     _axis_cache: dict[str, LoadedPredictionAxis] = field(default_factory=dict, repr=False)
     _model_cache: dict[tuple[str, int], LoadedSeedModel] = field(default_factory=dict, repr=False)
     _reads: list[tuple[str, int]] = field(default_factory=list, repr=False)
 
     def __post_init__(self) -> None:
-        """Require the injected manifest identity to be a hexadecimal SHA-256.
-
-        Raises:
-            AlphaScoreReplayError: The expected manifest identity is malformed.
-        """
-        if len(self.expected_manifest_sha256) != 64 or any(
-            value not in "0123456789abcdef" for value in self.expected_manifest_sha256
-        ):
+        """Require the injected manifest identity to name a BLAKE3 digest."""
+        if re.fullmatch(BLAKE3_PATTERN, self.expected_manifest_digest) is None:
             raise AlphaScoreReplayError("alpha_research.replay_manifest_identity_invalid")
+
+    @classmethod
+    def admit(cls, root: Path, recipe: AlphaProductRecipeView) -> Self:
+        """Bind the installed manifest to the digest of the bytes admitted."""
+        body, digest = cls._manifest_bytes(root)
+        evidence = cls(root, recipe, digest)
+        evidence._validate_manifest(body)
+        return evidence
+
+    @staticmethod
+    def _manifest_bytes(root: Path) -> tuple[bytes, str]:
+        try:
+            return verified_bytes(root / f"{EVIDENCE_PACKAGE_ID}.json")
+        except FileNotFoundError as error:
+            raise AlphaScoreReplayError("alpha_research.replay_manifest_absent") from error
 
     def manifest(self) -> ProductEvidenceManifest:
         """Load the package trust anchor before trusting any sibling receipt."""
         if self._manifest is not None:
             return self._manifest
-        path = self.root / f"{EVIDENCE_PACKAGE_ID}.json"
-        if not path.is_file():
-            raise AlphaScoreReplayError("alpha_research.replay_manifest_absent")
-        if _sha256(path) != self.expected_manifest_sha256:
+        body, digest = self._manifest_bytes(self.root)
+        if digest != self.expected_manifest_digest:
             raise AlphaScoreReplayError("alpha_research.replay_manifest_sha256_mismatch")
+        return self._validate_manifest(body)
+
+    def _validate_manifest(self, body: bytes) -> ProductEvidenceManifest:
         try:
-            manifest = ProductEvidenceManifest.model_validate(
-                json.loads(path.read_text(encoding="utf-8"))
-            )
+            payload = json.loads(body)
+            if isinstance(payload, dict) and "schema_version" not in payload:
+                raise AlphaScoreReplayError("alpha_research.replay_manifest_before_blake3")
+            manifest = ProductEvidenceManifest.model_validate(payload)
+        except AlphaScoreReplayError:
+            raise
         except ValueError as error:
             raise AlphaScoreReplayError("alpha_research.replay_manifest_invalid") from error
         definition = manifest.definition
         recipe = self.recipe
         if (
-            manifest.disposition != recipe.evidence_disposition
+            manifest.recipe_hash != recipe.recipe_hash
+            or manifest.disposition != recipe.evidence_disposition
             or definition.feature_axis != recipe.feature_axis_id
             or definition.feature_count != recipe.feature_count
             or definition.live_model_count != recipe.live_model_count
@@ -434,7 +447,6 @@ class AdmittedProductEvidence:
             or definition.vintage_weights != recipe.vintage_weights
             or definition.seed_aggregation != "EQUAL_MEAN_WITHIN_VINTAGE"
             or definition.score_aggregation != recipe.score_aggregation
-            or manifest.daily_evidence.sha256 != recipe.evidence_daily_parquet_sha256
         ):
             raise AlphaScoreReplayError("alpha_research.replay_manifest_recipe_mismatch")
         self._manifest = manifest
@@ -454,11 +466,11 @@ class AdmittedProductEvidence:
         daily = (root / manifest.daily_evidence.name).resolve()
         if not daily.is_relative_to(root) or not daily.is_file():
             raise AlphaScoreReplayError("alpha_research.replay_daily_evidence_absent")
-        if _sha256(daily) != manifest.daily_evidence.sha256:
+        if verified_file_digest(daily) != manifest.daily_evidence.digest:
             raise AlphaScoreReplayError("alpha_research.replay_daily_evidence_sha256_mismatch")
 
         expected_seeds = {str(value) for value in self.recipe.seeds}
-        children: list[tuple[str, str]] = [("daily_evidence", manifest.daily_evidence.sha256)]
+        children: list[tuple[str, str]] = [("daily_evidence", manifest.daily_evidence.digest)]
         if not manifest.model_lineage:
             raise AlphaScoreReplayError("alpha_research.replay_manifest_model_lineage_empty")
         if len(manifest.model_lineage) != self.recipe.vintage_count:
@@ -467,7 +479,7 @@ class AdmittedProductEvidence:
             if set(lineage.seeds) != expected_seeds:
                 raise AlphaScoreReplayError("alpha_research.replay_manifest_seed_set_mismatch")
             axis = self.prediction_axis(vintage)
-            children.append((f"axis:{vintage}", axis.receipt.artifact_sha256))
+            children.append((f"axis:{vintage}", axis.receipt.artifact_digest))
             for seed in self.recipe.seeds:
                 model = self.seed_model(vintage=vintage, seed=seed)
                 children.append(
@@ -475,7 +487,7 @@ class AdmittedProductEvidence:
                         f"model:{vintage}:{seed}",
                         canonical_hash(
                             {
-                                "payload_sha256": model.receipt.artifact_sha256,
+                                "payload_digest": model.receipt.artifact_digest,
                                 "identity_hash": model.receipt.identity_hash,
                             }
                         ),
@@ -485,11 +497,11 @@ class AdmittedProductEvidence:
             raise AlphaScoreReplayError("alpha_research.replay_manifest_model_count_mismatch")
         identity = {
             "kind": "AlphaEvidenceClosure",
-            "manifest_sha256": self.expected_manifest_sha256,
+            "manifest_digest": self.expected_manifest_digest,
             "children": tuple(children),
         }
         return AlphaEvidenceClosure(
-            manifest_sha256=self.expected_manifest_sha256,
+            manifest_digest=self.expected_manifest_digest,
             child_count=len(children),
             closure_hash=canonical_hash(identity),
         )
@@ -555,11 +567,11 @@ class AdmittedProductEvidence:
         if receipt.kind != PREDICTION_AXIS_KIND or receipt.quarter_start != vintage:
             raise AlphaScoreReplayError("alpha_research.replay_prediction_axis_identity_invalid")
         if (
-            receipt.artifact_sha256 != lineage.prediction_axis_sha256
+            receipt.artifact_digest != lineage.prediction_axis_digest
             or receipt.row_count != lineage.row_count
         ):
             raise AlphaScoreReplayError("alpha_research.replay_manifest_axis_lineage_mismatch")
-        if _sha256(payload) != receipt.artifact_sha256:
+        if verified_file_digest(payload) != receipt.artifact_digest:
             raise AlphaScoreReplayError("alpha_research.replay_prediction_axis_sha256_mismatch")
         with np.load(payload, allow_pickle=False) as axis:
             sessions = tuple(
@@ -627,10 +639,10 @@ class AdmittedProductEvidence:
             or receipt.transform_session_axis_hash != axis_receipt.transform_session_axis_hash
         ):
             raise AlphaScoreReplayError("alpha_research.replay_seed_axis_semantics_mismatch")
-        if receipt.prediction_axis_sha256 != axis_receipt.artifact_sha256:
+        if receipt.prediction_axis_digest != axis_receipt.artifact_digest:
             raise AlphaScoreReplayError("alpha_research.replay_prediction_axis_binding_invalid")
         if (
-            receipt.artifact_sha256 != manifest_lineage.artifact_sha256
+            receipt.artifact_digest != manifest_lineage.artifact_digest
             or receipt.estimator_content_hash != manifest_lineage.estimator_content_hash
             or receipt.identity_hash != manifest_lineage.identity_hash
             or receipt.training_first != manifest_lineage.training_first
@@ -638,7 +650,7 @@ class AdmittedProductEvidence:
             or receipt.training_row_count != manifest_lineage.training_row_count
         ):
             raise AlphaScoreReplayError("alpha_research.replay_manifest_seed_lineage_mismatch")
-        if _sha256(payload) != receipt.artifact_sha256:
+        if verified_file_digest(payload) != receipt.artifact_digest:
             raise AlphaScoreReplayError("alpha_research.replay_seed_model_sha256_mismatch")
 
         with np.load(payload, allow_pickle=False) as bundle:
@@ -672,8 +684,8 @@ class AlphaProductScoreProjection(BaseModel):  # type: ignore[misc]
     model_config = ConfigDict(extra="forbid", frozen=True, arbitrary_types_allowed=True)
 
     kind: Literal["AlphaProductScoreProjection"] = "AlphaProductScoreProjection"
-    recipe_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
-    evidence_manifest_sha256: str = Field(pattern=r"^[0-9a-f]{64}$")
+    recipe_hash: str = Field(pattern=BLAKE3_PATTERN)
+    evidence_manifest_digest: str = Field(pattern=BLAKE3_PATTERN)
     formation_session: date
     ordered_listing_ids: tuple[str, ...]
     live_vintages: tuple[str, ...]
@@ -683,7 +695,7 @@ class AlphaProductScoreProjection(BaseModel):  # type: ignore[misc]
     model_identity_hashes: tuple[str, ...]
     model_lineage_hashes: tuple[str, ...]
     live_name_count: int = Field(ge=0)
-    projection_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
+    projection_hash: str = Field(pattern=BLAKE3_PATTERN)
 
     scores: FloatArray = Field(exclude=True)
     live: BoolArray = Field(exclude=True)
@@ -726,7 +738,7 @@ class AlphaProductScoreProjection(BaseModel):  # type: ignore[misc]
         cls,
         *,
         recipe_hash: str,
-        evidence_manifest_sha256: str,
+        evidence_manifest_digest: str,
         formation_session: date,
         ordered_listing_ids: tuple[str, ...],
         live_vintages: tuple[str, ...],
@@ -743,7 +755,7 @@ class AlphaProductScoreProjection(BaseModel):  # type: ignore[misc]
         frozen_live = np.asarray(_frozen(live, dtype=np.dtype("?")), dtype=np.bool_)
         return cls(
             recipe_hash=recipe_hash,
-            evidence_manifest_sha256=evidence_manifest_sha256,
+            evidence_manifest_digest=evidence_manifest_digest,
             formation_session=formation_session,
             ordered_listing_ids=ordered_listing_ids,
             live_vintages=live_vintages,
@@ -755,7 +767,7 @@ class AlphaProductScoreProjection(BaseModel):  # type: ignore[misc]
             live_name_count=int(frozen_live.sum()),
             projection_hash=_identity(
                 recipe_hash=recipe_hash,
-                manifest_sha256=evidence_manifest_sha256,
+                manifest_digest=evidence_manifest_digest,
                 session=formation_session,
                 listing_ids=ordered_listing_ids,
                 vintages=live_vintages,
@@ -794,7 +806,7 @@ class AlphaProductScoreProjection(BaseModel):  # type: ignore[misc]
             raise AlphaScoreReplayError("alpha_research.replay_projection_model_count_invalid")
         expected = _identity(
             recipe_hash=self.recipe_hash,
-            manifest_sha256=self.evidence_manifest_sha256,
+            manifest_digest=self.evidence_manifest_digest,
             session=self.formation_session,
             listing_ids=self.ordered_listing_ids,
             vintages=self.live_vintages,
@@ -813,7 +825,7 @@ class AlphaProductScoreProjection(BaseModel):  # type: ignore[misc]
 def _identity(
     *,
     recipe_hash: str,
-    manifest_sha256: str,
+    manifest_digest: str,
     session: date,
     listing_ids: tuple[str, ...],
     vintages: tuple[str, ...],
@@ -831,7 +843,7 @@ def _identity(
         {
             "kind": "AlphaProductScoreProjection",
             "recipe_hash": recipe_hash,
-            "evidence_manifest_sha256": manifest_sha256,
+            "evidence_manifest_digest": manifest_digest,
             "formation_session": session.isoformat(),
             "ordered_listing_ids": list(listing_ids),
             "live_vintages": list(vintages),
@@ -911,7 +923,7 @@ def replay_formation_scores(
     frozen_live = np.asarray(_frozen(live, dtype=np.dtype("?")), dtype=np.bool_)
     return AlphaProductScoreProjection(
         recipe_hash=recipe.recipe_hash,
-        evidence_manifest_sha256=evidence.expected_manifest_sha256,
+        evidence_manifest_digest=evidence.expected_manifest_digest,
         formation_session=formation_session,
         ordered_listing_ids=ordered_listing_ids,
         live_vintages=vintages,
@@ -922,7 +934,7 @@ def replay_formation_scores(
         live_name_count=int(frozen_live.sum()),
         projection_hash=_identity(
             recipe_hash=recipe.recipe_hash,
-            manifest_sha256=evidence.expected_manifest_sha256,
+            manifest_digest=evidence.expected_manifest_digest,
             session=formation_session,
             listing_ids=ordered_listing_ids,
             vintages=vintages,
@@ -992,18 +1004,18 @@ class HeterogeneousComponentScoringRecipe(Protocol):
 
 
 def _valid_live_hash(value: str) -> bool:
-    return len(value) == 64 and all(character in "0123456789abcdef" for character in value)
+    return re.fullmatch(BLAKE3_PATTERN, value) is not None
 
 
 def _alpha_live_array_hash(values: npt.NDArray[np.generic]) -> str:
     """The installed Alpha training-value identity, without importing its runtime."""
 
     contiguous = np.ascontiguousarray(values)
-    digest = identity_sha256()
+    digest = identity_blake3()
     digest.update(contiguous.dtype.str.encode("ascii"))
     digest.update(repr(contiguous.shape).encode("ascii"))
     digest.update(memoryview(contiguous).cast("B"))
-    return digest.hexdigest()
+    return tagged_blake3(digest)
 
 
 @dataclass(frozen=True, slots=True)
@@ -1400,7 +1412,7 @@ def score_heterogeneous_component(
     )
     return AlphaProductScoreProjection.create_live(
         recipe_hash=component.recipe_hash,
-        evidence_manifest_sha256=inputs.model_set_manifest_hash,
+        evidence_manifest_digest=inputs.model_set_manifest_hash,
         formation_session=inputs.formation_session,
         ordered_listing_ids=inputs.ordered_listing_ids,
         live_vintages=vintages,
@@ -1416,7 +1428,6 @@ def score_heterogeneous_component(
 
 __all__ = [
     "EVIDENCE_PACKAGE_ID",
-    "INSTALLED_EVIDENCE_MANIFEST_SHA256",
     "MINIMUM_LIVE_NAMES",
     "SCORE_AGGREGATION_SEMANTICS",
     "AdmittedProductEvidence",

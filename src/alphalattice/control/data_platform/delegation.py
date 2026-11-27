@@ -22,6 +22,7 @@ from alphalattice.foundation.market_data_ops.runtime.remediation import (
     RemediationOption,
     canonical_hash,
 )
+from alphalattice.kernel.identity import is_blake3
 from alphalattice.protocols.actor_execution import ActorKind
 
 # An older conversation-approved grant remains recognizable in historical Task receipts.
@@ -132,7 +133,7 @@ class DataIssueDelegation:
         Raises:
             ValueError: Identity is malformed, the record is absent, or grant validation fails.
         """
-        if len(grant_hash) != 64 or any(c not in "0123456789abcdef" for c in grant_hash):
+        if not is_blake3(grant_hash):
             raise ValueError("feature_input.delegation_invalid")
         stored = self.ledger.feature_input_delegation_documents(grant_hash)
         if len(stored) != 1:

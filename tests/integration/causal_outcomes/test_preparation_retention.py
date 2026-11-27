@@ -5,7 +5,6 @@ from __future__ import annotations
 import json
 from dataclasses import replace
 from datetime import UTC, date, datetime, timedelta
-from hashlib import sha256
 from pathlib import Path
 
 import numpy as np
@@ -45,10 +44,11 @@ from alphalattice.investment.alpha_research.inputs.frozen_price_volume import (
     FrozenPriceVolumeInputs,
 )
 from alphalattice.investment.alpha_research.publication.artifacts import AlphaCurrentArtifactStore
+from alphalattice.kernel.identity import blake3_digest, blake3_filename, blake3_from_filename
 
 
 def _digest(path: Path) -> str:
-    return sha256(path.read_bytes()).hexdigest()
+    return blake3_digest(path.read_bytes())
 
 
 def _publish_alpha(store, storage, scope, generation):
@@ -59,7 +59,7 @@ def _publish_alpha(store, storage, scope, generation):
         scope_hash=scope,
         selection_hash=canonical_hash({"model": generation}),
         dependency_prefix_hash=canonical_hash(
-            {name: sha256(value.tobytes()).hexdigest() for name, value in columns.items()}
+            {name: blake3_digest(value.tobytes()) for name, value in columns.items()}
         ),
         formation_sessions=sessions,
         ordered_listing_ids=("A", "B"),
@@ -162,12 +162,12 @@ def preparation_storage(tmp_path):
 def _inventory(workspace, store, scopes):
     alpha = store.workspace_observation_history_retention(active_scope_hashes=scopes[:2])
     causal = local_qa_preparation_retention_inventory(workspace / "artifacts")
-    roots = {item.path: item.sha256 for item in alpha.roots} | {
+    roots = {item.path: item.digest for item in alpha.roots} | {
         workspace / "artifacts" / item.relative_path: item.file_hash
         for item in causal.protected_files
     }
     targets = {
-        item.path.relative_to(workspace).as_posix(): item.sha256 for item in alpha.targets
+        item.path.relative_to(workspace).as_posix(): item.digest for item in alpha.targets
     } | {f"artifacts/{item.relative_path}": item.file_hash for item in causal.candidate_files}
     return alpha, causal, roots, targets
 
@@ -180,7 +180,7 @@ def test_confirmed_cleanup_deletes_only_exact_unrooted_preparation_files(prepara
     assert targets and alpha.targets and causal.candidate_files
     assert causal.current_head_hash == causal_heads[2]
     assert causal.previous_head_hash == causal_heads[1]
-    rooted_heads = {path.stem for path in roots}
+    rooted_heads = {blake3_from_filename(path.stem) for path in roots}
     for slot_heads in heads[:2]:
         assert {slot_heads[1].head_hash, slot_heads[2].head_hash} <= rooted_heads
         assert slot_heads[0].head_hash not in rooted_heads
@@ -215,8 +215,10 @@ def test_explicit_owner_head_references_protect_parts_without_admitting_new_pin_
     alpha = store.workspace_observation_history_retention(
         active_scope_hashes=scopes[:2], referenced_heads=(heads[0][0].head_hash,)
     )
-    assert heads[0][0].head_hash in {item.path.stem for item in alpha.roots}
-    assert heads[0][0].head_hash not in {item.path.stem for item in alpha.targets}
+    assert heads[0][0].head_hash in {blake3_from_filename(item.path.stem) for item in alpha.roots}
+    assert heads[0][0].head_hash not in {
+        blake3_from_filename(item.path.stem) for item in alpha.targets
+    }
     causal = local_qa_preparation_retention_inventory(
         session.workspace / "artifacts", referenced_heads=(causal_heads[0],)
     )
@@ -272,7 +274,7 @@ def test_changed_cleanup_proof_refuses_before_deleting_any_file(preparation_stor
         path = next(
             session.workspace / relative
             for relative in plan["targets"]
-            if relative.endswith(f"/heads/{heads[0][0].head_hash}.json")
+            if relative.endswith(f"/heads/{blake3_filename(heads[0][0].head_hash)}.json")
         )
         # A valid sealed head with different JSON bytes retains the same scientific values.
         path.write_text(

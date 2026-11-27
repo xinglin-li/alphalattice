@@ -11,6 +11,8 @@ import pytest
 
 from alphalattice.capabilities.domain_contracts.project_layout import resolve_playpen_root
 from alphalattice.capabilities.portfolio_inputs import benchmark as benchmark_owner
+from alphalattice.kernel.identity import blake3_filename
+from tests._support.identity_fixtures import fixture_digest
 
 PLAYPEN_ROOT = resolve_playpen_root(Path(__file__))
 PLAYPEN_SRC = PLAYPEN_ROOT / "src"
@@ -22,7 +24,7 @@ def test_benchmark_value_surface_refuses_a_source_authority_substitution(
     """A current Program cannot reuse SPY values from another raw/action lineage."""
 
     sessions = (date(2024, 1, 2),)
-    parent = SimpleNamespace(revision_sha256="1" * 64)
+    parent = SimpleNamespace(revision_sha256=fixture_digest("1"))
     reference = SimpleNamespace(manifest=parent, listing_id="SPY")
     rows = [
         {"session_date": date(2024, 1, 2), "open_split_adjusted": 100.0, "cash_dividend": 0.0},
@@ -33,7 +35,11 @@ def test_benchmark_value_surface_refuses_a_source_authority_substitution(
         current_quality_filtered_research_manifest=lambda **kwargs: parent,
     )
     feature = SimpleNamespace(
-        projected_feature_frame=lambda *args, **kwargs: (rows, "2" * 64, "3" * 64),
+        projected_feature_frame=lambda *args, **kwargs: (
+            rows,
+            fixture_digest("2"),
+            fixture_digest("3"),
+        ),
     )
     monkeypatch.setattr(benchmark_owner, "MarketDataRepository", lambda workspace: market)
     monkeypatch.setattr(
@@ -42,9 +48,9 @@ def test_benchmark_value_surface_refuses_a_source_authority_substitution(
     monkeypatch.setattr(benchmark_owner.MarketReference, "spy", lambda manifest: reference)
     expected = benchmark_owner.PortfolioBenchmarkSourceAuthority.create(
         formation_sessions=sessions,
-        universe_manifest_revision="1" * 64,
-        raw_input_hash="2" * 64,
-        action_set_hash="4" * 64,
+        universe_manifest_revision=fixture_digest("1"),
+        raw_input_hash=fixture_digest("2"),
+        action_set_hash=fixture_digest("4"),
     )
     with pytest.raises(
         benchmark_owner.PortfolioBenchmarkBoundaryError,
@@ -56,7 +62,7 @@ def test_benchmark_value_surface_refuses_a_source_authority_substitution(
             expected_source_authority=expected,
         )
 
-    # The upgrade moves the 0.2.7 files; after it the same reads come from the catalog.
+    # The layout upgrade moves retained tagged files into the catalog.
     import json
 
     import numpy as np
@@ -80,9 +86,9 @@ def test_benchmark_value_surface_refuses_a_source_authority_substitution(
         "formation_sessions": (*sessions, date(2024, 1, 3)),
         "simple_returns": (0.1, -0.0),
         "log_returns": (float(np.log1p(0.1)), -0.0),
-        "universe_manifest_revision": "1" * 64,
-        "raw_input_hash": "2" * 64,
-        "action_set_hash": "3" * 64,
+        "universe_manifest_revision": fixture_digest("1"),
+        "raw_input_hash": fixture_digest("2"),
+        "action_set_hash": fixture_digest("3"),
     }
     cls = benchmark_owner.PortfolioBenchmarkSurface
     draft = cls.model_construct(**fields, surface_hash="")
@@ -99,7 +105,12 @@ def test_benchmark_value_surface_refuses_a_source_authority_substitution(
     workspace, root = tmp_path / "workspace", tmp_path / "machine-root"
     initialize_research_workspace(workspace)
     artifacts = workspace / "artifacts"
-    old = artifacts / "portfolio-benchmark" / "surfaces" / f"{surface.surface_hash}.json"
+    old = (
+        artifacts
+        / "portfolio-benchmark"
+        / "surfaces"
+        / f"{blake3_filename(surface.surface_hash)}.json"
+    )
     old.parent.mkdir(parents=True)
     old.write_text(
         json.dumps(surface.model_dump(mode="json"), sort_keys=True, separators=(",", ":")),
@@ -107,8 +118,8 @@ def test_benchmark_value_surface_refuses_a_source_authority_substitution(
     )
     risk_fields = {
         "formation_session": sessions[0],
-        "surface_hash": "a" * 64,
-        "risk_projection_hash": "b" * 64,
+        "surface_hash": fixture_digest("a"),
+        "risk_projection_hash": fixture_digest("b"),
         "ordered_factor_ids": ("factor",),
         "industry_exposure": (0.0,),
         "factor_variance_contribution": (0.0,),
@@ -123,14 +134,14 @@ def test_benchmark_value_surface_refuses_a_source_authority_substitution(
         facts_hash=canonical_hash(risk_draft.model_dump(mode="json", exclude={"facts_hash"})),
     )
     ledger_fields = {
-        "program_hash": "c" * 64,
+        "program_hash": fixture_digest("c"),
         "formation_sessions": sessions,
         "ordered_listing_ids": ("listing",),
-        "executed_weights_hash": "d" * 64,
+        "executed_weights_hash": fixture_digest("d"),
         "executed_weights_shape": (1, 1),
-        "pre_cap_weights_hash": "e" * 64,
+        "pre_cap_weights_hash": fixture_digest("e"),
         "pre_cap_weights_shape": (1, 1),
-        "final_weights_hash": "f" * 64,
+        "final_weights_hash": fixture_digest("f"),
         "gross_simple_returns": (-0.0,),
         "one_way_turnovers": (0.0,),
         "decision_modes": ("hold",),
@@ -157,7 +168,7 @@ def test_benchmark_value_surface_refuses_a_source_authority_substitution(
         ("benchmark surface", lambda: store.load(surface.surface_hash)),
         ("execution ledger", lambda: ledger_store.load_execution(ledger.ledger_hash)),
     ]
-    # A 0.2.7 workspace's files are read only by its upgrade, never before it.
+    # The live reader requires catalog admission for a workspace that still holds a surface file.
     with pytest.raises(benchmark_owner.PortfolioBenchmarkBoundaryError):
         store.load(surface.surface_hash)
     before = [("benchmark surface", surface), ("execution ledger", ledger)]
@@ -249,7 +260,7 @@ def test_benchmark_value_surface_refuses_a_source_authority_substitution(
         assert ledger_store.load_execution(
             ledger.ledger_hash
         ).median_holding_adv20_by_formation == (None,)
-        missing = "f" * 64
+        missing = fixture_digest("f")
         for read in (
             lambda: ledger_store.load_execution(missing),
             lambda: ledger_store.load_report(missing),

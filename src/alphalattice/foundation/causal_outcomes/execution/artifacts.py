@@ -16,12 +16,12 @@ from alphalattice.capabilities.domain_contracts.identity import canonical_hash
 from alphalattice.control.workspace_runtime.artifacts import ArtifactDescriptor
 from alphalattice.control.workspace_runtime.content_store import verified_source_value
 from alphalattice.control.workspace_runtime.verified_facts import (
-    file_sha256,
     record_sealed_file,
     verified_bytes,
+    verified_file_digest,
 )
 from alphalattice.foundation.data_layer import history
-from alphalattice.kernel.identity import integrity_sha256
+from alphalattice.kernel.identity import blake3_filename, integrity_blake3, is_blake3, tagged_blake3
 
 from .compile import _SCHEMA_ID, _schema
 from .contracts import (
@@ -198,12 +198,17 @@ class _ExecutionOutcomeArtifactStore:
 
     @staticmethod
     def _require_local_qa_hash(value: str) -> None:
-        if len(value) != 64 or any(character not in "0123456789abcdef" for character in value):
+        if not is_blake3(value):
             raise ValueError("causal_outcomes.qa_preparation_reference_invalid")
 
     def _local_qa_path(self, category: str, value: str, suffix: str) -> Path:
         self._require_local_qa_hash(value)
-        return self.root / LOCAL_QA_PREPARATION_CATEGORY / category / f"{value}.{suffix}"
+        return (
+            self.root
+            / LOCAL_QA_PREPARATION_CATEGORY
+            / category
+            / f"{blake3_filename(value)}.{suffix}"
+        )
 
     def _local_qa_marker_path(self) -> Path:
         return self.root / LOCAL_QA_PREPARATION_CATEGORY / "markers" / "current.json"
@@ -263,7 +268,7 @@ class _ExecutionOutcomeArtifactStore:
                 raise ValueError("causal_outcomes.qa_preparation_part_invalid") from exc
             if table.num_rows != part.row_count:
                 raise ValueError("causal_outcomes.qa_preparation_part_invalid")
-            if integrity_sha256(_local_qa_ipc(table)).hexdigest() != part.ipc_hash:
+            if tagged_blake3(integrity_blake3(_local_qa_ipc(table))) != part.ipc_hash:
                 raise ValueError("causal_outcomes.qa_preparation_ipc_mismatch")
             tables.append((table, part.point_count))
         table = _canonical_local_qa_table(
@@ -278,7 +283,7 @@ class _ExecutionOutcomeArtifactStore:
         content = _local_qa_ipc(table)
         if (
             table.num_rows != head.listing_count * head.matured_point_count
-            or integrity_sha256(content).hexdigest() != head.ipc_hash
+            or tagged_blake3(integrity_blake3(content)) != head.ipc_hash
         ):
             raise ValueError("causal_outcomes.qa_preparation_ipc_mismatch")
         return content
@@ -294,8 +299,8 @@ class _ExecutionOutcomeArtifactStore:
             self._local_qa_path("heads", head.content_hash, "json"),
         ]
         commitments = [
-            integrity_sha256(_local_qa_json(marker)).hexdigest(),
-            integrity_sha256(_local_qa_json(head)).hexdigest(),
+            tagged_blake3(integrity_blake3(_local_qa_json(marker))),
+            tagged_blake3(integrity_blake3(_local_qa_json(head))),
         ]
         for part in head.parts:
             paths.append(self._local_qa_path("parts", part.file_hash, "parquet"))
@@ -309,7 +314,7 @@ class _ExecutionOutcomeArtifactStore:
                     # _read_local_qa_table verifies these exact bytes once.
                     continue
                 try:
-                    actual = file_sha256(path)
+                    actual = verified_file_digest(path)
                 except FileNotFoundError as exc:
                     raise ValueError("causal_outcomes.qa_preparation_missing") from exc
                 if actual != expected:
@@ -337,7 +342,7 @@ class _ExecutionOutcomeArtifactStore:
             raise ValueError("causal_outcomes.qa_preparation_capacity_required")
         self._preparation_capacity(len(content))
         self._atomic_write(path, content)
-        record_sealed_file(path, digest or integrity_sha256(content).hexdigest())
+        record_sealed_file(path, digest or tagged_blake3(integrity_blake3(content)))
 
     def publish_local_qa_preparation(
         self,
@@ -350,7 +355,7 @@ class _ExecutionOutcomeArtifactStore:
         """Write only a base or new rows, their immutable head, and the marker last."""
         if self._preparation_capacity is None:
             raise ValueError("causal_outcomes.qa_preparation_capacity_required")
-        ipc_hash = integrity_sha256(_local_qa_ipc(table)).hexdigest()
+        ipc_hash = tagged_blake3(integrity_blake3(_local_qa_ipc(table)))
         if (
             previous is not None
             and ipc_hash == previous.ipc_hash
@@ -364,13 +369,13 @@ class _ExecutionOutcomeArtifactStore:
             sink = pa.BufferOutputStream()
             pq.write_table(selected, sink, compression="zstd")
             content = sink.getvalue().to_pybytes()
-            file_hash = integrity_sha256(content).hexdigest()
+            file_hash = tagged_blake3(integrity_blake3(content))
             part = LocalQAOutcomePreparationPart.create(
                 role="BASE" if previous is None else "INCREMENT",
                 listing_count=values["listing_count"],
                 point_count=selected.num_rows // cast(int, values["listing_count"]),
                 row_count=selected.num_rows,
-                ipc_hash=integrity_sha256(_local_qa_ipc(selected)).hexdigest(),
+                ipc_hash=tagged_blake3(integrity_blake3(_local_qa_ipc(selected))),
                 file_hash=file_hash,
                 byte_count=len(content),
             )
@@ -413,10 +418,15 @@ class _ExecutionOutcomeArtifactStore:
         return f"{self._PREFIX}{category}/{value}"
 
     def _json_path(self, category: str, value: str) -> Path:
-        return self.root / category / f"{value}.json"
+        return self.root / category / f"{blake3_filename(value)}.json"
 
     def _parquet_path(self, split: str, value: str) -> Path:
-        return self.root / split.casefold().replace("_", "-") / "chunks" / f"{value}.parquet"
+        return (
+            self.root
+            / split.casefold().replace("_", "-")
+            / "chunks"
+            / f"{blake3_filename(value)}.parquet"
+        )
 
     def publish_json(
         self, *, category: str, payload: Mapping[str, object], identity_field: str
@@ -433,7 +443,7 @@ class _ExecutionOutcomeArtifactStore:
         return ArtifactDescriptor(
             kind=f"causal-execution-{category}",
             content_hash=value,
-            metadata_hash=integrity_sha256(content).hexdigest(),
+            metadata_hash=tagged_blake3(integrity_blake3(content)),
             uri=self._uri(category, value),
         )
 
@@ -458,9 +468,9 @@ class _ExecutionOutcomeArtifactStore:
             "alphalattice.chunk_hash": content_hash,
             "alphalattice.split": split,
         }
-        metadata_hash = integrity_sha256(
-            json.dumps(metadata, sort_keys=True, separators=(",", ":")).encode()
-        ).hexdigest()
+        metadata_hash = tagged_blake3(
+            integrity_blake3(json.dumps(metadata, sort_keys=True, separators=(",", ":")).encode())
+        )
         dates = ordered.column("formation_session").to_pylist()
         year = dates[0].year
         return CausalExecutionOutcomeChunk(
@@ -596,17 +606,17 @@ def local_qa_preparation_retention_inventory(
     roots = set(explicit)
     protected: dict[Path, str] = {}
     if marker is not None:
-        protected[store._local_qa_marker_path()] = integrity_sha256(
-            _local_qa_json(marker)
-        ).hexdigest()
+        protected[store._local_qa_marker_path()] = tagged_blake3(
+            integrity_blake3(_local_qa_json(marker))
+        )
         roots.add(marker.current_head_hash)
         if marker.previous_head_hash is not None:
             roots.add(marker.previous_head_hash)
     for root in sorted(roots):
         head = store._read_local_qa_head(root)
-        protected[store._local_qa_path("heads", head.content_hash, "json")] = integrity_sha256(
-            _local_qa_json(head)
-        ).hexdigest()
+        protected[store._local_qa_path("heads", head.content_hash, "json")] = tagged_blake3(
+            integrity_blake3(_local_qa_json(head))
+        )
         for part in head.parts:
             protected[store._local_qa_path("parts", part.file_hash, "parquet")] = part.file_hash
     scope = store.root / LOCAL_QA_PREPARATION_CATEGORY
@@ -621,7 +631,7 @@ def local_qa_preparation_retention_inventory(
         item = LocalQAOutcomePreparationFile(
             relative_path=path.relative_to(artifact_root.resolve()).as_posix(),
             byte_count=path.stat().st_size,
-            file_hash=file_sha256(path),
+            file_hash=verified_file_digest(path),
         )
         if path in protected:
             if item.file_hash != protected[path]:

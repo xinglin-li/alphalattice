@@ -26,6 +26,7 @@ from alphalattice.investment.portfolio_strategy_lab.application.decision_updates
     PortfolioObservedSettlement,
     PortfolioUpdatePublication,
 )
+from alphalattice.kernel.identity import BLAKE3_PATTERN
 
 
 class RollingHistoryError(ValueError):
@@ -51,18 +52,18 @@ class RollingReportBaseline(_RollingContract):
     persisted head below carries only hashes and dates.
     """
 
-    report_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
-    result_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
-    program_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
-    checkpoint_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
+    report_hash: str = Field(pattern=BLAKE3_PATTERN)
+    result_hash: str = Field(pattern=BLAKE3_PATTERN)
+    program_hash: str = Field(pattern=BLAKE3_PATTERN)
+    checkpoint_hash: str = Field(pattern=BLAKE3_PATTERN)
     strategy_package_id: str = Field(min_length=1, max_length=160)
-    strategy_package_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
+    strategy_package_hash: str = Field(pattern=BLAKE3_PATTERN)
     cost_bps_per_side: Literal[5, 10]
     formation_start: date
     formation_end: date
     baseline_observed_through: date
     base_last_holding_end_session: date
-    first_parent_publication_hash: str | None = Field(default=None, pattern=r"^[0-9a-f]{64}$")
+    first_parent_publication_hash: str | None = Field(default=None, pattern=BLAKE3_PATTERN)
     baseline_claim: str = Field(min_length=1, max_length=240)
     observations: tuple[RollingReportObservation, ...] = Field(min_length=2)
 
@@ -86,27 +87,27 @@ class RollingReportHead(_RollingContract):
     """Small sealed link to a baseline REPORT and one existing update publication."""
 
     kind: Literal["RollingPortfolioReportHead"] = "RollingPortfolioReportHead"
-    report_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
-    result_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
-    program_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
-    checkpoint_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
+    report_hash: str = Field(pattern=BLAKE3_PATTERN)
+    result_hash: str = Field(pattern=BLAKE3_PATTERN)
+    program_hash: str = Field(pattern=BLAKE3_PATTERN)
+    checkpoint_hash: str = Field(pattern=BLAKE3_PATTERN)
     strategy_package_id: str = Field(min_length=1, max_length=160)
-    strategy_package_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
+    strategy_package_hash: str = Field(pattern=BLAKE3_PATTERN)
     cost_bps_per_side: Literal[5, 10]
     formation_start: date
     formation_end: date
     baseline_observed_through: date
     baseline_claim: str = Field(min_length=1, max_length=240)
-    previous_head_hash: str | None = Field(default=None, pattern=r"^[0-9a-f]{64}$")
-    previous_publication_hash: str | None = Field(default=None, pattern=r"^[0-9a-f]{64}$")
-    increment_publication_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
-    increment_outcome_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
+    previous_head_hash: str | None = Field(default=None, pattern=BLAKE3_PATTERN)
+    previous_publication_hash: str | None = Field(default=None, pattern=BLAKE3_PATTERN)
+    increment_publication_hash: str = Field(pattern=BLAKE3_PATTERN)
+    increment_outcome_hash: str = Field(pattern=BLAKE3_PATTERN)
     increment_outcome_count: int = Field(ge=0)
     first_increment_formation: date | None = None
     last_increment_formation: date | None = None
     increment_observed_through: date
     observed_through: date
-    head_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
+    head_hash: str = Field(pattern=BLAKE3_PATTERN)
 
     @classmethod
     def create(cls, **values: object) -> Self:

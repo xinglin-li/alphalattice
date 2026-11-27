@@ -42,6 +42,7 @@ from alphalattice.investment.risk_research.estimators.covariance import (
     estimate_dynamic_covariance,
 )
 from alphalattice.investment.risk_research.estimators.matrix_identity import matrix_content_hash
+from tests._support.identity_fixtures import fixture_digest
 
 type FloatArray = NDArray[np.float64]
 
@@ -75,8 +76,8 @@ def _fixture_surface() -> tuple[CausalRiskReturnSurface, _FixtureReturnReader, F
         RiskUniverseEpoch,
         "epoch_hash",
         market_profile_id="test-us",
-        universe_manifest_revision="a" * 64,
-        panel_snapshot_hash="b" * 64,
+        universe_manifest_revision=fixture_digest("a"),
+        panel_snapshot_hash=fixture_digest("b"),
         ordered_listing_ids=_LISTING_IDS,
     )
     chunk = CausalRiskReturnChunk(
@@ -84,8 +85,8 @@ def _fixture_surface() -> tuple[CausalRiskReturnSurface, _FixtureReturnReader, F
         row_count=len(sessions) * len(_LISTING_IDS),
         first_formation_session=sessions[0],
         last_formation_session=sessions[-1],
-        content_hash="c" * 64,
-        metadata_hash="d" * 64,
+        content_hash=fixture_digest("c"),
+        metadata_hash=fixture_digest("d"),
         uri="fixture://risk-returns",
     )
     surface = seal_contract(
@@ -95,7 +96,7 @@ def _fixture_surface() -> tuple[CausalRiskReturnSurface, _FixtureReturnReader, F
         first_formation_session=sessions[0],
         last_formation_session=sessions[-1],
         formation_count=len(sessions),
-        source_watermark_hash="e" * 64,
+        source_watermark_hash=fixture_digest("e"),
         chunks=(chunk,),
         limitations=("fixture",),
     )
@@ -175,7 +176,7 @@ class _DiagonalVarianceAdapter:
             annualized_volatility_minimum=float(annualized.min()),
             annualized_volatility_median=float(np.median(annualized)),
             annualized_volatility_maximum=float(annualized.max()),
-            numerical_environment_hash="0" * 64,
+            numerical_environment_hash=fixture_digest("0"),
             matrix_hash=matrix_content_hash(covariance),
         )
         for array in (covariance, volatility, eigenvalues, eigenvectors):
@@ -203,7 +204,7 @@ def test_a_second_estimator_reaches_an_estimate_without_editing_risk_runtime() -
     estimate = adapter.estimate(
         recipe=envelope,
         inputs=BoundRiskReturnInput.create(
-            return_surface_hash="a" * 64,
+            return_surface_hash=fixture_digest("a"),
             ordered_listing_ids=_LISTING_IDS,
             formation_session=date(2024, 6, 1),
             returns=returns,
@@ -277,7 +278,7 @@ def test_estimator_seam_fails_closed_before_any_numerical_call() -> None:
     rng = np.random.default_rng(11)
     with pytest.raises(ValueError, match="RISK_BOUND_RETURN_INPUT_INVALID"):
         BoundRiskReturnInput.create(
-            return_surface_hash="a" * 64,
+            return_surface_hash=fixture_digest("a"),
             ordered_listing_ids=_LISTING_IDS,
             formation_session=date(2024, 6, 1),
             returns=rng.normal(0.0, 0.02, size=(315, len(_LISTING_IDS) + 1)),
@@ -354,7 +355,7 @@ def test_fast_slow_matches_its_formula_and_reports_both_shrinkages(eta: float) -
     estimate = catalog.resolve(admission.recipe).estimate(
         recipe=admission.recipe,
         inputs=BoundRiskReturnInput.create(
-            return_surface_hash="a" * 64,
+            return_surface_hash=fixture_digest("a"),
             ordered_listing_ids=listings,
             formation_session=formation,
             returns=returns,
@@ -453,7 +454,7 @@ def test_fast_slow_refuses_same_shaped_wrong_inputs_before_estimating() -> None:
         adapter.estimate(
             recipe=admission.recipe,
             inputs=BoundRiskReturnInput.create(
-                return_surface_hash="b" * 64,
+                return_surface_hash=fixture_digest("b"),
                 ordered_listing_ids=listings,
                 formation_session=date(2024, 3, 1),
                 returns=short,

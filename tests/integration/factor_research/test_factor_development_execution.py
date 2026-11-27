@@ -59,11 +59,13 @@ from alphalattice.foundation.feature_engine.producers.factors.open_intraday impo
 from alphalattice.foundation.feature_engine.producers.factors.registry import (
     factor_methodology_hash,
 )
+from alphalattice.kernel.identity import blake3_filename, is_blake3
 from alphalattice.protocols.actor_execution.contracts import ActorKind
 from alphalattice.protocols.research_authoring.contracts import (
     AuthoringError,
     ResearchExperimentEnvelope,
 )
+from tests._support.identity_fixtures import fixture_digest
 from tests._support.researcher_methodology_session_fixtures import (
     development_risk_workspace as development_risk_workspace,
 )
@@ -134,7 +136,7 @@ def test_an_authored_factor_document_reaches_real_deterministic_evidence(
     # would move the catalog hash when the axis changed while still being blind
     # to a Factor rewritten under a stable id.
     assert inventory
-    assert all(len(entry.methodology_hash) == 64 for entry in inventory)
+    assert all(is_blake3(entry.methodology_hash) for entry in inventory)
     assert len({entry.methodology_hash for entry in inventory}) > 1
 
     evidence, binding = workflow.run(document, actor_kind=ActorKind.HUMAN, actor_id="researcher")
@@ -166,8 +168,12 @@ def test_an_authored_factor_document_reaches_real_deterministic_evidence(
     # development method binding so it can never collide with a record produced
     # under current authority.
     assert child.program.factor_ids == receipt.context_factor_ids
-    assert child.execution_binding_hash != "0" * 64
-    stored = root / FACTOR_DEVELOPMENT_EVIDENCE_CATEGORY / f"{child.checkpoint_hash}.json"
+    assert child.execution_binding_hash == receipt.method_binding_hash
+    stored = (
+        root
+        / FACTOR_DEVELOPMENT_EVIDENCE_CATEGORY
+        / f"{blake3_filename(child.checkpoint_hash)}.json"
+    )
     payload = json.loads(stored.read_text(encoding="utf-8"))
     assert payload["kind"] == "FactorResearchDeterministicEvidence"
 
@@ -196,10 +202,9 @@ def test_replay_walks_the_graph_and_reports_exact_reuse(
     assert receipt.checkpoint_hash == child.checkpoint_hash
 
     with pytest.raises(AuthoringError, match="development_receipt_unavailable"):
-        reader.load("b" * 64)
-    # A handle is content addressing, not a location, and is admitted as exactly
-    # 64 lowercase hex rather than merely "no separators".
-    for bad in ("../secrets", "not-a-hash", "A" * 64):
+        reader.load(fixture_digest("unavailable Factor receipt"))
+    # A handle must be a complete tagged digest.
+    for bad in ("../secrets", "not-a-hash", "blake3:" + "A" * 64, "a" * 64):
         with pytest.raises(AuthoringError, match="receipt_handle_invalid"):
             reader.load(bad)
 
@@ -211,7 +216,7 @@ def _output_workspace(document: dict[str, Any]) -> str:
 def _entry(factor_id: str, *, methodology_hash: str) -> FactorInventoryEntry:
     return FactorInventoryEntry(
         factor_id=factor_id,
-        implementation_hash="f" * 64,
+        implementation_hash=fixture_digest("Factor implementation"),
         methodology_hash=methodology_hash,
     )
 
@@ -220,7 +225,7 @@ def test_a_changed_factor_recipe_moves_its_methodology_identity() -> None:
     """A changed factor recipe moves its methodology identity."""
 
     spec = overnight_return_factor_spec()
-    kernel = "a" * 64
+    kernel = fixture_digest("Factor kernel")
     baseline = factor_methodology_hash(spec, implementation_hash=kernel)
 
     # Same recipe, same kernel, recompiled: identity is stable, or nothing
@@ -237,7 +242,12 @@ def test_a_changed_factor_recipe_moves_its_methodology_identity() -> None:
 
     # And a changed kernel under an unchanged recipe still moves it, so the new
     # identity strictly contains what the old one detected.
-    assert factor_methodology_hash(spec, implementation_hash="b" * 64) != baseline
+    assert (
+        factor_methodology_hash(
+            spec, implementation_hash=fixture_digest("other Factor implementation")
+        )
+        != baseline
+    )
 
 
 def test_the_factor_catalog_hash_consumes_methodology_identity() -> None:
@@ -271,12 +281,12 @@ def test_the_factor_catalog_hash_consumes_methodology_identity() -> None:
     authority = ResolvedResearchAuthority.create(
         data_snapshot_handle="current",
         universe_handle="us-current-index-research",
-        panel_snapshot_hash="c" * 64,
+        panel_snapshot_hash=fixture_digest("Factor Panel snapshot"),
         panel_manifest_ref="playpen://panel/x",
-        universe_revision_sha256="d" * 64,
+        universe_revision_sha256=fixture_digest("Factor universe revision"),
         ordered_listing_ids=("listing-a",),
         sessions=(datetime(2024, 2, 1, tzinfo=UTC).date(),),
-        source_watermark_hash="e" * 64,
+        source_watermark_hash=fixture_digest("Factor source watermark"),
     )
 
     def _catalog_hash(methodology: str) -> str:
@@ -285,7 +295,9 @@ def test_the_factor_catalog_hash_consumes_methodology_identity() -> None:
         ).compile_desk_program(envelope=envelope, document=document, authority=authority)
         return compiled.catalog_hash
 
-    assert _catalog_hash("1" * 64) != _catalog_hash("2" * 64)
+    assert _catalog_hash(fixture_digest("first methodology")) != _catalog_hash(
+        fixture_digest("other methodology")
+    )
 
 
 def test_the_selection_scopes_the_receipt_without_moving_the_statistics(
@@ -380,14 +392,14 @@ def test_a_receipt_is_verified_against_re_derived_authority(
 
     # A forged input binding that leaves the selection alone still contradicts
     # the binding hash the generic evidence sealed.
-    relabelled = _resealed(screening_policy_hash="9" * 64)
+    relabelled = _resealed(screening_policy_hash=fixture_digest("wrong screening policy"))
 
     # A child produced by another method binding, over the same Panel and the
     # same outcomes: identical statistics, identical program spec, resealed so its
     # own checkpoint hash is valid. Every identity inside it is correct. Only
     # comparing its execution binding with the receipt's method binding refuses it.
     payload = json.loads(child.model_dump_json())
-    payload["execution_binding_hash"] = "7" * 64
+    payload["execution_binding_hash"] = fixture_digest("other execution binding")
     payload.pop("checkpoint_hash")
     # Re-parsed from JSON rather than from the dumped mapping, because the nested
     # split contracts hold enums, dates and tuples that only decode in JSON mode.
@@ -403,7 +415,10 @@ def test_a_receipt_is_verified_against_re_derived_authority(
     )
 
     # A Panel whose methodology identity has moved no longer answers for it.
-    drifted = tuple(replace(entry, methodology_hash="8" * 64) for entry in inventory)
+    drifted = tuple(
+        replace(entry, methodology_hash=fixture_digest("moved Factor methodology"))
+        for entry in inventory
+    )
     for candidate, candidate_child, candidate_inventory, refusal in (
         (narrowed, child, inventory, "selection_not_admitted"),
         (relabelled, child, inventory, "receipt_input_binding_mismatch"),
@@ -423,10 +438,11 @@ def test_a_receipt_is_verified_against_re_derived_authority(
 def test_malformed_handles_and_catalog_entries_fail_as_domain_errors() -> None:
     """Stable Factor-owned refusals, never a leaked attribute or path error."""
 
-    for bad in ("../secrets", "", "not-a-hash", "A" * 64, "0" * 63):
+    for bad in ("../secrets", "", "not-a-hash", "blake3:" + "A" * 64, "a" * 64, "0" * 63):
         with pytest.raises(AuthoringError, match="handle_invalid"):
             factor_development_evidence_handle(bad)
-    assert factor_development_evidence_handle("0" * 64) == "0" * 64
+    handle = fixture_digest("Factor checkpoint")
+    assert factor_development_evidence_handle(handle) == handle
 
     # A summary entry that is not a mapping is a malformed panel, and reaching
     # ``.get`` on it would surface an AttributeError from inside a reader.
@@ -442,7 +458,9 @@ def test_a_legacy_panel_without_methodology_identity_is_readback_only() -> None:
 
     legacy = {
         "safe_summary": {
-            "factor_catalog_summary": {"alpha": {"implementation_hash": "f" * 64}},
+            "factor_catalog_summary": {
+                "alpha": {"implementation_hash": fixture_digest("Factor implementation")}
+            },
         }
     }
     with pytest.raises(AuthoringError, match="methodology_identity_missing"):
@@ -452,8 +470,13 @@ def test_a_legacy_panel_without_methodology_identity_is_readback_only() -> None:
     current = {
         "safe_summary": {
             "factor_catalog_summary": {
-                "alpha": {"implementation_hash": "f" * 64, "methodology_hash": "9" * 64}
+                "alpha": {
+                    "implementation_hash": fixture_digest("Factor implementation"),
+                    "methodology_hash": fixture_digest("Factor methodology"),
+                }
             },
         }
     }
-    assert factor_inventory_from_panel_manifest(current)[0].methodology_hash == "9" * 64
+    assert factor_inventory_from_panel_manifest(current)[0].methodology_hash == fixture_digest(
+        "Factor methodology"
+    )

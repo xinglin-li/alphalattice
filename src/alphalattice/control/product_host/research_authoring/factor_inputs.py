@@ -41,7 +41,7 @@ from alphalattice.control.task_control.upgrade import RETIRED_DIRECTORY, set_asi
 from alphalattice.control.workspace_runtime.artifacts import ArtifactResolver
 from alphalattice.control.workspace_runtime.content_store import staging_directory
 from alphalattice.control.workspace_runtime.mutation_gate import WorkspaceMutationGate
-from alphalattice.control.workspace_runtime.verified_facts import file_sha256
+from alphalattice.control.workspace_runtime.verified_facts import verified_file_digest
 from alphalattice.control.workspace_runtime.writer_lease import WorkspaceWriterLease
 from alphalattice.foundation.causal_outcomes.execution.methods import ONE_SESSION_RECIPE_ID
 from alphalattice.foundation.causal_outcomes.execution.publication import (
@@ -85,7 +85,13 @@ from alphalattice.foundation.market_data_ops.storage import market_snapshots, wo
 from alphalattice.foundation.market_data_ops.storage.duckdb import MarketDataRepository
 from alphalattice.kernel import storage
 from alphalattice.kernel.execution import execution_port
-from alphalattice.kernel.identity import FileDigestTrust
+from alphalattice.kernel.identity import (
+    BLAKE3_PATTERN,
+    FileDigestTrust,
+    blake3_filename,
+    blake3_from_filename,
+    is_blake3,
+)
 from alphalattice.kernel.resources import worker_width
 from alphalattice.protocols.research_authoring.contracts import (
     AuthoringError,
@@ -160,15 +166,15 @@ def confined(root: Path, relative: str) -> Path:
 
 
 def file_digest(path: Path) -> str:
-    """The file's SHA-256 identity, through the trust record: hashed only when its stamp changed.
+    """The file's BLAKE3 identity, through the trust record: hashed only when its stamp changed.
 
     Args:
         path: Explicit file to read.
 
     Returns:
-        Lowercase SHA-256 digest.
+        Tagged BLAKE3 digest.
     """
-    digest: str = file_sha256(path)
+    digest: str = verified_file_digest(path)
     return digest
 
 
@@ -214,7 +220,7 @@ def file_digests(paths: Iterable[Path]) -> dict[Path, str]:
             first_of[path] = path if identity is None else representative.setdefault(identity, path)
         distinct = tuple(dict.fromkeys(first_of.values()))
         if len(distinct) <= 1:
-            digests = {path: file_sha256(path, handle=streams[path]) for path in distinct}
+            digests = {path: verified_file_digest(path, handle=streams[path]) for path in distinct}
         else:
             with execution_port().register_pool(
                 ThreadPoolExecutor(max_workers=worker_width(min(_DIGEST_WORKERS, len(distinct)))),
@@ -223,7 +229,9 @@ def file_digests(paths: Iterable[Path]) -> dict[Path, str]:
                 digests = dict(
                     zip(
                         distinct,
-                        pool.map(lambda path: file_sha256(path, handle=streams[path]), distinct),
+                        pool.map(
+                            lambda path: verified_file_digest(path, handle=streams[path]), distinct
+                        ),
                         strict=True,
                     )
                 )
@@ -259,12 +267,12 @@ class FactorInputBundle(BaseModel):  # type: ignore[misc]
     """Manifest-last local bytes, not new scientific authority."""
 
     model_config = ConfigDict(extra="forbid", frozen=True)
-    panel_snapshot_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
-    outcome_snapshot_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
+    panel_snapshot_hash: str = Field(pattern=BLAKE3_PATTERN)
+    outcome_snapshot_hash: str = Field(pattern=BLAKE3_PATTERN)
     sessions: tuple[date, ...]
     files: tuple[tuple[str, str], ...]
     database_snapshot_hash: str | None = Field(
-        default=None, pattern=r"^[0-9a-f]{64}$", exclude_if=lambda v: v is None
+        default=None, pattern=BLAKE3_PATTERN, exclude_if=lambda v: v is None
     )
     # A 0.2.7 file-bound bundle's manifest carries no binding version.
     binding_version: Literal[2, 3] | None = Field(default=None, exclude_if=lambda v: v is None)
@@ -285,7 +293,7 @@ class FactorInputBundle(BaseModel):  # type: ignore[misc]
     outcomes: tuple[tuple[str, str], ...] | None = Field(
         default=None, exclude_if=lambda v: v is None
     )
-    binding_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
+    binding_hash: str = Field(pattern=BLAKE3_PATTERN)
 
     @classmethod
     def create(cls, **values: Any) -> Self:
@@ -375,8 +383,7 @@ class FactorInputBundle(BaseModel):  # type: ignore[misc]
                     r"[0-9a-f]{8}-[0-9a-f]{4}-7[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}",
                     artifact,
                 )
-                or len(content) != 64
-                or any(character not in "0123456789abcdef" for character in content)
+                or not is_blake3(content)
                 for artifact, content in self.outcomes
             )
         ):
@@ -417,10 +424,10 @@ def read_factor_bundle(
             differ.
     """
     workspace = _windows_long_path(workspace)
-    if len(binding_hash) != 64 or any(v not in "0123456789abcdef" for v in binding_hash):
+    if not is_blake3(binding_hash):
         raise AuthoringError("research_experiment.input_hash_invalid")
     inputs = _inputs_root(workspace, binding_hash)
-    root = confined(inputs, binding_hash)
+    root = confined(inputs, blake3_filename(binding_hash))
     manifest = confined(root, "manifest.json")
     try:
         manifest_bytes = manifest.read_bytes()
@@ -449,7 +456,8 @@ def read_factor_bundle(
         database: Path | None = None
         if bundle.database_snapshot_hash is not None:
             database = confined(
-                inputs, f"databases/{bundle.database_snapshot_hash}/market-data.duckdb"
+                inputs,
+                f"databases/{blake3_filename(bundle.database_snapshot_hash)}/market-data.duckdb",
             )
             if not database.is_file():
                 require_available_input(workspace, _released_name(inputs, database))
@@ -512,12 +520,19 @@ def carried_binding_check(binding_hash: str, members: Mapping[str, Path]) -> Non
 def factor_input_paths(workspace: Path, binding_hash: str) -> tuple[Path, Path]:
     """Resolve legacy inline and referenced snapshots through one path owner."""
     workspace = _windows_long_path(workspace)
-    if len(binding_hash) != 64 or any(v not in "0123456789abcdef" for v in binding_hash):
+    if not is_blake3(binding_hash):
         raise AuthoringError("research_experiment.input_hash_invalid")
-    source = confined(_inputs_root(workspace, binding_hash), f"{binding_hash}/source")
+    source = confined(
+        _inputs_root(workspace, binding_hash), f"{blake3_filename(binding_hash)}/source"
+    )
     # Referenced bundles expose a local alias of a sealed DB object. No alias
     # ever points at the mutable market database or another workspace.
     return source, source / "artifacts"
+
+
+def factor_input_baseline(binding_hash: str) -> str:
+    """The workspace-relative source of a bound Factor input."""
+    return f"research-inputs/{blake3_filename(binding_hash)}/source"
 
 
 def _released_name(inputs: Path, path: Path) -> str:
@@ -560,8 +575,8 @@ def _share_bound_artifacts(
     """Share bytes of sealed files between the workspace and its verified binding."""
     sealed = dict(bundle.files)
     for relative, digest in source_files:
-        sealed_document = relative.startswith(_SEALED_INPUT_DOCUMENTS) and bool(
-            re.fullmatch(r"[0-9a-f]{64}\.json", Path(relative).name)
+        sealed_document = relative.startswith(_SEALED_INPUT_DOCUMENTS) and (
+            relative.endswith(".json") and blake3_from_filename(Path(relative).stem) is not None
         )
         if sealed.get(relative) != digest or not (relative.endswith(".parquet") or sealed_document):
             continue
@@ -616,9 +631,12 @@ def _logical_files(source: Path, snapshot: str) -> tuple[Path, ...]:
     )
     refs["content-manifests"] = str(revision["logical_manifest_hash"])
     paths = [
-        closure.root / "logical" / kind / f"{identity}.json" for kind, identity in refs.items()
+        closure.root / "logical" / kind / f"{blake3_filename(identity)}.json"
+        for kind, identity in refs.items()
     ]
-    paths.append(closure.root / "logical/operational/snapshot-mappings" / f"{snapshot}.json")
+    paths.append(
+        closure.root / "logical/operational/snapshot-mappings" / f"{blake3_filename(snapshot)}.json"
+    )
     return tuple(confined(source, p.relative_to(source).as_posix()) for p in paths)
 
 
@@ -667,7 +685,14 @@ def compatible_factor_inputs(
         return False
     legacy = original if original.outcomes is None else candidate
     current = candidate if original.outcomes is None else original
-    files = {Path(name).stem: name for name, _ in legacy.files if outcome_file(name)}
+    files: dict[str, str] = {}
+    for name, _ in legacy.files:
+        if not outcome_file(name):
+            continue
+        digest = blake3_from_filename(Path(name).stem)
+        if digest is None or digest in files:
+            return False
+        files[digest] = name
     artifacts = {digest: artifact for artifact, digest in current.outcomes or ()}
     return (
         bool(files)
@@ -1127,17 +1152,21 @@ def _kept_files(
     """A binding's files at their paths under `research-inputs/`: its folder, and the database
     the bundle names at the pooled path the door reads it from, while the folder holds it (a
     0.2.7 copy a cleanup released keeps only what it has; the door refuses the rest by name)."""
-    files = [(f"{binding_hash}/{relative}", path) for relative, path in folder_files(staged)]
+    binding_name = blake3_filename(binding_hash)
+    files = [(f"{binding_name}/{relative}", path) for relative, path in folder_files(staged)]
     database = confined(staged / "source", "market-data.duckdb")
     if bundle.database_snapshot_hash is not None and database.is_file():
-        files.append((f"databases/{bundle.database_snapshot_hash}/market-data.duckdb", database))
+        database_name = blake3_filename(bundle.database_snapshot_hash)
+        files.append((f"databases/{database_name}/market-data.duckdb", database))
     return files
 
 
 def legacy_bindings(workspace: Path) -> list[tuple[str, list[tuple[str, Path]]]]:
-    """Each 0.2.7 binding `workspace` copied under `research-inputs/<binding_hash>/`, with its
-    files laid out as the door keeps them. The pools those copies link, and the publication
-    records (`publications/`, which stay in the workspace), are not bindings."""
+    """Read current-format bindings placed in the previous workspace-local layout.
+
+    Return each binding with the paths the data-root owner uses to keep its files.
+    Pooled files and publication records are outside the binding directories.
+    """
     folder = _windows_long_path(workspace) / "research-inputs"
     try:
         names = sorted(os.listdir(folder))
@@ -1145,15 +1174,16 @@ def legacy_bindings(workspace: Path) -> list[tuple[str, list[tuple[str, Path]]]]
         return []
     found = []
     for name in names:
-        if len(name) != 64 or any(c not in "0123456789abcdef" for c in name):
+        binding_hash = blake3_from_filename(name)
+        if binding_hash is None:
             continue
         tree = folder / name
         if tree.is_symlink() or not tree.is_dir():
             raise AuthoringError("research_experiment.input_link_not_admitted")
         bundle = FactorInputBundle.model_validate_json((tree / "manifest.json").read_bytes())
-        if bundle.binding_hash != name:
+        if bundle.binding_hash != binding_hash:
             raise AuthoringError("research_experiment.input_manifest_identity_mismatch")
-        found.append((name, _kept_files(tree, name, bundle)))
+        found.append((binding_hash, _kept_files(tree, binding_hash, bundle)))
     return found
 
 
@@ -1219,7 +1249,13 @@ def _remove_copies(folder: Path, binding_hashes: list[str]) -> None:
     recorded before its first move, so a stop leaves each tree at its old name or retired, never
     part of one, and a resumed removal finishes the recorded set first; then it is deleted. The
     pools name only the copies they link, so they go with the set."""
-    set_aside(folder, [*(folder / pool for pool in _POOLS), *(folder / b for b in binding_hashes)])
+    set_aside(
+        folder,
+        [
+            *(folder / pool for pool in _POOLS),
+            *(folder / blake3_filename(b) for b in binding_hashes),
+        ],
+    )
     shutil.rmtree(folder / RETIRED_DIRECTORY)
 
 
@@ -1314,7 +1350,7 @@ def _record_input_publication(
     identity = canonical_hash(values)
     folder = parent / "publications"
     folder.mkdir(exist_ok=True)
-    target = folder / f"{identity}.json"
+    target = folder / f"{blake3_filename(identity)}.json"
     payload = json.dumps(
         {**values, "receipt_hash": identity}, sort_keys=True, separators=(",", ":")
     )
@@ -1585,8 +1621,8 @@ def normalize_input_document(
     output = section.pop("output_workspace", "managed")
     baseline = section.pop("baseline_workspace", "managed")
     key = canonical_hash({"document": value, "input": binding.binding_hash})
-    expected_output = f"research-experiments/{key}"
-    expected_baseline = baseline_path or f"research-inputs/{binding.binding_hash}/source"
+    expected_output = f"research-experiments/{blake3_filename(key)}"
+    expected_baseline = baseline_path or factor_input_baseline(binding.binding_hash)
     if output not in {"managed", expected_output} or baseline not in {"managed", expected_baseline}:
         raise AuthoringError("research_experiment.output_not_host_managed")
     section.update(output_workspace=expected_output, baseline_workspace=expected_baseline)

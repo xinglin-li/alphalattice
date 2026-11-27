@@ -20,11 +20,12 @@ from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 from alphalattice.capabilities.domain_contracts.identity import canonical_hash
 from alphalattice.control.workspace_runtime.artifacts import ArtifactResolver
+from alphalattice.control.workspace_runtime.verified_facts import verified_file_digest
 from alphalattice.foundation.feature_engine.panels.reader import (
     FeaturePanelReader,
     FeaturePanelReadRequest,
 )
-from alphalattice.kernel.identity import integrity_sha256
+from alphalattice.kernel.identity import BLAKE3_PATTERN, blake3_filename
 
 if TYPE_CHECKING:
     pass
@@ -70,28 +71,19 @@ class BaseFeatureReader(Protocol):
         ...
 
 
-def sha256_file(path: Path) -> str:
-    """The SHA-256 of a file's bytes, read in blocks."""
-    digest = integrity_sha256()
-    with path.open("rb") as handle:
-        for block in iter(lambda: handle.read(1024 * 1024), b""):
-            digest.update(block)
-    return digest.hexdigest()
-
-
 class DevelopmentFeatureOverlayColumn(_Contract):
     """One development-only column of an overlay and the identities that produced it."""
 
     factor_id: str
-    formula_specification_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
-    implementation_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
-    admission_receipt_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
+    formula_specification_hash: str = Field(pattern=BLAKE3_PATTERN)
+    implementation_hash: str = Field(pattern=BLAKE3_PATTERN)
+    admission_receipt_hash: str = Field(pattern=BLAKE3_PATTERN)
     preprocessing_recipe_id: str
-    preprocessing_recipe_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
-    preprocessing_implementation_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
-    raw_child_identity: str = Field(pattern=r"^[0-9a-f]{64}$")
-    preprocessing_child_identity: str = Field(pattern=r"^[0-9a-f]{64}$")
-    market_state_child_identity: str | None = Field(default=None, pattern=r"^[0-9a-f]{64}$")
+    preprocessing_recipe_hash: str = Field(pattern=BLAKE3_PATTERN)
+    preprocessing_implementation_hash: str = Field(pattern=BLAKE3_PATTERN)
+    raw_child_identity: str = Field(pattern=BLAKE3_PATTERN)
+    preprocessing_child_identity: str = Field(pattern=BLAKE3_PATTERN)
+    market_state_child_identity: str | None = Field(default=None, pattern=BLAKE3_PATTERN)
 
 
 class DevelopmentFeatureOverlayManifest(_Contract):
@@ -99,35 +91,35 @@ class DevelopmentFeatureOverlayManifest(_Contract):
 
     kind: Literal["DevelopmentFeatureOverlayManifest"] = "DevelopmentFeatureOverlayManifest"
     scope: Literal["DEVELOPMENT_ONLY"] = "DEVELOPMENT_ONLY"
-    base_panel_snapshot_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
-    base_panel_binding_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
-    source_identity: str = Field(pattern=r"^[0-9a-f]{64}$")
-    installed_kernel_capability_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
-    factor_catalog_revision_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
-    preprocessing_catalog_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
+    base_panel_snapshot_hash: str = Field(pattern=BLAKE3_PATTERN)
+    base_panel_binding_hash: str = Field(pattern=BLAKE3_PATTERN)
+    source_identity: str = Field(pattern=BLAKE3_PATTERN)
+    installed_kernel_capability_hash: str = Field(pattern=BLAKE3_PATTERN)
+    factor_catalog_revision_hash: str = Field(pattern=BLAKE3_PATTERN)
+    preprocessing_catalog_hash: str = Field(pattern=BLAKE3_PATTERN)
     ordered_session_axis: tuple[str, ...] = Field(min_length=1)
     ordered_listing_axis: tuple[str, ...] = Field(min_length=1)
     ordered_candidate_axis: tuple[str, ...] = Field(min_length=1)
     columns: tuple[DevelopmentFeatureOverlayColumn, ...] = Field(min_length=1)
-    parquet_sha256: str = Field(pattern=r"^[0-9a-f]{64}$")
+    parquet_digest: str = Field(pattern=BLAKE3_PATTERN)
     parquet_relative_path: str
-    raw_parquet_sha256: str | None = Field(default=None, pattern=r"^[0-9a-f]{64}$")
+    raw_parquet_digest: str | None = Field(default=None, pattern=BLAKE3_PATTERN)
     raw_parquet_relative_path: str | None = None
     raw_column_references: tuple[tuple[str, str], ...] | None = Field(
         default=None, exclude_if=lambda value: value is None
     )
     preparation_admission_hash: str | None = Field(
-        default=None, pattern=r"^[0-9a-f]{64}$", exclude_if=lambda value: value is None
+        default=None, pattern=BLAKE3_PATTERN, exclude_if=lambda value: value is None
     )
     row_count: int = Field(ge=1)
-    overlay_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
+    overlay_hash: str = Field(pattern=BLAKE3_PATTERN)
 
     @model_validator(mode="after")  # type: ignore[untyped-decorator]
     def validate_identity(self) -> Self:
         """Refuse an overlay whose axes, references or content hash disagree."""
         if tuple(item.factor_id for item in self.columns) != self.ordered_candidate_axis:
             raise ValueError("FEATURE_OVERLAY_COLUMN_AXIS_MISMATCH")
-        if (self.raw_parquet_sha256 is None) != (self.raw_parquet_relative_path is None):
+        if (self.raw_parquet_digest is None) != (self.raw_parquet_relative_path is None):
             raise ValueError("FEATURE_OVERLAY_RAW_PARQUET_INCOMPLETE")
         if self.raw_column_references is not None and (
             tuple(name for name, _ in self.raw_column_references) != self.ordered_candidate_axis
@@ -167,10 +159,10 @@ class CompositeDevelopmentFeatureReader:
         self._parquet_path = (
             overlay_root
             / DEVELOPMENT_FEATURE_OVERLAY_CATEGORY
-            / overlay_manifest.overlay_hash
+            / blake3_filename(overlay_manifest.overlay_hash)
             / overlay_manifest.parquet_relative_path
         )
-        if sha256_file(self._parquet_path) != overlay_manifest.parquet_sha256:
+        if verified_file_digest(self._parquet_path) != overlay_manifest.parquet_digest:
             raise ValueError("FEATURE_OVERLAY_PARQUET_IDENTITY_INVALID")
         self.manifest_ref = (
             f"playpen://feature-engine/{DEVELOPMENT_FEATURE_OVERLAY_CATEGORY}/"
@@ -427,5 +419,4 @@ __all__ = [
     "DevelopmentFeatureOverlayManifest",
     "ResolvedDevelopmentFeatureInput",
     "development_feature_snapshot_hash",
-    "sha256_file",
 ]

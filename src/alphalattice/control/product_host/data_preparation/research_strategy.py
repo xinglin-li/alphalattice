@@ -17,7 +17,6 @@ from alphalattice.capabilities.domain_contracts.project_layout import resolve_pl
 from alphalattice.capabilities.domain_contracts.sealing import seal_model
 from alphalattice.capabilities.domain_contracts.source_identity import (
     source_rule_closure_hash,
-    switched_identity,
 )
 from alphalattice.control.product_host.composition.application_session import (
     WorkspaceApplicationSession,
@@ -83,6 +82,7 @@ from alphalattice.investment.portfolio_strategy_lab.publication.artifacts import
 )
 from alphalattice.investment.risk_research.experiments.window import REQUIRED_LOOKBACK_SESSIONS
 from alphalattice.investment.risk_research.surfaces.returns import CausalRiskReturnReader
+from alphalattice.kernel.identity import blake3_filename, blake3_from_filename
 
 TASK_KIND = "research_strategy_preparation"
 IMPLEMENTATION_ROLE = "product_host.research_strategy_preparation"
@@ -137,7 +137,7 @@ def implementation_hash() -> str:
             )
         ),
     )
-    return switched_identity(IMPLEMENTATION_ROLE, rule, root=root)
+    return rule
 
 
 def _require_promoted(row: dict[str, Any]) -> None:
@@ -157,7 +157,7 @@ class ResearchStrategyPlan(BaseModel):  # type: ignore[misc]
     implementation_hash: str
     artifact_root_relative: str | None = Field(
         default=None,
-        pattern=r"^artifacts/research-strategy-inputs/[0-9a-f]{64}$",
+        pattern=r"^artifacts/research-strategy-inputs/blake3-[0-9a-f]{64}$",
         exclude_if=lambda value: value is None,
     )
     plan_hash: str
@@ -492,7 +492,8 @@ class ResearchStrategyPreparation:
     def _root(self, plan: ResearchStrategyPlan) -> Path:
         return confined(
             self.session.workspace,
-            plan.artifact_root_relative or f"artifacts/research-strategy-inputs/{plan.plan_hash}",
+            plan.artifact_root_relative
+            or f"artifacts/research-strategy-inputs/{blake3_filename(plan.plan_hash)}",
         )
 
     def plan(self, document: dict[str, Any]) -> dict[str, object]:
@@ -601,7 +602,7 @@ class ResearchStrategyPreparation:
         output_root = (
             self._root(self._of(previous[0])).relative_to(self.session.workspace).as_posix()
             if previous
-            else f"artifacts/research-strategy-inputs/{request_hash}"
+            else f"artifacts/research-strategy-inputs/{blake3_filename(request_hash)}"
         )
         # The answer names this plan, never the owner's last one, which a concurrent plan
         # may have replaced in between.
@@ -871,7 +872,7 @@ class ResearchStrategyPreparation:
         path = (
             PortfolioResearchArtifactStore(self._root(plan)).root
             / CATEGORY
-            / f"{value.authority_hash}.json"
+            / f"{blake3_filename(value.authority_hash)}.json"
         )
         for recipe in FROZEN_RESEARCH_BOOK_RECIPES:
             LifecycleResearchScoreSource(manifest_path=path, recipe=recipe).verify()
@@ -992,7 +993,7 @@ class ResearchStrategyPreparation:
                 _require_promoted(rows.get(str(parent), {}))
             store = PortfolioResearchArtifactStore(self._root(plan))
             relative = (
-                (store.root / CATEGORY / f"{authority.authority_hash}.json")
+                (store.root / CATEGORY / f"{blake3_filename(authority.authority_hash)}.json")
                 .relative_to(self.session.workspace)
                 .as_posix()
             )
@@ -1035,7 +1036,9 @@ class ResearchStrategyPreparation:
                 # Keep the previous immutable authority readable; validate its binding
                 # before atomically replacing only the research installation pointer.
                 admit_research_workspace(self.session.workspace)
-                previous_non_default = Path(current.strategy_artifacts[0].relative_path).stem
+                previous_non_default = blake3_from_filename(
+                    Path(current.strategy_artifacts[0].relative_path).stem
+                )
             values = {
                 name: getattr(current, name)
                 for name in type(current).model_fields

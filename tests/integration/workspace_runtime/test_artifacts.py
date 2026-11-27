@@ -12,10 +12,12 @@ from alphalattice.capabilities.domain_contracts import identity_successors
 from alphalattice.capabilities.domain_contracts.identity import canonical_hash
 from alphalattice.capabilities.domain_contracts.identity_successors import IdentityMove
 from alphalattice.control.workspace_runtime.artifacts import ArtifactDescriptor, ArtifactResolver
+from alphalattice.kernel.identity import blake3_filename
+from tests._support.identity_fixtures import fixture_digest
 
 TEST_SOURCE = "src/alphalattice/control/workspace_runtime/artifacts.py"
 
-HASH = "a" * 64
+HASH = fixture_digest("a")
 
 
 @pytest.mark.proves("workspace_runtime.feature_panel_chunk_refuses_another_kind")
@@ -38,7 +40,7 @@ def test_a_uri_that_does_not_match_its_content_hash_is_refused(tmp_path: Path):
         kind="feature-panel-chunk",
         content_hash=HASH,
         metadata_hash=HASH,
-        uri=ArtifactResolver.feature_panel_chunk_uri("b" * 64),
+        uri=ArtifactResolver.feature_panel_chunk_uri(fixture_digest("b")),
     )
     with pytest.raises(ValueError, match="URI does not match its content hash"):
         ArtifactResolver(tmp_path).resolve_feature_panel_chunk(descriptor)
@@ -53,25 +55,27 @@ def test_a_published_chunk_resolves_to_its_stored_parquet_file(tmp_path: Path):
         table=pa.table({"value": [1.0, 2.0]}), content_hash=HASH, metadata={}
     )
     path = resolver.resolve_feature_panel_chunk(descriptor)
-    assert path == resolver.root / "feature-panel" / "chunks" / f"{HASH}.parquet"
+    assert path == resolver.root / "feature-panel" / "chunks" / f"{blake3_filename(HASH)}.parquet"
     assert path.is_file()
 
 
 def _preprocessing_marker(resolver, revision, policy="e", receipt="c"):
-    implementation = dict(implementation_id="fixture", implementation_content_hash=revision * 64)
+    implementation = dict(
+        implementation_id="fixture", implementation_content_hash=fixture_digest(revision)
+    )
     implementation_hash = canonical_hash(implementation)
     method = {
         "recipe_id": "robust",
         "recipe_hash": HASH,
         "implementation_id": implementation["implementation_id"],
         "implementation_binding_hash": implementation_hash,
-        "catalog_hash": revision * 64,
-        "panel_binding_hash": "b" * 64,
+        "catalog_hash": fixture_digest(revision),
+        "panel_binding_hash": fixture_digest("b"),
     }
     binding = {
         **method,
         "kind": "PanelPreprocessingBinding",
-        "policy_hash": policy * 64,
+        "policy_hash": fixture_digest(policy),
         "implementation": dict(implementation, implementation_binding_hash=implementation_hash),
     }
     binding_hash = canonical_hash(binding)
@@ -83,7 +87,7 @@ def _preprocessing_marker(resolver, revision, policy="e", receipt="c"):
         kind="PanelPreprocessingSealMarker",
         panel_content_hash=HASH,
         preprocessing_binding_hash=binding_hash,
-        clipping_evidence_hash=receipt * 64,
+        clipping_evidence_hash=fixture_digest(receipt),
     )
     return dict(marker, marker_hash=canonical_hash(marker))
 
@@ -125,10 +129,10 @@ def test_a_sealed_panel_method_follows_only_its_recorded_successors(
     original = _preprocessing_marker(resolver, before)
     first = publish(payload=original, panel_content_hash=HASH)
     proposed = _preprocessing_marker(resolver, after, policy, receipt="d")
-    path = tmp_path / "feature-panel" / "preprocessing-markers" / f"{HASH}.json"
+    path = tmp_path / "feature-panel" / "preprocessing-markers" / f"{blake3_filename(HASH)}.json"
     sealed = path.read_bytes()
     if fault:
-        changed = dict(original, **{fault: "f" * 64})
+        changed = dict(original, **{fault: fixture_digest("f")})
         if fault == "panel_content_hash":
             changed.pop("marker_hash")
             changed["marker_hash"] = canonical_hash(changed)

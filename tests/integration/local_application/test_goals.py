@@ -41,6 +41,7 @@ from alphalattice.interface.local_application.portfolio_research import (
     PortfolioResearchRequestDocument,
 )
 from alphalattice.kernel.execution import EVENTS
+from tests._support.identity_fixtures import fixture_digest
 from tests.portfolio_strategy_lab.cli_support import cli_environment
 from tests.portfolio_strategy_lab.goal_support import (
     DECLARATION,
@@ -66,9 +67,9 @@ def test_goal_attribution_retains_exact_decision_selectors(
     first = app.store.load(opened["goal_hash"])
     task_id, plan_hash, publication_hash, case_token = (
         str(UUID(int=20)),
-        "a" * 64,
-        "b" * 64,
-        "c" * 64,
+        fixture_digest("a"),
+        fixture_digest("b"),
+        fixture_digest("c"),
     )
     request, body, exact = {
         "preview": (
@@ -90,9 +91,9 @@ def test_goal_attribution_retains_exact_decision_selectors(
             Request(
                 operation="DATA_ISSUE_PREVIEW",
                 data_issue_case_token=case_token,
-                data_issue_evidence_hash="d" * 64,
+                data_issue_evidence_hash=fixture_digest("d"),
                 data_issue_option_id="option",
-                data_issue_option_hash="e" * 64,
+                data_issue_option_hash=fixture_digest("e"),
             ),
             {"status": "PREVIEWED"},
             ("case_token", case_token),
@@ -130,7 +131,7 @@ def test_decision_attribution_preserves_the_named_corruption_refusal(goal_app, m
     app.attribute(
         app.store.load(opened["goal_hash"]),
         Request(operation="CRO_REVIEW"),
-        {"review_publication_hash": "a" * 64},
+        {"review_publication_hash": fixture_digest("a")},
         SESSION,
     )
     entry = app.store.content.root / "attribution" / str(UUID(int=1)) / "00000000.json"
@@ -294,7 +295,7 @@ def test_a_revision_conflict_reads_the_goals_latest_revision_by_its_id() -> None
     )
 
     goal = uuid4()
-    request = SimpleNamespace(operation="GOAL_REVISE", goal_id=goal, goal_hash="a" * 64)
+    request = SimpleNamespace(operation="GOAL_REVISE", goal_id=goal, goal_hash=fixture_digest("a"))
     answer = goal_refusal(ValueError("goal.revision_conflict_read_latest"), request)  # type: ignore[arg-type]
     assert answer["failure_code"] == "goal.revision_conflict_read_latest"
     assert answer["detail"] == (
@@ -332,11 +333,11 @@ def test_a_formula_factors_trial_and_packet_are_goal_evidence(goal_app):
             "packet",
             {
                 "operation": "FEATURE_REVIEW",
-                "feature_plan_hash": "c" * 64,
+                "feature_plan_hash": fixture_digest("c"),
                 "feature_factor_id": "formula_x",
             },
         ),
-        ("trial", {"operation": "FEATURE_TRIAL_READBACK", "feature_trial_id": "d" * 64}),
+        ("trial", {"operation": "FEATURE_TRIAL_READBACK", "feature_trial_id": fixture_digest("d")}),
     ):
         reference = {"reference_id": reference_id, "label": reference_id, "request": request}
         with pytest.raises(ValueError, match="reference_operation_not_admitted"):
@@ -441,9 +442,9 @@ def test_goal_revision_reopen_narrative_no_work_and_tamper(goal_app):
     assert app.operate(Request(operation="GOAL_SHOW", goal_id=UUID(int=1)), "HUMAN")[
         "goal_hash"
     ] == (new.goal_hash)
-    body["evidence"]["evidence_hash"] = "c" * 64
+    body["evidence"]["evidence_hash"] = fixture_digest("c")
     assert app.readback(new, "HUMAN")["references"][0]["state"] == "UNAVAILABLE"
-    path = app.store.content.root / "revisions" / f"{new.goal_hash}.json"
+    path = app.store.content.artifact_path(category="revisions", content_hash=new.goal_hash)
     path.write_text(path.read_text().replace("Readable title", "Tampered title"))
     with pytest.raises(ValueError, match="tampered"):
         app.store.load(new.goal_hash)
@@ -462,7 +463,7 @@ def test_goal_reference_cannot_execute_or_mislabel_and_a_note_rereads_it(goal_ap
                     "Review",
                     "EVIDENCE_CRO",
                     operation="EVIDENCE_CRO_EXPORT",
-                    review_publication_hash="a" * 64,
+                    review_publication_hash=fixture_digest("a"),
                 ),
             ),
             "HUMAN",
@@ -517,7 +518,7 @@ def test_goal_reference_cannot_execute_or_mislabel_and_a_note_rereads_it(goal_ap
     )
     assert app.store.load(accepted["goal_hash"]).statements[0].text == note["text"]
     assert _calls == [("EXPERIMENT_READBACK", "EXTERNAL_AUTOMATION")]
-    _body["evidence"]["evidence_hash"] = "e" * 64
+    _body["evidence"]["evidence_hash"] = fixture_digest("e")
     with pytest.raises(ValueError, match="reference_changed"):
         app.operate(
             Request(
@@ -638,18 +639,20 @@ def test_team_events_and_product_facts_are_filed_under_the_goal_their_session_ho
     assert filed.subject["goal_id"] == str(UUID(int=1))
     assert _filed(app, note) == {"goal_id": str(UUID(int=1))}
     goal = app.store.head(UUID(int=1))
-    _bundle(app, goal, "AGENT_BUNDLE_PREPARE", "AGENT_BUNDLE_READY", "a" * 64)
+    _bundle(app, goal, "AGENT_BUNDLE_PREPARE", "AGENT_BUNDLE_READY", fixture_digest("a"))
     record = app.record(app.store.head(UUID(int=1)))
     (assignment,) = record["open_assignments"]
     fields = ("bundle_reference", "agent_role", "task_id", "state")
-    assert [assignment[k] for k in fields] == ["a" * 64, "ALPHA", None, "OPEN"]
+    assert [assignment[k] for k in fields] == [fixture_digest("a"), "ALPHA", None, "OPEN"]
     assert assignment["prepared_at"] == NOW.isoformat()
     assert assignment["reason"] and assignment["next_action"]
-    _bundle(app, goal, "AGENT_ANSWER_SUBMIT", "CORRECT", "a" * 64)
+    _bundle(app, goal, "AGENT_ANSWER_SUBMIT", "CORRECT", fixture_digest("a"))
     assert len(app.record(app.store.head(UUID(int=1)))["open_assignments"]) == 1
-    _bundle(app, goal, "AGENT_ANSWER_SUBMIT", "ACCEPTED", "a" * 64)
+    _bundle(app, goal, "AGENT_ANSWER_SUBMIT", "ACCEPTED", fixture_digest("a"))
     assert app.record(app.store.head(UUID(int=1)))["open_assignments"] == []
-    _bundle(app, goal, "AGENT_BUNDLE_PREPARE", "AGENT_BUNDLE_READY", "b" * 64, role="RISK")
+    _bundle(
+        app, goal, "AGENT_BUNDLE_PREPARE", "AGENT_BUNDLE_READY", fixture_digest("b"), role="RISK"
+    )
     record = app.record(app.store.head(UUID(int=1)))
     kinds = [m["message_kind"] for m in record["conversation"]]
     prepare, submit = "AGENT_BUNDLE_PREPARE", "AGENT_ANSWER_SUBMIT"
@@ -668,8 +671,8 @@ def test_team_events_and_product_facts_are_filed_under_the_goal_their_session_ho
             10,
             message_kind="acceptance" if review else "answer",
             input_channel=channel,
-            bundle_reference="b" * 64,
-            answer_reference="c" * 64,
+            bundle_reference=fixture_digest("b"),
+            answer_reference=fixture_digest("c"),
             authorship_basis="HOST_ACCEPTED" if review else "NOT_OBSERVED",
             **lead,
         ),
@@ -689,12 +692,14 @@ def test_team_events_and_product_facts_are_filed_under_the_goal_their_session_ho
         _team_event(5, message_kind="plan", message_id="plan-1", **lead), None
     )
     assert held is not None and str(held.goal_id) == follow_up["goal_id"]
-    _bundle(app, goal, "AGENT_BUNDLE_PREPARE", "AGENT_BUNDLE_READY", "e" * 64, role="CRO")
+    _bundle(
+        app, goal, "AGENT_BUNDLE_PREPARE", "AGENT_BUNDLE_READY", fixture_digest("e"), role="CRO"
+    )
     pending = app.record(goal)
-    assert [a["bundle_reference"] for a in pending["open_assignments"]] == ["e" * 64]
+    assert [a["bundle_reference"] for a in pending["open_assignments"]] == [fixture_digest("e")]
     completed = {a["bundle_reference"]: a for a in pending["closed_assignments"]}
-    assert completed["b" * 64]["state"] == "COMPLETED"
-    assert completed["b" * 64]["receipt"]["answer_reference"] == "c" * 64
+    assert completed[fixture_digest("b")]["state"] == "COMPLETED"
+    assert completed[fixture_digest("b")]["receipt"]["answer_reference"] == fixture_digest("c")
     sealed = app.operate(
         Request(operation="GOAL_SUBMIT", goal_id=UUID(int=1), goal_submission=_submission()),
         "EXTERNAL_AUTOMATION",
@@ -703,7 +708,7 @@ def test_team_events_and_product_facts_are_filed_under_the_goal_their_session_ho
     shown = app.operate(Request(operation="GOAL_SHOW", goal_hash=opened["goal_hash"]), "HUMAN")
     assert shown["record"]["open_assignments"] == []
     archived = next(a for a in shown["record"]["closed_assignments"] if a["state"] == "ARCHIVED")
-    assert archived["bundle_reference"] == "e" * 64
+    assert archived["bundle_reference"] == fixture_digest("e")
     assert archived["receipt"] == {"goal_id": sealed["goal_id"], "goal_hash": sealed["goal_hash"]}
     with pytest.raises(ValueError, match="closed_open_a_follow_up"):
         app.file_event(
@@ -894,8 +899,8 @@ def test_legacy_accepted_goal_context_keeps_an_unknown_packet_without_backfill(
 
 def test_goal_request_fields_and_other_operations_remain_distinct():
     installed = {
-        "result_hash": "a" * 64,
-        "report_hash": "b" * 64,
+        "result_hash": fixture_digest("a"),
+        "report_hash": fixture_digest("b"),
         "readouts": {"cumulative_net_wealth": 0.9},
         "window": {"selected_session_count": 42},
     }
@@ -906,10 +911,14 @@ def test_goal_request_fields_and_other_operations_remain_distinct():
     assert request.operation == "GOAL_LIST"
     with pytest.raises(ValueError, match="not_allowed"):
         PortfolioResearchRequestDocument(
-            operation="EXPERIMENT_RUN", experiment_plan_hash="a" * 64, goal_hash="b" * 64
+            operation="EXPERIMENT_RUN",
+            experiment_plan_hash=fixture_digest("a"),
+            goal_hash=fixture_digest("b"),
         )
     with pytest.raises(ValueError, match="not_allowed"):
-        PortfolioResearchRequestDocument(operation="GOAL_SHOW", goal_hash="b" * 64, spec={})
+        PortfolioResearchRequestDocument(
+            operation="GOAL_SHOW", goal_hash=fixture_digest("b"), spec={}
+        )
 
 
 def test_changed_objective_does_not_relabel_old_intent_and_comparison_refusal_is_evidence(
@@ -970,7 +979,7 @@ def test_goal_keeps_descriptive_alpha_comparison_fold_evidence(goal_app):
         score_support={"scored_row_count": 12, "common_surface_row_count": 12},
         folds=[
             {
-                "fold_commitment_hash": "a" * 64,
+                "fold_commitment_hash": fixture_digest("a"),
                 "left": {"status": "DEVELOPMENT_EVALUATED", "metrics": {"rank_ic": 0.1}},
                 "right": {"status": "DEVELOPMENT_EVALUATED", "metrics": {"rank_ic": 0.2}},
             }
@@ -1055,9 +1064,9 @@ def test_composed_goal_reads_answer_from_kept_sources_and_an_export_refuses_tamp
         score: float
 
     store = ContentAddressedStore(tmp_path / "results", uri_prefix="artifact://goal-test")
-    value = FrozenResult(content_hash="b" * 64, text="sealed", score=-1.0)
+    value = FrozenResult(content_hash=fixture_digest("b"), text="sealed", score=-1.0)
     store.publish_model(category="results", value=value, identity_field="content_hash")
-    path = store.root / "results" / f"{value.content_hash}.json"
+    path = store.artifact_path(category="results", content_hash=value.content_hash)
     calls = []
     current = {"status": "EXPERIMENT_PUBLISHED"}
 
@@ -1076,7 +1085,7 @@ def test_composed_goal_reads_answer_from_kept_sources_and_an_export_refuses_tamp
         return {
             "status": current["status"],
             "task_id": str(task.task_id),
-            "program": {"program_hash": "a" * 64, "kind": "alpha.model-development"},
+            "program": {"program_hash": fixture_digest("a"), "kind": "alpha.model-development"},
             "evidence": {"evidence_hash": result.content_hash},
             "result": {"score": result.score},
         }
@@ -1275,7 +1284,7 @@ def test_goal_reference_rechecks_identity_and_preserves_named_owner_unavailabili
     )
     assert app.operate(request, "HUMAN")["reference"]["state"] == "VERIFIED_READBACK"
     if change == "identity":
-        body["evidence"]["evidence_hash"] = "c" * 64
+        body["evidence"]["evidence_hash"] = fixture_digest("c")
     else:
         body.clear()
         body.update(status="REFUSED", failure_code=expected_code)
@@ -1338,7 +1347,9 @@ def test_goal_narrative_reads_the_saved_revision_without_any_owner_read(goal_app
         "HUMAN",
     )
     calls.clear()
-    body["evidence"]["evidence_hash"] = "c" * 64  # the owner has moved on since the attach
+    body["evidence"]["evidence_hash"] = fixture_digest(
+        "c"
+    )  # the owner has moved on since the attach
 
     narrative = app.operate(
         Request(operation="GOAL_NARRATIVE", goal_hash=noted["goal_hash"]), "HUMAN"
@@ -1368,7 +1379,7 @@ def test_goal_narrative_reads_the_saved_revision_without_any_owner_read(goal_app
     listed = app.operate(Request(operation="GOAL_LIST"), "HUMAN")["goals"]
     assert [(row["state"], row["outcome"]) for row in listed] == [("OPEN", None)]
 
-    path = app.store.content.root / "revisions" / f"{noted['goal_hash']}.json"
+    path = app.store.content.artifact_path(category="revisions", content_hash=noted["goal_hash"])
     path.write_text(path.read_text().replace("Costs remain", "Costs never"))
     with pytest.raises(ValueError, match="tampered"):
         app.operate(Request(operation="GOAL_NARRATIVE", goal_hash=noted["goal_hash"]), "HUMAN")
@@ -1385,7 +1396,7 @@ def test_a_narrative_wait_answers_on_its_goals_or_its_tasks_event(goal_app, monk
     tasks[task_id] = ("factor_research", "RUNNING", NOW, None, 1)
     app.attribute(
         goal,
-        Request(operation="EXPERIMENT_RUN", experiment_plan_hash="p" * 64),
+        Request(operation="EXPERIMENT_RUN", experiment_plan_hash=fixture_digest("p")),
         {"status": "ADMITTED", "task_id": str(task_id)},
         SESSION,
     )
@@ -1413,7 +1424,7 @@ def test_a_narrative_wait_answers_on_its_goals_or_its_tasks_event(goal_app, monk
         EVENTS.publish(("task", str(task_id)))  # as Task Control's row about the Task does
 
     def file() -> None:
-        _bundle(app, goal, "AGENT_BUNDLE_PREPARE", "AGENT_BUNDLE_READY", "a" * 64)
+        _bundle(app, goal, "AGENT_BUNDLE_PREPARE", "AGENT_BUNDLE_READY", fixture_digest("a"))
 
     for move in (finish, file):
         timer = Timer(0.2, move)
@@ -1443,7 +1454,7 @@ def test_a_submission_is_checked_against_the_record_and_names_what_is_missing(go
     for task in (done, running, stuck, resent):
         app.attribute(
             goal,
-            Request(operation="EXPERIMENT_RUN", experiment_plan_hash="p" * 64),
+            Request(operation="EXPERIMENT_RUN", experiment_plan_hash=fixture_digest("p")),
             {"status": "ADMITTED", "task_id": str(task)},
             SESSION,
         )
@@ -1557,7 +1568,7 @@ def test_goal_task_fact_refetches_its_offset_update_time_after_restart(goal_app)
     tasks[task_id] = ("factor_research", "QUEUED", first)
     app.attribute(
         goal,
-        Request(operation="EXPERIMENT_RUN", experiment_plan_hash="p" * 64),
+        Request(operation="EXPERIMENT_RUN", experiment_plan_hash=fixture_digest("p")),
         {"status": "ADMITTED", "task_id": str(task_id)},
         SESSION,
     )
@@ -1599,7 +1610,7 @@ def test_a_complete_goal_without_task_update_time_reads_its_legacy_seal(goal_app
     goal = app.store.load(attached["goal_hash"])
     app.attribute(
         goal,
-        Request(operation="EXPERIMENT_RUN", experiment_plan_hash="p" * 64),
+        Request(operation="EXPERIMENT_RUN", experiment_plan_hash=fixture_digest("p")),
         {"status": "ADMITTED", "task_id": str(task_id)},
         SESSION,
     )
@@ -1612,7 +1623,7 @@ def test_a_complete_goal_without_task_update_time_reads_its_legacy_seal(goal_app
         "EXTERNAL_AUTOMATION",
     )
     assert sealed["status"] == "COMPLETE"
-    path = app.store.content.root / "revisions" / f"{sealed['goal_hash']}.json"
+    path = app.store.content.artifact_path(category="revisions", content_hash=sealed["goal_hash"])
     payload = json.loads(path.read_text(encoding="utf-8"))
     (legacy_task,) = payload["completion"]["tasks"]
     assert legacy_task == {
@@ -1666,7 +1677,7 @@ def test_goal_task_fact_uses_the_live_registry_record_update_time(live):
     goal = app.store.load(opened["goal_hash"])
     app.attribute(
         goal,
-        Request(operation="EXPERIMENT_RUN", experiment_plan_hash="p" * 64),
+        Request(operation="EXPERIMENT_RUN", experiment_plan_hash=fixture_digest("p")),
         {"status": "ADMITTED", "task_id": str(task.task_id)},
         SESSION,
     )
@@ -1884,7 +1895,7 @@ def test_only_a_sealing_answer_offers_experience_with_sendable_owner_reads(
     goal = live.operations.goals.store.head(UUID(gid))
     live.operations.goals.attribute(
         goal,
-        Request(operation="EXPERIMENT_RUN", experiment_plan_hash="p" * 64),
+        Request(operation="EXPERIMENT_RUN", experiment_plan_hash=fixture_digest("p")),
         {"task_id": str(task.task_id)},
         SESSION,
     )
@@ -2066,7 +2077,7 @@ def test_an_open_goal_offers_its_completion_to_fill(goal_app, tmp_path):
     line = ["goal", "submit", current["goal_id"], "--revision", current["goal_hash"]]
     assert cli.request_of([*line, "--file", str(saved)]) == current
     with pytest.raises(client.LocalResearchClientError, match="field_given_twice:goal_hash"):
-        cli.request_of([*line[:-1], "f" * 64, "--file", str(saved)])
+        cli.request_of([*line[:-1], fixture_digest("f"), "--file", str(saved)])
 
 
 def test_a_closed_goal_refuses_with_its_standing_and_the_follow_up_start() -> None:
@@ -2104,7 +2115,7 @@ def test_a_goals_head_keeps_a_missing_or_corrupt_revisions_refusal(goal_app):
 
     app, opened, calls, _body, _tasks = goal_app
     identity = opened["goal_hash"]
-    revision = app.store.content.root / "revisions" / f"{identity}.json"
+    revision = app.store.content.artifact_path(category="revisions", content_hash=identity)
     original = revision.read_bytes()
     revision.unlink()
     request = Request(operation="GOAL_SHOW", goal_id=UUID(int=1))
@@ -2316,9 +2327,9 @@ def test_dated_goal_lookup_shares_records_and_bounds_rule_disclosure(goal_app):
     task = str(UUID(int=31))
     app.store.attribute(goal, {"operation": "RESEARCH_UPDATE_RUN", "task_id": task})
     for target, token, delegation in (
-        (task, "a" * 64, "workspace-rule-goal:" + str(goal)),
-        (str(UUID(int=32)), "b" * 64, "workspace-rule-goal:" + str(goal)),
-        (str(UUID(int=33)), "c" * 64, "first-use-goal:" + str(goal)),
+        (task, fixture_digest("a"), "workspace-rule-goal:" + str(goal)),
+        (str(UUID(int=32)), fixture_digest("b"), "workspace-rule-goal:" + str(goal)),
+        (str(UUID(int=33)), fixture_digest("c"), "first-use-goal:" + str(goal)),
     ):
         app.store.attribute(
             goal,
@@ -2338,7 +2349,9 @@ def test_dated_goal_lookup_shares_records_and_bounds_rule_disclosure(goal_app):
     records = {}
     answer = app.store.listing(limit=1, cursor=None, task_id=task, records=records)
     assert answer["current_goal"]["goal_id"] == str(goal)
-    assert app.store.rule_cases(task, records[str(goal)]) == frozenset(("a" * 64, "c" * 64))
+    assert app.store.rule_cases(task, records[str(goal)]) == frozenset(
+        (fixture_digest("a"), fixture_digest("c"))
+    )
     assert app.store.rule_audits(task, records[str(goal)]) == (("L1", "r"),)
     absent = app.store.listing(limit=1, cursor=None, task_id=UUID(int=34), records={})
     assert absent["current_goal"] is None
@@ -2354,14 +2367,14 @@ def test_one_bound_offer_selects_the_inline_refs_and_reuses_recovery_reads(goal_
         task_id=str(task),
         review_selector={
             "update_task_id": str(task),
-            "update_publication_hash": "e" * 64,
+            "update_publication_hash": fixture_digest("e"),
             "position_basis": "CONDITIONAL_ESTIMATE",
         },
-        review_standing={"status": "REVIEWED", "review_publication_hash": "c" * 64},
+        review_standing={"status": "REVIEWED", "review_publication_hash": fixture_digest("c")},
     )
     app.attribute(
         app.store.head(UUID(int=1)),
-        Request(operation="RESEARCH_UPDATE_RUN", update_plan_hash="d" * 64),
+        Request(operation="RESEARCH_UPDATE_RUN", update_plan_hash=fixture_digest("d")),
         {"status": "ADMITTED", "task_id": str(task)},
         SESSION,
     )

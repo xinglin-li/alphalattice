@@ -34,6 +34,7 @@ from uuid import uuid4
 
 from alphalattice.capabilities.domain_contracts.environment import held_offline
 from alphalattice.capabilities.domain_contracts.identity import canonical_hash
+from alphalattice.kernel.identity import blake3_filename, blake3_from_filename
 from alphalattice.protocols.actor_execution.contracts import (
     ActorKind,
     ActorSubmissionBinding,
@@ -123,7 +124,7 @@ class ResearchEvidenceStore:
             raise AuthoringError("research_authoring.evidence_identity_conflict")
         _publish_immutable(
             self._root,
-            f"{evidence.evidence_hash}.json",
+            f"{blake3_filename(evidence.evidence_hash)}.json",
             _canonical_bytes(evidence.model_dump(mode="json")),
             conflict="research_authoring.evidence_identity_conflict",
         )
@@ -160,7 +161,7 @@ class ResearchEvidenceStore:
                 raise AuthoringError(
                     f"research_authoring.evidence_artifact_invalid:{path.name}"
                 ) from error
-            if evidence.evidence_hash != path.stem:
+            if evidence.evidence_hash != blake3_from_filename(path.stem):
                 raise AuthoringError("research_authoring.evidence_identity_conflict")
             matches.append(evidence)
         if len(matches) > 1:
@@ -194,7 +195,7 @@ class ResearchProgramStore:
         document_hash = str(canonical_hash(document))
         _publish_immutable(
             self._root,
-            f"{program.program_hash}.json",
+            f"{blake3_filename(program.program_hash)}.json",
             _canonical_bytes(
                 {
                     "program": program.model_dump(mode="json"),
@@ -207,7 +208,7 @@ class ResearchProgramStore:
         # Programs it sealed by key, never by opening every record.
         known = self.recorded_for(document_hash)
         if program.program_hash not in known:
-            index = self._root / "by-document" / f"{document_hash}.json"
+            index = self._root / "by-document" / f"{blake3_filename(document_hash)}.json"
             index.parent.mkdir(parents=True, exist_ok=True)
             staged = index.with_name(f".{index.name}.{uuid4().hex}.tmp")
             staged.write_bytes(
@@ -233,7 +234,7 @@ class ResearchProgramStore:
             AuthoringError: If the index is damaged.
 
         """
-        index = self._root / "by-document" / f"{document_hash}.json"
+        index = self._root / "by-document" / f"{blake3_filename(document_hash)}.json"
         if not index.is_file():
             return ()
         try:
@@ -286,7 +287,7 @@ class ResearchProgramStore:
         Program is validated, so that a record written against another document
         says so rather than failing as a malformed Program.
         """
-        target = self._root / f"{program_hash}.json"
+        target = self._root / f"{blake3_filename(program_hash)}.json"
         if not target.is_file():
             return None
         try:
@@ -297,7 +298,7 @@ class ResearchProgramStore:
             ) from error
         if not isinstance(payload, dict):
             raise AuthoringError(f"research_authoring.program_artifact_invalid:{target.name}")
-        return payload, target.stem
+        return payload, program_hash
 
     @staticmethod
     def _program(payload: Mapping[str, Any], stem: str) -> SealedResearchProgram:

@@ -14,6 +14,7 @@ from alphalattice.capabilities.domain_contracts.environment import (
     package_versions,
 )
 from alphalattice.capabilities.domain_contracts.identity import canonical_hash
+from alphalattice.kernel.identity import BLAKE3_PATTERN
 
 from ..contracts import NESTED_FIT_RUNTIME_CAPABILITY, AlphaModelNumericalBinding
 
@@ -37,10 +38,10 @@ class AlphaModelNumericalEnvironment(BaseModel):  # type: ignore[misc]
     model_config = ConfigDict(extra="forbid", frozen=True)
 
     kind: Literal["AlphaModelNumericalEnvironment"] = "AlphaModelNumericalEnvironment"
-    numerical_binding_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
+    numerical_binding_hash: str = Field(pattern=BLAKE3_PATTERN)
     package_versions: tuple[tuple[str, str], ...]
     configured_thread_count: int | None = Field(default=None, ge=1)
-    environment_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
+    environment_hash: str = Field(pattern=BLAKE3_PATTERN)
 
     @classmethod
     def create(

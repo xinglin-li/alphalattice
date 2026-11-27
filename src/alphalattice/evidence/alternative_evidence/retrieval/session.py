@@ -11,7 +11,7 @@ from typing import Any, NamedTuple
 
 from alphalattice.evidence.live_evidence.online_sources import not_carried_tables
 from alphalattice.kernel.execution import execution_port
-from alphalattice.kernel.identity import identity_sha256, integrity_sha256
+from alphalattice.kernel.identity import blake3_digest
 from alphalattice.kernel.resources import worker_width
 
 from ..documents.canonicalization import SecTableCarry
@@ -150,7 +150,7 @@ def passage_hash(text: str, start: int, end: int) -> str:
     so a sealed candidate is proved by it when a later session names the
     range again.
     """
-    return integrity_sha256(" ".join(text[start:end].split()).encode("utf-8")).hexdigest()
+    return blake3_digest(" ".join(text[start:end].split()).encode("utf-8"))
 
 
 OriginalReader = Callable[[str], tuple[bytes, str, str] | None]
@@ -165,11 +165,11 @@ class SpanCitation:
     exact character range, `chunk_id` (the SHA-256 of document, revision, body hash and range:
     the same range always reproduces it) and `chunk_hash` (`passage_hash` of the range). Its
     lines and UTF-8 byte offsets are derived from the body, read and verified against
-    `content_sha256` when the passage is read."""
+    `content_digest` when the passage is read."""
 
     document_id: str
     revision: int
-    content_sha256: str
+    content_digest: str
     character_start: int
     character_end: int
     chunk_id: str
@@ -517,13 +517,13 @@ class AlternativeEvidenceRetrievalSession:
         return SpanCitation(
             document_id=document_id,
             revision=reference.workspace_revision,
-            content_sha256=revision.content_sha256,
+            content_digest=revision.content_digest,
             character_start=start,
             character_end=end,
-            chunk_id=identity_sha256(
-                f"{document_id}:{reference.workspace_revision}:{revision.content_sha256}"
+            chunk_id=blake3_digest(
+                f"{document_id}:{reference.workspace_revision}:{revision.content_digest}"
                 f":{start}:{end}".encode()
-            ).hexdigest(),
+            ),
             chunk_hash=passage_hash(text, start, end),
         )
 
@@ -537,7 +537,7 @@ class AlternativeEvidenceRetrievalSession:
         structure = self._structures.get(key)
         if structure is None:
             revision, content = self.library.read_revision(citation.document_id, citation.revision)
-            if revision.content_sha256 != citation.content_sha256:
+            if revision.content_digest != citation.content_digest:
                 raise ValueError("alternative_evidence.span_source_tampered")
             structure = DocumentStructure(
                 content.decode("utf-8"), document_type=reference.document_type
@@ -765,8 +765,8 @@ class AlternativeEvidenceRetrievalSession:
             return tuple(
                 "alternative_evidence.table_view_original_unavailable" for _ in placeholders
             )
-        content, content_sha256, _media_type = original
-        if integrity_sha256(content).hexdigest() != content_sha256:
+        content, content_digest, _media_type = original
+        if blake3_digest(content) != content_digest:
             raise ValueError("alternative_evidence.table_view_original_tampered")
         tables = not_carried_tables(
             content,
@@ -852,8 +852,8 @@ class AlternativeEvidenceRetrievalSession:
                     "alternative_evidence.table_view_original_unavailable: no retained "
                     f"original behind {reference.semantic_handle}"
                 )
-            content, content_sha256, media_type = original
-            if integrity_sha256(content).hexdigest() != content_sha256:
+            content, content_digest, media_type = original
+            if blake3_digest(content) != content_digest:
                 raise ValueError("alternative_evidence.table_view_original_tampered")
             if media_type != "text/html":
                 raise TableViewError(
@@ -862,7 +862,7 @@ class AlternativeEvidenceRetrievalSession:
                 )
             view = render_table_view(
                 content,
-                parent_source_content_hash=content_sha256,
+                parent_source_content_hash=content_digest,
                 policy=SecTableCarry(reference.document_type)
                 if reference.source_name == "SEC_EDGAR"
                 else None,
@@ -884,7 +884,7 @@ class AlternativeEvidenceRetrievalSession:
                         "table_view": TableViewBinding(
                             rules_id=view.rules_id,
                             parser_rules_id=view.parser_rules_id,
-                            parent_source_content_hash=content_sha256,
+                            parent_source_content_hash=content_digest,
                             parent_media_type=media_type,
                             table_ordinal=view.ordinal,
                             rows_total=view.rows_total,
@@ -1088,7 +1088,7 @@ class AlternativeEvidenceRetrievalSession:
                 citation.document_id,
                 citation.revision,
             )
-            if revision.content_sha256 != citation.content_sha256:
+            if revision.content_digest != citation.content_digest:
                 raise ValueError("alternative_evidence.span_source_tampered")
             text = content.decode("utf-8")
             # The citation's own range is verified against the source *before*

@@ -169,7 +169,13 @@ from alphalattice.investment.sector_research.inputs.storage import SectorContext
 from alphalattice.investment.sector_research.inputs.surface import (
     compile_sector_context_arrays,
 )
-from alphalattice.kernel.identity import identity_sha256
+from alphalattice.kernel.identity import (
+    BLAKE3_PATTERN,
+    blake3_filename,
+    blake3_from_filename,
+    identity_blake3,
+    tagged_blake3,
+)
 from alphalattice.protocols.research_authoring.contracts import (
     AuthoringError,
     ResolvedResearchAuthority,
@@ -180,7 +186,7 @@ if TYPE_CHECKING:
 
 type FloatArray = npt.NDArray[np.float64]
 
-_HASH = r"^[0-9a-f]{64}$"
+_HASH = BLAKE3_PATTERN
 _BASELINE_REPORT = Path("reports/dynamic-panel-score-aggregation.json")
 _CORRECTED_INPUT_METHOD_ID = "FEATURE_T_PANEL_TOTAL_RETURN_INPUTS"
 
@@ -578,7 +584,7 @@ def _array_identity(values: npt.NDArray[Any]) -> str:
             {
                 "dtype": str(contiguous.dtype),
                 "shape": list(contiguous.shape),
-                "content_sha256": identity_sha256(contiguous.tobytes()).hexdigest(),
+                "content_digest": tagged_blake3(identity_blake3(contiguous.tobytes())),
             }
         )
     )
@@ -915,16 +921,19 @@ def _resolved_tradability_surfaces(
     ] = []
     bundle_root = store.root / "bundles"
     paths = (
-        (bundle_root / f"{bundle_hash}.json",)
+        (bundle_root / f"{blake3_filename(bundle_hash)}.json",)
         if bundle_hash is not None
         else (tuple(sorted(bundle_root.glob("*.json"))) if bundle_root.is_dir() else ())
     )
     for path in paths:
+        digest = blake3_from_filename(path.stem)
+        if digest is None:
+            continue
         try:
             bundle = HistoricalTradabilityBundle.model_validate(
                 store.load_json(
                     category="bundles",
-                    uri=store.uri("bundles", path.stem),
+                    uri=store.uri("bundles", digest),
                     identity_field="bundle_hash",
                 )
             )
@@ -2076,15 +2085,18 @@ def resolve_corrected_panel_snapshot_hash(*, roots: PanelMethodologySourceRoots)
     manifest_root = roots.panel_artifact_root.resolve() / "feature-panel" / "manifests"
     matches: list[str] = []
     for path in sorted(manifest_root.glob("*.json")):
+        snapshot_hash = blake3_from_filename(path.stem)
+        if snapshot_hash is None:
+            continue
         try:
-            recipe, _store = _corrected_panel_recipe(resolver=resolver, snapshot_hash=path.stem)
+            recipe, _store = _corrected_panel_recipe(resolver=resolver, snapshot_hash=snapshot_hash)
             manifest = resolver.load_feature_panel_manifest(
-                resolver.feature_panel_manifest_uri(path.stem)
+                resolver.feature_panel_manifest_uri(snapshot_hash)
             )
         except (FileNotFoundError, KeyError, ValueError, AuthoringError):
             continue
         if recipe.snapshot_hash == str(manifest.get("snapshot_hash", "")):
-            matches.append(path.stem)
+            matches.append(snapshot_hash)
     if len(matches) != 1:
         raise AuthoringError("alpha_research.corrected_panel_handle_ambiguous")
     return matches[0]
@@ -2105,7 +2117,7 @@ def resolve_installed_development_covariance(
     """
     category = evidence_root.resolve() / "risk-research" / DEVELOPMENT_SURFACE_CATEGORY
     paths = (
-        (category / f"{surface_hash}.json",)
+        (category / f"{blake3_filename(surface_hash)}.json",)
         if surface_hash is not None
         else tuple(sorted(category.glob("*.json")))
     )

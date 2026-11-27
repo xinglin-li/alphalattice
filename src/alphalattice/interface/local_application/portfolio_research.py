@@ -51,6 +51,7 @@ from alphalattice.investment.portfolio_strategy_lab.application.contracts import
     PortfolioSupportCoverage,
     ScoreSourceMode,
 )
+from alphalattice.kernel.identity import is_blake3
 from alphalattice.protocols.actor_execution.bundles import AgentRole
 
 from .portfolio_request_fields import FIELD_OWNER, request_fields
@@ -474,11 +475,7 @@ class PortfolioResearchOperationRequest:
             self.feature_trial_id,
             self.recovery_task_hash,
         ):
-            if value is not None and (
-                not isinstance(value, str)
-                or len(value) != 64
-                or any(c not in "0123456789abcdef" for c in value)
-            ):
+            if value is not None and not is_blake3(value):
                 raise LocalApplicationError("workspace.operation_hash_invalid")
         if self.input_pinned is not None and type(self.input_pinned) is not bool:
             raise LocalApplicationError("workspace.input_pin_flag_invalid")

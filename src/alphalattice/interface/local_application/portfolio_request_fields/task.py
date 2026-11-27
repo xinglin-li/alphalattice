@@ -4,6 +4,8 @@ from typing import Literal
 
 from pydantic import ConfigDict, Field
 
+from alphalattice.kernel.identity import BLAKE3_PATTERN
+
 from .contracts import RequestFieldModel
 
 
@@ -12,9 +14,9 @@ class RequestFields(RequestFieldModel):
 
     model_config = ConfigDict(use_attribute_docstrings=True)
 
-    expected_task_hash: str | None = Field(default=None, pattern=r"^[0-9a-f]{64}$")
+    expected_task_hash: str | None = Field(default=None, pattern=BLAKE3_PATTERN)
     """The Task's version as last read; a Task that moved since refuses the request."""
-    incident_key: str | None = Field(default=None, pattern=r"^[0-9a-f]{64}$")
+    incident_key: str | None = Field(default=None, pattern=BLAKE3_PATTERN)
     """The Guanyin incident, by the key TASK_INCIDENTS listed."""
     remedy: Literal["CANCEL", "RECOVER", "REPLAN"] | None = None
     """The remedy to perform, one the incident offers: `CANCEL`, `RECOVER` or `REPLAN`."""

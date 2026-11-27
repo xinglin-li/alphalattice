@@ -37,6 +37,7 @@ from alphalattice.interface.local_application.portfolio_research import (
 from alphalattice.interface.local_application.portfolio_research import (
     PortfolioResearchRequestDocument as PortfolioResearchAgentRequest,
 )
+from tests._support.identity_fixtures import fixture_digest
 from tests.portfolio_strategy_lab.host_requests import _json
 from tests.portfolio_strategy_lab.local_web_support import InstalledAgent
 from tests.pytest_environment import upgraded
@@ -228,7 +229,7 @@ def test_historical_frozen_budget_is_fully_checked_but_never_grants_current_capa
         bad_receipt = json.loads(sealed)
         budget = bad_receipt["budget_upper_bound"]
         if budget_defect == "policy_hash":
-            budget["policy_hash"] = "0" * 64
+            budget["policy_hash"] = fixture_digest("wrong budget policy")
         else:
             budget["managed_cap_bytes"] += 1024**3
             if budget_defect == "resealed_derivation":
@@ -432,7 +433,7 @@ def test_a_preparation_with_pending_truth_decisions_offers_issues_before_confirm
         bundle_reads = []
         if stop_at_verification:
             binding = ResearchWorkspaceExperimentInput(
-                input_id="factor-development", binding_hash="a" * 64
+                input_id="factor-development", binding_hash=fixture_digest("factor binding")
             )
             manifest_expected = manifest_before.with_bindings(experiment_inputs=(binding,))
             publish_research_workspace_manifest(tmp_path, manifest_expected)
@@ -1858,8 +1859,8 @@ def test_cancel_requested_during_hydration_is_honoured_at_the_chunk_boundary(tmp
             goal=goal,
             plan=ResearchPlan.create(
                 goal_hash=goal.goal_hash,
-                workflow_definition_hash="1" * 64,
-                verifier_catalog_hash="2" * 64,
+                workflow_definition_hash=fixture_digest("foreign workflow"),
+                verifier_catalog_hash=fixture_digest("foreign verifier catalog"),
                 work_items=(
                     WorkItemDefinition.create(
                         stage_id="only", dependency_ids=(), verifier_id="qa.only"
@@ -1892,6 +1893,15 @@ def test_cancel_requested_during_hydration_is_honoured_at_the_chunk_boundary(tmp
         ("BLOCKED", NO_READY, None, False, False),
         ("BLOCKED", NO_READY, None, False, True),
     ],
+    ids=(
+        "cancelled",
+        "fixed-fixture-on-new-binding",
+        "blocked-on-same-binding",
+        "truth-choice-awaiting",
+        "truth-choice-ready",
+        "no-ready-listings",
+        "dated-no-ready-listings",
+    ),
 )
 def test_cancelled_preparation_reuses_captured_scope_without_new_discovery(
     tmp_path, monkeypatch, terminal, failure_code, decisions_ready, same_binding, dated
@@ -1945,7 +1955,11 @@ def test_cancelled_preparation_reuses_captured_scope_without_new_discovery(
         first.execute(task.task_id)
         assert registry.task(task.task_id).lifecycle.value == terminal
         if terminal == "BLOCKED" and not same_binding:
-            monkeypatch.setattr(preparation_owner, "_implementation", lambda: "f" * 64)
+            monkeypatch.setattr(
+                preparation_owner,
+                "_implementation",
+                lambda: fixture_digest("updated implementation"),
+            )
         if decisions_ready is not None:
             monkeypatch.setattr(
                 WorkspaceDataIssueApplication,
@@ -2030,6 +2044,7 @@ def test_cancelled_preparation_reuses_captured_scope_without_new_discovery(
                 proposed["next_requests"]["confirm"]
             ).to_operation_request()
         )
+        assert confirmation["task_id"], confirmation
         resumed = registry.task(UUID(confirmation["task_id"]))
         assert registry.recovery_links(task.task_id)[-1].successor_task_id == resumed.task_id
         with pytest.raises(ValueError, match=r"workspace_preparation\.resume_scope_changed"):
@@ -2060,7 +2075,7 @@ def test_a_plan_confirmed_while_its_task_runs_answers_that_task(tmp_path, lifecy
     running = SimpleNamespace(
         task_id=task_id,
         lifecycle=TaskLifecycle(lifecycle),
-        input=SimpleNamespace(payload={"plan": {"plan_hash": "a" * 64}}),
+        input=SimpleNamespace(payload={"plan": {"plan_hash": fixture_digest("preparation plan")}}),
     )
 
     class Preparation:
@@ -2084,7 +2099,8 @@ def test_a_plan_confirmed_while_its_task_runs_answers_that_task(tmp_path, lifecy
         operations.dispatcher = Dispatcher()  # type: ignore[assignment]
         answer = operations._workspace_operation(
             PortfolioResearchOperationRequest(
-                operation="WORKSPACE_PREPARE_CONFIRM", preparation_plan_hash="a" * 64
+                operation="WORKSPACE_PREPARE_CONFIRM",
+                preparation_plan_hash=fixture_digest("preparation plan"),
             ),
             caller="HUMAN",
         )
@@ -2139,7 +2155,7 @@ def test_a_deferred_preparation_confirmed_again_goes_to_its_owner(tmp_path, monk
     deferred = SimpleNamespace(
         task_id=uuid4(),
         lifecycle=TaskLifecycle.DEFERRED,
-        input=SimpleNamespace(payload={"plan": {"plan_hash": "a" * 64}}),
+        input=SimpleNamespace(payload={"plan": {"plan_hash": fixture_digest("preparation plan")}}),
     )
     sent: list[object] = []
 
@@ -2161,12 +2177,14 @@ def test_a_deferred_preparation_confirmed_again_goes_to_its_owner(tmp_path, monk
         monkeypatch.setattr(live.dispatcher, "submit", submit)
         answer = live.operations._workspace_operation(
             PortfolioResearchOperationRequest(
-                operation="WORKSPACE_PREPARE_CONFIRM", preparation_plan_hash="a" * 64
+                operation="WORKSPACE_PREPARE_CONFIRM",
+                preparation_plan_hash=fixture_digest("preparation plan"),
             ),
             caller="HUMAN",
         )
     (command,) = sent
-    assert isinstance(command, WorkspacePreparationCommand) and command.plan_hash == "a" * 64
+    assert isinstance(command, WorkspacePreparationCommand)
+    assert command.plan_hash == fixture_digest("preparation plan")
     assert answer is not None and answer["status"] == "REFUSED_INVALID_COMMAND", answer
     assert answer["failure_code"] == "workspace_preparation.retry_not_due"
     assert "`retry_after_at`" in str(answer["detail"])

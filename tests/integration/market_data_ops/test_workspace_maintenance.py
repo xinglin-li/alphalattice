@@ -113,6 +113,7 @@ from alphalattice.foundation.market_data_ops.storage.duckdb import (
     ProviderAdjustedSeriesRevision,
 )
 from alphalattice.kernel.execution import EVENTS, EventDeadline, Events, Timers
+from tests._support.identity_fixtures import fixture_digest
 from tests.workspace_maintenance.acquisition_manifest import NOW, acquisition_manifest
 from tests.workspace_maintenance.audit_workspace import (
     audit_one,
@@ -133,9 +134,9 @@ def _request(*, cutoff: datetime = NOW) -> WorkspaceMaintenanceRequest:
         target_market_session=date(2026, 7, 31),
         knowledge_cutoff_at=cutoff,
         trigger=MaintenanceTrigger.STARTUP,
-        membership_revision="b" * 64,
-        data_policy_hash="d" * 64,
-        feature_policy_hash="e" * 64,
+        membership_revision=fixture_digest("membership"),
+        data_policy_hash=fixture_digest("data-policy"),
+        feature_policy_hash=fixture_digest("feature-policy"),
     )
 
 
@@ -144,11 +145,13 @@ def test_a_sealed_request_changes_with_its_candidate_scopes_kept() -> None:
     `asdict`, which turned its recheck scopes into dicts its seal could not read, so no
     update planned while a recheck was due; the request's owner changes it, scopes kept."""
 
-    feature = FeatureCandidateRecheck(parent_manifest_revision="a" * 64, listing_ids=("L1", "L2"))
+    feature = FeatureCandidateRecheck(
+        parent_manifest_revision=fixture_digest("feature-parent"), listing_ids=("L1", "L2")
+    )
     data = CandidateDataRecheck(
-        prior_onboarding_id="1" * 64,
-        candidate_manifest_hash="2" * 64,
-        qualified_parent_revision="3" * 64,
+        prior_onboarding_id=fixture_digest("onboarding"),
+        candidate_manifest_hash=fixture_digest("candidate-manifest"),
+        qualified_parent_revision=fixture_digest("data-parent"),
         listing_ids=("L3",),
         history_start=date(2016, 9, 12),
     )
@@ -162,9 +165,9 @@ def test_a_sealed_request_changes_with_its_candidate_scopes_kept() -> None:
         target_market_session=date(2026, 7, 30),
         knowledge_cutoff_at=NOW,
         trigger=MaintenanceTrigger.STARTUP,
-        membership_revision="b" * 64,
-        data_policy_hash="d" * 64,
-        feature_policy_hash="e" * 64,
+        membership_revision=fixture_digest("membership"),
+        data_policy_hash=fixture_digest("data-policy"),
+        feature_policy_hash=fixture_digest("feature-policy"),
         candidate_recheck=feature,
         candidate_data_recheck=data,
     )
@@ -339,19 +342,19 @@ def test_domain_topology_coalesces_changes_without_a_general_dag() -> None:
                 "listing-aapl",
                 new_session_start=date(2026, 8, 3),
                 raw_correction_start=date(2026, 7, 1),
-                source_receipt_hashes=("a" * 64,),
+                source_receipt_hashes=(fixture_digest("a"),),
             ),
             ListingMarketDataChange(
                 "listing-msft",
                 action_correction_start=date(2020, 1, 2),
-                source_receipt_hashes=("b" * 64,),
+                source_receipt_hashes=(fixture_digest("b"),),
             ),
         ),
         spy_correction_start=date(2026, 7, 15),
         sector_revision_changed=True,
         membership_additions=("listing-nvda", "listing-nvda"),
         membership_removals=("listing-old",),
-        receipt_hashes=("a" * 64, "b" * 64),
+        receipt_hashes=(fixture_digest("a"), fixture_digest("b")),
     )
     plan = FeatureInvalidationTopology(FeatureCatalog.load()).plan(
         change_set,

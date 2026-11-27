@@ -22,6 +22,7 @@ from pydantic_core import to_jsonable_python
 
 from alphalattice.capabilities.domain_contracts.bounded_memo import stage_digest
 from alphalattice.capabilities.domain_contracts.identity import canonical_hash
+from alphalattice.kernel.identity import BLAKE3_PATTERN
 
 _SNAPSHOT: Final = json.JSONEncoder(separators=(",", ":"), sort_keys=True)
 """A contract's payload as the stage compares it: keys sorted, so a record built from its fields
@@ -199,7 +200,7 @@ class TaskEvidence(ContractModel):
 
     evidence_kind: str = Field(pattern=r"^[a-z][a-z0-9_.-]{2,119}$")
     reference: str = Field(min_length=1, max_length=2048)
-    content_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
+    content_hash: str = Field(pattern=BLAKE3_PATTERN)
 
 
 class TaskInputEnvelope(ContractModel):
@@ -215,7 +216,7 @@ class TaskInputEnvelope(ContractModel):
     task_kind: str = Field(pattern=r"^[a-z][a-z0-9_.-]{2,79}$")
     input_schema_id: str = Field(pattern=r"^[a-z][a-z0-9_.-]{2,119}$")
     payload: dict[str, Any]
-    input_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
+    input_hash: str = Field(pattern=BLAKE3_PATTERN)
 
     @model_validator(mode="after")
     def validate_identity(self) -> TaskInputEnvelope:
@@ -267,11 +268,11 @@ class ResearchGoal(ContractModel):
     """
 
     goal_kind: str = Field(pattern=r"^[A-Z][A-Z0-9_]{2,119}$")
-    input_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
+    input_hash: str = Field(pattern=BLAKE3_PATTERN)
     deliverable_kind: str = Field(pattern=r"^[A-Za-z][A-Za-z0-9_.-]{2,119}$")
     summary: str = Field(min_length=1, max_length=500)
     attributes: dict[str, Any] = Field(default_factory=dict)
-    goal_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
+    goal_hash: str = Field(pattern=BLAKE3_PATTERN)
 
     @model_validator(mode="after")
     def validate_identity(self) -> ResearchGoal:
@@ -337,7 +338,7 @@ class WorkItemDefinition(ContractModel):
     verifier_id: str = Field(pattern=r"^[a-z][a-z0-9_.-]{2,119}$")
     required_evidence_kinds: tuple[str, ...] = ()
     cancellation_boundary: bool = True
-    definition_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
+    definition_hash: str = Field(pattern=BLAKE3_PATTERN)
 
     @model_validator(mode="after")
     def validate_identity(self) -> WorkItemDefinition:
@@ -410,13 +411,13 @@ class ResearchPlan(ContractModel):
         plan_hash: Canonical plan identity excluding this hash.
     """
 
-    goal_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
-    workflow_definition_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
-    verifier_catalog_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
+    goal_hash: str = Field(pattern=BLAKE3_PATTERN)
+    workflow_definition_hash: str = Field(pattern=BLAKE3_PATTERN)
+    verifier_catalog_hash: str = Field(pattern=BLAKE3_PATTERN)
     work_items: tuple[WorkItemDefinition, ...] = Field(
         min_length=1, max_length=PLAN_WORK_ITEM_LIMIT
     )
-    plan_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
+    plan_hash: str = Field(pattern=BLAKE3_PATTERN)
 
     @model_validator(mode="after")
     def validate_identity(self) -> ResearchPlan:
@@ -524,7 +525,7 @@ class TaskRecord(ContractModel):
     updated_at: datetime
     failure_code: str | None = Field(default=None, max_length=120)
     version: int = Field(ge=1)
-    record_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
+    record_hash: str = Field(pattern=BLAKE3_PATTERN)
 
     @model_validator(mode="after")
     def validate_identity(self) -> TaskRecord:
@@ -574,11 +575,11 @@ class TaskRecoveryLink(ContractModel):
     """
 
     source_task_id: UUID
-    source_record_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
+    source_record_hash: str = Field(pattern=BLAKE3_PATTERN)
     admission_request: dict[str, Any]
     successor_task_id: UUID | None = None
     recorded_at: datetime
-    link_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
+    link_hash: str = Field(pattern=BLAKE3_PATTERN)
 
     @model_validator(mode="after")
     def validate_identity(self) -> TaskRecoveryLink:
@@ -638,7 +639,7 @@ class WorkItemState(ContractModel):
 
     task_id: UUID
     stage_id: str
-    definition_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
+    definition_hash: str = Field(pattern=BLAKE3_PATTERN)
     lifecycle: WorkItemLifecycle
     attempt_count: int = Field(ge=0)
     evidence: tuple[TaskEvidence, ...] = ()
@@ -647,7 +648,7 @@ class WorkItemState(ContractModel):
     started_at: datetime | None = None
     updated_at: datetime
     version: int = Field(ge=1)
-    state_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
+    state_hash: str = Field(pattern=BLAKE3_PATTERN)
 
     @model_validator(mode="after")
     def validate_identity(self) -> WorkItemState:
@@ -692,12 +693,12 @@ class TaskExecutionCompatibility(ContractModel):
         compatibility_hash: Canonical binding identity.
     """
 
-    task_contract_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
-    workflow_definition_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
+    task_contract_hash: str = Field(pattern=BLAKE3_PATTERN)
+    workflow_definition_hash: str = Field(pattern=BLAKE3_PATTERN)
     input_schema_id: str
-    domain_policy_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
-    framework_identity_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
-    compatibility_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
+    domain_policy_hash: str = Field(pattern=BLAKE3_PATTERN)
+    framework_identity_hash: str = Field(pattern=BLAKE3_PATTERN)
+    compatibility_hash: str = Field(pattern=BLAKE3_PATTERN)
 
     @model_validator(mode="after")
     def validate_identity(self) -> TaskExecutionCompatibility:
@@ -752,7 +753,7 @@ class TaskExecution(ContractModel):
     checkpoint_disposition: str = Field(
         pattern=r"^(active|retain_for_diagnosis|eligible_for_prune)$"
     )
-    execution_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
+    execution_hash: str = Field(pattern=BLAKE3_PATTERN)
 
     @model_validator(mode="after")
     def validate_identity(self) -> TaskExecution:
@@ -790,7 +791,7 @@ class TaskHeartbeatSignal(ContractModel):
     worker_instance_id: UUID
     sequence: int = Field(ge=1)
     observed_at: datetime
-    signal_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
+    signal_hash: str = Field(pattern=BLAKE3_PATTERN)
 
     @model_validator(mode="after")
     def validate_identity(self) -> TaskHeartbeatSignal:
@@ -836,10 +837,10 @@ class TaskCommand(ContractModel):
 
     command_id: UUID
     task_id: UUID
-    expected_task_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
+    expected_task_hash: str = Field(pattern=BLAKE3_PATTERN)
     kind: TaskCommandKind
     requested_at: datetime
-    command_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
+    command_hash: str = Field(pattern=BLAKE3_PATTERN)
 
     @model_validator(mode="after")
     def validate_identity(self) -> TaskCommand:
@@ -890,13 +891,13 @@ class TaskStageReceipt(ContractModel):
     task_id: UUID
     execution_id: UUID
     stage_id: str
-    work_item_definition_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
+    work_item_definition_hash: str = Field(pattern=BLAKE3_PATTERN)
     verifier_id: str
     evidence: tuple[TaskEvidence, ...]
     status: str = Field(pattern=r"^(VERIFIED|BLOCKED|CANCELLED)$")
     failure_code: str | None = Field(default=None, max_length=120)
     observed_at: datetime
-    receipt_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
+    receipt_hash: str = Field(pattern=BLAKE3_PATTERN)
 
     @model_validator(mode="after")
     def validate_identity(self) -> TaskStageReceipt:
@@ -965,8 +966,8 @@ class TaskSafeProjection(ContractModel):
     queued_next_task_id: UUID | None
     latest_failure_code: str | None
     artifact_refs: tuple[str, ...] = ()
-    task_record_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
-    projection_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
+    task_record_hash: str = Field(pattern=BLAKE3_PATTERN)
+    projection_hash: str = Field(pattern=BLAKE3_PATTERN)
 
     @model_validator(mode="after")
     def validate_identity(self) -> TaskSafeProjection:

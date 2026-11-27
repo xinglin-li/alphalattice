@@ -39,7 +39,7 @@ def test_cleanup_plan_checks_old_cap_receipts_and_new_plans_exclude_execution_ca
     fields = dict(
         kind="StorageEvictionPlan",
         operation_id="cleanup",
-        inventory_hash="a" * 64,
+        inventory_hash=canonical_hash("inventory"),
         roots=[
             dict(
                 root_kind="CURRENT_ACTIVE",

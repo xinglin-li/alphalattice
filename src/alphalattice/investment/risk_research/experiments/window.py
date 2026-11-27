@@ -42,6 +42,7 @@ from alphalattice.investment.risk_research.surfaces.returns import (
     CausalRiskReturnReader,
     RiskReturnWindow,
 )
+from alphalattice.kernel.identity import BLAKE3_PATTERN
 from alphalattice.protocols.research_authoring.contracts import (
     AuthoringError,
     ResolvedResearchAuthority,
@@ -157,10 +158,10 @@ class RiskDevelopmentInputBinding(BaseModel):  # type: ignore[misc]
     # The authority this binding was resolved against. Without it a binding is
     # just a plausible set of hashes: a valid binding from another authority
     # would cross-check clean against a surface that happens to share an epoch.
-    authority_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
-    return_surface_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
-    return_epoch_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
-    panel_snapshot_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
+    authority_hash: str = Field(pattern=BLAKE3_PATTERN)
+    return_surface_hash: str = Field(pattern=BLAKE3_PATTERN)
+    return_epoch_hash: str = Field(pattern=BLAKE3_PATTERN)
+    panel_snapshot_hash: str = Field(pattern=BLAKE3_PATTERN)
     universe_revision_sha256: str = Field(min_length=1)
     ordered_listing_ids: tuple[str, ...] = Field(min_length=1)
     formation_sessions: tuple[date, ...] = Field(min_length=1)
@@ -168,8 +169,8 @@ class RiskDevelopmentInputBinding(BaseModel):  # type: ignore[misc]
     next_sessions: int = Field(ge=0)
     # Both watermarks, at their own scopes, never equated.
     authority_source_watermark_hash: str = Field(min_length=1)
-    return_surface_source_watermark_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
-    input_binding_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
+    return_surface_source_watermark_hash: str = Field(pattern=BLAKE3_PATTERN)
+    input_binding_hash: str = Field(pattern=BLAKE3_PATTERN)
 
     @model_validator(mode="after")  # type: ignore[untyped-decorator]
     def validate_binding(self) -> Self:

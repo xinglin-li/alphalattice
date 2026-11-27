@@ -24,6 +24,8 @@ from alphalattice.foundation.feature_engine.panels.feature_closure_contracts imp
 from alphalattice.foundation.feature_engine.panels.feature_closure_ledger import (
     FeatureClosureLedger,
 )
+from alphalattice.kernel.identity import blake3_filename
+from tests._support.identity_fixtures import fixture_digest
 from tests.feature_engine.panel_workspace import (
     NOW,
     SESSIONS,
@@ -96,7 +98,7 @@ def test_panel_manifest_resolves_through_the_same_resolver_production_uses(tmp_p
     """Resolve the content-addressed URI written by the Panel publisher."""
 
     manifest, provider = development_panel_inputs()
-    as_of, spy = SESSIONS[275], "a" * 64
+    as_of, spy = SESSIONS[275], fixture_digest("panel resolver SPY")
     workspace = panel_workspace(tmp_path, manifest, end=as_of, spy=spy, provider=provider)
     build_and_publish(
         workspace, manifest, spy=spy, as_of=as_of, observed_at=NOW, refresh_sector=True
@@ -192,14 +194,13 @@ def test_the_host_refuses_a_panel_without_feature_clock_authority(
     private = tmp_path / "legacy-shaped"
     shutil.copytree(real_risk_workspace.artifact_root, private / "artifacts")
     manifests = private / "artifacts" / "feature-panel" / "manifests"
-    payload = json.loads(
-        (manifests / f"{real_risk_workspace.panel_snapshot_hash}.json").read_text(encoding="utf-8")
-    )
+    snapshot_name = blake3_filename(real_risk_workspace.panel_snapshot_hash)
+    payload = json.loads((manifests / f"{snapshot_name}.json").read_text(encoding="utf-8"))
     payload.pop("snapshot_hash")
     for entry in payload["safe_summary"]["factor_catalog_summary"].values():
         entry.pop("observation_clock_hash", None)
     forged = canonical_hash(payload)
-    (manifests / f"{forged}.json").write_text(
+    (manifests / f"{blake3_filename(forged)}.json").write_text(
         json.dumps(
             {**payload, "snapshot_hash": forged},
             ensure_ascii=False,

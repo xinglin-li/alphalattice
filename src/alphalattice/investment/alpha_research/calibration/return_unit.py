@@ -53,7 +53,7 @@ from alphalattice.investment.alpha_research.experiments.selected_scores import (
 from alphalattice.investment.alpha_research.targets.materialization import (
     CanonicalTargetMaterialization,
 )
-from alphalattice.kernel.identity import identity_sha256
+from alphalattice.kernel.identity import BLAKE3_PATTERN, identity_blake3, tagged_blake3
 
 from .stock_returns import (
     StockCalibrationEvidence,
@@ -65,7 +65,7 @@ from .stock_returns import (
 type FloatArray = npt.NDArray[np.float64]
 type IntArray = npt.NDArray[np.int64]
 
-_HASH = r"^[0-9a-f]{64}$"
+_HASH = BLAKE3_PATTERN
 
 RETURN_UNIT_CALIBRATION_METHOD_ID = "DISPERSION_SCALED_NORMALIZED_MOMENT_NONNEGATIVE_SLOPE"
 RETURN_UNIT_COMPOSITION = (
@@ -93,7 +93,7 @@ def _value_identity(values: FloatArray) -> str:
             {
                 "dtype": str(contiguous.dtype),
                 "shape": [int(value) for value in contiguous.shape],
-                "content": identity_sha256(contiguous.tobytes()).hexdigest(),
+                "content": tagged_blake3(identity_blake3(contiguous.tobytes())),
             }
         )
     )

@@ -36,6 +36,7 @@ from alphalattice.protocols.research_authoring.contracts import (
 )
 from devtools.architecture.evidence_roots import PLAYPEN_ROOT
 from tests._support import development_universe
+from tests._support.identity_fixtures import fixture_digest
 from tests.portfolio_strategy_lab.host_requests import _json
 from tests.portfolio_strategy_lab.local_web_support import _manifest
 from tests.researcher_methodology_surface.factor_web_support import (
@@ -138,8 +139,8 @@ def risk_development_run(
     )
     program = SealedResearchProgram.create(
         kind=RISK_EXPERIMENT_KIND,
-        envelope_hash="0" * 64,
-        desk_program_hash="1" * 64,
+        envelope_hash=fixture_digest("risk fixture envelope"),
+        desk_program_hash=fixture_digest("risk fixture program"),
         resolved_sessions=requested,
         catalog_hash=binding.catalog_hash,
         method_binding_hash=binding.development_binding_hash,

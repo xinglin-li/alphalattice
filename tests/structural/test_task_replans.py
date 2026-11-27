@@ -29,6 +29,7 @@ from alphalattice.interface.local_application.portfolio_research import (
     PortfolioResearchOperationRequest,
     PortfolioResearchRequestDocument,
 )
+from tests._support.identity_fixtures import fixture_digest
 
 
 def _kinds(source: str, namespace: dict[str, object]) -> set[str]:
@@ -159,7 +160,7 @@ def test_every_composed_task_input_kind_reaches_recovery(plan_admission_check) -
                 lifecycle=TaskLifecycle.BLOCKED,
                 failure_code=None,
                 task_id=UUID(int=83),
-                record_hash="a" * 64,
+                record_hash=fixture_digest("a"),
             )
             offered = operations._task_replan(source)
             assert offered == {
@@ -171,7 +172,7 @@ def test_every_composed_task_input_kind_reaches_recovery(plan_admission_check) -
         admission = {
             "operation": declared.admitting,
             **{
-                name: {} if name == "spec" else "a" * 64
+                name: {} if name == "spec" else fixture_digest("a")
                 for name in registered[declared.admitting]["required"]
             },
         }

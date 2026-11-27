@@ -1,4 +1,4 @@
-"""The Portfolio evidence reclassification receipt, kept so old records read back."""
+"""The Portfolio evidence reclassification receipt keeps its typed authority and seal."""
 
 from __future__ import annotations
 
@@ -6,6 +6,7 @@ from pathlib import Path
 
 import pytest
 
+from alphalattice.capabilities.domain_contracts.identity import canonical_hash
 from alphalattice.investment.portfolio_strategy_lab.contracts import (
     seal_contract,
 )
@@ -16,7 +17,7 @@ from alphalattice.investment.portfolio_strategy_lab.regularization.contracts imp
 PLAYPEN_ROOT = Path(__file__).resolve().parents[3]
 PLAYPEN_SRC = PLAYPEN_ROOT / "src"
 
-_HASHES = tuple(f"{value:064x}" for value in range(1, 40))
+_HASHES = tuple(canonical_hash(value) for value in range(1, 6))
 
 
 def test_reclassification_is_typed_and_content_addressed() -> None:

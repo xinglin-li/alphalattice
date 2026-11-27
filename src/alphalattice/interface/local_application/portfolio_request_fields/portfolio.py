@@ -5,6 +5,8 @@ from uuid import UUID
 
 from pydantic import ConfigDict, Field
 
+from alphalattice.kernel.identity import BLAKE3_PATTERN
+
 from .contracts import RequestFieldModel
 
 
@@ -25,21 +27,21 @@ class RequestFields(RequestFieldModel):
     """The installed strategy package, by its id."""
     recovery_task_id: UUID | None = None
     """The stopped Task whose owner replan this existing planner/admission continues."""
-    recovery_task_hash: str | None = Field(default=None, pattern=r"^[0-9a-f]{64}$")
+    recovery_task_hash: str | None = Field(default=None, pattern=BLAKE3_PATTERN)
     """The exact stopped Task version named by `recovery_task_id`."""
-    left_result_hash: str | None = Field(default=None, pattern=r"^[0-9a-f]{64}$")
+    left_result_hash: str | None = Field(default=None, pattern=BLAKE3_PATTERN)
     """The first of two Portfolio results to compare."""
-    right_result_hash: str | None = Field(default=None, pattern=r"^[0-9a-f]{64}$")
+    right_result_hash: str | None = Field(default=None, pattern=BLAKE3_PATTERN)
     """The second of two Portfolio results to compare."""
-    candidate_hash: str | None = Field(default=None, pattern=r"^[0-9a-f]{64}$")
+    candidate_hash: str | None = Field(default=None, pattern=BLAKE3_PATTERN)
     """The frozen candidate to finalize, by its hash."""
-    score_plan_hash: str | None = Field(default=None, pattern=r"^[0-9a-f]{64}$")
+    score_plan_hash: str | None = Field(default=None, pattern=BLAKE3_PATTERN)
     """A score plan, by the hash its PLAN answered."""
-    score_snapshot_hash: str | None = Field(default=None, pattern=r"^[0-9a-f]{64}$")
+    score_snapshot_hash: str | None = Field(default=None, pattern=BLAKE3_PATTERN)
     """The scores a calibration reads, by their snapshot hash."""
-    calibration_plan_hash: str | None = Field(default=None, pattern=r"^[0-9a-f]{64}$")
+    calibration_plan_hash: str | None = Field(default=None, pattern=BLAKE3_PATTERN)
     """A calibration plan, by the hash its PLAN answered."""
-    prepared_input_hash: str | None = Field(default=None, pattern=r"^[0-9a-f]{64}$")
+    prepared_input_hash: str | None = Field(default=None, pattern=BLAKE3_PATTERN)
     """The prepared input a Portfolio update reads, by its hash."""
     observed_through: str | None = None
     """The last session the update observes, as YYYY-MM-DD."""

@@ -44,7 +44,7 @@ def test_old_and_namespaced_paths_resolve_the_same_semantic_component() -> None:
     )
 
 
-_A, _B, _C, _D = ("a" * 64, "b" * 64, "c" * 64, "d" * 64)
+_A, _B, _C, _D = ("blake3:" + digit * 64 for digit in "abcd")
 
 
 def _successors(root: Path, moves: list[dict[str, str]], *, version: int = 1) -> Path:
@@ -115,6 +115,15 @@ def test_a_bound_value_is_held_at_the_origin_its_recorded_moves_lead_from(
     tied = _successors(root.parent / "tied", [_move("role", _A, _C), _move("role", _B, _C)])
     assert recorded_origin("role", _C, root=tied) == _A
     assert predecessors("role", _C, root=tied) == (_C, _A, _B)
+
+    # A historical audit record cannot make a pre-BLAKE3 identity current.
+    retired = "a" * 64
+    root = _successors(root.parent / "retired", [_move("role", retired, _B), _move("role", _B, _C)])
+
+    assert [move.predecessor for move in recorded_moves(root)] == [retired, _B]
+    assert not is_current("role", retired, _C, root=root)
+    assert predecessors("role", _C, root=root) == (_C, _B)
+    assert recorded_origin("role", _C, root=root) == _B
 
 
 def test_a_keyed_store_finds_what_was_sealed_before_a_recorded_move(tmp_path: Path) -> None:
@@ -748,7 +757,7 @@ def test_a_span_moves_no_identity_and_any_other_form_reads_as_written() -> None:
     """A span moves no identity and any other form reads as written."""
 
     from alphalattice.capabilities.domain_contracts.source_identity import (
-        source_bytes_syntax_sha256 as digest,
+        source_bytes_syntax_digest as digest,
     )
 
     plain = (
@@ -994,7 +1003,7 @@ def test_a_schema_hash_binds_the_structure_and_never_the_prose() -> None:
         "type": "object",
         "properties": {"exposure": {"type": "number", "default": 1.0}},
     }
-    same = "fd386cd7c291dda258a92802aa685ed951a6245cd709c93bb0e928408db072ef"
+    same = "blake3:0ec3e68bc13c78ea0f15224c610d0dca2f85ecc17994aa6fac186cf9dabd8c64"
     golden = [
         (schema_structure(schema), same),
         (schema_structure(schema), same),
@@ -1006,11 +1015,11 @@ def test_a_schema_hash_binds_the_structure_and_never_the_prose() -> None:
                     "properties": {"exposure": {"type": "number", "default": 2.0}},
                 }
             ),
-            "204ebfe014853d5dba669f524ff7131e08481e266034c76476c2c11c4ed154b0",
+            "blake3:8a653ee96783d88ca5b143112b30a5c15cdb194562a8ad1cbf32f211b1f0fbad",
         ),
         (
             {"fees": [float("nan"), -0.0]},
-            "608b43c138fe874c06e8d57d07e21b01ea8e6696fceb1b84d1896abf2614a46a",
+            "blake3:93c1bea9c9fef87315b8341c258a5f9a092b03485bd572613142f265c107bfcc",
         ),
     ]
     for value, expected in golden:

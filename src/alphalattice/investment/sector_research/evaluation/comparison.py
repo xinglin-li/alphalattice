@@ -31,6 +31,7 @@ from typing import Literal, Self, cast
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 from alphalattice.capabilities.domain_contracts.identity import canonical_hash
+from alphalattice.kernel.identity import BLAKE3_PATTERN
 
 from ..contracts import SectorResearchError
 from ..models.zero import ZERO_SECTOR_FORECAST_METHOD_ID
@@ -49,10 +50,10 @@ class SectorMethodComparisonRow(_Contract):
     method_id: str = Field(min_length=1, max_length=96)
     disposition: Literal["EVALUATED", "NOT_TRIGGERED", "PENDING_HUMAN_CONFIRMATION", "REFUSED"]
     refusal_reason: str | None = None
-    experiment_hash: str | None = Field(default=None, pattern=r"^[0-9a-f]{64}$")
-    surface_hash: str | None = Field(default=None, pattern=r"^[0-9a-f]{64}$")
-    evaluation_hash: str | None = Field(default=None, pattern=r"^[0-9a-f]{64}$")
-    calibration_hash: str | None = Field(default=None, pattern=r"^[0-9a-f]{64}$")
+    experiment_hash: str | None = Field(default=None, pattern=BLAKE3_PATTERN)
+    surface_hash: str | None = Field(default=None, pattern=BLAKE3_PATTERN)
+    evaluation_hash: str | None = Field(default=None, pattern=BLAKE3_PATTERN)
+    calibration_hash: str | None = Field(default=None, pattern=BLAKE3_PATTERN)
     forecast_cell_count: int = Field(default=0, ge=0)
     available_cell_count: int = Field(default=0, ge=0)
     evaluated_pair_count: int = Field(default=0, ge=0)
@@ -93,8 +94,8 @@ class SectorMethodComparisonEvidence(_Contract):
     """The Campaign's comparable table, its frozen rules, and what they decided."""
 
     kind: Literal["SectorMethodComparisonEvidence"] = "SectorMethodComparisonEvidence"
-    target_evidence_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
-    catalog_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
+    target_evidence_hash: str = Field(pattern=BLAKE3_PATTERN)
+    catalog_hash: str = Field(pattern=BLAKE3_PATTERN)
     selection_rule_id: Literal["POSITIVE_SCALE_AND_STRICTLY_LOWER_ECONOMIC_MSE_ELSE_ZERO"] = (
         "POSITIVE_SCALE_AND_STRICTLY_LOWER_ECONOMIC_MSE_ELSE_ZERO"
     )
@@ -103,9 +104,9 @@ class SectorMethodComparisonEvidence(_Contract):
     )
     rows: tuple[SectorMethodComparisonRow, ...] = Field(min_length=2)
     recommended_method_id: str = Field(min_length=1, max_length=96)
-    recommended_experiment_hash: str | None = Field(default=None, pattern=r"^[0-9a-f]{64}$")
+    recommended_experiment_hash: str | None = Field(default=None, pattern=BLAKE3_PATTERN)
     joint_dynamics_triggered: bool
-    comparison_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
+    comparison_hash: str = Field(pattern=BLAKE3_PATTERN)
 
     @model_validator(mode="after")  # type: ignore[untyped-decorator]
     def validate_identity(self) -> Self:

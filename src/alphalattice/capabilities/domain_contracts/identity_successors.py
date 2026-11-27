@@ -23,11 +23,19 @@ from functools import cache
 from pathlib import Path
 
 from alphalattice.capabilities.domain_contracts.project_layout import resolve_playpen_root
+from alphalattice.kernel.identity import is_blake3
 
 IDENTITY_SUCCESSORS_PATH = Path("config") / "identity-successors"
 FROZEN_SUCCESSORS_PATH = IDENTITY_SUCCESSORS_PATH.with_suffix(".json")
 _SCHEMA = "identity-successors"
 _VERSION = 1
+
+
+def _audit_digest(value: str) -> bool:
+    """Recognize tagged identities and the SHA-256 values retained in signed history."""
+    return is_blake3(value) or (
+        len(value) == 64 and all(character in "0123456789abcdef" for character in value)
+    )
 
 
 class IdentitySuccessorError(ValueError):
@@ -81,8 +89,7 @@ def _read_set(path: Path) -> list[IdentityMove]:
                 "shared_kernel.identity_successor_invalid", path
             ) from error
         if move.predecessor == move.successor or not all(
-            len(value) == 64 and all(c in "0123456789abcdef" for c in value)
-            for value in (move.predecessor, move.successor)
+            _audit_digest(value) for value in (move.predecessor, move.successor)
         ):
             raise IdentitySuccessorError("shared_kernel.identity_successor_invalid", path)
         moves.append(move)
@@ -146,6 +153,15 @@ def _returns(current: dict[tuple[str, str], str], role: str, start: str, target:
     return True
 
 
+def _blake3_moves(root: Path | None) -> tuple[IdentityMove, ...]:
+    """Read only the moves that can identify installed data."""
+    return tuple(
+        move
+        for move in recorded_moves(root)
+        if is_blake3(move.predecessor) and is_blake3(move.successor)
+    )
+
+
 def effective_moves(root: Path | None = None) -> tuple[IdentityMove, ...]:
     """The moves in force, in recorded order: of the moves from one value, the last recorded.
 
@@ -153,7 +169,7 @@ def effective_moves(root: Path | None = None) -> tuple[IdentityMove, ...]:
     `is_current` and `predecessors` read these, so forward and backward agree. It is derived
     from `recorded_moves` at each call, so it follows that cache.
     """
-    moves = recorded_moves(root)
+    moves = _blake3_moves(root)
     last = {(move.role, move.predecessor): index for index, move in enumerate(moves)}
     return tuple(m for i, m in enumerate(moves) if last[(m.role, m.predecessor)] == i)
 
@@ -195,8 +211,8 @@ def recorded_origin(role: str, value: str, *, root: Path | None = None) -> str:
     """The value ``value`` was reached from by recorded moves for ``role``: itself when none.
 
     A value bound where it is compared by equality (a Program's authorities, a captured
-    source) is held at its origin, as the switch table holds a byte value: a recorded move
-    leaves it where it was, so everything sealed before the move stays current, and an
+    source) is held at its BLAKE3 origin: a recorded move leaves it where it was, so everything
+    sealed under BLAKE3 before the move stays current, and an
     unrecorded move is a new value (LAWS.md ID1). Moves are recorded forward, from the value
     the last readout held; where two recorded moves lead to one value, the first recorded
     is followed.
@@ -210,7 +226,7 @@ def recorded_origin(role: str, value: str, *, root: Path | None = None) -> str:
         The origin of ``value``.
     """
     back: dict[str, str] = {}
-    for move in recorded_moves(root):  # every recorded move: an origin bound before a revisit
+    for move in _blake3_moves(root):  # include the origins bound before a revisit
         if move.role == role:
             back.setdefault(move.successor, move.predecessor)
     seen = {value}
@@ -224,6 +240,8 @@ def recorded_origin(role: str, value: str, *, root: Path | None = None) -> str:
 
 def is_current(role: str, recorded: str, installed: str, *, root: Path | None = None) -> bool:
     """Whether a recorded value names the installed authority for ``role``."""
+    if not (is_blake3(recorded) and is_blake3(installed)):
+        return False
     if recorded == installed:
         return True
     successors = {m.predecessor: m.successor for m in effective_moves(root) if m.role == role}

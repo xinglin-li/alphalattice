@@ -17,10 +17,9 @@ from pathlib import Path
 from typing import Any, Final, NamedTuple
 
 from alphalattice.capabilities.data.errors import DataError
-from alphalattice.capabilities.domain_contracts.domain.serialization import sha256_hex
 from alphalattice.foundation.data_layer import history
 from alphalattice.foundation.data_layer.root import data_root
-from alphalattice.kernel.identity import identity_blake3, integrity_blake3
+from alphalattice.kernel.identity import blake3_digest, identity_blake3, integrity_blake3
 
 from ..sources.contracts import (
     AcquiredEvidenceDocument,
@@ -35,16 +34,16 @@ WORLD_OBJECT: Final = b"alphalattice-source-object world 1\n"
 def workspace_body(
     path: Path, reference: AcquiredEvidenceDocumentReference, *, root: Path | None = None
 ) -> bytes:
-    """Read a legacy object or its world locator at the same sealed SHA-256 address."""
+    """Read the original object or its world locator at the sealed BLAKE3 address."""
     stored = path.read_bytes()
     if stored.startswith(WORLD_OBJECT) and (
-        len(stored) != reference.content_bytes or sha256_hex(stored) != reference.content_sha256
+        len(stored) != reference.content_bytes or blake3_digest(stored) != reference.content_digest
     ):
         if root is None:
             port = serving()
             root = data_root() if port is None else port.root
         stored = locator_body(stored, root)
-    return source_object_bytes(stored, reference.content_sha256, reference.content_bytes)
+    return source_object_bytes(stored, reference.content_digest, reference.content_bytes)
 
 
 def locator_body(locator: bytes, root: Path) -> bytes:
@@ -133,7 +132,7 @@ def exact(port: Any, doc_id: str, version_id: str, cutoff_us: int) -> bytes:
 
 def body(port: Any, reference: AcquiredEvidenceDocumentReference, as_of: datetime) -> Served:
     """The reference's original bytes as world knew them at `as_of`: the version of its source
-    document whose body is the reference's own (its length and SHA-256), known by then. A
+    document whose body is the reference's own, known by then. A
     reference names exact bytes, so a version known later does not hide the one a sealed
     selection read. A document admitted from a reference sealed before its name was recorded, or
     read by one, matches by its accession and its bytes."""
@@ -156,7 +155,7 @@ def body(port: Any, reference: AcquiredEvidenceDocumentReference, as_of: datetim
     held = False
     for digest, known in versions:
         content = _blob(port.root / "blobs" / digest)
-        if sha256_hex(content) != reference.content_sha256:
+        if blake3_digest(content) != reference.content_digest:
             continue  # another version's body, of the same length
         if known:
             return Served(content, True)

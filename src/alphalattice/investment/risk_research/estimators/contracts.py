@@ -20,6 +20,7 @@ from pydantic import BaseModel, ConfigDict, Field, model_validator
 from alphalattice.capabilities.domain_contracts.identity import canonical_hash
 from alphalattice.capabilities.domain_contracts.source_identity import switched_source_identity
 from alphalattice.investment.risk_research.contracts import CovarianceDiagnostics
+from alphalattice.kernel.identity import BLAKE3_PATTERN, is_blake3
 
 type FloatArray = npt.NDArray[np.float64]
 
@@ -36,7 +37,7 @@ class RiskEstimatorRecipeEnvelope(_Contract):
     adapter_id: str = Field(min_length=1, max_length=96)
     recipe_schema_id: str = Field(min_length=1, max_length=128)
     parameters: dict[str, Any]
-    recipe_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
+    recipe_hash: str = Field(pattern=BLAKE3_PATTERN)
 
     @classmethod
     def create(
@@ -121,14 +122,14 @@ class RiskEstimatorNumericalBinding(_Contract):
     adapter_id: str = Field(min_length=1, max_length=96)
     estimate_content_format_id: str = Field(min_length=1, max_length=128)
     implementation_owners: tuple[str, ...] = Field(min_length=1)
-    implementation_content_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
+    implementation_content_hash: str = Field(pattern=BLAKE3_PATTERN)
     """Bytes of the first-party modules named in ``implementation_owners``.
 
     Without this the binding was a statement about naming, not about code.
     """
 
     numerical_environment_hash: str | None = Field(
-        default=None, pattern=r"^[0-9a-f]{64}$", exclude_if=lambda v: v is None
+        default=None, pattern=BLAKE3_PATTERN, exclude_if=lambda v: v is None
     )
     """Only on a binding sealed before E0, which folded the environment in.
 
@@ -140,7 +141,7 @@ class RiskEstimatorNumericalBinding(_Contract):
 
     deterministic_policy: dict[str, Any]
     required_runtime_capabilities: tuple[str, ...]
-    numerical_binding_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
+    numerical_binding_hash: str = Field(pattern=BLAKE3_PATTERN)
 
     @classmethod
     def create(
@@ -258,7 +259,7 @@ class BoundRiskReturnInput:
                 finiteness is invalid.
         """
         if (
-            len(self.return_surface_hash) != 64
+            not is_blake3(self.return_surface_hash)
             or not self.ordered_listing_ids
             or self.ordered_listing_ids != tuple(dict.fromkeys(self.ordered_listing_ids))
             or self.returns.ndim != 2

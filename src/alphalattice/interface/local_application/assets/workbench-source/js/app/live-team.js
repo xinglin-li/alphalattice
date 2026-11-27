@@ -61,19 +61,20 @@ const LiveTeam = (() => {
   }
   // the reading grammar: to the minute (an exchange's exact stamp stays on the element's title)
   const clock = (iso) => when(iso); // law 133: one clock -- the same instant reads as the Sessions list reads it
-  const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i, HASH = /^[0-9a-f]{64}$/i;
+  const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i, HASH = /^blake3:[0-9a-f]{64}$/;
+  const shortHash = (ref) => short(ref.replace(/^blake3:/, ''), SHORT.hash);
   const selection = () => ({session: hashParams().get('team') || '', actor: hashParams().get('actor') || '', event: hashParams().get('event') || '', committee: hashParams().get('committee') || '', point: hashParams().get('committee_point') || ''});
   const ROLE_NAMES = {research_lead: 'Main PM', alphalattice_data: 'Data', alphalattice_factor: 'Factor & Foundation', alphalattice_alpha: 'Alpha Modeling', alphalattice_risk: 'Risk Modeling', alphalattice_portfolio: 'Portfolio', alphalattice_evidence_analyst: 'Alternative Analyst', alternative_analyst: 'Alternative Analyst', alphalattice_cro: 'CRO', independent_cro: 'CRO', [HOST_ROLE]: 'Host'};
   const roleName = (role) => (role ? t(ROLE_NAMES[role] || role) : '');
-  /* A qualified product reference, or null: a Task id, a 64-hex hash or a History entry id. */
+  /* A qualified product reference carries the complete owner identity. */
   function qualify(value) {
-    const v = String(value || '').trim();
-    if (/^review-thread:[0-9a-f-]+$/i.test(v) && UUID.test(v.slice(14))) return {kind: 'review_thread', ref: v.toLowerCase()};
-    if (UUID.test(v)) return {kind: 'task', ref: v.toLowerCase()};
-    if (HASH.test(v)) return {kind: 'hash', ref: v.toLowerCase()};
-    if (/^case:[0-9a-f]{64}$/i.test(v)) return {kind:'case',ref:v.toLowerCase()};
-    const m = v.match(/^(experiment|result|review):([0-9a-f-]{8,64})$/i);
-    if (m) return {kind: 'history', ref: m[1].toLowerCase() + ':' + m[2].toLowerCase()};
+    const ref = String(value || '').trim().toLowerCase();
+    if (ref.startsWith('review-thread:') && UUID.test(ref.slice(14))) return {kind: 'review_thread', ref};
+    if (UUID.test(ref)) return {kind: 'task', ref};
+    if (HASH.test(ref)) return {kind: 'hash', ref};
+    if (ref.startsWith('case:') && HASH.test(ref.slice(5))) return {kind: 'case', ref};
+    const m = ref.match(/^(experiment|result|review):(.+)$/);
+    if (m && (m[1] === 'experiment' ? UUID.test(m[2]) : HASH.test(m[2]))) return {kind: 'history', ref};
     return null;
   }
   /* The qualified references one product observation names, from its typed identity fields. */
@@ -135,7 +136,7 @@ const LiveTeam = (() => {
         entry.recipient = sub.recipient_id || null; entry.reference = sub.reference || null; entry.replyTo = sub.reply_to || null; // what it answers, named since GR2
         if (entry.channel === REVIEW && UUID.test(entry.reference || '')) entry.reference = 'review-thread:' + entry.reference.toLowerCase();
         entry.qualified = qualify(entry.reference);
-        if (entry.qualified) { s.references.add(entry.qualified.ref); if (['history','case'].includes(entry.qualified.kind)) s.references.add(entry.qualified.ref.split(':')[1]); } // a qualified id names its own hash or Task
+        if (entry.qualified) { s.references.add(entry.qualified.ref); if (['history','case'].includes(entry.qualified.kind)) s.references.add(entry.qualified.ref.slice(entry.qualified.ref.indexOf(':') + 1)); } // a qualified id names its own hash or Task
         if (acceptedArtifact(s, entry)) for (const name of ['answer_reference', 'bundle_reference']) s.references.add(sub[name].toLowerCase());
       } else {
         entry.hookEvent = sub.native_hook_event || null; entry.turn = sub.native_turn_id || null;
@@ -248,7 +249,7 @@ const LiveTeam = (() => {
   const historyRow = async (id) => { if (!Data.history().some((r) => r.id === id)) await Data.refreshHistory(); return Data.history().find((r) => r.id === id) || null; };
   /* History resolves result hashes and experiment Tasks; reviews have no owner readback here. */
   function historyTarget(id) {
-    const [prefix, value] = id.split(':');
+    const colon = id.indexOf(':'), prefix = id.slice(0, colon), value = id.slice(colon + 1);
     if (prefix === 'result' && HASH.test(value)) return {kind: 'result', ref: value};
     if (prefix === 'experiment' && UUID.test(value)) return {kind: 'task', ref: value, taskKind: 'research_experiment'};
     return null;
@@ -328,7 +329,7 @@ const LiveTeam = (() => {
   const LEVELS = {declaration: ['metadata', 'declaration only'], discovered: ['metadata', 'discovered by {owner} · not verified'], verified: ['verified', 'verified by {owner}'], preview: ['planned', 'preview readback · {owner}'], unresolved: ['metadata', 'unresolved']};
   /* The target is shown beside the reference whenever it is a different object from what was written. */
   const sameObject = (ref, target) => (['result','case','review_thread'].includes(target.kind) ? ref === (target.kind === 'review_thread' ? 'review-thread' : target.kind) + ':' + target.ref : target.ref === ref);
-  const targetLabel = (target) => target.kind === 'review_thread' ? t('Review thread') + ' ' + short(target.ref) : target.kind === 'result' ? 'result:' + short(target.ref, SHORT.hash) + '…' : target.kind === 'case' ? t('Research question')+' '+short(target.ref,SHORT.hash)+'…' : target.kind === 'plan' ? 'PLAN ' + short(target.ref, SHORT.hash) + '…' : t('Task') + ' ' + short(target.ref);
+  const targetLabel = (target) => target.kind === 'review_thread' ? t('Review thread') + ' ' + short(target.ref) : target.kind === 'result' ? 'result:' + shortHash(target.ref) + '…' : target.kind === 'case' ? t('Research question')+' '+shortHash(target.ref)+'…' : target.kind === 'plan' ? 'PLAN ' + shortHash(target.ref) + '…' : t('Task') + ' ' + short(target.ref);
   // a qualified reference reads as the product's do: its kind, 8 hex, the copy glyph
   const referenceKind = q => q.kind === 'review_thread' ? t('Review thread') : q.kind === 'case' ? t('Goal') : q.kind === 'task' ? t('Task') : q.kind === 'history' ? codeWords(String(q.ref).split(':')[0]) : t('Reference');
   const refChip = (q, ref) => { const kind = referenceKind(q); const id = String(q.ref).split(':').at(-1); return html`<span class="run-ref"><span class="run-ref-kind">${kind}</span><span class="mono">${short(id, SHORT.id)}</span>${btnAttrs(icon('copy'), 'copy-text', ref, 'icon-btn compact', html`aria-label="${t('Copy the reference')}" data-tip="${t('Copy the reference')}"`)}</span>`; };
@@ -547,7 +548,7 @@ const LiveTeam = (() => {
     if (candidate) {
       const outcome = S.resolved.get(candidate.reference) || null;
       if (outcome?.level === 'verified') return {...base, kind: 'case-verified', text: outcome.question, title: outcome.title || '', ref: candidate.reference, goalId: outcome.goalId, choice: groups.length > 1};
-      return {...base, kind: 'case-declared', text: assignments.length ? assignments[0].text : t('Goal {ref}', {ref: short(candidate.reference.slice(5), SHORT.hash)}), ref: candidate.reference, resolved: Boolean(outcome), choice: groups.length > 1};
+      return {...base, kind: 'case-declared', text: assignments.length ? assignments[0].text : t('Goal {ref}', {ref: shortHash(candidate.reference.slice(5))}), ref: candidate.reference, resolved: Boolean(outcome), choice: groups.length > 1};
     }
     const heldGoal = scope && [...S.resolved].find(([ref, outcome]) => ref.startsWith('case:') && outcome.level === 'verified' && outcome.goalId === scope);
     if (heldGoal) {
@@ -561,7 +562,7 @@ const LiveTeam = (() => {
   /* The source line under a question, the same words on the Team page and the Overview. */
   function questionSource(q) {
     if (q.kind === 'case-verified') return html`${stateLine('verified', {word: t('Goal revision verified by its owner')})} <span class="muted">${t(q.viaDelivery ? 'Question supplied for this delivery' : 'association declared by Main PM · not verified')}</span>`;
-    if (q.kind === 'case-declared') return html`<span class="muted">${t(q.resolved ? 'declared by Main PM · Goal discovered, not yet verified' : 'declared by Main PM · Goal not yet resolved')} · <span class="mono">${short(String(q.ref).slice(5), SHORT.hash)}</span></span>`;
+    if (q.kind === 'case-declared') return html`<span class="muted">${t(q.resolved ? 'declared by Main PM · Goal discovered, not yet verified' : 'declared by Main PM · Goal not yet resolved')} · <span class="mono">${shortHash(q.ref.slice(5))}</span></span>`;
     if (q.kind === 'choice') return html`<span class="muted">${t('explicit choice required · none chosen by order or recency')}</span>`;
     if (q.kind === 'assignment') return html`<span class="muted">${t(q.count > 1 ? 'first of {n} assignments declared by Main PM · not a bound goal' : 'declared by Main PM · not a bound goal', {n: q.count})}</span>`;
     return '';
@@ -582,7 +583,16 @@ const LiveTeam = (() => {
   const roleTone = (s, id) => { const pt = s.participants.get(id); if (!pt) return 'none'; if (isLead(pt, s)) return 'lead'; const role = [...pt.roles][0]; return role ? ROLE_TONES[role] || 'neutral' : 'none'; };
   /* Law 125: one topic chip per declared reference; a shared topic is never a reply. */
   // a goal's revision, a result and a review by their hash's 12, an experiment and a Task by their id's 8
-  const topicWords = (q) => q.kind === 'review_thread' ? html`${referenceKind(q)} <span class="mono">${short(q.ref.slice(14))}</span>` : q.kind === 'case' ? html`${t('Goal')} <span class="mono">${short(q.ref.slice(5), SHORT.hash)}</span>` : q.kind === 'history' ? (([kind, id]) => html`<span class="mono">${kind}:${short(id, kind === 'experiment' ? SHORT.id : SHORT.hash)}</span>`)(q.ref.split(':')) : q.kind === 'task' ? html`${t('Task')} <span class="mono">${short(q.ref)}</span>` : html`<span class="mono">${short(q.ref, SHORT.hash)}</span>`;
+  const topicWords = (q) => {
+    if (q.kind === 'review_thread') return html`${referenceKind(q)} <span class="mono">${short(q.ref.slice(14))}</span>`;
+    if (q.kind === 'case') return html`${t('Goal')} <span class="mono">${shortHash(q.ref.slice(5))}</span>`;
+    if (q.kind === 'history') {
+      const colon = q.ref.indexOf(':'), kind = q.ref.slice(0, colon), id = q.ref.slice(colon + 1);
+      return html`<span class="mono">${kind}:${kind === 'experiment' ? short(id) : shortHash(id)}</span>`;
+    }
+    if (q.kind === 'task') return html`${t('Task')} <span class="mono">${short(q.ref)}</span>`;
+    return html`<span class="mono">${shortHash(q.ref)}</span>`;
+  };
   /* Laws 125, 139 and 17: show role, addressee, kind, topic, time and clamped words; pressing opens the full record. Exact replies stay one level deep; PM responses are neutral and never resolve objections. */
   function exchange(s, e, selected, replies = [], chosen = null, reply = false) {
     const accepted = acceptedAnswer(e), kind = accepted ? ['Accepted answer', 'file'] : e.kind === 'message' ? MESSAGE_KINDS[e.messageKind] || ['Message kind not declared', 'info'] : ['Host input', 'activity'];
@@ -1156,7 +1166,7 @@ const LiveTeam = (() => {
   function sessionsNaming(...refs) {
     const wanted = new Set(refs.filter(r => typeof r === 'string' && r).map(r => r.toLowerCase())), context = refs.find(r => r?.native_session_id && r.update_task_id && r.review_selector?.update_task_id === r.update_task_id);
     if (!wanted.size) return [];
-    const named = scene().sessions.filter((s) => [...s.references].some((r) => wanted.has(r) || wanted.has(r.split(':').at(-1)))).map((s) => { const all = [...s.entries.values()].sort((a, b) => a.ordinal - b.ordinal).filter((e) => !e.replayOf); linkExchanges(s, all); return {id: s.id, entries: s.entries.size, name: titleOf(questionOf(s, all), s, all), roles: rolesOf(s)}; });
+    const named = scene().sessions.filter((s) => [...s.references].some((r) => wanted.has(r) || (r.startsWith('review-thread:') && wanted.has(r.slice(14))))).map((s) => { const all = [...s.entries.values()].sort((a, b) => a.ordinal - b.ordinal).filter((e) => !e.replayOf); linkExchanges(s, all); return {id: s.id, entries: s.entries.size, name: titleOf(questionOf(s, all), s, all), roles: rolesOf(s)}; });
     if (context && [context.update_task_id, context.review_selector.update_publication_hash].some(ref => wanted.has(ref))) {
       const held = named.find(s => s.id === context.native_session_id);
       if (held) held.committee = context;

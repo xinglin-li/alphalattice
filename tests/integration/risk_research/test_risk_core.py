@@ -49,6 +49,7 @@ from alphalattice.investment.risk_research.surfaces.returns import (
     RiskReturnSurfaceError,
     derive_risk_return_rows,
 )
+from tests._support.identity_fixtures import fixture_digest
 
 PLAYPEN_ROOT = Path(__file__).resolve().parents[3]
 
@@ -72,7 +73,7 @@ def _manifest(*, daily_price_basis: str = "split_adjusted") -> UniverseManifest:
         manifest_id="test",
         profile=profile,
         listings=(listing,),
-        revision_sha256="a" * 64,
+        revision_sha256=fixture_digest("a"),
     )
 
 
@@ -186,8 +187,8 @@ def test_dividend_aware_log_return_and_missing_session_fail_closed() -> None:
         RiskUniverseEpoch,
         "epoch_hash",
         market_profile_id="test-us",
-        universe_manifest_revision="a" * 64,
-        panel_snapshot_hash="b" * 64,
+        universe_manifest_revision=fixture_digest("a"),
+        panel_snapshot_hash=fixture_digest("b"),
         ordered_listing_ids=("listing-a",),
     )
     chunk = CausalRiskReturnChunk(
@@ -195,8 +196,8 @@ def test_dividend_aware_log_return_and_missing_session_fail_closed() -> None:
         row_count=315,
         first_formation_session=second,
         last_formation_session=first + timedelta(days=315),
-        content_hash="c" * 64,
-        metadata_hash="d" * 64,
+        content_hash=fixture_digest("c"),
+        metadata_hash=fixture_digest("d"),
         uri="fixture",
     )
     values = dict(
@@ -204,7 +205,7 @@ def test_dividend_aware_log_return_and_missing_session_fail_closed() -> None:
         first_formation_session=second,
         last_formation_session=first + timedelta(days=315),
         formation_count=315,
-        source_watermark_hash="e" * 64,
+        source_watermark_hash=fixture_digest("e"),
         chunks=(chunk,),
         limitations=("fixture",),
     )
@@ -326,6 +327,7 @@ def test_risk_numerical_thread_policy_is_fixed_and_path_free(monkeypatch) -> Non
         ("fast_slow", "estimate_fast_slow_covariance", {"blend_weight": 0.25}),
         ("diagonal", "estimate_diagonal_shrunk_covariance", {"correlation_shrinkage": 0.0}),
     ),
+    ids=("dynamic", "fast-slow", "diagonal"),
 )
 def test_the_live_estimate_runs_single_threaded_whatever_the_ambient_threads(
     monkeypatch: pytest.MonkeyPatch, module_name, function_name, parameters
@@ -378,7 +380,7 @@ def test_the_live_estimate_runs_single_threaded_whatever_the_ambient_threads(
                 adapter.estimate(
                     recipe=envelope,
                     inputs=BoundRiskReturnInput.create(
-                        return_surface_hash="a" * 64,
+                        return_surface_hash=fixture_digest("a"),
                         ordered_listing_ids=listing_ids,
                         formation_session=date(2026, 1, 3),
                         returns=returns,
@@ -496,8 +498,8 @@ def test_return_chunk_rejects_value_tamper_with_preserved_footer(
         RiskUniverseEpoch,
         "epoch_hash",
         market_profile_id="test-us",
-        universe_manifest_revision="a" * 64,
-        panel_snapshot_hash="b" * 64,
+        universe_manifest_revision=fixture_digest("a"),
+        panel_snapshot_hash=fixture_digest("b"),
         ordered_listing_ids=("listing-a",),
     )
     surface = CausalRiskReturnSurface.model_construct(
@@ -506,10 +508,10 @@ def test_return_chunk_rejects_value_tamper_with_preserved_footer(
         first_formation_session=second,
         last_formation_session=third,
         formation_count=2,
-        source_watermark_hash="c" * 64,
+        source_watermark_hash=fixture_digest("c"),
         chunks=(chunk, later),
         limitations=("fixture",),
-        surface_hash="d" * 64,
+        surface_hash=fixture_digest("d"),
     )
     certifications = {}
     resolve = RiskReturnArtifactStore.resolve_chunk
@@ -549,15 +551,15 @@ def test_return_chunk_rejects_value_tamper_with_preserved_footer(
         RiskUniverseEpoch,
         "epoch_hash",
         market_profile_id="test-us",
-        universe_manifest_revision="a" * 64,
-        panel_snapshot_hash="b" * 64,
+        universe_manifest_revision=fixture_digest("a"),
+        panel_snapshot_hash=fixture_digest("b"),
         ordered_listing_ids=("listing-a", "listing-b"),
     )
     sparse = surface.model_copy(
         update={
             "epoch": sparse_epoch,
             "chunks": (sparse_chunk,),
-            "surface_hash": "e" * 64,
+            "surface_hash": fixture_digest("e"),
             "omissions": (
                 RiskReturnOmissions(listing_id="listing-b", count=1, pairs=((second, third),)),
             ),
@@ -575,7 +577,7 @@ def test_return_chunk_rejects_value_tamper_with_preserved_footer(
     )
     with pytest.raises(RiskReturnSurfaceError, match="return_read_incomplete"):
         reader.read_sessions(sparse, (third,))
-    undeclared = sparse.model_copy(update={"omissions": None, "surface_hash": "f" * 64})
+    undeclared = sparse.model_copy(update={"omissions": None, "surface_hash": fixture_digest("f")})
     with pytest.raises(RiskReturnSurfaceError, match="return_read_incomplete"):
         CausalRiskReturnReader(tmp_path).read_window(undeclared, (third,))
     table = pq.read_table(target).combine_chunks()
@@ -596,7 +598,7 @@ def test_historical_diagnostics_accepts_only_complete_or_legacy_metric_group() -
     evaluation = {
         "formation_session": "2026-01-02",
         "next_session": "2026-01-03",
-        "matrix_hash": "a" * 64,
+        "matrix_hash": fixture_digest("a"),
         "shrinkage": 0.2,
         "minimum_eigenvalue": 0.001,
         "maximum_eigenvalue": 0.02,
@@ -616,8 +618,8 @@ def test_historical_diagnostics_accepts_only_complete_or_legacy_metric_group() -
     }
     payload = {
         "kind": "RiskHistoricalDiagnostics",
-        "epoch_hash": "b" * 64,
-        "recipe_hash": "c" * 64,
+        "epoch_hash": fixture_digest("b"),
+        "recipe_hash": fixture_digest("c"),
         "evaluations": [evaluation],
     }
     payload["diagnostics_hash"] = canonical_hash(payload)
@@ -630,6 +632,6 @@ def test_historical_diagnostics_accepts_only_complete_or_legacy_metric_group() -
             {
                 **payload,
                 "evaluations": [partial],
-                "diagnostics_hash": "d" * 64,
+                "diagnostics_hash": fixture_digest("d"),
             }
         )

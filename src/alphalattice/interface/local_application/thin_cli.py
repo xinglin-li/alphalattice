@@ -40,7 +40,7 @@ from alphalattice.kernel.door import (
 from alphalattice.kernel.door import (
     request_bytes,
 )
-from alphalattice.kernel.identity import identity_sha256
+from alphalattice.kernel.identity import blake3_filename, identity_blake3, tagged_blake3
 
 ENDPOINT_FOLDER: Final = "host-endpoints"
 """The data root's endpoint records, one per served workspace, beside its lock."""
@@ -124,7 +124,8 @@ class DeliveryLost(ValueError):
 
 def workspace_connection_key(workspace: Path) -> str:
     """Bind the request to the canonical workspace location."""
-    return identity_sha256(os.fsencode(os.path.normcase(str(workspace.resolve())))).hexdigest()
+    location = os.fsencode(os.path.normcase(str(workspace.resolve())))
+    return tagged_blake3(identity_blake3(location))
 
 
 def connection_path(workspace: Path) -> Path:
@@ -137,7 +138,7 @@ def endpoint_path(root: Path, workspace: Path) -> Path:
     """The endpoint record a Host serving `workspace` on data root `root` writes, beside the
     root's lock under the workspace's key; the record names the workspace it serves."""
     folder = root.resolve() / "machine" / ENDPOINT_FOLDER
-    path = folder / f"{workspace_connection_key(workspace)}.json"
+    path = folder / f"{blake3_filename(workspace_connection_key(workspace))}.json"
     if path.is_symlink() or not path.resolve().is_relative_to(folder):
         raise ValueError("local_client.connection_path_escapes_workspace")
     return path

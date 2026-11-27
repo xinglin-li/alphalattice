@@ -40,6 +40,7 @@ from alphalattice.foundation.causal_outcomes.execution.readers import (
 )
 from alphalattice.foundation.market_data_ops.sources.contracts import CorporateActionEvent
 from alphalattice.foundation.market_data_ops.storage.duckdb import MarketDataRepository
+from tests._support.identity_fixtures import fixture_digest
 from tests.researcher_methodology_surface.real_workspace import (
     HISTORY_START,
     OBSERVED_AT,
@@ -62,7 +63,7 @@ def test_risk_publication_reads_only_its_declared_contiguous_window(tmp_path, mo
 
     axis = tuple(date(2020, 1, 1) + timedelta(days=i) for i in range(330))
     scope = axis[:317]
-    digest = "1" * 64
+    digest = fixture_digest("market-source")
     manifest = SimpleNamespace(
         revision_sha256=digest,
         profile=SimpleNamespace(market_profile_id="fixture", daily_price_basis="split_adjusted"),
@@ -199,7 +200,8 @@ def test_risk_publication_reads_only_its_declared_contiguous_window(tmp_path, mo
         (item.listing_id, item.count, item.pairs) for item in halted.omissions
     ] == [("A", 2, ((scope[9], scope[10]), (scope[10], scope[11])))]
     for unverified in (
-        {"watermark": "2" * 64},  # the source moved since the Panel read it
+        # The source moved since the Panel read it.
+        {"watermark": fixture_digest("changed-market-source")},
         {"version": "panel-market-observation/v0"},
     ):
         recorded((scope[10],), **unverified)
@@ -705,20 +707,24 @@ def test_existing_seal_reuse_ignores_only_the_source_revision_counter() -> None:
 
     values = dict(
         recipe=build_one_session_recipe(),
-        catalog_hash="a" * 64,
-        publication_policy_hash="b" * 64,
-        snapshot_hash="c" * 64,
-        schedule_hash="d" * 64,
-        ordered_session_triples_hash="e" * 64,
+        catalog_hash=fixture_digest("catalog"),
+        publication_policy_hash=fixture_digest("publication-policy"),
+        snapshot_hash=fixture_digest("snapshot"),
+        schedule_hash=fixture_digest("schedule"),
+        ordered_session_triples_hash=fixture_digest("session-triples"),
         source_watermark_hash="revision-before",
-        action_lineage="f" * 64,
+        action_lineage=fixture_digest("action-lineage"),
     )
     first = build_execution_outcome_method_binding(**values)
     counter_only = build_execution_outcome_method_binding(
         **{**values, "source_watermark_hash": "revision-after"}
     )
     changed_actions = build_execution_outcome_method_binding(
-        **{**values, "source_watermark_hash": "revision-after", "action_lineage": "0" * 64}
+        **{
+            **values,
+            "source_watermark_hash": "revision-after",
+            "action_lineage": fixture_digest("changed-action-lineage"),
+        }
     )
     assert first.binding_hash != counter_only.binding_hash
     assert _method_authority(first) == _method_authority(counter_only)

@@ -31,6 +31,7 @@ from typing import Literal, Self
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 from alphalattice.capabilities.domain_contracts.identity import canonical_hash
+from alphalattice.kernel.identity import BLAKE3_PATTERN
 
 from .provenance import resolve_feature_clock
 from .standardize import (
@@ -39,7 +40,7 @@ from .standardize import (
     SimpleSignalError,
 )
 
-_HASH = r"^[0-9a-f]{64}$"
+_HASH = BLAKE3_PATTERN
 
 SIMPLE_SCORE_CATEGORY = "current/simple-signed-scores"
 """Where a published binding lives inside the Alpha development store."""

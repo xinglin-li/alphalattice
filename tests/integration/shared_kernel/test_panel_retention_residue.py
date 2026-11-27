@@ -13,6 +13,7 @@ from alphalattice.foundation.feature_engine.panels.retention_residue import (
     PanelRetentionResidueOwner,
 )
 from alphalattice.foundation.feature_engine.storage.repositories import PanelStateRepository
+from alphalattice.kernel.identity import blake3_filename
 
 NOW = datetime(2026, 8, 7, 15, 0, tzinfo=UTC)
 
@@ -28,26 +29,21 @@ def test_residue_cleanup_keeps_only_rooted_generation_and_reports_physical_truth
     active_hash = canonical_hash(active_identity)
     evicted_hash = canonical_hash("evicted-panel")
     missing_hash = canonical_hash("missing-panel")
-    active_manifest = artifact_root / "feature-panel" / "manifests" / f"{active_hash}.json"
-    active_manifest.parent.mkdir(parents=True)
-    active_manifest.write_text(
-        json.dumps(
-            {**active_identity, "snapshot_hash": active_hash},
-            sort_keys=True,
-            separators=(",", ":"),
-        ),
-        encoding="utf-8",
+    resolver.publish_feature_panel_manifest(
+        payload={**active_identity, "snapshot_hash": active_hash}, snapshot_hash=active_hash
     )
     eviction_plan_hash = canonical_hash("eviction-plan")
     availability = artifact_root / "storage-governance" / "availability"
     availability.mkdir(parents=True)
-    (availability / f"{eviction_plan_hash}.json").write_text(
+    (availability / f"{blake3_filename(eviction_plan_hash)}.json").write_text(
         json.dumps(
             {
                 "eviction_plan_hash": eviction_plan_hash,
                 "entries": [
                     {
-                        "relative_path": (f"artifacts/feature-panel/manifests/{evicted_hash}.json"),
+                        "relative_path": (
+                            f"artifacts/feature-panel/manifests/{blake3_filename(evicted_hash)}.json"
+                        ),
                         "availability": "EVICTED_BY_RETENTION",
                     }
                 ],

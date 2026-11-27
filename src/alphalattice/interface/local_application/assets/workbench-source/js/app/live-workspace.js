@@ -714,7 +714,7 @@ const LiveWorkspace = (() => {
    * verified: nothing -- the Home is the Home. No head of its own. */
   /* The owner cannot plan a preparation while the workspace itself is not readable (its manifest
    * absent or refused): the page says why, and offers no way the owner will refuse. */
-  const CANNOT_PREPARE=/research_workspace\.(manifest_unreadable|manifest_refused|nonempty_manifest_absent|manifest_from_newer_build|prepared_before_renames)/;
+  const CANNOT_PREPARE=/research_workspace\.(manifest_unreadable|manifest_refused|nonempty_manifest_absent|manifest_from_newer_build|manifest_before_blake3|prepared_before_renames)/;
   const prepareRefused=()=>CANNOT_PREPARE.test(String(S.error || states.get('welcome')?.error || ''));
   /* What a workspace the owner cannot prepare means, and the ways on (the user, 2026-09-24: 然后呢? 什么提示都没
    * 有): the owner's words, then what the reader can do -- restore the manifest where the service log names

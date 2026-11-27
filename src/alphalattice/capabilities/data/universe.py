@@ -10,11 +10,11 @@ from typing import Protocol
 
 from alphalattice.capabilities.data.enums import LicenseClass, UniverseIndex
 from alphalattice.capabilities.data.errors import DataProviderError
-from alphalattice.capabilities.domain_contracts.domain.serialization import sha256_hex
 from alphalattice.capabilities.domain_contracts.environment import offline
 from alphalattice.capabilities.domain_contracts.waits import pause
 from alphalattice.kernel.clock import utc_now
 from alphalattice.kernel.egress import EgressPort, HttpEgress, HttpSource
+from alphalattice.kernel.identity import blake3_digest
 
 Sleeper = Callable[[float], object]
 
@@ -198,7 +198,7 @@ def fetch_universe_source(
                 config=config,
                 content=content,
                 retrieved_at=clock(),
-                response_hash=sha256_hex(content),
+                response_hash=blake3_digest(content),
             )
         raise AssertionError("bounded source loop did not terminate")
     finally:

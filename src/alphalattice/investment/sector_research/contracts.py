@@ -14,7 +14,7 @@ import numpy as np
 import numpy.typing as npt
 
 from alphalattice.capabilities.domain_contracts.identity import canonical_hash
-from alphalattice.kernel.identity import identity_sha256
+from alphalattice.kernel.identity import identity_blake3, tagged_blake3
 
 type FloatArray = npt.NDArray[np.float64]
 
@@ -38,7 +38,7 @@ def sector_array_identity(values: FloatArray) -> str:
             {
                 "dtype": str(contiguous.dtype),
                 "shape": [int(value) for value in contiguous.shape],
-                "content": identity_sha256(contiguous.tobytes()).hexdigest(),
+                "content": tagged_blake3(identity_blake3(contiguous.tobytes())),
             }
         )
     )

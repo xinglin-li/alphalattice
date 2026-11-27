@@ -15,13 +15,14 @@ from alphalattice.control.task_control.ledger import (
     TaskAdmissionRequest,
     read_frozen,
 )
+from alphalattice.kernel.identity import blake3_filename
 
 TEST_SOURCE = "src/alphalattice/control/task_control/ledger.py"
 
 
 @pytest.mark.proves("task_control.frozen_requests_refuse_content_address_changes")
 def test_a_frozen_request_refuses_valid_content_under_another_address(tmp_path, monkeypatch):
-    """A 0.2.7 request reads back with its exact text; valid content under another address is
+    """A frozen request reads back with its exact text; valid content under another address is
     refused by name."""
     from alphalattice.capabilities.domain_contracts.bounded_memo import stage_digests
     from alphalattice.control.task_control import contracts
@@ -52,8 +53,8 @@ def test_a_frozen_request_refuses_valid_content_under_another_address(tmp_path, 
     item = WorkItemDefinition.create(stage_id="first", dependency_ids=(), verifier_id="test.verify")
     plan = ResearchPlan.create(
         goal_hash=goal.goal_hash,
-        workflow_definition_hash="a" * 64,
-        verifier_catalog_hash="b" * 64,
+        workflow_definition_hash=canonical_hash("workflow"),
+        verifier_catalog_hash=canonical_hash("verifier catalog"),
         work_items=(item,),
     )
     request = TaskAdmissionRequest(
@@ -65,8 +66,9 @@ def test_a_frozen_request_refuses_valid_content_under_another_address(tmp_path, 
         admitted_at=datetime(2026, 1, 1, tzinfo=UTC),
         admission_sequence=1,
     )
-    text = request.model_dump_json()  # as a 0.2.7 workspace kept it, named by its content
-    path = tmp_path / REQUESTS_DIRECTORY / f"{canonical_hash(request.model_dump(mode='json'))}.json"
+    text = request.model_dump_json()
+    stem = blake3_filename(canonical_hash(request.model_dump(mode="json")))
+    path = tmp_path / REQUESTS_DIRECTORY / f"{stem}.json"
     path.parent.mkdir()
     path.write_text(text, encoding="utf-8")
     assert read_frozen(tmp_path) == ((request, text),)

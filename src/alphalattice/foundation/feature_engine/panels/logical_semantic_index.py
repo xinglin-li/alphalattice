@@ -14,6 +14,7 @@ from alphalattice.foundation.feature_engine.panels.logical_contracts import (
     identity_payload,
     seal_logical_identity,
 )
+from alphalattice.kernel.identity import BLAKE3_PATTERN
 
 LOGICAL_SLICE_ALGORITHM_IDENTITY = "ordered-logical-row-digest"
 """The logical digests' algorithm. A change to them bumps it: a publication takes an unchanged
@@ -27,7 +28,7 @@ class FeaturePanelLogicalSessionSemantic(BaseModel):  # type: ignore[misc]
 
     session_date: date
     row_count: int = Field(gt=0)
-    ordered_logical_row_digest: str = Field(pattern=r"^[0-9a-f]{64}$")
+    ordered_logical_row_digest: str = Field(pattern=BLAKE3_PATTERN)
 
 
 class FeaturePanelLogicalSemanticIndex(BaseModel):  # type: ignore[misc]
@@ -38,19 +39,19 @@ class FeaturePanelLogicalSemanticIndex(BaseModel):  # type: ignore[misc]
     IDENTITY_EXCLUDES_NONE_FIELDS: ClassVar[frozenset[str]] = frozenset({"membership_epochs"})
 
     kind: str = "FeaturePanelLogicalSemanticIndex"
-    logical_panel_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
-    catalog_semantics_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
-    listing_set_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
+    logical_panel_hash: str = Field(pattern=BLAKE3_PATTERN)
+    catalog_semantics_hash: str = Field(pattern=BLAKE3_PATTERN)
+    listing_set_hash: str = Field(pattern=BLAKE3_PATTERN)
     factor_ids: tuple[str, ...]
     active_listing_count: int = Field(gt=0)
-    calendar_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
+    calendar_hash: str = Field(pattern=BLAKE3_PATTERN)
     slice_algorithm_identity: str = LOGICAL_SLICE_ALGORITHM_IDENTITY
     sessions: tuple[FeaturePanelLogicalSessionSemantic, ...] = Field(min_length=1)
     # Present for a Panel whose sessions hold their own members: each
     # session's row count is its epoch's member count rather than the axis
     # length. Absent for a dense Panel and excluded from its identity.
     membership_epochs: tuple[PanelLogicalMembershipEpoch, ...] | None = None
-    index_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
+    index_hash: str = Field(pattern=BLAKE3_PATTERN)
 
     @model_validator(mode="after")  # type: ignore[untyped-decorator]
     def validate_index(self) -> FeaturePanelLogicalSemanticIndex:

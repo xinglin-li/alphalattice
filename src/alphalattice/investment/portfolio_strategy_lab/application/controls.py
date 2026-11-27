@@ -34,6 +34,7 @@ from alphalattice.investment.portfolio_strategy_lab.policies.tranche_book import
     TOP_K_RANGE,
     TRANCHES_RANGE,
 )
+from alphalattice.kernel.identity import BLAKE3_PATTERN
 
 
 class PublicControlError(ValueError):
@@ -207,8 +208,8 @@ class PublicControlCatalog(_Contract):
     kind: Literal["PublicControlCatalog"] = "PublicControlCatalog"
     controls: tuple[PublicControlDescriptor, ...] = Field(min_length=1)
     refusals: tuple[RefusedControlDescriptor, ...] = Field(min_length=1)
-    catalog_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
-    presentation_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
+    catalog_hash: str = Field(pattern=BLAKE3_PATTERN)
+    presentation_hash: str = Field(pattern=BLAKE3_PATTERN)
 
     @model_validator(mode="after")  # type: ignore[untyped-decorator]
     def validate_identity(self) -> Self:

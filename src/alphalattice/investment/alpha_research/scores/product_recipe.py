@@ -35,6 +35,7 @@ from alphalattice.capabilities.domain_contracts.recipe_identity import (
     recipe_identity,
     recipe_seal_holds,
 )
+from alphalattice.kernel.identity import BLAKE3_PATTERN
 
 _SEAL: Final = frozenset({"recipe_hash"})
 
@@ -43,12 +44,9 @@ PRODUCT_RECIPE_ID: Final = "IW184_IMPLIED_PLUS_WITHIN_FIXED1260_QUARTERLY_SEED3_
 
 PRODUCT_FEATURE_AXIS_ID: Final = "IW184_IMPLIED_PLUS_WITHIN"
 PRODUCT_FEATURE_AXIS_HASH: Final = (
-    "7d307c7637b046da4fca9eb05e5e19946635ab58e4a8904c115d6b7b7091d976"
+    "blake3:9e62897cc818e4ce66cced6f372dd990973b787219a060d9a0bcdbd44a022809"
 )
 PRODUCT_FEATURE_COUNT: Final = 184
-PRODUCT_SOURCE_CANDIDATE_MANIFEST_SHA256: Final = (
-    "7e8618accd8efd59a6c963f717d8e472a4c5527d706a7366ddf3eb97da62b10d"
-)
 
 PRODUCT_TRAINING_WINDOW_SESSIONS: Final = 1_260
 """Frozen scientific identity, bound only here.
@@ -73,9 +71,6 @@ A product claim needs its own admission; this field exists so that reading the
 recipe cannot leave anyone with the opposite impression.
 """
 
-PRODUCT_EVIDENCE_DAILY_PARQUET_SHA256: Final = (
-    "fc61bc9cd67eabdd562cd308fb2f091d8984d040ab41dd477998dcf63256532e"
-)
 PRODUCT_EVIDENCE_SUPPORT_FIRST: Final = date(2022, 7, 1)
 PRODUCT_EVIDENCE_SUPPORT_LAST: Final = date(2024, 8, 12)
 PRODUCT_EVIDENCE_SUPPORT_SESSION_COUNT: Final = 529
@@ -171,9 +166,8 @@ class AlphaProductRecipe(_Contract):
     )
 
     feature_axis_id: Literal["IW184_IMPLIED_PLUS_WITHIN"] = PRODUCT_FEATURE_AXIS_ID
-    feature_axis_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
+    feature_axis_hash: str = Field(pattern=BLAKE3_PATTERN)
     feature_count: Literal[184] = PRODUCT_FEATURE_COUNT
-    source_candidate_manifest_sha256: str = Field(pattern=r"^[0-9a-f]{64}$")
 
     estimator_point: AlphaEstimatorParameterPoint
 
@@ -194,12 +188,11 @@ class AlphaProductRecipe(_Contract):
     evidence_disposition: Literal["DEVELOPMENT_DIAGNOSTIC_CANDIDATE_NOT_INSTALLED"] = (
         PRODUCT_EVIDENCE_DISPOSITION
     )
-    evidence_daily_parquet_sha256: str = Field(pattern=r"^[0-9a-f]{64}$")
     evidence_support_first: date = PRODUCT_EVIDENCE_SUPPORT_FIRST
     evidence_support_last: date = PRODUCT_EVIDENCE_SUPPORT_LAST
     evidence_support_session_count: Literal[529] = PRODUCT_EVIDENCE_SUPPORT_SESSION_COUNT
 
-    recipe_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
+    recipe_hash: str = Field(pattern=BLAKE3_PATTERN)
 
     @classmethod
     def installed(cls) -> Self:
@@ -210,7 +203,6 @@ class AlphaProductRecipe(_Contract):
             "feature_axis_id": PRODUCT_FEATURE_AXIS_ID,
             "feature_axis_hash": PRODUCT_FEATURE_AXIS_HASH,
             "feature_count": PRODUCT_FEATURE_COUNT,
-            "source_candidate_manifest_sha256": PRODUCT_SOURCE_CANDIDATE_MANIFEST_SHA256,
             "estimator_point": PRODUCT_ESTIMATOR_POINT.model_dump(mode="json"),
             "training_window_sessions": PRODUCT_TRAINING_WINDOW_SESSIONS,
             "purge_sessions": PRODUCT_PURGE_SESSIONS,
@@ -223,7 +215,6 @@ class AlphaProductRecipe(_Contract):
             "vintage_aggregation": "DECLARED_WEIGHT_MEAN_ACROSS_VINTAGES",
             "score_aggregation": "WITHIN_SESSION_PERCENTILE_RANK",
             "evidence_disposition": PRODUCT_EVIDENCE_DISPOSITION,
-            "evidence_daily_parquet_sha256": PRODUCT_EVIDENCE_DAILY_PARQUET_SHA256,
             "evidence_support_first": PRODUCT_EVIDENCE_SUPPORT_FIRST.isoformat(),
             "evidence_support_last": PRODUCT_EVIDENCE_SUPPORT_LAST.isoformat(),
             "evidence_support_session_count": PRODUCT_EVIDENCE_SUPPORT_SESSION_COUNT,

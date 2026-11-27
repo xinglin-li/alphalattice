@@ -61,6 +61,12 @@ from alphalattice.interface.local_application.portfolio_research import (
     FactorCurationRequest,
     PortfolioResearchOperationRequest,
 )
+from alphalattice.kernel.identity import (
+    BLAKE3_PATTERN,
+    blake3_filename,
+    blake3_from_filename,
+    is_blake3,
+)
 
 Step = Literal["FEATURE_BUILD", "FACTOR_STUDY", "CURATION", "ALPHA_STUDY", "PORTFOLIO_STUDY"]
 _TASK_STEPS: tuple[Step, ...] = ("FEATURE_BUILD", "FACTOR_STUDY", "ALPHA_STUDY", "PORTFOLIO_STUDY")
@@ -79,8 +85,8 @@ class FeatureTrial(BaseModel):  # type: ignore[misc]
 
     model_config = ConfigDict(extra="forbid")
     schema_version: Literal[1] = 1
-    trial_id: str = Field(pattern=r"^[0-9a-f]{64}$")
-    feature_plan_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
+    trial_id: str = Field(pattern=BLAKE3_PATTERN)
+    feature_plan_hash: str = Field(pattern=BLAKE3_PATTERN)
     baseline_task_id: str
     baseline_alpha_task_id: str
     baseline_portfolio_task_id: str | None = None
@@ -202,7 +208,9 @@ class FeatureTrials:
     # ------------------------------------------------------------------ records
 
     def _path(self, trial_id: str) -> Path:
-        return self.root / f"{trial_id}.json"
+        if not is_blake3(trial_id):
+            raise FeatureTrialError("feature_trial.not_found")
+        return self.root / f"{blake3_filename(trial_id)}.json"
 
     def _read(self, trial_id: str) -> FeatureTrial:
         path = self._path(trial_id)
@@ -248,10 +256,14 @@ class FeatureTrials:
             return (), ()
         found, damaged = [], []
         for path in sorted(self.root.glob("*.json")):
-            try:
-                found.append(self._read(path.stem))
-            except (OSError, ValueError):
+            trial_id = blake3_from_filename(path.stem)
+            if trial_id is None:
                 damaged.append(path.stem)
+                continue
+            try:
+                found.append(self._read(trial_id))
+            except (OSError, ValueError):
+                damaged.append(trial_id)
         return tuple(found), tuple(damaged)
 
     # ------------------------------------------------------------------ requests

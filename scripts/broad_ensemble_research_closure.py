@@ -10,8 +10,7 @@ tree owned the functions they called, so the closure ran product code nobody
 reviewed here.
 
 This module is the local executable owner of exactly those functions. Each was
-ported from the research file whose sha256 the sealed Gate M source readback
-names (``LIVE_SOURCE_READBACK_SHA256`` in ``scores/heterogeneous_product``),
+ported from the research file named by the original Gate M source readback,
 with substitutions that reuse owners this tree already has: the estimator point
 and the axis identity come from ``scores/product_recipe``, quarter arithmetic
 and the seed-model kind from ``scores/product_replay``, the source-array

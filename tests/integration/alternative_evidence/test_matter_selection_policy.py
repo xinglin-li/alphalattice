@@ -42,6 +42,7 @@ from alphalattice.evidence.alternative_evidence.runtime.policy import (
     REINSTALL_INTEGRATED_SELECTION,
     AdmittedEvidencePolicy,
 )
+from tests._support.identity_fixtures import fixture_digest
 from tests.alternative_evidence_desk.matter_selection_support import (
     _filings,
 )
@@ -157,7 +158,9 @@ def test_the_policy_is_a_contract_of_the_request_and_the_authority() -> None:
     assert len({production.request_hash, candidate.request_hash, current.request_hash}) == 3
     assert AlternativeEvidenceRequest.model_validate_json(candidate.model_dump_json()) == candidate
     binding = EvidenceReviewArtifactBinding(
-        relative_path="authority/x.json", file_sha256="1" * 64, content_hash="2" * 64
+        relative_path="authority/x.json",
+        file_digest=fixture_digest("authority file"),
+        content_hash=fixture_digest("authority content"),
     )
     plain = EvidenceReviewWorkspaceManifest.create(
         authority_id="qa",
@@ -165,7 +168,7 @@ def test_the_policy_is_a_contract_of_the_request_and_the_authority() -> None:
         listing_authority=binding,
         recorded_documents=binding,
         semantic_model_relative_path="models",
-        semantic_capability_hash="3" * 64,
+        semantic_capability_hash=fixture_digest("semantic capability"),
     )
     opted = EvidenceReviewWorkspaceManifest.create(
         authority_id="qa",
@@ -173,7 +176,7 @@ def test_the_policy_is_a_contract_of_the_request_and_the_authority() -> None:
         listing_authority=binding,
         recorded_documents=binding,
         semantic_model_relative_path="models",
-        semantic_capability_hash="3" * 64,
+        semantic_capability_hash=fixture_digest("semantic capability"),
         matter_selection=integrated,
     )
     assert "matter_selection" not in plain.model_dump(mode="json")

@@ -5,6 +5,8 @@ from uuid import UUID
 
 from pydantic import ConfigDict, Field
 
+from alphalattice.kernel.identity import BLAKE3_PATTERN
+
 from .contracts import RequestFieldModel
 
 
@@ -42,7 +44,7 @@ class RequestFields(RequestFieldModel):
 
     goal_id: UUID | None = None
     """The goal, by the id its GOAL_OPEN answered with."""
-    goal_hash: str | None = Field(default=None, pattern=r"^[0-9a-f]{64}$")
+    goal_hash: str | None = Field(default=None, pattern=BLAKE3_PATTERN)
     """The goal's version as last read; a goal that moved since refuses the change."""
     goal_reference_id: str | None = Field(default=None, min_length=1, max_length=64)
     """The reference ID saved in the exact goal revision; only that reference is verified."""

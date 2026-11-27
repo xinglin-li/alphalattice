@@ -69,6 +69,7 @@ from alphalattice.investment.risk_research.surfaces.artifacts import (
     RiskArtifactStore,
 )
 from alphalattice.investment.risk_research.surfaces.returns import CausalRiskReturnReader
+from alphalattice.kernel.identity import blake3_filename
 from alphalattice.protocols.research_authoring.contracts import AuthoringError
 
 type FloatArray = NDArray[np.float64]
@@ -227,7 +228,9 @@ def build_development_covariance_surface(
         )
     )
     checkpoint_path = (
-        artifact_store.root / DEVELOPMENT_CHECKPOINT_CATEGORY / f"{execution_key}.json"
+        artifact_store.root
+        / DEVELOPMENT_CHECKPOINT_CATEGORY
+        / f"{blake3_filename(execution_key)}.json"
     )
     if checkpoint_path.exists():
         checkpoint = RiskDevelopmentCheckpoint.model_validate_json(checkpoint_path.read_bytes())

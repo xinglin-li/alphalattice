@@ -24,6 +24,7 @@ from alphalattice.foundation.feature_engine.catalog.contracts import FeatureCata
 from alphalattice.foundation.feature_engine.producers.factors.formula import (
     formula_specification,
 )
+from alphalattice.kernel.identity import blake3_filename
 
 
 def _activation(factor_id: str) -> FeatureActivation:
@@ -43,10 +44,10 @@ def _activation(factor_id: str) -> FeatureActivation:
         factor_id=factor_id,
         specification=spec,
         preprocessing_recipe="ROBUST_SECTOR_NEUTRAL_Z",
-        feature_plan_hash="a" * 64,
-        trial_id="b" * 64,
-        methodology_hash="c" * 64,
-        packet_hash="d" * 64,
+        feature_plan_hash="blake3:" + "a" * 64,
+        trial_id="blake3:" + "b" * 64,
+        methodology_hash="blake3:" + "c" * 64,
+        packet_hash="blake3:" + "d" * 64,
         activated_at=datetime.now(UTC),
     )
 
@@ -66,7 +67,7 @@ def test_a_workspace_catalog_is_the_shipped_one_with_its_activations(tmp_path: P
     made = activated.binding.catalog_hash
     assert made != shipped.binding.catalog_hash
     assert installed_data_update_binding(tmp_path).feature_catalog_hash == made
-    assert (tmp_path / CATALOG_REVISIONS / f"{made}.json").is_file()
+    assert (tmp_path / CATALOG_REVISIONS / f"{blake3_filename(made)}.json").is_file()
 
     FeatureExtensionRegistry().write(tmp_path)
     assert workspace_feature_catalog(tmp_path).binding == shipped.binding
@@ -109,7 +110,9 @@ def test_a_feature_review_matches_the_executed_input_catalog_and_preprocessing(
         value for value in formula_controls()["preprocessing_recipes"] if value != recipe
     )
 
-    def declare(*, reason="Original trial", preprocessing=recipe, binding="a" * 64, joint=False):
+    def declare(
+        *, reason="Original trial", preprocessing=recipe, binding="blake3:" + "a" * 64, joint=False
+    ):
         edits = [
             {
                 "operation": "CREATE",
@@ -139,7 +142,10 @@ def test_a_feature_review_matches_the_executed_input_catalog_and_preprocessing(
             )
         )
         plan = plan_research_feature_change(
-            catalog=catalog, base=base, source_panel_snapshot_hash="b" * 64, request=request
+            catalog=catalog,
+            base=base,
+            source_panel_snapshot_hash="blake3:" + "b" * 64,
+            request=request,
         )
         definitions.store.publish_json(
             category=CATEGORY, content_hash=plan.plan_hash, payload=plan.model_dump(mode="json")
@@ -148,10 +154,14 @@ def test_a_feature_review_matches_the_executed_input_catalog_and_preprocessing(
 
     original = declare()
     identical = declare(reason="The same work described again")
-    different = [declare(preprocessing=alternative), declare(binding="c" * 64), declare(joint=True)]
+    different = [
+        declare(preprocessing=alternative),
+        declare(binding="blake3:" + "c" * 64),
+        declare(joint=True),
+    ]
     assert identical.plan_hash != original.plan_hash
     trial = FeatureTrial(
-        trial_id="d" * 64,
+        trial_id="blake3:" + "d" * 64,
         feature_plan_hash=original.plan_hash,
         baseline_task_id="baseline",
         baseline_alpha_task_id="baseline",
@@ -286,18 +296,18 @@ def test_feature_trial_keys_cover_every_executed_definition_field() -> None:
 def _definition_plans(work: Callable[[], object]) -> dict[str, SimpleNamespace]:
     def definition(recipe: str) -> SimpleNamespace:
         return SimpleNamespace(
-            request=SimpleNamespace(input_binding_hash="a" * 64),
-            source_panel_snapshot_hash="b" * 64,
-            candidate=SimpleNamespace(revision_hash="c" * 64),
+            request=SimpleNamespace(input_binding_hash="blake3:" + "a" * 64),
+            source_panel_snapshot_hash="blake3:" + "b" * 64,
+            candidate=SimpleNamespace(revision_hash="blake3:" + "c" * 64),
             work=work(),
             required_fields=("close",),
             preprocessing_recipes={"formula": recipe},
         )
 
     return {
-        "1" * 64: definition("recipe-a"),
-        "2" * 64: definition("recipe-a"),
-        "3" * 64: definition("recipe-b"),
+        "blake3:" + "1" * 64: definition("recipe-a"),
+        "blake3:" + "2" * 64: definition("recipe-a"),
+        "blake3:" + "3" * 64: definition("recipe-b"),
     }
 
 
@@ -321,10 +331,10 @@ def test_feature_build_reuses_execution_but_not_changed_source_axes(tmp_path: Pa
 
     plans = _definition_plans(Work)
     payload = {
-        "definition_plan_hash": "1" * 64,
-        "input_binding_hash": "a" * 64,
-        "sessions_hash": "d" * 64,
-        "listing_ids_hash": "e" * 64,
+        "definition_plan_hash": "blake3:" + "1" * 64,
+        "input_binding_hash": "blake3:" + "a" * 64,
+        "sessions_hash": "blake3:" + "d" * 64,
+        "listing_ids_hash": "blake3:" + "e" * 64,
         "implementation_hash": implementation_hash(preparation=True),
         "source_projection_hash": feature_source_projection_hash(),
         "caller": "HUMAN",
@@ -378,7 +388,7 @@ def test_feature_build_reuses_execution_but_not_changed_source_axes(tmp_path: Pa
     dispatcher = Dispatcher()
     for change in (
         {},
-        {"definition_plan_hash": "2" * 64, "caller": "EXTERNAL_AUTOMATION"},
+        {"definition_plan_hash": "blake3:" + "2" * 64, "caller": "EXTERNAL_AUTOMATION"},
         *({name: 2} for name in ("threads", "workers", "batch", "cache")),
     ):
         result = owner._submit(payload | change, dispatcher)
@@ -388,9 +398,14 @@ def test_feature_build_reuses_execution_but_not_changed_source_axes(tmp_path: Pa
         )
     assert dispatcher.calls == 0
     for name in ("input_binding_hash", "sessions_hash", "listing_ids_hash"):
-        assert owner._submit(payload | {name: "9" * 64}, dispatcher)["status"] == "ADMITTED"
+        assert (
+            owner._submit(payload | {name: "blake3:" + "9" * 64}, dispatcher)["status"]
+            == "ADMITTED"
+        )
     assert (
-        owner._submit(payload | {"definition_plan_hash": "3" * 64}, dispatcher)["status"]
+        owner._submit(payload | {"definition_plan_hash": "blake3:" + "3" * 64}, dispatcher)[
+            "status"
+        ]
         == "ADMITTED"
     )
     assert dispatcher.calls == 4
@@ -413,7 +428,7 @@ def test_feature_trial_reopens_equivalent_declarations_on_one_baseline(tmp_path:
             return task_id, None
 
         def _plan(self, task_id):
-            return SimpleNamespace(binding=SimpleNamespace(binding_hash="a" * 64))
+            return SimpleNamespace(binding=SimpleNamespace(binding_hash="blake3:" + "a" * 64))
 
         def _advance(self, trial):
             # No calculation is installed in this synthetic ledger; a completed record's
@@ -432,10 +447,16 @@ def test_feature_trial_reopens_equivalent_declarations_on_one_baseline(tmp_path:
         ),
         clock=lambda: datetime(2026, 10, 2, tzinfo=UTC),
     )
-    original = ledger.start("1" * 64, baseline, caller="HUMAN")
-    assert ledger.start("2" * 64, baseline, caller="EXTERNAL_AUTOMATION") == original
+    original = ledger.start("blake3:" + "1" * 64, baseline, caller="HUMAN")
+    assert ledger.start("blake3:" + "2" * 64, baseline, caller="EXTERNAL_AUTOMATION") == original
     assert len(ledger.records()) == 1
-    assert ledger.start("3" * 64, baseline, caller="HUMAN")["trial_id"] != original["trial_id"]
+    assert (
+        ledger.start("blake3:" + "3" * 64, baseline, caller="HUMAN")["trial_id"]
+        != original["trial_id"]
+    )
     another = UUID("00000000-0000-4000-8000-000000000002")
-    assert ledger.start("1" * 64, another, caller="HUMAN")["trial_id"] != original["trial_id"]
+    assert (
+        ledger.start("blake3:" + "1" * 64, another, caller="HUMAN")["trial_id"]
+        != original["trial_id"]
+    )
     assert len(ledger.records()) == 3

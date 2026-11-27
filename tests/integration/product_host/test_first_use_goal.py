@@ -51,6 +51,7 @@ from alphalattice.interface.local_application.goals import (
     target_sessions,
 )
 from tests._support.history_fixtures import native_first_use
+from tests._support.identity_fixtures import fixture_digest
 from tests.portfolio_strategy_lab.host_requests import _json, _request
 from tests.portfolio_strategy_lab.node_runner import run_node
 from tests.researcher_methodology_surface.real_workspace import _source_loader_for
@@ -175,7 +176,7 @@ def test_a_first_use_goal_lets_its_agent_take_the_first_steps_and_ends_with_them
         (before,) = con.execute("SELECT coalesce(max(seq), 0) FROM event").fetchone()
 
     cursor = _json(live, "/api/activity")["cursor"]
-    plan = "a" * 64
+    plan = fixture_digest("unconfirmed plan")
     code, refused = command("network", "set", "--enabled", "true")
     assert code == 2 and refused["failure_code"] == "local_application.network_access_human_only"
     assert refused["person_questions"][0]["code"] == "network.workspace_access"
@@ -696,7 +697,7 @@ def test_a_first_use_delegates_only_its_steps_for_its_hours_and_is_never_revised
         "next_requests": {
             f"continue:{task}": {
                 "operation": "WORKSPACE_PREPARE_CONFIRM",
-                "preparation_plan_hash": "c" * 64,
+                "preparation_plan_hash": fixture_digest("continuation plan"),
             }
         },
     }
@@ -710,10 +711,10 @@ def test_a_first_use_delegates_only_its_steps_for_its_hours_and_is_never_revised
             goal,
             Request(
                 operation="DATA_ISSUE_CONFIRM",
-                data_issue_case_token="a" * 64,
-                data_issue_evidence_hash="b" * 64,
+                data_issue_case_token=fixture_digest("data issue case"),
+                data_issue_evidence_hash=fixture_digest("data issue evidence"),
                 data_issue_option_id="retain",
-                data_issue_option_hash="c" * 64,
+                data_issue_option_hash=fixture_digest("data issue option"),
             ),
             body,
             refused,
@@ -722,7 +723,11 @@ def test_a_first_use_delegates_only_its_steps_for_its_hours_and_is_never_revised
     assert answer["continuation_problem"]["failure_code"] == "workspace_preparation.binding_changed"
     assert answer["continuation_problem"]["detail"]
     assert answer["next_requests"] == body["next_requests"]
-    case = SimpleNamespace(run_id=str(UUID(int=9)), case_token="a" * 64, evidence_hash="b" * 64)
+    case = SimpleNamespace(
+        run_id=str(UUID(int=9)),
+        case_token=fixture_digest("data issue case"),
+        evidence_hash=fixture_digest("data issue evidence"),
+    )
     with monkeypatch.context() as ended:
         ended.setattr(app.store, "head", lambda _: goal.model_copy(update={"state": "ABANDONED"}))
         assert (
@@ -1134,7 +1139,7 @@ def test_a_first_use_decides_its_own_preparations_data_issue_and_its_preparation
         offered = preview["next_requests"]["confirm"]
         for wrong, failure in (
             (
-                {**offered, "data_issue_case_token": "0" * 64},
+                {**offered, "data_issue_case_token": fixture_digest("stale case")},
                 "feature_input.case_no_longer_pending",
             ),
             (
@@ -1200,7 +1205,7 @@ def test_a_first_use_decides_its_own_preparations_data_issue_and_its_preparation
                 for key, value in (
                     ("operation", "DATA_ISSUE_PREVIEW"),
                     ("status", "REFUSED"),
-                    ("case_token", "0" * 64),
+                    ("case_token", fixture_digest("different recorded case")),
                     ("option_id", "other"),
                     ("agent_session", OTHER_SESSION),
                     ("delegation", "other"),

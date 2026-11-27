@@ -53,6 +53,8 @@ from alphalattice.interface.local_application.answers import (
     ExperienceRecordAnswer,
 )
 from alphalattice.kernel.config import Change, override
+from alphalattice.kernel.identity import blake3_filename
+from tests._support.identity_fixtures import fixture_digest
 from tests.workspace_task_runner.task_control_support import task_contract
 
 TEST_SOURCE = "src/alphalattice/foundation/data_layer/history.py"
@@ -548,9 +550,9 @@ def _carried_results(tmp_path: Path):
             "holding_end_open_split_adjusted": [101.0],
             "period_dividend_split_adjusted": [0.0],
             "simple_return": [0.01],
-            "entry_source_row_hash": ["1" * 64],
-            "holding_end_source_row_hash": ["2" * 64],
-            "row_hash": ["3" * 64],
+            "entry_source_row_hash": [fixture_digest("1")],
+            "holding_end_source_row_hash": [fixture_digest("2")],
+            "row_hash": [fixture_digest("3")],
         }
     )
     series = pa.table({"name": ["value"], "session_date": [date(2024, 1, 2)], "value": [-0.0]})
@@ -563,18 +565,18 @@ def _carried_results(tmp_path: Path):
         }
     )
     results = (
-        ("portfolio_benchmark", "b" * 64, "series", series),
-        ("portfolio_execution_series", "c" * 64, "series", series),
-        ("portfolio_report_holding", "d" * 64, "holding", holding),
+        ("portfolio_benchmark", fixture_digest("b"), "series", series),
+        ("portfolio_execution_series", fixture_digest("c"), "series", series),
+        ("portfolio_report_holding", fixture_digest("d"), "holding", holding),
     )
     workspace, source = tmp_path / "workspace", tmp_path / "source-root"
     workspace.mkdir()
     history.open_history("source", "workspace", workspace, source)
     try:
-        history.write_execution_outcome("a" * 64, outcome)
+        history.write_execution_outcome(fixture_digest("a"), outcome)
         for kind, digest, table, values in results:
             history.write_portfolio_result(kind, digest, {"kind": kind}, values, result_table=table)
-        expected = history.read_execution_outcome("a" * 64)
+        expected = history.read_execution_outcome(fixture_digest("a"))
         held = {
             kind: history.read_portfolio_result(kind, digest, result_table=table)
             for kind, digest, table, _ in results
@@ -612,7 +614,7 @@ def test_a_copy_carries_its_outcomes_and_portfolio_results_to_another_root(
     copy.mkdir()
     history.open_history("other", "other", tmp_path, target)  # the root keeps them already
     try:
-        history.write_execution_outcome("a" * 64, outcome)
+        history.write_execution_outcome(fixture_digest("a"), outcome)
         for kind, digest, table, _ in results:
             history.write_portfolio_result(kind, digest, *held[kind], result_table=table)
     finally:
@@ -640,10 +642,10 @@ def test_a_copy_carries_its_outcomes_and_portfolio_results_to_another_root(
     history.open_history("copy", "copy", copy, target, carried_checks=_proved(seen))
     monkeypatch.undo()
     try:
-        assert sorted(seen) == [(copy, digit * 64) for digit in "abcd"]
+        assert sorted(seen) == sorted((copy, fixture_digest(digit)) for digit in "abcd")
         assert not history.carried_result_files(copy)  # admitted, and gone
         assert durable == [4]  # every hold committed before the first carried file went
-        assert history.read_execution_outcome("a" * 64).equals(expected)
+        assert history.read_execution_outcome(fixture_digest("a")).equals(expected)
         for kind, digest, table, _ in results:
             profile, rows = history.read_portfolio_result(kind, digest, result_table=table)
             assert (profile, rows.cast(held[kind][1].schema)) == held[kind]
@@ -651,7 +653,12 @@ def test_a_copy_carries_its_outcomes_and_portfolio_results_to_another_root(
     finally:
         history.close_history()
 
-    stray = copy / history.CARRIED_RESULTS / "results" / f"{'e' * 64}.parquet"
+    stray = (
+        copy
+        / history.CARRIED_RESULTS
+        / "results"
+        / f"{blake3_filename(fixture_digest('e'))}.parquet"
+    )
     stray.parent.mkdir(parents=True)
     stray.write_bytes(b"")
     with history.own_root(target):

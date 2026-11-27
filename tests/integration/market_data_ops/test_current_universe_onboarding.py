@@ -7,7 +7,6 @@ import threading
 from collections.abc import Sequence
 from dataclasses import replace
 from datetime import UTC, date, datetime, timedelta
-from hashlib import sha256
 from pathlib import Path
 
 import pytest
@@ -42,6 +41,7 @@ from alphalattice.foundation.market_data_ops.sources.universe import (
 )
 from alphalattice.foundation.market_data_ops.storage import world_reads
 from alphalattice.foundation.market_data_ops.storage.duckdb import MarketDataRepository
+from alphalattice.kernel.identity import blake3_digest
 from tests.workspace_maintenance.audit_workspace import audit_one
 from tests.workspace_maintenance.local_data_provider import flat_adjusted_close_history
 
@@ -303,9 +303,9 @@ def _bootstrap(
         data_validity_class=provisional.data_validity_class,
         sources=provisional.sources,
         candidates=provisional.candidates,
-        content_hash=sha256(
+        content_hash=blake3_digest(
             json.dumps(document, ensure_ascii=False, sort_keys=True, separators=(",", ":")).encode()
-        ).hexdigest(),
+        ),
     )
     return CurrentUniverseBootstrap(
         source_manifest=manifest,
@@ -555,7 +555,7 @@ def test_full_onboarding_resumes_without_refetching_and_freezes_quality_manifest
         resumed.research_manifest,
         manifest_id=f"{resumed.research_manifest.manifest_id}:feature-input-admitted",
         listings=(aapl,),
-        revision_sha256="f" * 64,
+        revision_sha256="blake3:" + "f" * 64,
     )
     store.bootstrap(gateway_manifest)
     connection = store._connect()
@@ -567,12 +567,12 @@ def test_full_onboarding_resumes_without_refetching_and_freezes_quality_manifest
             )
             """,
             [
-                "a" * 64,
+                "blake3:" + "a" * 64,
                 resumed.research_manifest.revision_sha256,
                 gateway_manifest.manifest_id,
                 gateway_manifest.revision_sha256,
-                "b" * 64,
-                "c" * 64,
+                "blake3:" + "b" * 64,
+                "blake3:" + "c" * 64,
                 AS_OF,
                 OBSERVED_AT.replace(tzinfo=None),
                 1,
@@ -647,7 +647,7 @@ def test_full_onboarding_resumes_without_refetching_and_freezes_quality_manifest
     terminal_manifest = replace(
         gateway_manifest,
         manifest_id=f"{gateway_manifest.manifest_id}:next-admission",
-        revision_sha256="e" * 64,
+        revision_sha256="blake3:" + "e" * 64,
     )
     store.bootstrap(terminal_manifest)
     connection = store._connect()
@@ -659,12 +659,12 @@ def test_full_onboarding_resumes_without_refetching_and_freezes_quality_manifest
             )
             """,
             [
-                "d" * 64,
+                "blake3:" + "d" * 64,
                 gateway_manifest.revision_sha256,
                 terminal_manifest.manifest_id,
                 terminal_manifest.revision_sha256,
-                "b" * 64,
-                "c" * 64,
+                "blake3:" + "b" * 64,
+                "blake3:" + "c" * 64,
                 AS_OF,
                 (OBSERVED_AT + timedelta(minutes=1)).replace(tzinfo=None),
                 1,
@@ -1077,7 +1077,7 @@ def test_scoped_candidate_onboarding_preserves_scope_and_does_not_refetch_other_
         connection.execute(
             "UPDATE current_universe_onboarding SET research_manifest_revision=? "
             "WHERE onboarding_id=?",
-            ["f" * 64, runner.onboarding_id],
+            ["blake3:" + "f" * 64, runner.onboarding_id],
         )
     with pytest.raises(ValueError, match="completed_onboarding_binding_invalid"):
         resumed.run(observed_at=OBSERVED_AT)

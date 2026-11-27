@@ -9,6 +9,7 @@ import shutil
 import threading
 import time
 import urllib.error
+import urllib.parse
 import urllib.request
 from collections.abc import Iterator
 from dataclasses import replace
@@ -59,9 +60,10 @@ from alphalattice.interface.local_application.portfolio_research import (
     PortfolioResearchRequestDocument as PortfolioResearchAgentRequest,
 )
 from alphalattice.investment.portfolio_strategy_lab.policies.installed_strategies import (
-    BROAD_FEATURE_PACKAGE,
+    BROAD_FEATURE_STRATEGY_ID,
     PRODUCT_EVIDENCE_ROOT_KEY,
 )
+from alphalattice.kernel.identity import blake3_filename, is_blake3
 from alphalattice.oversight.chief_risk_officer.decision.portfolio_review import (
     PortfolioReviewPublication,
 )
@@ -71,6 +73,7 @@ from alphalattice.oversight.chief_risk_officer.runtime.portfolio_review_task imp
 )
 from alphalattice.protocols.actor_execution.answers import AgentAnswerRecord, answer_slot
 from alphalattice.protocols.actor_execution.bundles import bundle_slot
+from tests._support.identity_fixtures import fixture_digest
 from tests.alternative_evidence_desk.planted_corpus import _NOW, _CitingActor
 from tests.alternative_evidence_desk.review_dossiers import controlled_answer
 from tests.alternative_evidence_desk.review_http_support import (
@@ -220,7 +223,9 @@ def test_native_analysis_cli_prepares_submits_and_reviews_without_managed_actors
     answer = _CitingActor(topics=topics)(packet=packet).answer.model_dump(mode="json")
     document = {**exported["submission_template"], "analysis_answer": answer}
     writes = service.review.artifacts.write_count
-    bad = client.request({**document, "analysis_context_hash": "a" * 64})
+    bad = client.request(
+        {**document, "analysis_context_hash": fixture_digest("stale analysis context")}
+    )
     assert "external_analysis_binding_changed" in bad["refused"]
     status, http_bad = service.request(
         "/api/evidence/analysis",
@@ -229,7 +234,7 @@ def test_native_analysis_cli_prepares_submits_and_reviews_without_managed_actors
             **selected,
             "task_id": str(source_id),
             "evidence_unit_id": ONE_UNIT,
-            "analysis_context_hash": "a" * 64,
+            "analysis_context_hash": fixture_digest("stale analysis context"),
             "analysis_answer": answer,
         },
     )
@@ -478,17 +483,21 @@ def test_a_captured_preparation_is_reused_after_time_moves_on(
         assert len(service.registry.tasks()) == count + 1
         assert (
             service.review._resumable_preparation(
-                BookSelector(result_hash="f" * 64), scope, now=now[0]
+                BookSelector(result_hash=fixture_digest("different result")), scope, now=now[0]
             )
             is None
         )
         with monkeypatch.context() as changed:
-            changed.setattr(adapter, "run_binding_hash", lambda **_kwargs: "f" * 64)
+            changed.setattr(
+                adapter, "run_binding_hash", lambda **_kwargs: fixture_digest("changed run binding")
+            )
             assert service.review._resumable_preparation(chosen, scope, now=now[0]) is None
 
         # A binding the workspace no longer describes is refused by name and
         # points back to the preview; nothing is admitted.
-        moved = client.request({**captured, "preparation_binding_hash": "a" * 64})
+        moved = client.request(
+            {**captured, "preparation_binding_hash": fixture_digest("stale preparation binding")}
+        )
         assert moved.get("disposition") == "REFUSED_PREPARATION_BINDING_CHANGED", moved
         assert moved["failure_code"] == "alternative_evidence.preparation_binding_changed"
         assert moved["next_requests"]["preview"]["operation"] == "EVIDENCE_PREVIEW"
@@ -514,7 +523,8 @@ def test_a_captured_preparation_is_reused_after_time_moves_on(
         current_binding = adapter.runtime.document_binding_hash
         adapter._completed_units.clear()
         adapter._absent_units.clear()
-        adapter.runtime.document_binding_hash = "b" * 64
+        new_binding = fixture_digest("changed document parser")
+        adapter.runtime.document_binding_hash = new_binding
         try:
             with pytest.raises(ValueError, match="preparation_superseded"):
                 adapter.preparation_window(service.registry.task(UUID(task_id)), ONE_UNIT)
@@ -530,7 +540,9 @@ def test_a_captured_preparation_is_reused_after_time_moves_on(
             service.drain()
             fresh = service.registry.task(UUID(superseded["task_id"]))
             assert fresh.lifecycle is TaskLifecycle.SUCCEEDED
-            assert adapter._document_set(fresh, ONE_UNIT).canonicalization_binding_hash == "b" * 64
+            assert (
+                adapter._document_set(fresh, ONE_UNIT).canonicalization_binding_hash == new_binding
+            )
             first_set = adapter._document_set(service.registry.task(UUID(task_id)), ONE_UNIT)
             assert adapter._document_set(fresh, ONE_UNIT).document_set_hash != (
                 first_set.document_set_hash
@@ -615,9 +627,9 @@ def test_external_dossier_submission_is_bound_and_recovers_each_own_answer(
     document = {**exported["submission_template"], "review_answer": submission}
     assert document["result_hash"] == service.result_hash()
     for field in ("review_dossier_hash", "review_policy_hash", "review_schema_hash"):
-        assert client.request({**document, field: "a" * 64})["refused"].endswith(
-            "chief_risk_officer.external_review_binding_changed"
-        )
+        assert client.request({**document, field: fixture_digest(("wrong review binding", field))})[
+            "refused"
+        ].endswith("chief_risk_officer.external_review_binding_changed")
     invented = json.loads(json.dumps(submission))
     invented["risks"][0]["findings"] = ["F999"]
     refused = client.request({**document, "review_answer": invented})
@@ -640,7 +652,10 @@ def test_external_dossier_submission_is_bound_and_recovers_each_own_answer(
     def changed_contract(**facts):
         envelope, _, _ = original_contract(**facts)
         return portfolio_review_task_contract(
-            review_key_payload={**envelope.payload, "decision_policy_hash": "a" * 64}
+            review_key_payload={
+                **envelope.payload,
+                "decision_policy_hash": fixture_digest("different review policy"),
+            }
         )
 
     with monkeypatch.context() as patch:
@@ -727,9 +742,9 @@ def test_external_dossier_submission_is_bound_and_recovers_each_own_answer(
     assert any("EXTERNAL_AUTOMATION" in line for line in projection["review_attribution"])
     reused = client.request(document)
     assert reused["disposition"] == "REUSED_EXACT"
-    assert "history=review%3A" + reused["review_publication_hash"] in client.selected_url(
-        document, reused
-    )
+    selected_url = urllib.parse.urlsplit(client.selected_url(document, reused))
+    expected_history = "review:" + reused["review_publication_hash"]
+    assert urllib.parse.parse_qs(selected_url.query)["history"] == [expected_history]
     assert len(service.registry.tasks()) == count + 2
 
 
@@ -954,7 +969,7 @@ def bare_service(tmp_path: Path, http_book) -> Iterator[_Service]:
 
 
 def _no_identities(body: dict[str, Any], *, allowed: set[str]) -> bool:
-    return set(re.findall(r"[0-9a-f]{64}", json.dumps(body))) <= allowed
+    return set(re.findall(r"(?:blake3:)?[0-9a-f]{64}", json.dumps(body))) <= allowed
 
 
 def _drive_whole_route(service: _Service) -> str:
@@ -1094,7 +1109,9 @@ def test_an_exact_reuse_over_http_admits_no_task_and_calls_no_actor(
     authority = build_authority(tmp_path=tmp_path / "legacy-evidence", report=report)
     shutil.copytree(artifacts.root, authority.artifacts.root, dirs_exist_ok=True)
     saved = (
-        authority.artifacts.root / "analysis-publications" / f"{published.publication_hash}.json"
+        authority.artifacts.root
+        / "analysis-publications"
+        / f"{blake3_filename(published.publication_hash)}.json"
     )
     sealed = saved.read_bytes()
     clock = [_NOW]
@@ -1213,6 +1230,7 @@ def test_the_real_composition_starts_and_refuses_without_a_provider_credential(
     from alphalattice.evidence.alternative_evidence.runtime.service import (
         AlternativeEvidenceDocumentIntelligenceRuntime,
     )
+    from tests._support.portfolio_strategy_lab_fixtures import _write_package
 
     probe = AlternativeEvidenceDocumentIntelligenceRuntime(
         artifact_root=workspace / "runtime" / "artifacts",
@@ -1228,17 +1246,17 @@ def test_the_real_composition_starts_and_refuses_without_a_provider_credential(
     binding, _registry_path = _package(workspace, semantic_capability_hash=capability_hash)
     # The manifest carries the strategy artifact roots the installed catalog
     # needs, exactly as a shipped workspace does.
-    (workspace / "artifacts" / "iw184").mkdir(parents=True, exist_ok=True)
+    replay_root = _write_package(workspace / "artifacts" / "iw184")
     publish_research_workspace_manifest(
         workspace,
         ResearchWorkspaceManifest.create(
             workspace_id="qa-gate-9c6a-no-credential",
-            default_strategy_package_id=BROAD_FEATURE_PACKAGE.strategy_id,
+            default_strategy_package_id=BROAD_FEATURE_STRATEGY_ID,
             default_score_source_mode="HISTORICAL_ARRAY_REPLAY",
             strategy_artifacts=(
                 ResearchWorkspaceArtifact(
                     artifact_key=PRODUCT_EVIDENCE_ROOT_KEY,
-                    relative_path="artifacts/iw184",
+                    relative_path=replay_root.relative_to(workspace).as_posix(),
                 ),
             ),
             evidence_review=binding,
@@ -1325,7 +1343,7 @@ def test_local_web_starts_and_serves_portfolio_without_a_provider_credential(
     """Local web starts and serves portfolio without a provider credential."""
 
     result_hash = credential_free_service.result_hash()
-    assert len(result_hash) == 64
+    assert is_blake3(result_hash)
     report = credential_free_service.get(f"/api/report?result_hash={result_hash}")
     assert report["report_hash"]
     assert report["book"]["positions"]
@@ -1515,14 +1533,17 @@ def test_a_person_and_the_installed_agent_choose_and_are_recorded_apart(
     status, body = service.request(
         "/api/evidence-select",
         method="POST",
-        payload={"result_hash": result_hash, "analysis_publication_hash": "0" * 64},
+        payload={
+            "result_hash": result_hash,
+            "analysis_publication_hash": fixture_digest("unknown analysis"),
+        },
     )
     assert status == 400, (status, body)
     refused = service.agent(
         PortfolioResearchAgentRequest(
             operation="EVIDENCE_SELECT",
             result_hash=result_hash,
-            analysis_publication_hash="0" * 64,
+            analysis_publication_hash=fixture_digest("unknown analysis"),
         )
     )
     assert "refused" in refused
@@ -1775,16 +1796,20 @@ def test_a_review_request_naming_a_book_the_workspace_does_not_hold_is_refused_i
     try:
         session = "2026-09-29"
         cases = {
-            "product_host.evidence_review_result_unknown": {"result_hash": "f" * 64},
-            "product_host.evidence_review_handoff_unknown": {"handoff_hash": "e" * 64},
+            "product_host.evidence_review_result_unknown": {
+                "result_hash": fixture_digest("unknown portfolio result")
+            },
+            "product_host.evidence_review_handoff_unknown": {
+                "handoff_hash": fixture_digest("unknown handoff")
+            },
             "product_host.evidence_review_experiment_not_published": {
                 "experiment_task_id": str(UUID(int=7)),
-                "experiment_receipt_hash": "d" * 64,
+                "experiment_receipt_hash": fixture_digest("unknown experiment"),
                 "portfolio_session": session,
             },
             "product_host.evidence_review_update_task_mismatch": {
                 "update_task_id": str(UUID(int=9)),
-                "update_publication_hash": "c" * 64,
+                "update_publication_hash": fixture_digest("unknown update"),
                 "position_basis": "CONDITIONAL_ESTIMATE",
             },
         }
@@ -1805,7 +1830,9 @@ def test_the_report_door_distinguishes_unknown_missing_child_and_corrupt_content
     workspace, report = http_book
     service = start_service(workspace, build_authority(tmp_path=tmp_path, report=report), tmp_path)
     try:
-        status, body = service.request("/api/report?result_hash=" + "f" * 64)
+        status, body = service.request(
+            "/api/report?result_hash=" + fixture_digest("unknown portfolio result")
+        )
         assert (status, body["failure_code"]) == (200, "portfolio_research.result_not_found")
         assert body["next_requests"] == {"results": {"operation": "RESULTS"}}
     finally:

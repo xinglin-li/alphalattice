@@ -30,7 +30,7 @@ from alphalattice.foundation.causal_outcomes.execution.methods import (
     verify_execution_outcome_method_seal_marker,
 )
 from alphalattice.foundation.factor_research.programs.sealed import seal_contract
-from alphalattice.kernel.identity import integrity_sha256
+from alphalattice.kernel.identity import BLAKE3_PATTERN, integrity_blake3, tagged_blake3
 
 type FloatArray = npt.NDArray[np.float64]
 
@@ -133,7 +133,7 @@ class FactorTargetPolicy(_Contract):
     source_action_semantics: Literal["provider-split-adjusted-open-and-period-dividend"] = (
         "provider-split-adjusted-open-and-period-dividend"
     )
-    policy_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
+    policy_hash: str = Field(pattern=BLAKE3_PATTERN)
 
     @model_validator(mode="after")  # type: ignore[untyped-decorator]
     def validate_identity(self) -> FactorTargetPolicy:
@@ -190,8 +190,8 @@ class FactorTargetQualityReport(_Contract):
     """
 
     kind: Literal["FactorTargetQualityReport"] = "FactorTargetQualityReport"
-    source_outcome_snapshot_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
-    policy_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
+    source_outcome_snapshot_hash: str = Field(pattern=BLAKE3_PATTERN)
+    policy_hash: str = Field(pattern=BLAKE3_PATTERN)
     row_count: int = Field(ge=1)
     formation_count: int = Field(ge=1)
     listing_count: int = Field(ge=1)
@@ -204,7 +204,7 @@ class FactorTargetQualityReport(_Contract):
     formula_mismatch_count: Literal[0] = 0
     duplicate_key_count: Literal[0] = 0
     nonpositive_gross_return_count: Literal[0] = 0
-    quality_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
+    quality_hash: str = Field(pattern=BLAKE3_PATTERN)
 
     @model_validator(mode="after")  # type: ignore[untyped-decorator]
     def validate_report(self) -> FactorTargetQualityReport:
@@ -250,17 +250,17 @@ class FactorTargetSurfaceManifest(_Contract):
     """
 
     kind: Literal["FactorTargetSurfaceManifest"] = "FactorTargetSurfaceManifest"
-    source_outcome_snapshot_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
+    source_outcome_snapshot_hash: str = Field(pattern=BLAKE3_PATTERN)
     source_outcome_manifest_ref: str = Field(min_length=1)
-    policy_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
-    quality_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
+    policy_hash: str = Field(pattern=BLAKE3_PATTERN)
+    quality_hash: str = Field(pattern=BLAKE3_PATTERN)
     first_formation_session: date
     last_formation_session: date
     formation_count: int = Field(ge=1)
     listing_count: int = Field(ge=1)
     row_count: int = Field(ge=1)
-    table_content_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
-    surface_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
+    table_content_hash: str = Field(pattern=BLAKE3_PATTERN)
+    surface_hash: str = Field(pattern=BLAKE3_PATTERN)
 
     @model_validator(mode="after")  # type: ignore[untyped-decorator]
     def validate_manifest(self) -> FactorTargetSurfaceManifest:
@@ -346,7 +346,7 @@ def _table_content_hash(table: pa.Table) -> str:
     sink = pa.BufferOutputStream()
     with pa.ipc.new_stream(sink, table.schema) as writer:
         writer.write_table(table.combine_chunks())
-    return integrity_sha256(sink.getvalue().to_pybytes()).hexdigest()
+    return tagged_blake3(integrity_blake3(sink.getvalue().to_pybytes()))
 
 
 def _ordered_source(source: pa.Table) -> pa.Table:

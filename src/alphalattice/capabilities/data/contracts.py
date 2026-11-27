@@ -12,9 +12,9 @@ from alphalattice.capabilities.data.enums import (
     UniverseIndex,
 )
 from alphalattice.capabilities.domain_contracts.domain.base import (
+    Blake3Identity,
     DomainModel,
     NonEmptyString,
-    Sha256Hex,
     ShortString,
     UtcDatetime,
     Uuid4,
@@ -35,7 +35,7 @@ class UniverseSource(DomainModel):
     source_uri: NonEmptyString
     selector: NonEmptyString
     retrieved_at: UtcDatetime
-    response_hash: Sha256Hex
+    response_hash: Blake3Identity
     license_class: LicenseClass
 
 
@@ -62,7 +62,7 @@ class UniverseManifest(DomainModel):
     decisions: tuple[UniverseMemberDecision, ...] = Field(min_length=1)
     members: tuple[ShortString, ...]
     data_validity_class: DataValidityClass
-    content_hash: Sha256Hex
+    content_hash: Blake3Identity
 
     @model_validator(mode="after")
     def validate_members(self) -> UniverseManifest:

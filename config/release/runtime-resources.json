@@ -7,7 +7,6 @@
     "CLAUDE.md": "Claude Code's project entry includes the shared agent guide.",
     "uv.lock": "The model contract checks declared libraries against the accepted lock.",
     "config/identity-roles.json": "Rule closure entries and numerical package selection.",
-    "config/identity-switch.json": "Preserve identities recorded before rule closure switching.",
     "config/identity-successors.json": "Read recorded identity successors on installed readback.",
     "config/package-architecture.json": "The checkout marker and the installed package owner map.",
     "config/requirements-retrieval.lock": "Pinned additions for explicitly selected retrieval setup.",

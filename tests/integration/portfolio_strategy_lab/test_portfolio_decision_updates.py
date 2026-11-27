@@ -12,7 +12,11 @@ import numpy as np
 import pytest
 
 from alphalattice.capabilities.domain_contracts.identity import canonical_hash
-from alphalattice.control.workspace_runtime.content_store import full_content_proof
+from alphalattice.control.workspace_runtime.content_store import (
+    CommittedIndex,
+    ContentAddressedStoreError,
+    full_content_proof,
+)
 from alphalattice.foundation.causal_outcomes.execution.contracts import LocalQAMarketSnapshot
 from alphalattice.foundation.causal_outcomes.execution.readers import planned_local_qa_schedule
 from alphalattice.foundation.market_data_ops.sources.contracts import (
@@ -46,6 +50,8 @@ from alphalattice.investment.portfolio_strategy_lab.reporting.static import (
     format_book_weight,
     render_decision_update,
 )
+from alphalattice.kernel.identity import blake3_filename
+from tests._support.identity_fixtures import fixture_digest
 from tests.portfolio_strategy_lab.local_web_support import TEST_PACKAGE
 from tests.portfolio_strategy_lab.synthetic_numerical import (
     HASH,
@@ -768,7 +774,7 @@ def test_publication_commit_recovers_an_orphan_and_retains_exact_html(numerical,
     page, _ = store.publish_html(render_decision_update(n.checkpoint, (value,)))
     value = PortfolioUpdatePublication.create(**_fields_without_hash(value, html_hash=page))
     store.publish_decision_update(value)
-    path = store.root / "decision-updates" / f"{value.content_hash}.json"
+    path = store.content.artifact_path(category="decision-updates", content_hash=value.content_hash)
     original = path.read_bytes()
     path.unlink()  # Only this test's materialized content; commit remains durable.
     assert store.decision_history(n.checkpoint.content_hash) == (value,)
@@ -821,7 +827,9 @@ def _assert_shared_continuation_reads(numerical, tmp_path, monkeypatch):
     assert app._observed(plan) == issued
     assert part_reads and len(part_reads) == len(set(part_reads))
 
-    removed = store.root / "decision-observation-parts" / f"{part_reads[0]}.json"
+    removed = store.content.artifact_path(
+        category="decision-observation-parts", content_hash=part_reads[0]
+    )
     body = removed.read_bytes()
     removed.unlink()
     with pytest.raises(ValueError, match="artifact_missing"):
@@ -834,7 +842,7 @@ def _assert_shared_continuation_reads(numerical, tmp_path, monkeypatch):
 def test_exact_reuse_revalidates_observation_and_html_children(
     numerical, tmp_path, monkeypatch, parts
 ):
-    """Real lost and damaged children stay distinct with or without error details."""
+    """Reuse distinguishes lost from damaged children and refuses the retired one-file source."""
     if parts:
         with monkeypatch.context() as probe:
             _assert_shared_continuation_reads(numerical, tmp_path / "shared", probe)
@@ -850,15 +858,24 @@ def test_exact_reuse_revalidates_observation_and_html_children(
     if parts:
         (uri,) = store.publish_decision_observations(observed)
         source_paths = (
-            store.root / "decision-observation-heads" / uri.rsplit("/", 1)[-1],
+            store.content.artifact_path(
+                category="decision-observation-heads",
+                content_hash=uri.rsplit("/", 1)[-1].removesuffix(".json"),
+            ),
             next((store.root / "decision-observation-parts").glob("*.json")),
-            store.root / "index/decision-observations" / f"{observed.content_hash}.json",
+            CommittedIndex(store.root, store.content).path(
+                "decision-observations", observed.content_hash
+            ),
         )
     else:
         store.content.publish_model(
             category="decision-observations", value=observed, identity_field="content_hash"
         )
-        source_paths = (store.root / "decision-observations" / f"{observed.content_hash}.json",)
+        source_paths = (
+            store.content.artifact_path(
+                category="decision-observations", content_hash=observed.content_hash
+            ),
+        )
     html_hash, _ = store.publish_html("<p>verified QA report</p>")
     plan = SimpleNamespace(
         market_hash=observed.content_hash,
@@ -873,8 +890,21 @@ def test_exact_reuse_revalidates_observation_and_html_children(
     monkeypatch.setattr(app, "_require", lambda plan: None)
     monkeypatch.setattr(app, "_publication", lambda plan: publication)
     monkeypatch.setattr(app, "_plan_of", lambda task, current=False: plan)
+    if not parts:
+        (legacy_path,) = source_paths
+        original = legacy_path.read_bytes()
+        with pytest.raises(
+            ContentAddressedStoreError,
+            match=rf"^content_store\.artifact_missing:{observed.content_hash}$",
+        ):
+            app.reusable(plan)
+        assert legacy_path.read_bytes() == original
+        return
     assert app.reusable(plan) is publication
-    for path in (store.root / "html" / f"{html_hash}.html", *source_paths):
+    html_path = store.content.artifact_path(
+        category="html", content_hash=html_hash, extension="html"
+    )
+    for path in (html_path, *source_paths):
         original = path.read_bytes()
         for missing in (False, True):
             if missing:
@@ -1089,7 +1119,7 @@ def test_prepared_captured_rows_keep_refusals_and_reject_forged_sources():
                 local_qa_snapshot_rows(captured, sessions=sessions, through=cutoff)
     assert prepared.rows(sessions=sessions, through=date(2026, 9, 9))[0].num_rows == 4
     for changed in (
-        {"content_hash": "0" * 64},
+        {"content_hash": fixture_digest("forged market snapshot")},
         {"ordered_listing_ids": ("B", "A")},
         {"bars": (*source.bars, source.bars[0])},
         {"bars": source.bars[::-1]},
@@ -1326,16 +1356,16 @@ def test_the_completed_scores_seam_refuses_a_changed_latest_chain_and_a_changed_
         score = seal_current_contract(
             FrozenComponentScoreSnapshot,
             {
-                "request_hash": "1" * 64,
-                "strategy_package_hash": "2" * 64,
-                "component_recipe_hash": "3" * 64,
-                "inference_authority_hash": "4" * 64,
-                "observation_snapshot_hash": "5" * 64,
+                "request_hash": fixture_digest("score request"),
+                "strategy_package_hash": fixture_digest("strategy package"),
+                "component_recipe_hash": fixture_digest("component recipe"),
+                "inference_authority_hash": fixture_digest("inference authority"),
+                "observation_snapshot_hash": fixture_digest("observation snapshot"),
                 "formation_session": date(2026, 9, day),
                 "ordered_listing_ids": ("a", "b"),
-                "feature_values_hashes": ("6" * 64,),
-                "model_identity_hashes": ("7" * 64,),
-                "projection_hash": "8" * 64,
+                "feature_values_hashes": (fixture_digest("feature values"),),
+                "model_identity_hashes": (fixture_digest("scoring model"),),
+                "projection_hash": fixture_digest("score projection"),
                 "scores": (0.5, None),
                 "live": (True, False),
                 "prediction_calls": 1,
@@ -1381,7 +1411,11 @@ def test_the_completed_scores_seam_refuses_a_changed_latest_chain_and_a_changed_
         completed(owner)
     refused.clear()
     (older,) = updates["older"]
-    path = next((tmp_path / "artifacts").rglob(f"{older.snapshot_hash}.json"))
+    path = (
+        store.root
+        / "current/frozen-component-scores"
+        / f"{blake3_filename(older.snapshot_hash)}.json"
+    )
     path.write_bytes(path.read_bytes().replace(b"0.5", b"0.6"))
     # A sealed score is proved under full proof (an export, the scrub; LAWS.md EV2).
     with (

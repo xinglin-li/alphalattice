@@ -36,6 +36,8 @@ from typing import Any, cast
 
 import yaml as yaml  # type: ignore[import-untyped]
 
+from alphalattice.kernel.identity import is_blake3
+
 from .contracts import AuthoringError
 
 FORBIDDEN_KEYS = frozenset(
@@ -259,7 +261,7 @@ def _require_selection_key(key: str) -> None:
 def _require_selection_value(value: str) -> None:
     if looks_like_python_path(value):
         raise AuthoringError("research_authoring.document_declares_python_path")
-    if _RESOLVED_IDENTITY.match(value) is not None:
+    if is_blake3(value) or _RESOLVED_IDENTITY.fullmatch(value) is not None:
         raise AuthoringError("research_authoring.document_states_resolved_identity")
     if _ABSOLUTE_PATH.match(value) is not None:
         raise AuthoringError("research_authoring.document_states_absolute_path")
@@ -267,6 +269,8 @@ def _require_selection_value(value: str) -> None:
 
 def looks_like_python_path(value: str) -> bool:
     """Reject `package.module:callable` and `alphalattice.a.b.C` shaped strings."""
+    if is_blake3(value):
+        return False
     if ":" in value and " " not in value:
         left, _, right = value.partition(":")
         if left.replace(".", "").replace("_", "").isalnum() and right.isidentifier():

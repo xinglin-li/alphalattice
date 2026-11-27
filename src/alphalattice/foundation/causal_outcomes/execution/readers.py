@@ -26,6 +26,7 @@ from alphalattice.foundation.market_data_ops.sources.contracts import (
 )
 from alphalattice.foundation.market_data_ops.sources.manifest import UniverseManifest
 from alphalattice.foundation.market_data_ops.storage.duckdb import MarketDataRepository
+from alphalattice.kernel.identity import blake3_filename, blake3_from_filename
 
 from .artifacts import (
     DEVELOPMENT_ONLY_MANIFEST_CATEGORY,
@@ -1067,26 +1068,31 @@ class CausalExecutionOutcomePolicyHoldoutReader(CausalExecutionOutcomeDevelopmen
             if active != {"claim_hash": self.authority.claim_hash}:
                 raise ValueError("active claim mismatch")
             claim = json.loads(
-                (root / "claims" / "content" / f"{self.authority.claim_hash}.json").read_text(
-                    encoding="utf-8"
-                )
+                (
+                    root
+                    / "claims"
+                    / "content"
+                    / f"{blake3_filename(self.authority.claim_hash)}.json"
+                ).read_text(encoding="utf-8")
             )
             mandate = json.loads(
-                (root / "mandates" / f"{self.authority.mandate_hash}.json").read_text(
-                    encoding="utf-8"
-                )
+                (
+                    root / "mandates" / f"{blake3_filename(self.authority.mandate_hash)}.json"
+                ).read_text(encoding="utf-8")
             )
             authority_index = json.loads(
                 (
                     root
                     / "execution-outcome-authorities"
                     / "by-claim"
-                    / f"{self.authority.claim_hash}.json"
+                    / f"{blake3_filename(self.authority.claim_hash)}.json"
                 ).read_text(encoding="utf-8")
             )
             durable_authority = json.loads(
                 (
-                    root / "execution-outcome-authorities" / f"{self.authority.authority_hash}.json"
+                    root
+                    / "execution-outcome-authorities"
+                    / f"{blake3_filename(self.authority.authority_hash)}.json"
                 ).read_text(encoding="utf-8")
             )
         except Exception as error:
@@ -1123,7 +1129,10 @@ class CausalExecutionOutcomePolicyHoldoutReader(CausalExecutionOutcomeDevelopmen
         """Report physical release presence without treating corruption as absence."""
         artifacts = _ExecutionOutcomeArtifactStore(artifact_root)
         return (
-            artifacts.root / cls._RELEASE_CATEGORY / "by-claim" / f"{claim_hash}.json"
+            artifacts.root
+            / cls._RELEASE_CATEGORY
+            / "by-claim"
+            / f"{blake3_filename(claim_hash)}.json"
         ).is_file()
 
     @classmethod
@@ -1144,7 +1153,12 @@ class CausalExecutionOutcomePolicyHoldoutReader(CausalExecutionOutcomeDevelopmen
 
         """
         artifacts = _ExecutionOutcomeArtifactStore(artifact_root)
-        index = artifacts.root / cls._RELEASE_CATEGORY / "by-claim" / f"{claim_hash}.json"
+        index = (
+            artifacts.root
+            / cls._RELEASE_CATEGORY
+            / "by-claim"
+            / f"{blake3_filename(claim_hash)}.json"
+        )
         try:
             payload = json.loads(index.read_text(encoding="utf-8"))
             if (
@@ -1193,7 +1207,10 @@ class CausalExecutionOutcomePolicyHoldoutReader(CausalExecutionOutcomeDevelopmen
             current, through=final_point.holding_end_session
         )
         release_index = (
-            self.artifacts.root / self._RELEASE_CATEGORY / "by-claim" / f"{self.claim_hash}.json"
+            self.artifacts.root
+            / self._RELEASE_CATEGORY
+            / "by-claim"
+            / f"{blake3_filename(self.claim_hash)}.json"
         )
         if release_index.is_file():
             durable = self.load_release(
@@ -1238,7 +1255,10 @@ class CausalExecutionOutcomePolicyHoldoutReader(CausalExecutionOutcomeDevelopmen
             identity_field="release_hash",
         )
         index = (
-            self.artifacts.root / self._RELEASE_CATEGORY / "by-claim" / f"{self.claim_hash}.json"
+            self.artifacts.root
+            / self._RELEASE_CATEGORY
+            / "by-claim"
+            / f"{blake3_filename(self.claim_hash)}.json"
         )
         self.artifacts._atomic_write(
             index,
@@ -1494,8 +1514,11 @@ def committed_outcome_chunks(
                     chunks.extend(manifest.sealed_holdout_chunks)
         if not bound:
             for index in json_files(store.root / "policy-holdout-releases" / "by-claim"):
+                claim_hash = blake3_from_filename(index.stem)
+                if claim_hash is None:
+                    raise ValueError("causal_outcomes.upgrade_path_invalid")
                 release = CausalExecutionOutcomePolicyHoldoutReader.load_release(
-                    artifact_root=artifact_root, claim_hash=index.stem
+                    artifact_root=artifact_root, claim_hash=claim_hash
                 )
                 chunks.append(release.extension_chunk)
         for chunk in chunks:

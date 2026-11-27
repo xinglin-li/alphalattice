@@ -4,7 +4,6 @@ from __future__ import annotations
 
 import json
 import math
-import re
 import time
 from collections.abc import Callable, Iterable, Mapping, Sequence
 from contextlib import AbstractContextManager, contextmanager, nullcontext
@@ -102,6 +101,7 @@ from alphalattice.foundation.market_data_ops.storage.duckdb import (
     raw_bars_from_table,
 )
 from alphalattice.kernel.clock import observation_time
+from alphalattice.kernel.identity import is_blake3
 
 if TYPE_CHECKING:
     import duckdb
@@ -5319,7 +5319,7 @@ class PanelStateRepository(WorkspaceRepository):
         if (
             item.continued_from_quarantine_hash != continuation.continued_from_quarantine_hash
             or document.get("continuation_hash") != continuation.continuation_hash
-            or not re.fullmatch(r"[0-9a-f]{64}", continuation.continuation_hash)
+            or not is_blake3(continuation.continuation_hash)
         ):
             raise ValueError("feature_input.continuation_identity_mismatch")
         connection = self._connect()

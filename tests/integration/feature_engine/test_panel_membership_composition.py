@@ -8,13 +8,13 @@ from that one on.
 
 from __future__ import annotations
 
-import hashlib
 from datetime import date
 from pathlib import Path
 
 import pyarrow.parquet as pq
 import pytest
 
+from alphalattice.capabilities.domain_contracts.identity import canonical_hash
 from alphalattice.capabilities.quant.sector_history import SectorHistory
 from alphalattice.control.workspace_runtime.artifacts import ArtifactResolver
 from alphalattice.foundation.feature_engine.contracts import (
@@ -35,7 +35,7 @@ SECTORS = {"L1": "Energy", "L2": "Energy", "L3": "Tech", "L4": "Tech"}
 
 def _history(sectors: dict[str, str]) -> SectorHistory:
     """A map every session reads, as the Feature build hands it."""
-    return SectorHistory(current_revision="2" * 64, current=sectors)
+    return SectorHistory(current_revision="blake3:" + "2" * 64, current=sectors)
 
 
 YEAR_ONE = (date(2025, 12, 29), date(2025, 12, 30), date(2025, 12, 31))
@@ -48,8 +48,8 @@ def _binding(
     return PanelCompositionBinding(
         manifest_revision=manifest_revision,
         sector_revision=sector_revision,
-        catalog_hash="3" * 64,
-        policy_hash="4" * 64,
+        catalog_hash="blake3:" + "3" * 64,
+        policy_hash="blake3:" + "4" * 64,
         panel_binding_hash=binding_hash,
         history_start=YEAR_ONE[0],
         as_of_session=as_of,
@@ -88,9 +88,7 @@ def _availability(sessions, *, binding_hash: str) -> list[dict[str, object]]:
         {
             "session_date": session.isoformat(),
             "factor_id": factor_id,
-            "availability_hash": hashlib.sha256(
-                f"{session.isoformat()}:{factor_id}".encode()
-            ).hexdigest(),
+            "availability_hash": canonical_hash([session.isoformat(), factor_id]),
             "panel_binding_hash": binding_hash,
         }
         for session in sessions
@@ -105,7 +103,7 @@ def _manifest(composition: PreparedPanelComposition, *, spy_revision: str) -> di
     return {
         "panel_binding_hash": binding.panel_binding_hash,
         "history_start": binding.history_start.isoformat(),
-        "listing_set_hash": "0" * 64,
+        "listing_set_hash": "blake3:" + "0" * 64,
         "chunks": [
             {
                 "year": chunk.year,
@@ -161,24 +159,26 @@ def test_membership_change_moves_only_the_sessions_from_its_effective_one(
     first = owner.begin(
         operation_id="day-one",
         binding=_binding(
-            manifest_revision="1" * 64,
-            sector_revision="2" * 64,
-            binding_hash="5" * 64,
+            manifest_revision="blake3:" + "1" * 64,
+            sector_revision="blake3:" + "2" * 64,
+            binding_hash="blake3:" + "5" * 64,
             as_of=YEAR_TWO[-1],
         ),
         base_manifest=None,
         sessions=sessions,
         listing_ids=three,
-        spy_revision="a" * 64,
+        spy_revision="blake3:" + "a" * 64,
         membership=day_one_membership,
         sector_history=_history(SECTORS),
     )
     first.stage_patch(
         rows=_rows(sessions, day_one_members),
         factor_ids=FACTORS,
-        materialization_receipt_hash="a" * 64,
+        materialization_receipt_hash="blake3:" + "a" * 64,
     )
-    day_one = first.finalize(availability=_availability(sessions, binding_hash="5" * 64))
+    day_one = first.finalize(
+        availability=_availability(sessions, binding_hash="blake3:" + "5" * 64)
+    )
     assert [chunk.row_count for chunk in day_one.chunks] == [9, 9]
     assert len(day_one.cross_sections) == 2  # one range per year, one identity
     identity_one = day_one.chunks[0].cross_sections[0].cross_section_identity
@@ -194,15 +194,15 @@ def test_membership_change_moves_only_the_sessions_from_its_effective_one(
     second = owner.begin(
         operation_id="day-two",
         binding=_binding(
-            manifest_revision="7" * 64,
-            sector_revision="8" * 64,
-            binding_hash="6" * 64,
+            manifest_revision="blake3:" + "7" * 64,
+            sector_revision="blake3:" + "8" * 64,
+            binding_hash="blake3:" + "6" * 64,
             as_of=YEAR_TWO[-1],
         ),
-        base_manifest=_manifest(day_one, spy_revision="a" * 64),
+        base_manifest=_manifest(day_one, spy_revision="blake3:" + "a" * 64),
         sessions=sessions,
         listing_ids=four,
-        spy_revision="b" * 64,
+        spy_revision="blake3:" + "b" * 64,
         membership=day_two_membership,
         sector_history=_history(SECTORS),
     )
@@ -213,16 +213,16 @@ def test_membership_change_moves_only_the_sessions_from_its_effective_one(
     second.stage_patch(
         rows=_rows(YEAR_TWO[1:], day_two_members, offset=100.0),
         factor_ids=FACTORS,
-        materialization_receipt_hash="b" * 64,
+        materialization_receipt_hash="blake3:" + "b" * 64,
     )
     availability = [
         {
             **item,
-            "panel_binding_hash": "6" * 64
+            "panel_binding_hash": "blake3:" + "6" * 64
             if item["session_date"] >= entry.isoformat()
-            else "5" * 64,
+            else "blake3:" + "5" * 64,
         }
-        for item in _availability(sessions, binding_hash="5" * 64)
+        for item in _availability(sessions, binding_hash="blake3:" + "5" * 64)
     ]
     day_two = second.finalize(availability=availability)
     assert (day_two.reused_chunk_count, day_two.written_chunk_count) == (1, 1)
@@ -249,23 +249,23 @@ def test_membership_change_moves_only_the_sessions_from_its_effective_one(
     )
     assert set(merged.loc[merged["session_date"] >= entry, "listing_id"]) == set(four)
     assert "L4" not in set(before_entry["listing_id"])
-    assert day_two.partition_origins["5" * 64].manifest_revision == "1" * 64
-    assert day_two.partition_origins["6" * 64].sector_revision == "8" * 64
+    assert day_two.partition_origins["blake3:" + "5" * 64].manifest_revision == "blake3:" + "1" * 64
+    assert day_two.partition_origins["blake3:" + "6" * 64].sector_revision == "blake3:" + "8" * 64
 
     # Day three: the manifest changed for governance alone; the membership
     # and sectors are day two's, so every partition is reused as it stands.
     third = owner.begin(
         operation_id="day-three",
         binding=_binding(
-            manifest_revision="9" * 64,
-            sector_revision="c" * 64,
-            binding_hash="d" * 64,
+            manifest_revision="blake3:" + "9" * 64,
+            sector_revision="blake3:" + "c" * 64,
+            binding_hash="blake3:" + "d" * 64,
             as_of=YEAR_TWO[-1],
         ),
-        base_manifest=_manifest(day_two, spy_revision="b" * 64),
+        base_manifest=_manifest(day_two, spy_revision="blake3:" + "b" * 64),
         sessions=sessions,
         listing_ids=four,
-        spy_revision="b" * 64,
+        spy_revision="blake3:" + "b" * 64,
         membership=day_two_membership,
         sector_history=_history(SECTORS),
     )
@@ -276,9 +276,9 @@ def test_membership_change_moves_only_the_sessions_from_its_effective_one(
         availability=[
             {
                 **item,
-                "panel_binding_hash": "5" * 64
+                "panel_binding_hash": "blake3:" + "5" * 64
                 if item["session_date"] < entry.isoformat()
-                else "6" * 64,
+                else "blake3:" + "6" * 64,
             }
             for item in availability
         ]
@@ -288,7 +288,8 @@ def test_membership_change_moves_only_the_sessions_from_its_effective_one(
         chunk.chunk_hash for chunk in day_two.chunks
     ]
     loaded = owner.load(
-        panel_binding_hash="d" * 64, panel_content_hash=day_three.content.panel_content_hash
+        panel_binding_hash="blake3:" + "d" * 64,
+        panel_content_hash=day_three.content.panel_content_hash,
     )
     assert loaded.membership == day_two_membership
     assert loaded.binding.row_identity_basis == PANEL_ROW_IDENTITY_BY_CROSS_SECTION
@@ -298,15 +299,15 @@ def test_membership_change_moves_only_the_sessions_from_its_effective_one(
     fourth = owner.begin(
         operation_id="day-four",
         binding=_binding(
-            manifest_revision="9" * 64,
-            sector_revision="e" * 64,
-            binding_hash="f" * 64,
+            manifest_revision="blake3:" + "9" * 64,
+            sector_revision="blake3:" + "e" * 64,
+            binding_hash="blake3:" + "f" * 64,
             as_of=YEAR_TWO[-1],
         ),
-        base_manifest=_manifest(day_three, spy_revision="b" * 64),
+        base_manifest=_manifest(day_three, spy_revision="blake3:" + "b" * 64),
         sessions=sessions,
         listing_ids=four,
-        spy_revision="b" * 64,
+        spy_revision="blake3:" + "b" * 64,
         membership=day_two_membership,
         sector_history=_history(resectored),
     )
@@ -317,7 +318,7 @@ def test_membership_change_moves_only_the_sessions_from_its_effective_one(
     # A base written under the binding rule (no recorded rule, no ranges)
     # cannot serve a build under the cross-section rule: the transition
     # recomputes every partition once, and every later build reuses.
-    legacy = _manifest(day_three, spy_revision="b" * 64)
+    legacy = _manifest(day_three, spy_revision="blake3:" + "b" * 64)
     legacy_summary = legacy["safe_summary"]
     assert isinstance(legacy_summary, dict)
     lineage = legacy_summary["lineage"]
@@ -329,15 +330,15 @@ def test_membership_change_moves_only_the_sessions_from_its_effective_one(
     transition = owner.begin(
         operation_id="transition",
         binding=_binding(
-            manifest_revision="9" * 64,
-            sector_revision="c" * 64,
-            binding_hash="e" * 64,
+            manifest_revision="blake3:" + "9" * 64,
+            sector_revision="blake3:" + "c" * 64,
+            binding_hash="blake3:" + "e" * 64,
             as_of=YEAR_TWO[-1],
         ),
         base_manifest=legacy,
         sessions=sessions,
         listing_ids=four,
-        spy_revision="b" * 64,
+        spy_revision="blake3:" + "b" * 64,
         membership=day_two_membership,
         sector_history=_history(SECTORS),
     )
@@ -353,9 +354,9 @@ def test_cross_section_rule_refuses_a_composition_without_its_membership(
         owner.begin(
             operation_id="x",
             binding=_binding(
-                manifest_revision="1" * 64,
-                sector_revision="2" * 64,
-                binding_hash="5" * 64,
+                manifest_revision="blake3:" + "1" * 64,
+                sector_revision="blake3:" + "2" * 64,
+                binding_hash="blake3:" + "5" * 64,
                 as_of=YEAR_TWO[-1],
             ),
             base_manifest=None,

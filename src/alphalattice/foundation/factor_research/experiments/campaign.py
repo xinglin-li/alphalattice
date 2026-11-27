@@ -17,6 +17,7 @@ from pydantic import (
 )
 
 from alphalattice.capabilities.domain_contracts.identity import canonical_hash
+from alphalattice.kernel.identity import BLAKE3_PATTERN
 
 type FloatArray = npt.NDArray[np.float64]
 
@@ -79,17 +80,17 @@ class CuratedFactorCheckpoint(_Contract):
     """Development-only, Host-resolved axis handed to Alpha Research."""
 
     kind: Literal["CuratedFactorCheckpoint"] = "CuratedFactorCheckpoint"
-    deterministic_checkpoint_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
-    campaign_dossier_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
-    curation_decision_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
+    deterministic_checkpoint_hash: str = Field(pattern=BLAKE3_PATTERN)
+    campaign_dossier_hash: str = Field(pattern=BLAKE3_PATTERN)
+    curation_decision_hash: str = Field(pattern=BLAKE3_PATTERN)
     control_factor_ids: tuple[str, ...] = Field(min_length=1)
     curated_candidate_ids: tuple[str, ...]
     ordered_factor_ids: tuple[str, ...] = Field(min_length=1)
-    feature_source_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
+    feature_source_hash: str = Field(pattern=BLAKE3_PATTERN)
     development_only: Literal[True] = True
     redundancy_structure_hash: str | None = None
     redundancy_pruned_factor_ids: tuple[str, ...] | None = None
-    checkpoint_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
+    checkpoint_hash: str = Field(pattern=BLAKE3_PATTERN)
 
     @model_serializer(mode="wrap")  # type: ignore[untyped-decorator]
     def _serialize_populated(self, handler: SerializerFunctionWrapHandler) -> dict[str, object]:

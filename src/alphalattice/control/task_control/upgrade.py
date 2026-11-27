@@ -28,6 +28,7 @@ from alphalattice.foundation.data_layer.log import attach, uuid7
 from alphalattice.foundation.data_layer.project import registry_us
 from alphalattice.foundation.data_layer.upgrade import Family
 from alphalattice.kernel.clock import utc_now
+from alphalattice.kernel.identity import blake3_filename
 
 from .contracts import (
     TaskExecution,
@@ -253,7 +254,7 @@ def carry_tasks(workspace: Path, copy: Path, *, root: Path | None = None) -> int
         name = canonical_hash(
             TaskAdmissionRequest.model_validate_json(text).model_dump(mode="json")
         )
-        (requests / f"{name}.json").write_bytes(text.encode("utf-8"))
+        (requests / f"{blake3_filename(name)}.json").write_bytes(text.encode("utf-8"))
     # Everything the store's Tasks bring goes first; the store is published last, filled under
     # another name and moved into place whole: a kill leaves no store, never a partial one or one
     # without its telemetry, and the next carry completes what is missing.

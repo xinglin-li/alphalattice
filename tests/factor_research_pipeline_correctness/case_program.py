@@ -105,7 +105,7 @@ class _OutcomeReader:
         return ExecutionOutcomeMethodSeal(disposition="LEGACY_READBACK_ONLY")
 
 
-CASE_REVIEW_BINDING_HASH = "b" * 64
+CASE_REVIEW_BINDING_HASH = "blake3:" + "b" * 64
 
 
 @dataclass(frozen=True, slots=True)
@@ -141,7 +141,7 @@ def _case_program_inputs() -> _CaseProgramInputs:
     feature_reader = _FeatureReader(sessions, pa.Table.from_pylist(feature_rows))
     outcome_reader = _OutcomeReader(manifest, _source_table(sessions, listings))
     program = build_factor_research_program_spec(
-        feature_panel_snapshot_hash="9" * 64,
+        feature_panel_snapshot_hash="blake3:" + "9" * 64,
         feature_panel_manifest_ref="playpen://feature-panel/manifest",
         causal_outcome_snapshot_hash=manifest.snapshot_hash,
         causal_outcome_manifest_ref="playpen://outcomes/manifest",
@@ -189,5 +189,5 @@ def build_case_deterministic_checkpoint() -> FactorResearchDeterministicEvidence
     )
     return seal_factor_research_deterministic_evidence(
         result=result,
-        execution_binding_hash="a" * 64,
+        execution_binding_hash="blake3:" + "a" * 64,
     )

@@ -40,7 +40,7 @@ from alphalattice.foundation.data_layer.log import drop as drop_lock
 from alphalattice.foundation.data_layer.log import hold as hold_lock
 from alphalattice.foundation.data_layer.project import UNIVERSE_TEXT, uuid7
 from alphalattice.kernel import storage
-from alphalattice.kernel.identity import integrity_blake3
+from alphalattice.kernel.identity import blake3_filename, blake3_from_filename, integrity_blake3
 
 if TYPE_CHECKING:
     from alphalattice.foundation.data_layer.log import HostLog
@@ -59,7 +59,7 @@ _PANEL_MANIFESTS: Final = "source/artifacts/feature-panel/manifests"
 """Where a binding's folder holds its Feature panel's manifest, <panel_snapshot_hash>.json."""
 _MEANING: Final = {
     INPUT: "One file of a bound Factor input, kept once by its bytes.",
-    BINDING: "A bound Factor input: its 0.2.7 binding hash and its manifest's digest.",
+    BINDING: "A bound Factor input: its binding hash and its manifest's digest.",
 }
 
 
@@ -69,7 +69,6 @@ def file_digest(path: Path) -> str:
 
 
 _DIGEST: Final = re.compile(r"blake3:[0-9a-f]{64}")
-_BINDING_HASH: Final = re.compile(r"[0-9a-f]{64}")
 
 
 def _confined(relative: str) -> str:
@@ -117,7 +116,7 @@ def keep_binding(
         listed.append([relative, digest])
     manifest = canonical(listed)
     # Written beside the views, never under blobs/, whose every file a backup copies.
-    staged = root / VIEWS.parent / f".{binding_hash}.{os.getpid()}.manifest"
+    staged = root / VIEWS.parent / f".{blake3_filename(binding_hash)}.{os.getpid()}.manifest"
     staged.parent.mkdir(parents=True, exist_ok=True)
     staged.write_bytes(manifest)
     try:
@@ -149,7 +148,7 @@ def carry(read: Any, root: Path, workspace: str, copy: Path) -> int:
         for _relative, digest, body in listed:
             _place(body, folder / digest.partition(":")[2])
         manifest = canonical([[relative, digest] for relative, digest, _ in listed])
-        _carry_manifest(folder / f"{binding_hash}.json", manifest, binding_hash)
+        _carry_manifest(folder / f"{blake3_filename(binding_hash)}.json", manifest, binding_hash)
     return len(rows)
 
 
@@ -178,7 +177,8 @@ def _sealed_selection(binding_hash: str, files: list[tuple[str, Path]]) -> dict[
     binding, an index of another snapshot, or a selection its files do not hold is refused by
     name."""
     found = dict(files)
-    document = found.get(f"{binding_hash}/manifest.json")
+    binding_name = blake3_filename(binding_hash)
+    document = found.get(f"{binding_name}/manifest.json")
     bundle = json.loads(document.read_bytes()) if document is not None else {}
     if not isinstance(bundle, dict) or bundle.get("market_selection_id") is None:
         return None
@@ -192,8 +192,9 @@ def _sealed_selection(binding_hash: str, files: list[tuple[str, Path]]) -> dict[
         raise refuse("holds the document of another binding")
     unheld = "names a selection its files do not hold"
     try:
-        index = found[f"{binding_hash}/source/market-data.duckdb"]
-        panel = found[f"{binding_hash}/{_PANEL_MANIFESTS}/{bundle['panel_snapshot_hash']}.json"]
+        index = found[f"{binding_name}/source/market-data.duckdb"]
+        panel_name = blake3_filename(bundle["panel_snapshot_hash"])
+        panel = found[f"{binding_name}/{_PANEL_MANIFESTS}/{panel_name}.json"]
         universe = str(
             json.loads(panel.read_bytes())["safe_summary"]["lineage"]["manifest_revision"]
         )
@@ -268,7 +269,8 @@ def import_carried(
     carried = folder / CARRIED
     kept = []
     for name in sorted(n for n in os.listdir(carried) if n.endswith(".json")):
-        if not _BINDING_HASH.fullmatch(name[:-5]):
+        binding_hash = blake3_from_filename(name.removesuffix(".json"))
+        if binding_hash is None:
             raise DataError(
                 f"a carried research input is not named by its binding: {name}",
                 code="data_layer.input_invalid",
@@ -277,17 +279,17 @@ def import_carried(
         for relative, digest in json.loads((carried / name).read_bytes()):
             if not isinstance(digest, str) or not _DIGEST.fullmatch(digest):
                 raise DataError(
-                    f"a carried file of the research input {name[:-5]} has no seal: {digest}",
+                    f"a carried file of the research input {binding_hash} has no seal: {digest}",
                     code="data_layer.input_invalid",
                 )
             body = carried / digest.partition(":")[2]
             if file_digest(body) != digest:
                 raise DataError(
-                    f"a carried file of the research input {name[:-5]} is not its bytes",
+                    f"a carried file of the research input {binding_hash} is not its bytes",
                     code="data_layer.input_invalid",
                 )
             files.append((_confined(str(relative)), body))
-        kept.append((name[:-5], files))
+        kept.append((binding_hash, files))
     selections = []
     for binding_hash, files in kept:
         window = _sealed_selection(binding_hash, files)
@@ -298,7 +300,7 @@ def import_carried(
                 f"the research input {binding_hash} names a market selection nothing verifies",
                 code="data_layer.input_invalid",
             )
-        folder_of = f"{binding_hash}/"
+        folder_of = f"{blake3_filename(binding_hash)}/"
         check(
             binding_hash,
             {
@@ -362,7 +364,7 @@ def manifest_held(root: Path, read: Any, binding_hash: str, payload: bytes) -> b
     listed = body.read_bytes()
     if "blake3:" + integrity_blake3(listed).hexdigest() != digest:
         return False
-    wanted = f"{binding_hash}/manifest.json"
+    wanted = f"{blake3_filename(binding_hash)}/manifest.json"
     actual = "blake3:" + integrity_blake3(payload).hexdigest()
     return [seal for name, seal in json.loads(listed) if name == wanted] == [actual]
 
@@ -404,16 +406,17 @@ def view(root: Path, read: Any, binding_hash: str, holder: str) -> Path:
     folder made whole beside its place and renamed in, so a reader never sees a part of one. A
     copy's identities (its binding, its workspace) are read from this place, as from the old."""
     folder = root / VIEWS.parent / holder / VIEWS.name
-    if (folder / binding_hash).is_dir():
+    binding_name = blake3_filename(binding_hash)
+    if (folder / binding_name).is_dir():
         return folder
     found = members(root, read, binding_hash)
-    staged = folder / f".{binding_hash}.{os.getpid()}{STAGED}"
+    staged = folder / f".{binding_name}.{os.getpid()}{STAGED}"
     shutil.rmtree(staged, ignore_errors=True)
     for relative, body in found:
         target = staged / PurePosixPath(relative)
         target.parent.mkdir(parents=True, exist_ok=True)
         os.link(body, target)
-    for shared in (p for p in staged.iterdir() if p.name != binding_hash):  # pooled databases
+    for shared in (p for p in staged.iterdir() if p.name != binding_name):  # pooled databases
         for relative, path in folder_files(shared):
             place = folder / shared.name / relative
             if not place.exists():
@@ -423,11 +426,11 @@ def view(root: Path, read: Any, binding_hash: str, holder: str) -> Path:
                 except OSError:  # another reader placed the same body first (Windows refuses)
                     if not place.is_file():
                         raise
-    (staged / binding_hash).mkdir(parents=True, exist_ok=True)
+    (staged / binding_name).mkdir(parents=True, exist_ok=True)
     try:
-        os.replace(staged / binding_hash, folder / binding_hash)
+        os.replace(staged / binding_name, folder / binding_name)
     except OSError:
-        if not (folder / binding_hash).is_dir():
+        if not (folder / binding_name).is_dir():
             raise
     finally:
         shutil.rmtree(staged, ignore_errors=True)
@@ -527,7 +530,7 @@ def _keep(root: Path, log: HostLog, kind: str, size: int, digest: str, source: P
                 ("artifact", artifact),
                 attrs,
                 node="host",
-                committed=lambda done: _settled(target, staged, committed=done),
+                committed=lambda done: _settled(target, staged, seal=digest, committed=done),
             )
         except BaseException:
             del _unplaced[target]
@@ -596,9 +599,12 @@ def drop_views(root: Path, read: Any) -> int:
     holders = sorted(views.iterdir()) if views.is_dir() else []
     for holder in (p / VIEWS.name for p in holders if (p / VIEWS.name).is_dir()):
         listed: set[str] = set()
-        for folder in sorted(p for p in holder.iterdir() if _BINDING_HASH.fullmatch(p.name)):
-            if kept(root, read, folder.name):
-                listed |= {rel for rel, _digest, _body in _listed(root, read, folder.name)}
+        for folder in sorted(holder.iterdir()):
+            binding_hash = blake3_from_filename(folder.name)
+            if binding_hash is None:
+                continue
+            if kept(root, read, binding_hash):
+                listed |= {rel for rel, _digest, _body in _listed(root, read, binding_hash)}
             else:
                 shutil.rmtree(folder)
                 removed += 1

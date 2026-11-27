@@ -13,6 +13,7 @@ from alphalattice.control.product_host.publication.goals import GoalStore
 from alphalattice.interface.local_application.portfolio_research import (
     PortfolioResearchOperationRequest as Request,
 )
+from tests._support.identity_fixtures import fixture_digest
 
 NOW = datetime(2026, 9, 15, tzinfo=UTC)
 
@@ -45,8 +46,8 @@ def goal_app(tmp_path, monkeypatch):
     body = {
         "status": "EXPERIMENT_PUBLISHED",
         "task_id": str(UUID(int=2)),
-        "program": {"program_hash": "a" * 64, "kind": "alpha.model-development"},
-        "evidence": {"evidence_hash": "b" * 64},
+        "program": {"program_hash": fixture_digest("a"), "kind": "alpha.model-development"},
+        "evidence": {"evidence_hash": fixture_digest("b")},
         "result": {"candidates": [{"score": -1}]},
         "next_requests": {"continue": dict(operation="EXPERIMENT_DRAFT", task_id=str(UUID(int=2)))},
     }

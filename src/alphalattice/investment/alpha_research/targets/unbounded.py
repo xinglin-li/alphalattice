@@ -42,7 +42,7 @@ from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 from alphalattice.capabilities.domain_contracts.identity import canonical_hash
 from alphalattice.capabilities.quant.sector_history import sector_positions
-from alphalattice.kernel.identity import identity_sha256
+from alphalattice.kernel.identity import BLAKE3_PATTERN, identity_blake3, tagged_blake3
 
 from .catalog import AlphaTargetCatalog, build_installed_alpha_target_catalog
 from .execution_outcome import AlphaTargetBoundaryError
@@ -111,9 +111,9 @@ class UnboundedSensitivityAlphaTargetRecipe(BaseModel):  # type: ignore[misc]
     minimum_coverage: float = Field(gt=0.0, le=1.0)
     minimum_sector_sample: int = Field(ge=1)
     minimum_eligible_rows: int = Field(ge=2)
-    sector_revision: str = Field(pattern=r"^[0-9a-f]{64}$")
+    sector_revision: str = Field(pattern=BLAKE3_PATTERN)
     sector_source: str = Field(min_length=1, max_length=96)
-    recipe_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
+    recipe_hash: str = Field(pattern=BLAKE3_PATTERN)
 
     @model_validator(mode="after")  # type: ignore[untyped-decorator]
     def validate_identity(self) -> Self:
@@ -192,7 +192,7 @@ def _lane_identity(values: FloatArray) -> str:
             {
                 "dtype": str(contiguous.dtype),
                 "shape": [int(value) for value in contiguous.shape],
-                "content": identity_sha256(contiguous.tobytes()).hexdigest(),
+                "content": tagged_blake3(identity_blake3(contiguous.tobytes())),
             }
         )
     )
@@ -204,20 +204,20 @@ class UnboundedSensitivityLaneIdentity(BaseModel):  # type: ignore[misc]
     model_config = ConfigDict(extra="forbid", frozen=True)
 
     kind: Literal["UnboundedSensitivityLaneIdentity"] = "UnboundedSensitivityLaneIdentity"
-    raw_log_execution_return_identity: str = Field(pattern=r"^[0-9a-f]{64}$")
-    simple_economic_return_identity: str = Field(pattern=r"^[0-9a-f]{64}$")
-    sector_center_identity: str = Field(pattern=r"^[0-9a-f]{64}$")
-    raw_residual_identity: str = Field(pattern=r"^[0-9a-f]{64}$")
-    redemeaned_residual_identity: str = Field(pattern=r"^[0-9a-f]{64}$")
-    cross_sectional_dispersion_identity: str = Field(pattern=r"^[0-9a-f]{64}$")
-    fit_target_identity: str = Field(pattern=r"^[0-9a-f]{64}$")
+    raw_log_execution_return_identity: str = Field(pattern=BLAKE3_PATTERN)
+    simple_economic_return_identity: str = Field(pattern=BLAKE3_PATTERN)
+    sector_center_identity: str = Field(pattern=BLAKE3_PATTERN)
+    raw_residual_identity: str = Field(pattern=BLAKE3_PATTERN)
+    redemeaned_residual_identity: str = Field(pattern=BLAKE3_PATTERN)
+    cross_sectional_dispersion_identity: str = Field(pattern=BLAKE3_PATTERN)
+    fit_target_identity: str = Field(pattern=BLAKE3_PATTERN)
     maximum_redemean_correction: float = Field(ge=0.0)
     """The largest absolute change the idle re-demeaning made, retained as
     evidence that it was idle rather than as a claim that it was."""
 
-    ordered_sessions_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
-    ordered_listing_ids_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
-    lane_identity_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
+    ordered_sessions_hash: str = Field(pattern=BLAKE3_PATTERN)
+    ordered_listing_ids_hash: str = Field(pattern=BLAKE3_PATTERN)
+    lane_identity_hash: str = Field(pattern=BLAKE3_PATTERN)
 
     @model_validator(mode="after")  # type: ignore[untyped-decorator]
     def validate_identity(self) -> Self:

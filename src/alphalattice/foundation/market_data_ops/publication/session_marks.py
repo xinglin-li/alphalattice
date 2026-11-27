@@ -43,9 +43,14 @@ from alphalattice.foundation.market_data_ops.publication.projection import (
 )
 from alphalattice.foundation.market_data_ops.sources.manifest import UniverseManifest
 from alphalattice.foundation.market_data_ops.storage.duckdb import MarketDataRepository
-from alphalattice.kernel.identity import identity_sha256
+from alphalattice.kernel.identity import (
+    BLAKE3_PATTERN,
+    blake3_filename,
+    identity_blake3,
+    tagged_blake3,
+)
 
-_HASH = r"^[0-9a-f]{64}$"
+_HASH = BLAKE3_PATTERN
 
 SESSION_MARK_FORMULA_IDENTITY: Final = (
     "close_split_adjusted / open_split_adjusted - 1, within one session"
@@ -326,7 +331,7 @@ class SessionMarkSurface(BaseModel):  # type: ignore[misc]
         consumer binds this and a replay reopens exactly the surface the binding
         names instead of whatever the directory happens to hold.
         """
-        return f"manifests/{self.surface_hash}.json"
+        return f"manifests/{blake3_filename(self.surface_hash)}.json"
 
 
 def _seal[ContractT: BaseModel](
@@ -391,7 +396,7 @@ def _metadata_identity(metadata: Mapping[bytes, bytes]) -> str:
         sort_keys=True,
         separators=(",", ":"),
     ).encode()
-    return identity_sha256(serialized).hexdigest()
+    return tagged_blake3(identity_blake3(serialized))
 
 
 class SessionMarkArtifactStore:
@@ -413,10 +418,10 @@ class SessionMarkArtifactStore:
         self._capacity = capacity
 
     def _chunk_path(self, content_hash: str) -> Path:
-        return self.root / "chunks" / f"{content_hash}.parquet"
+        return self.root / "chunks" / f"{blake3_filename(content_hash)}.parquet"
 
     def _manifest_path(self, surface_hash: str) -> Path:
-        return self.root / "manifests" / f"{surface_hash}.json"
+        return self.root / "manifests" / f"{blake3_filename(surface_hash)}.json"
 
     def _publish_bytes(self, target: Path, content: bytes) -> None:
         if target.exists():
@@ -432,12 +437,12 @@ class SessionMarkArtifactStore:
     @staticmethod
     def chunk_uri(content_hash: str) -> str:
         """Return the canonical relative URI for a chunk hash."""
-        return f"chunks/{content_hash}.parquet"
+        return f"chunks/{blake3_filename(content_hash)}.parquet"
 
     @staticmethod
     def manifest_uri(surface_hash: str) -> str:
         """Return the canonical relative URI for a surface manifest."""
-        return f"manifests/{surface_hash}.json"
+        return f"manifests/{blake3_filename(surface_hash)}.json"
 
     def publish_chunk(self, table: pa.Table) -> SessionMarkChunk:
         """Seal a sorted mark block, publish it and verify its stored bytes."""

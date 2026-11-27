@@ -67,6 +67,7 @@ from alphalattice.foundation.factor_research.programs.walk_forward import (
     build_factor_walk_forward_policy,
     compile_factor_walk_forward_plan,
 )
+from tests._support.identity_fixtures import fixture_digest
 from tests.factor_research_pipeline_correctness.walk_forward_source import (
     _manifest,
     _source_table,
@@ -143,7 +144,7 @@ def test_target_rejects_duplicate_rows_and_formula_tamper() -> None:
 def test_target_policy_identity_rejects_tamper() -> None:
     policy = build_factor_target_policy()
     with pytest.raises(ValueError, match="policy hash"):
-        FactorTargetPolicy(**{**policy.model_dump(), "policy_hash": "0" * 64})
+        FactorTargetPolicy(**{**policy.model_dump(), "policy_hash": fixture_digest("0")})
 
 
 def _binding(
@@ -174,8 +175,8 @@ def _binding(
         snapshot_hash=manifest.snapshot_hash,
         schedule_hash=schedule_hash or manifest.schedule_hash,
         ordered_session_triples_hash=manifest.ordered_session_triples_hash,
-        source_watermark_hash="7" * 64,
-        action_lineage="6" * 64,
+        source_watermark_hash=fixture_digest("7"),
+        action_lineage=fixture_digest("6"),
     )
 
 
@@ -230,10 +231,10 @@ def _seal(
 
 
 def test_frozen_one_session_target_policy_identity_is_unchanged() -> None:
-    """Frozen one session target policy identity is unchanged."""
+    """Pin the current identity of the frozen one-session target policy."""
 
     assert build_factor_target_policy().policy_hash == (
-        "b98fa43b091ebacb5a1b1c997f6e92ffdf9c715e87f52802e0122034d0e7c72d"
+        "blake3:64a500d2d387f15fe47afdfc79ba253f80193f876cab9b885aa4fa2cdc83235f"
     )
 
 
@@ -297,7 +298,7 @@ def test_seal_from_another_snapshot_is_refused() -> None:
     listings = ("listing-a",)
     manifest = _manifest(listings)
     source = _source_table((date(2026, 1, 2),), listings)
-    foreign = _seal(manifest, build_one_session_recipe(), schedule_hash="2" * 64)
+    foreign = _seal(manifest, build_one_session_recipe(), schedule_hash=fixture_digest("2"))
 
     with pytest.raises(FactorTargetBoundaryError, match="target_outcome_method_unbound"):
         compile_factor_target_surface(
@@ -318,8 +319,8 @@ def test_seal_citing_an_uninstalled_catalog_or_policy_cannot_reach_numerical_wor
     recipe = build_one_session_recipe()
 
     for forged in (
-        _seal(manifest, recipe, catalog_hash="9" * 64),
-        _seal(manifest, recipe, publication_policy_hash="8" * 64),
+        _seal(manifest, recipe, catalog_hash=fixture_digest("9")),
+        _seal(manifest, recipe, publication_policy_hash=fixture_digest("8")),
     ):
         assert forged.method_bound.snapshot_hash == manifest.snapshot_hash
         assert forged.method_bound.schedule_hash == manifest.schedule_hash
@@ -496,7 +497,7 @@ def test_oos_evidence_freezes_training_orientation_and_uses_full_by_family() -> 
     )
     report = compute_factor_oos_evidence(
         feature_table=pa.Table.from_pylist(rows),
-        feature_panel_snapshot_hash="9" * 64,
+        feature_panel_snapshot_hash=fixture_digest("9"),
         feature_panel_manifest_ref="playpen://feature-panel/manifest",
         target_surface=target_surface,
         walk_forward_plan=plan,
@@ -525,7 +526,7 @@ def test_oos_evidence_freezes_training_orientation_and_uses_full_by_family() -> 
     ]
     redundancy = build_factor_redundancy_structure(
         feature_table=pa.Table.from_pylist(redundancy_rows),
-        feature_panel_snapshot_hash="9" * 64,
+        feature_panel_snapshot_hash=fixture_digest("9"),
         feature_panel_manifest_ref="playpen://feature-panel/manifest",
         factor_ids=factor_ids,
         policy=build_factor_redundancy_policy(
@@ -828,7 +829,7 @@ def test_session_major_oos_evidence_is_the_one_factor_statistic_bit_for_bit() ->
     policy = build_factor_evidence_policy(minimum_cross_section_observations=100)
     report = compute_factor_oos_evidence(
         feature_table=pa.Table.from_pylist(rows),
-        feature_panel_snapshot_hash="9" * 64,
+        feature_panel_snapshot_hash=fixture_digest("9"),
         feature_panel_manifest_ref="playpen://feature-panel/manifest",
         target_surface=target_surface,
         walk_forward_plan=plan,
@@ -1015,14 +1016,14 @@ def test_redundancy_uses_absolute_rank_distance_and_average_linkage() -> None:
 
     structure = build_factor_redundancy_structure(
         feature_table=table,
-        feature_panel_snapshot_hash="8" * 64,
+        feature_panel_snapshot_hash=fixture_digest("8"),
         feature_panel_manifest_ref="playpen://feature-panel/manifest",
         factor_ids=factor_ids,
         policy=policy,
     )
     shuffled = build_factor_redundancy_structure(
         feature_table=table.take(pa.array(list(reversed(range(table.num_rows))))),
-        feature_panel_snapshot_hash="8" * 64,
+        feature_panel_snapshot_hash=fixture_digest("8"),
         feature_panel_manifest_ref="playpen://feature-panel/manifest",
         factor_ids=factor_ids,
         policy=policy,
@@ -1060,7 +1061,7 @@ def test_redundancy_fails_closed_when_a_formal_pair_is_unresolved() -> None:
     ):
         build_factor_redundancy_structure(
             feature_table=table,
-            feature_panel_snapshot_hash="7" * 64,
+            feature_panel_snapshot_hash=fixture_digest("7"),
             feature_panel_manifest_ref="playpen://feature-panel/manifest",
             factor_ids=("factor_a", "factor_b"),
             policy=build_factor_redundancy_policy(minimum_formal_periods=2),

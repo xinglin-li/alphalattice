@@ -24,6 +24,7 @@ from alphalattice.capabilities.domain_contracts.sealing import (
     scoped_model_digest,
     seal_payload_digest,
 )
+from alphalattice.kernel.identity import BLAKE3_PATTERN
 
 
 class PanelPreprocessingError(ValueError):
@@ -60,7 +61,7 @@ class PanelPreprocessingRecipe(_Contract):
     minimum_finite_observations: int | None = Field(default=None, ge=1)
     interaction_clip: float | None = Field(default=None, gt=0.0)
     partial_universe: Literal["fail_closed"] = "fail_closed"
-    recipe_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
+    recipe_hash: str = Field(pattern=BLAKE3_PATTERN)
 
     @model_validator(mode="after")  # type: ignore[untyped-decorator]
     def validate_identity(self) -> Self:
@@ -106,12 +107,12 @@ class PanelPreprocessingImplementationBinding(_Contract):
     implementation_owners: tuple[str, ...] = Field(min_length=1)
     """Module names whose syntax composes the rule closure, for readability."""
 
-    implementation_content_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
+    implementation_content_hash: str = Field(pattern=BLAKE3_PATTERN)
     numerical_environment_hash: str | None = Field(
-        default=None, pattern=r"^[0-9a-f]{64}$", exclude_if=lambda v: v is None
+        default=None, pattern=BLAKE3_PATTERN, exclude_if=lambda v: v is None
     )
     """Only on a binding sealed before E0, which folded the environment in."""
-    implementation_binding_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
+    implementation_binding_hash: str = Field(pattern=BLAKE3_PATTERN)
 
     @classmethod
     def create(
@@ -181,11 +182,11 @@ class PanelPreprocessingCapability(_Contract):
 
     kind: Literal["PanelPreprocessingCapability"] = "PanelPreprocessingCapability"
     recipe_id: str = Field(min_length=1, max_length=96)
-    recipe_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
+    recipe_hash: str = Field(pattern=BLAKE3_PATTERN)
     implementation_id: str = Field(min_length=1, max_length=128)
     """The stable handle for the implementation bound to this recipe."""
 
-    implementation_binding_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
+    implementation_binding_hash: str = Field(pattern=BLAKE3_PATTERN)
     """Content identity of that implementation. The handle can be reused; this
     cannot, so a silent rewrite behind the same name is visible here."""
 
@@ -198,12 +199,12 @@ class PanelPreprocessingBinding(_Contract):
 
     kind: Literal["PanelPreprocessingBinding"] = "PanelPreprocessingBinding"
     recipe_id: str = Field(min_length=1, max_length=96)
-    recipe_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
+    recipe_hash: str = Field(pattern=BLAKE3_PATTERN)
     implementation_id: str = Field(min_length=1, max_length=128)
     """The implementation that actually ran, recorded beside the recipe it claims
     to be. The two travelling together is what makes a mismatch detectable."""
 
-    implementation_binding_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
+    implementation_binding_hash: str = Field(pattern=BLAKE3_PATTERN)
     """Content identity of that implementation, so the record names executable
     content rather than a class's chosen name for itself."""
 
@@ -222,14 +223,14 @@ class PanelPreprocessingBinding(_Contract):
     would add a store round-trip and a new way for the pair to go missing.
     """
 
-    catalog_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
-    policy_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
+    catalog_hash: str = Field(pattern=BLAKE3_PATTERN)
+    policy_hash: str = Field(pattern=BLAKE3_PATTERN)
     """The frozen ``cross_section_policy_hash``. Carried alongside the recipe
     identity rather than replaced by it, so existing Panel identity keeps its
     meaning while the method gains one of its own."""
 
-    panel_binding_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
-    binding_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
+    panel_binding_hash: str = Field(pattern=BLAKE3_PATTERN)
+    binding_hash: str = Field(pattern=BLAKE3_PATTERN)
 
     @model_validator(mode="after")  # type: ignore[untyped-decorator]
     def validate_identity(self) -> Self:
@@ -273,10 +274,10 @@ class PanelFactorClippingRecord(_Contract):
     clipped_fraction: float = Field(ge=0.0, le=1.0)
     per_session_clipped_counts: tuple[int, ...]
     per_session_clipped_fractions: tuple[float, ...]
-    boundary_identity: str = Field(pattern=r"^[0-9a-f]{64}$")
+    boundary_identity: str = Field(pattern=BLAKE3_PATTERN)
     """Content identity of the ordered per-session (lower, upper) bounds."""
 
-    record_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
+    record_hash: str = Field(pattern=BLAKE3_PATTERN)
 
     @model_validator(mode="after")  # type: ignore[untyped-decorator]
     def validate_identity(self) -> Self:
@@ -308,7 +309,7 @@ class PanelFactorClipObservationRecord(_Contract):
     finite_input_count: int = Field(ge=0)
     per_session_finite_counts: tuple[int, ...]
     per_session_clipped_counts: tuple[int, ...]
-    boundary_identity: str = Field(pattern=r"^[0-9a-f]{64}$")
+    boundary_identity: str = Field(pattern=BLAKE3_PATTERN)
 
 
 class PanelClipObservationRecord(_Contract):
@@ -325,16 +326,16 @@ class PanelClipObservationRecord(_Contract):
     """
 
     kind: Literal["PanelClipObservationRecord"] = "PanelClipObservationRecord"
-    receipt_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
-    panel_binding_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
+    receipt_hash: str = Field(pattern=BLAKE3_PATTERN)
+    panel_binding_hash: str = Field(pattern=BLAKE3_PATTERN)
     sessions: tuple[str, ...] = Field(min_length=1)
-    ordered_sessions_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
-    ordered_listing_ids_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
+    ordered_sessions_hash: str = Field(pattern=BLAKE3_PATTERN)
+    ordered_listing_ids_hash: str = Field(pattern=BLAKE3_PATTERN)
     factor_ids: tuple[str, ...] = Field(min_length=1)
-    raw_input_identity: str = Field(pattern=r"^[0-9a-f]{64}$")
-    transformed_identity: str = Field(pattern=r"^[0-9a-f]{64}$")
+    raw_input_identity: str = Field(pattern=BLAKE3_PATTERN)
+    transformed_identity: str = Field(pattern=BLAKE3_PATTERN)
     observations: tuple[PanelFactorClipObservationRecord, ...] = Field(min_length=1)
-    record_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
+    record_hash: str = Field(pattern=BLAKE3_PATTERN)
 
     @model_validator(mode="after")  # type: ignore[untyped-decorator]
     def validate_identity(self) -> Self:
@@ -397,18 +398,18 @@ class PanelClippingEvidence(_Contract):
     """
 
     kind: Literal["PanelClippingEvidence"] = "PanelClippingEvidence"
-    preprocessing_binding_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
+    preprocessing_binding_hash: str = Field(pattern=BLAKE3_PATTERN)
     recipe_id: str = Field(min_length=1, max_length=96)
-    recipe_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
-    panel_binding_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
-    ordered_sessions_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
-    ordered_listing_ids_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
+    recipe_hash: str = Field(pattern=BLAKE3_PATTERN)
+    panel_binding_hash: str = Field(pattern=BLAKE3_PATTERN)
+    ordered_sessions_hash: str = Field(pattern=BLAKE3_PATTERN)
+    ordered_listing_ids_hash: str = Field(pattern=BLAKE3_PATTERN)
     ordered_factor_ids: tuple[str, ...] = Field(min_length=1)
-    raw_input_identity: str = Field(pattern=r"^[0-9a-f]{64}$")
-    transformed_identity: str = Field(pattern=r"^[0-9a-f]{64}$")
+    raw_input_identity: str = Field(pattern=BLAKE3_PATTERN)
+    transformed_identity: str = Field(pattern=BLAKE3_PATTERN)
     factor_records: tuple[PanelFactorClippingRecord, ...] = Field(min_length=1)
     total_clipped_count: int = Field(ge=0)
-    evidence_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
+    evidence_hash: str = Field(pattern=BLAKE3_PATTERN)
 
     @model_validator(mode="after")  # type: ignore[untyped-decorator]
     def validate_identity(self) -> Self:
@@ -458,16 +459,16 @@ class PanelPreprocessingSealMarker(_Contract):
     """
 
     kind: Literal["PanelPreprocessingSealMarker"] = "PanelPreprocessingSealMarker"
-    panel_binding_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
-    panel_content_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
-    preprocessing_binding_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
+    panel_binding_hash: str = Field(pattern=BLAKE3_PATTERN)
+    panel_content_hash: str = Field(pattern=BLAKE3_PATTERN)
+    preprocessing_binding_hash: str = Field(pattern=BLAKE3_PATTERN)
     recipe_id: str = Field(min_length=1, max_length=96)
-    recipe_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
+    recipe_hash: str = Field(pattern=BLAKE3_PATTERN)
     implementation_id: str = Field(min_length=1, max_length=128)
-    implementation_binding_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
-    catalog_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
-    clipping_evidence_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
-    marker_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
+    implementation_binding_hash: str = Field(pattern=BLAKE3_PATTERN)
+    catalog_hash: str = Field(pattern=BLAKE3_PATTERN)
+    clipping_evidence_hash: str = Field(pattern=BLAKE3_PATTERN)
+    marker_hash: str = Field(pattern=BLAKE3_PATTERN)
 
     @model_validator(mode="after")  # type: ignore[untyped-decorator]
     def validate_identity(self) -> Self:

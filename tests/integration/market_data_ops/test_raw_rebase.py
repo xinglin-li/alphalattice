@@ -24,6 +24,8 @@ from alphalattice.foundation.market_data_ops.sources.manifest import (
 from alphalattice.foundation.market_data_ops.sources.providers import HydrationEvidence
 from alphalattice.foundation.market_data_ops.sources.sanitization import sanitize_payload
 from alphalattice.foundation.market_data_ops.storage.duckdb import MarketDataRepository
+from alphalattice.kernel.identity import blake3_filename
+from tests._support.identity_fixtures import fixture_digest
 from tests.workspace_maintenance.acquisition_manifest import NOW, acquisition_manifest
 from tests.workspace_maintenance.audit_workspace import audit_one
 
@@ -192,7 +194,12 @@ def test_a_split_rebuilds_exactly_the_feature_cells_its_rescale_moves(tmp_path: 
     build_and_publish, BUILT = fixture.build_and_publish, fixture.NOW
     manifest, as_of, agreement = fixture.fixture_manifest(), fixture.SESSIONS[300], (1e-6, 1e-12)
     listing = manifest.listings[0].listing_id
-    build = {"spy": "a" * 64, "as_of": as_of, "observed_at": BUILT, "refresh_sector": False}
+    build = {
+        "spy": fixture_digest("a"),
+        "as_of": as_of,
+        "observed_at": BUILT,
+        "refresh_sector": False,
+    }
     prices = ", ".join(f"{n} = {n} * ?" for n in ("open", "high", "low", "close"))
     exact = manifest.listings[1].listing_id  # a 2-for-1 beside it: a power of two moves nothing
 
@@ -209,13 +216,16 @@ def test_a_split_rebuilds_exactly_the_feature_cells_its_rescale_moves(tmp_path: 
 
     def panel(space, published):  # type: ignore[no-untyped-def]
         chunks = space.market_data.workspace / "artifacts/feature-panel/chunks"
-        frames = [pq.read_table(chunks / f"{c['chunk_hash']}.parquet") for c in published["chunks"]]
+        frames = [
+            pq.read_table(chunks / f"{blake3_filename(c['chunk_hash'])}.parquet")
+            for c in published["chunks"]
+        ]
         frame = pd.concat(item.to_pandas() for item in frames).set_index(
             ["session_date", "listing_id"]
         )
         return frame.sort_index()[sorted(space.service.catalog.factor_ids)]
 
-    spaces = [fixture.panel_workspace(tmp_path / name, manifest, end=as_of, spy="a" * 64)
+    spaces = [fixture.panel_workspace(tmp_path / name, manifest, end=as_of, spy=fixture_digest("a"))
               for name in ("kept", "cold")]  # fmt: skip
     for space in spaces:  # a thinly traded listing: a 3-for-2's whole-share rounding moves it
         stored(space, "UPDATE raw_daily_bar_current SET volume = CASE WHEN session_date >= ?"
@@ -228,7 +238,7 @@ def test_a_split_rebuilds_exactly_the_feature_cells_its_rescale_moves(tmp_path: 
         before = kept
         if len(ratios) == 2:
             cold = fixture.panel_workspace(
-                tmp_path / "cold-next", manifest, end=as_of, spy="a" * 64
+                tmp_path / "cold-next", manifest, end=as_of, spy=fixture_digest("a")
             )
             stored(cold, "UPDATE raw_daily_bar_current SET volume = CASE WHEN session_date >= ?"
                    " THEN 101 + volume % 997 ELSE 2 * floor(volume / 2) END WHERE listing_id = ?",
@@ -312,7 +322,7 @@ def test_a_kept_feature_gap_cannot_escape_through_a_low_dispersion_panel(tmp_pat
         ],
         columns=["listing_id", "session_date", "volume"],
     )
-    spaces = [fixture.panel_workspace(tmp_path / name, manifest, end=day, spy="a" * 64)
+    spaces = [fixture.panel_workspace(tmp_path / name, manifest, end=day, spy=fixture_digest("a"))
               for name in ("kept", "cold")]  # fmt: skip
     for space in spaces:
         with space.market_data.database.transaction() as db:
@@ -324,7 +334,7 @@ def test_a_kept_feature_gap_cannot_escape_through_a_low_dispersion_panel(tmp_pat
             db.unregister("narrow")
     space, cold = spaces
     service = space.service
-    build = dict(spy="a" * 64, as_of=day, observed_at=fixture.NOW, refresh_sector=True)
+    build = dict(spy=fixture_digest("a"), as_of=day, observed_at=fixture.NOW, refresh_sector=True)
     _, held = fixture.build_and_publish(space, manifest, **build)
     for target in spaces:
         with target.market_data.database.transaction() as db:
@@ -343,7 +353,7 @@ def test_a_kept_feature_gap_cannot_escape_through_a_low_dispersion_panel(tmp_pat
         )
         chunks = target.market_data.workspace / "artifacts/feature-panel/chunks"
         table = pq.read_table(
-            chunks / f"{chunk['chunk_hash']}.parquet",
+            chunks / f"{blake3_filename(chunk['chunk_hash'])}.parquet",
             columns=[factor],
             filters=[("listing_id", "=", listing), ("session_date", "=", day)],
         )
@@ -437,7 +447,7 @@ def test_a_splits_moved_cells_are_owed_across_a_crash_until_the_panel_holds_them
     start = fixture.SESSIONS[0]
     listing, agreement = manifest.listings[0].listing_id, (1e-6, 1e-12)
     listings = (listing, manifest.listings[1].listing_id)
-    space = fixture.panel_workspace(tmp_path / "real", manifest, end=as_of, spy="a" * 64)
+    space = fixture.panel_workspace(tmp_path / "real", manifest, end=as_of, spy=fixture_digest("a"))
     store, service = space.market_data, space.service
     with store.database.transaction() as db:
         db.execute(
@@ -445,7 +455,7 @@ def test_a_splits_moved_cells_are_owed_across_a_crash_until_the_panel_holds_them
             "WHERE listing_id IN (?, ?)",
             listings,
         )
-    build = dict(spy="a" * 64, as_of=as_of, observed_at=fixture.NOW, refresh_sector=True)
+    build = dict(spy=fixture_digest("a"), as_of=as_of, observed_at=fixture.NOW, refresh_sector=True)
     _, initial = fixture.build_and_publish(space, manifest, **build)
     panel = space.panel_state.active_feature_panel(manifest.profile.market_profile_id)
     at = panel["activated_at"].replace(tzinfo=UTC) + timedelta.resolution
@@ -470,7 +480,7 @@ def test_a_splits_moved_cells_are_owed_across_a_crash_until_the_panel_holds_them
     arguments = dict(
         market_profile_id=manifest.profile.market_profile_id, target_market_session=as_of,
         trigger=contracts.MaintenanceTrigger.STARTUP, membership_revision=manifest.revision_sha256,
-        data_policy_hash="d" * 64, feature_policy_hash="e" * 64,
+        data_policy_hash=fixture_digest("d"), feature_policy_hash=fixture_digest("e"),
     )  # fmt: skip
     cycle = registry.admit(
         contracts.WorkspaceMaintenanceRequest.create(**arguments, knowledge_cutoff_at=at),
@@ -501,7 +511,8 @@ def test_a_splits_moved_cells_are_owed_across_a_crash_until_the_panel_holds_them
 
     request = FeatureBuildRequest.create(
         manifest_revision=manifest.revision_sha256, catalog=service.catalog.binding,
-        spy_revision="a" * 64, history_start=start, as_of_session=as_of, invalidations=plan(changes)
+        spy_revision=fixture_digest("a"), history_start=start, as_of_session=as_of,
+        invalidations=plan(changes),
     )  # fmt: skip
     outcome = service.build(request, observed_at=at, refresh_sector=False)
     assert outcome.status is FeatureBuildStatus.COMPLETED

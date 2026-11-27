@@ -6,6 +6,7 @@ from datetime import UTC, datetime
 
 import pytest
 
+from alphalattice.capabilities.domain_contracts.identity import canonical_hash
 from alphalattice.control.observation_runtime.contracts import (
     ObservationAuthority,
     ObservationAuthorityReadback,
@@ -122,7 +123,7 @@ def test_a_decision_naming_an_unreadable_authority_is_refused() -> None:
     reference = build_observation_authority_reference(
         owner_kind="ALPHA_SPARSE_LOOP_ARTIFACT_STORE",
         record_kind="DecisionTrace",
-        record_hash="c" * 64,
+        record_hash=canonical_hash("unreadable decision"),
     )
     unreadable = default_observation_policies(authority_reader=_Unreadable())
     with pytest.raises(ValueError, match=r"^observation\.required_decision_missing$"):

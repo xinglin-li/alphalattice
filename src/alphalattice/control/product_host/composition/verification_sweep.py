@@ -50,6 +50,7 @@ from alphalattice.control.task_control.contracts import (
 from alphalattice.control.task_control.runner import StageDisposition, StageExecutionResult
 from alphalattice.interface.local_application.dispatcher import CommandAdmission
 from alphalattice.interface.local_application.failure_codes import public_failure
+from alphalattice.kernel.identity import blake3_filename, blake3_from_filename
 
 if TYPE_CHECKING:
     from .research_experiments import ResearchExperimentApplication
@@ -254,7 +255,9 @@ class StudyVerificationSweep:
         """The sealed report reads back under its content hash."""
         del task, execution, work_item
         (item,) = evidence
-        text = (self.root / f"{item.content_hash}.json").read_text(encoding="utf-8")
+        text = (self.root / f"{blake3_filename(item.content_hash)}.json").read_text(
+            encoding="utf-8"
+        )
         if canonical_hash(json.loads(text)) != item.content_hash:
             raise ValueError("study_verification_sweep.report_tampered")
         return evidence
@@ -267,11 +270,14 @@ class StudyVerificationSweep:
             return None
         newest: dict[str, object] | None = None
         for path in self.root.glob("*.json"):
+            digest = blake3_from_filename(path.stem)
+            if digest is None:
+                continue
             try:
                 report = json.loads(path.read_text(encoding="utf-8"))
             except (OSError, ValueError):
                 continue
-            if canonical_hash(report) != path.stem:
+            if canonical_hash(report) != digest:
                 continue
             if newest is None or str(report["finished_at"]) > str(newest["finished_at"]):
                 newest = report
@@ -287,7 +293,7 @@ class StudyVerificationSweep:
     def _seal(self, report: dict[str, object]) -> str:
         digest = canonical_hash(report)
         self.root.mkdir(parents=True, exist_ok=True)
-        path = self.root / f"{digest}.json"
+        path = self.root / f"{blake3_filename(digest)}.json"
         staged = path.with_name(f"{path.name}.partial")
         staged.write_text(json.dumps(report, sort_keys=True), encoding="utf-8")
         os.replace(staged, path)

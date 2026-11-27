@@ -4,19 +4,15 @@ from __future__ import annotations
 
 import json
 import os
-import re
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
 from alphalattice.capabilities.domain_contracts.identity import canonical_hash
-from alphalattice.control.workspace_runtime.verified_facts import file_sha256
+from alphalattice.control.workspace_runtime.verified_facts import verified_file_digest
+from alphalattice.kernel.identity import blake3_filename, blake3_from_filename, is_blake3
 
 if TYPE_CHECKING:
-    from alphalattice.control.product_host.storage.contracts import (
-        StorageEvictionPlan,
-    )
-
-_HASH = re.compile(r"^[0-9a-f]{64}$")
+    from alphalattice.control.product_host.storage.contracts import StorageEvictionPlan
 
 
 def require_available_input(workspace: Path, relative: str) -> None:
@@ -24,12 +20,12 @@ def require_available_input(workspace: Path, relative: str) -> None:
     root = workspace / "artifacts/storage-governance"
     for path in (root / "input-cleanup-started").glob("*.json"):
         payload = json.loads(path.read_text(encoding="utf-8"))
-        if canonical_hash(payload) != path.stem:
+        if canonical_hash(payload) != blake3_from_filename(path.stem):
             raise StorageRetentionError(
                 "storage.retention_root_mismatch", "Invalid cleanup admission."
             )
         if relative in payload["targets"]:
-            complete = root / "input-cleanup-completed" / f"{path.stem}.json"
+            complete = root / "input-cleanup-completed" / path.name
             if complete.is_file() and complete.read_bytes() == path.read_bytes():
                 raise StorageRetentionError(
                     "research_experiment.input_evicted_by_retention",
@@ -42,8 +38,8 @@ def require_available_input(workspace: Path, relative: str) -> None:
 
 
 def file_content_hash(path: Path) -> str:
-    """The file's SHA-256 through the trust record: a plan's hash serves its cleanup's check."""
-    digest: str = file_sha256(path)
+    """The file's BLAKE3 through the trust record used by the cleanup proof."""
+    digest: str = verified_file_digest(path)
     return digest
 
 
@@ -52,13 +48,14 @@ def pending_input_cleanups(workspace: Path) -> tuple[str, ...]:
     pending = []
     for path in sorted((root / "input-cleanup-started").glob("*.json")):
         payload = json.loads(path.read_text(encoding="utf-8"))
-        if canonical_hash(payload) != path.stem:
+        identity = blake3_from_filename(path.stem)
+        if identity is None or canonical_hash(payload) != identity:
             raise StorageRetentionError(
                 "storage.retention_root_mismatch", "Cleanup intent changed."
             )
         completed = root / "input-cleanup-completed" / path.name
         if not completed.exists():
-            pending.append(path.stem)
+            pending.append(identity)
         elif completed.read_bytes() != path.read_bytes():
             raise StorageRetentionError(
                 "storage.retention_root_mismatch", "Cleanup receipt changed."
@@ -129,9 +126,9 @@ class BoundedStorageRetentionOwner:
 
     def input_plan(self, plan_hash: str) -> dict[str, Any]:
         """A published input plan's payload, proved by its identity."""
-        if not _HASH.fullmatch(plan_hash):
+        if not is_blake3(plan_hash):
             raise StorageRetentionError("storage.plan_invalid", "Invalid plan identity.")
-        path = self.governance_root / "input-plans" / f"{plan_hash}.json"
+        path = self.governance_root / "input-plans" / f"{blake3_filename(plan_hash)}.json"
         payload: dict[str, Any] = json.loads(path.read_text(encoding="utf-8"))
         if canonical_hash(payload) != plan_hash:
             raise StorageRetentionError("storage.plan_invalid", "Plan bytes changed.")
@@ -165,18 +162,19 @@ class BoundedStorageRetentionOwner:
         journalled (a reference field retired, say): its intent is admitted, and
         each target it still holds must be eligible under the current roots.
         """
-        if not _HASH.fullmatch(plan_hash):
+        if not is_blake3(plan_hash):
             raise StorageRetentionError("storage.plan_invalid", "Invalid plan identity.")
-        path = self.governance_root / "input-plans" / f"{plan_hash}.json"
+        name = f"{blake3_filename(plan_hash)}.json"
+        path = self.governance_root / "input-plans" / name
         payload = json.loads(path.read_text(encoding="utf-8"))
-        started = self.governance_root / "input-cleanup-started" / f"{plan_hash}.json"
+        started = self.governance_root / "input-cleanup-started" / name
         if canonical_hash(payload) != plan_hash or (
             payload["references_hash"] != references_hash and not started.is_file()
         ):
             raise StorageRetentionError(
                 "storage.cleanup_plan_stale", "Storage references changed; preview again."
             )
-        completed = self.governance_root / "input-cleanup-completed" / f"{plan_hash}.json"
+        completed = self.governance_root / "input-cleanup-completed" / name
         for name, digest in payload["targets"].items():
             released = started.exists() and not (self.workspace / name).exists()
             if eligible_targets.get(name) != digest and not released:
@@ -270,7 +268,7 @@ class BoundedStorageRetentionOwner:
         return index_hash
 
     def _publish(self, category: str, identity: str, payload: dict[str, object]) -> None:
-        target = self.governance_root / category / f"{identity}.json"
+        target = self.governance_root / category / f"{blake3_filename(identity)}.json"
         content = json.dumps(
             payload, ensure_ascii=False, sort_keys=True, separators=(",", ":")
         ).encode("utf-8")
@@ -304,12 +302,12 @@ def _artifact_references(value: object) -> set[str]:
             found.update(_artifact_references(item))
     elif isinstance(value, dict):
         descriptor_hash = value.get("content_hash") if "uri" in value else None
-        if isinstance(descriptor_hash, str) and _HASH.fullmatch(descriptor_hash):
+        if isinstance(descriptor_hash, str) and is_blake3(descriptor_hash):
             found.add(descriptor_hash)
         for key, item in value.items():
             if key in _DECLARED_ARTIFACT_REFERENCES:
                 candidate = str(item)
-                if _HASH.fullmatch(candidate):
+                if is_blake3(candidate):
                     found.add(candidate)
             if isinstance(item, (dict, list)):
                 found.update(_artifact_references(item))

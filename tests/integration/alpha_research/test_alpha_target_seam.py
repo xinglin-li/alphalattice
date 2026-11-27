@@ -32,6 +32,7 @@ from alphalattice.investment.alpha_research.targets.standardization import (
     RANK_GAUSS_STANDARDIZATION_ID,
     ROBUST_Z_STANDARDIZATION_ID,
 )
+from tests._support.identity_fixtures import fixture_digest
 
 type FloatArray = NDArray[np.float64]
 
@@ -42,7 +43,7 @@ _LISTINGS = tuple(f"listing-{index:02d}" for index in range(12))
 _SECTORS = {
     listing: ("sector-1" if index < 6 else "sector-2") for index, listing in enumerate(_LISTINGS)
 }
-_SECTOR_REVISION = "a" * 64
+_SECTOR_REVISION = fixture_digest("sector-revision")
 
 
 def _source_table() -> pa.Table:

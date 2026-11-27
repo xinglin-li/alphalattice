@@ -57,9 +57,11 @@ from alphalattice.interface.local_application.client import LocalResearchClient
 from alphalattice.investment.portfolio_strategy_lab.application.contracts import (
     PortfolioResearchSpec,
 )
+from alphalattice.kernel.identity import blake3_from_filename
 from alphalattice.oversight.chief_risk_officer.decision.portfolio_review import (
     PortfolioReviewDossier,
 )
+from tests._support.identity_fixtures import fixture_digest
 from tests.alternative_evidence_desk.issuer_listing import TICKERS
 from tests.alternative_evidence_desk.planted_corpus import _NOW, CIKS
 from tests.alternative_evidence_desk.review_http_support import (
@@ -311,7 +313,11 @@ def test_the_public_operation_prepares_live_reuses_bodies_and_joins_a_refresh_in
         )
         assert beside["evidence_as_of"] == captured["evidence_as_of"]
         stale = service.post(
-            "/api/evidence/prepare", {**at_other_cutoff, "preparation_binding_hash": "a" * 64}
+            "/api/evidence/prepare",
+            {
+                **at_other_cutoff,
+                "preparation_binding_hash": fixture_digest("stale preparation binding"),
+            },
         )  # a captured intent is checked before it joins, and still reads no index
         assert stale["disposition"] == "REFUSED_PREPARATION_BINDING_CHANGED", stale
         assert transport.inventory_calls == indices
@@ -466,7 +472,7 @@ def test_documents_lists_healthy_commitments_beside_a_named_refused_commitment(
         assert (refusal["status"], refusal["artifact_kind"], refusal["artifact_hash"]) == (
             "REFUSED",
             "source-document-sets",
-            source_set.stem,
+            blake3_from_filename(source_set.stem),
         )
         assert refusal["failure_code"] == "alternative_evidence.artifact_tampered"
         requests = refusal["next_requests"]
@@ -511,7 +517,8 @@ def test_a_parser_only_change_prepares_again_from_retained_bytes(tmp_path: Path)
 
         # The parser moves: the sealed preparation is history, not reuse.
         runtime = service.review.evidence_task_adapter.runtime
-        runtime.document_binding_hash = "f" * 64
+        new_binding = fixture_digest("changed document parser")
+        runtime.document_binding_hash = new_binding
         transport.reset_calls()
         superseded = service.get("/api/evidence/preview?" + query)
         assert superseded["prepared_task_id"] is None
@@ -532,7 +539,7 @@ def test_a_parser_only_change_prepares_again_from_retained_bytes(tmp_path: Path)
         document_set = adapter._document_set(
             adapter.registry.task(UUID(again["task_id"])), ONE_UNIT
         )
-        assert document_set.canonicalization_binding_hash == "f" * 64
+        assert document_set.canonicalization_binding_hash == new_binding
     finally:
         service.session.stop()
 
@@ -1120,7 +1127,7 @@ def test_carried_findings_keep_an_issuer_whose_new_filing_cannot_be_read(tmp_pat
             {
                 "operation": "CRO_REVIEW_DOSSIER",
                 **selected,
-                "review_dossier_hash": "a" * 64,
+                "review_dossier_hash": fixture_digest("unknown review dossier"),
                 "review_read_at": dossier.evidence_as_of.isoformat(),
             }
         )
@@ -1306,7 +1313,9 @@ def test_an_open_issue_on_a_reading_of_an_earlier_method_is_read_and_stays_open(
 
     # Day one, under an earlier build's Evidence method: the CRO raises a risk on AAPL.
     monkeypatch.setattr(
-        evidence_service, "alternative_document_publication_binding_hash", lambda _root: "1" * 64
+        evidence_service,
+        "alternative_document_publication_binding_hash",
+        lambda _root: fixture_digest("moved document publication"),
     )
     service = start_service(workspace, authority(), tmp_path, clock=lambda: now[0])
     try:
@@ -1542,7 +1551,7 @@ def test_a_raised_risk_stays_open_whichever_book_or_policy_raised_it(tmp_path: P
         current = review._decision_policy()
         values = {
             **current.model_dump(mode="json", exclude={"binding_hash"}),
-            "semantics_hash": "1" * 64,
+            "semantics_hash": fixture_digest("changed CRO policy semantics"),
         }
         rotated = CROHostPolicyBinding(**values, binding_hash=canonical_hash(values))
         for module in (submissions, portfolio_review_task, evidence_review_application):
@@ -1920,7 +1929,7 @@ def test_a_bundle_on_a_book_with_no_run_is_answered_as_it_was_read(tmp_path: Pat
 
         # The installed CRO policy moves with no recorded move: book one's review reads back
         # exactly, under an earlier policy, and its next bundle says so.
-        review.review_publications._policy = "f" * 64
+        review.review_publications._policy = fixture_digest("moved review policy")
         again = _operation(
             service,
             {

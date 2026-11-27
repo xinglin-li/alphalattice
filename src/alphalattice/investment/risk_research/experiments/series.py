@@ -18,10 +18,11 @@ from alphalattice.investment.risk_research.experiments.window import (
     RiskDevelopmentInputBinding,
 )
 from alphalattice.investment.risk_research.surfaces.artifacts import RiskArtifactStore
+from alphalattice.kernel.identity import BLAKE3_PATTERN
 from alphalattice.protocols.research_authoring.contracts import ResolvedResearchAuthority
 
 SERIES_CATEGORY = "development/covariance-series"
-_HASH = r"^[0-9a-f]{64}$"
+_HASH = BLAKE3_PATTERN
 
 
 class RiskSeriesMember(BaseModel):  # type: ignore[misc]

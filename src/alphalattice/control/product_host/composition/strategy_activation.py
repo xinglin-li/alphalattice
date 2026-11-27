@@ -116,6 +116,7 @@ from alphalattice.investment.portfolio_strategy_lab.publication.portfolio_ledger
     PortfolioLedgerStore,
 )
 from alphalattice.investment.portfolio_strategy_lab.reporting.static import format_book_weight
+from alphalattice.kernel.identity import blake3_filename
 
 FORWARD_HORIZON: Final = timedelta(days=330)
 """How far past the latest completed session an activation runs its strategy: the installed
@@ -694,7 +695,7 @@ class StrategyActivation:
                 source(
                     "TRAINING_OBSERVATIONS",
                     tuple(v for v in observations.label_available_sessions if v is not None),
-                    f"artifacts/alpha-research/current/lifecycle-training-observations/{observations.content_hash}.json",
+                    f"artifacts/alpha-research/current/lifecycle-training-observations/{blake3_filename(observations.content_hash)}.json",
                     observations.content_hash,
                     "label_available_sessions",
                     component_id,
@@ -702,7 +703,7 @@ class StrategyActivation:
                 source(
                     "TRAINING_OBSERVATION_AXIS",
                     snapshot.formation_sessions,
-                    f"artifacts/alpha-research/current/frozen-observation-snapshots/{snapshot.snapshot_hash}.json",
+                    f"artifacts/alpha-research/current/frozen-observation-snapshots/{blake3_filename(snapshot.snapshot_hash)}.json",
                     snapshot.snapshot_hash,
                     "formation_sessions",
                     component_id,
@@ -867,7 +868,7 @@ class StrategyActivation:
                             *seed.formation_sessions,
                             *(d for d in seed.holding_end_sessions if d is not None),
                         ),
-                        f"artifacts/portfolio-strategy-lab/calibration-observations/{seed.content_hash}.json",
+                        f"artifacts/portfolio-strategy-lab/calibration-observations/{blake3_filename(seed.content_hash)}.json",
                         seed.content_hash,
                         "formation_sessions + holding_end_sessions",
                         calibrated_component.component_id,
@@ -916,7 +917,7 @@ class StrategyActivation:
                 "record": "PortfolioDecisionCheckpoint",
                 "record_id": decision.checkpoint_hash,
                 "relative_path": self.ledger.root.joinpath(
-                    "decision-checkpoints", f"{decision.checkpoint_hash}.json"
+                    "decision-checkpoints", f"{blake3_filename(decision.checkpoint_hash)}.json"
                 )
                 .relative_to(self.workspace)
                 .as_posix(),
@@ -1169,7 +1170,7 @@ class StrategyActivation:
         store._publish("lifecycle-admissions", grant, "content_hash")
         with verified_lifecycle_admissions():
             admitted = admit_component_inference(
-                self.workspace / f"{_ADMISSIONS}/{grant.content_hash}.json",
+                self.workspace / f"{_ADMISSIONS}/{blake3_filename(grant.content_hash)}.json",
                 store=store,
                 expected_hash=grant.content_hash,
             )
@@ -1316,7 +1317,7 @@ class StrategyActivation:
                             strategy_package_id=package_id,
                             strategy_package_hash=book.package.package_hash,
                             component_id=component.component_id,
-                            authority_relative_path=f"{_ADMISSIONS}/{grant.content_hash}.json",
+                            authority_relative_path=f"{_ADMISSIONS}/{blake3_filename(grant.content_hash)}.json",
                             authority_hash=grant.content_hash,
                             source_kind="WORKSPACE_DATA_FEATURE",
                         )

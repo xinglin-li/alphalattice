@@ -25,10 +25,12 @@ def test_a_later_question_reopens_only_its_goal_or_session(corruption):
         "pending"
     ]
     assert not project([*unscoped, question_row("answer", "ANSWERED", goal=None)])["pending"]
-    assert project([question_row("historical", "ASKED", catalog="1" * 64)])["pending"]
+    prior_catalog = question_row("prior-catalog", "ASKED", catalog="blake3:" + "1" * 64)
+    assert project([prior_catalog])["pending"]
     for bad in (
         question_row("bad", "ASKED") | {"correlation_ids": []},
         question_row("bad-hash", "ASKED", catalog="not-a-hash"),
+        question_row("old-digest", "ASKED", catalog="1" * 64),
         question_row("bad-scope", "ASKED", goal=42),
         question_row("bad-correlation", "ASKED") | {"correlation_ids": "bad-correlation"},
     ):

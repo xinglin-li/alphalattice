@@ -66,6 +66,7 @@ from alphalattice.investment.risk_research.contracts import (
     CovarianceRecipe,
     seal_contract,
 )
+from alphalattice.kernel.identity import BLAKE3_PATTERN
 
 from . import covariance, matrix_identity
 from .capability import RANDOMNESS_NONE
@@ -139,7 +140,7 @@ class FastSlowCorrelationRecipe(BaseModel):  # type: ignore[misc]
     output_unit: Literal["one-session-open-to-open-log-return-covariance"] = (
         "one-session-open-to-open-log-return-covariance"
     )
-    recipe_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
+    recipe_hash: str = Field(pattern=BLAKE3_PATTERN)
 
     @model_validator(mode="after")  # type: ignore[untyped-decorator]
     def validate_recipe(self) -> Self:

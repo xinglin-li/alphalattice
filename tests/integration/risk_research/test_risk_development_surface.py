@@ -65,6 +65,7 @@ from alphalattice.protocols.research_authoring.contracts import (
     ResolvedResearchAuthority,
     SealedResearchProgram,
 )
+from tests._support.identity_fixtures import fixture_digest
 from tests.researcher_methodology_surface.real_workspace import RealRiskWorkspace
 from tests.researcher_methodology_surface.risk_development_program_support import (
     _admission,
@@ -377,7 +378,7 @@ def test_the_default_covariance_recipe_seal_does_not_move() -> None:
     """The default covariance recipe keeps its recorded field-based seal."""
 
     assert default_covariance_recipe().recipe_hash == (
-        "9e095c7c46c7df9ca09e56f7c8cb2f5b08fccb3c803d0f7d6883f2bab001a21c"
+        "blake3:e906218c4b571387c8cb014200987b62d23295a2a19cb3791f08a81eabe35c00"
     )
 
 
@@ -443,8 +444,8 @@ def _sealed_program(
 ) -> SealedResearchProgram:
     return SealedResearchProgram.create(
         kind=RISK_EXPERIMENT_KIND,
-        envelope_hash="0" * 64,
-        desk_program_hash="1" * 64,
+        envelope_hash=fixture_digest("risk envelope"),
+        desk_program_hash=fixture_digest("risk desk program"),
         resolved_sessions=sessions,
         catalog_hash=binding.catalog_hash,
         method_binding_hash=binding.development_binding_hash,

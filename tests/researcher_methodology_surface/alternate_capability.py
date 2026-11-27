@@ -48,6 +48,7 @@ from alphalattice.investment.risk_research.estimators.domains import (
     RiskParameterDomain,
 )
 from alphalattice.investment.risk_research.estimators.matrix_identity import matrix_content_hash
+from alphalattice.kernel.identity import BLAKE3_PATTERN
 
 type FloatArray = NDArray[np.float64]
 
@@ -101,7 +102,7 @@ class ShrunkDiagonalRecipe(BaseModel):  # type: ignore[misc]
     schema_name: Literal["CASE_STUDY_SHRUNK_DIAGONAL"] = "CASE_STUDY_SHRUNK_DIAGONAL"
     shrinkage_intensity: float = Field(ge=0.0, le=1.0)
     variance_floor: float = Field(gt=0.0)
-    recipe_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
+    recipe_hash: str = Field(pattern=BLAKE3_PATTERN)
 
     @classmethod
     def seal(cls, *, shrinkage_intensity: float, variance_floor: float) -> Self:

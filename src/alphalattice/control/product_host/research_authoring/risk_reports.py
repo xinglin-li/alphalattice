@@ -19,10 +19,11 @@ from alphalattice.investment.portfolio_strategy_lab.publication.artifacts import
     PortfolioPublicationError,
     PortfolioResearchArtifactStore,
 )
+from alphalattice.kernel.identity import BLAKE3_PATTERN, blake3_filename, blake3_from_filename
 from alphalattice.protocols.research_authoring.contracts import AuthoringError, ResolvedListingScope
 
 CATEGORY = "development/risk-report-links"
-_HASH = r"^[0-9a-f]{64}$"
+_HASH = BLAKE3_PATTERN
 
 
 def _risk_link_refusal(
@@ -313,7 +314,7 @@ class RiskReportLinks:
         link = self._link(
             portfolio, self.read(risk_task_id), caller, portfolio_window=portfolio_window
         )
-        existed = (store.root / CATEGORY / f"{link.link_hash}.json").is_file()
+        existed = (store.root / CATEGORY / f"{blake3_filename(link.link_hash)}.json").is_file()
         store.publish(category=CATEGORY, value=link, identity_field="link_hash")
         export_request = link.export_request()
         return {
@@ -347,10 +348,11 @@ class RiskReportLinks:
         export_requests = []
         refused_links: list[dict[str, object]] = []
         for path in sorted((store.root / CATEGORY).glob("*.json")):
+            link_hash = blake3_from_filename(path.stem)
             try:
                 link = store.load(
                     category=CATEGORY,
-                    content_hash=path.stem,
+                    content_hash=link_hash or "",
                     model=RiskReportLink,
                     identity_field="link_hash",
                 )
@@ -364,10 +366,10 @@ class RiskReportLinks:
                 )
                 refused_links.append(
                     _risk_link_refusal(
-                        path.stem,
+                        link_hash or path.stem,
                         code,
-                        f"Saved Risk link {path.stem} was omitted because its record could not "
-                        f"be read. {reason}",
+                        f"Saved Risk link {link_hash or path.stem} was omitted because its "
+                        f"record could not be read. {reason}",
                         portfolio_task_id,
                     )
                 )
@@ -377,10 +379,11 @@ class RiskReportLinks:
             if link.portfolio_receipt_hash != portfolio["receipt"]["receipt_hash"]:
                 refused_links.append(
                     _risk_link_refusal(
-                        path.stem,
+                        link.link_hash,
                         "risk_report.stored_subject_mismatch",
-                        f"Saved Risk link {path.stem} names a different Portfolio receipt than "
-                        f"Task {portfolio_task_id}; it is omitted from this book's report links.",
+                        f"Saved Risk link {link.link_hash} names a different Portfolio receipt "
+                        f"than Task {portfolio_task_id}; it is omitted from this book's "
+                        "report links.",
                         portfolio_task_id,
                     )
                 )

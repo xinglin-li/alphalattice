@@ -22,6 +22,7 @@ from pydantic import BaseModel, ConfigDict, Field
 from alphalattice.capabilities.quant.factor_contracts import FactorSpec
 from alphalattice.control.workspace_runtime.artifacts import ArtifactResolver
 from alphalattice.foundation.feature_engine.catalog.contracts import FeatureCatalog
+from alphalattice.kernel.identity import BLAKE3_PATTERN, blake3_filename, is_blake3
 
 REGISTRY = Path("runtime") / "extensions" / "features.json"
 CATALOG_REVISIONS = Path("runtime") / "extensions" / "feature-catalogs"
@@ -37,10 +38,10 @@ class FeatureActivation(_Contract):
     factor_id: str
     specification: FactorSpec
     preprocessing_recipe: str
-    feature_plan_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
-    trial_id: str = Field(pattern=r"^[0-9a-f]{64}$")
-    methodology_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
-    packet_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
+    feature_plan_hash: str = Field(pattern=BLAKE3_PATTERN)
+    trial_id: str = Field(pattern=BLAKE3_PATTERN)
+    methodology_hash: str = Field(pattern=BLAKE3_PATTERN)
+    packet_hash: str = Field(pattern=BLAKE3_PATTERN)
     """The review packet the person read, by content."""
     activated_by: Literal["HUMAN"] = "HUMAN"
     activated_at: datetime
@@ -132,7 +133,9 @@ def feature_catalog_for(workspace: Path, catalog_hash: str) -> FeatureCatalog | 
     shipped = FeatureCatalog.load()
     if shipped.binding.catalog_hash == catalog_hash:
         return shipped
-    path = workspace / CATALOG_REVISIONS / f"{catalog_hash}.json"
+    if not is_blake3(catalog_hash):
+        return None
+    path = workspace / CATALOG_REVISIONS / f"{blake3_filename(catalog_hash)}.json"
     if not path.is_file():
         return None
     catalog = FeatureCatalog.from_payload(json.loads(path.read_text(encoding="utf-8")))
@@ -162,7 +165,8 @@ def panel_feature_catalog(workspace: Path, panel_snapshot_hash: str) -> FeatureC
 
 
 def _keep(workspace: Path, catalog: FeatureCatalog) -> None:
-    path = workspace / CATALOG_REVISIONS / f"{catalog.binding.catalog_hash}.json"
+    name = f"{blake3_filename(catalog.binding.catalog_hash)}.json"
+    path = workspace / CATALOG_REVISIONS / name
     if path.is_file():
         return
     path.parent.mkdir(parents=True, exist_ok=True)

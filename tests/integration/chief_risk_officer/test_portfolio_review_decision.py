@@ -33,6 +33,7 @@ from alphalattice.evidence.alternative_evidence.contracts import (
     seal_contract,
 )
 from alphalattice.evidence.alternative_evidence.runtime.coverage import UNIT_LIMIT, coverage_units
+from alphalattice.kernel.identity import blake3_filename
 from alphalattice.oversight.chief_risk_officer.decision.book_evidence import (
     EVIDENCE_REQUIRED_CHECKS,
     portfolio_review_key_payload,
@@ -76,6 +77,7 @@ from alphalattice.oversight.chief_risk_officer.runtime.portfolio_review_task imp
 )
 from alphalattice.protocols.actor_execution import ActorKind, AgentExecutionBinding
 from alphalattice.protocols.actor_execution.answers import AnswerProblem
+from tests._support.identity_fixtures import fixture_digest
 from tests.alternative_evidence_desk.review_dossiers import (
     _NOW,
     ENTITY,
@@ -129,7 +131,7 @@ def _registry(entries: tuple[tuple[str, str, str], ...] = ISSUERS) -> SecIssuerR
             )
             for entity_id, ticker, cik in entries
         ),
-        source_content_hash="1" * 64,
+        source_content_hash=fixture_digest("registry-source"),
     )
 
 
@@ -145,12 +147,14 @@ def _projection(
         PortfolioExposureProjection,
         "projection_hash",
         book_authority=authority,
-        report_hash="c" * 64,
-        result_hash=None if handoff else "a" * 64,
-        window_end_book_hash="d" * 64,
-        listing_authority_hash="e" * 64,
-        candidate_hash=None if authority is BookAuthority.DEVELOPMENT_RESULT else "b" * 64,
-        handoff_hash="f" * 64 if handoff else None,
+        report_hash=fixture_digest("portfolio-report"),
+        result_hash=None if handoff else fixture_digest("portfolio-result"),
+        window_end_book_hash=fixture_digest("window-end-book"),
+        listing_authority_hash=fixture_digest("listing-authority"),
+        candidate_hash=(
+            None if authority is BookAuthority.DEVELOPMENT_RESULT else fixture_digest("candidate")
+        ),
+        handoff_hash=fixture_digest("handoff") if handoff else None,
         formation_session="2024-06-03",
         change_boundary="PRECEDING_FORMATION",
         held_count=len(rows),
@@ -199,6 +203,7 @@ def test_the_scope_selects_by_the_canonical_lexicographic_rule(monkeypatch) -> N
 
     canonical_hash = sealing.canonical_hash
     hashed_reports = []
+    changed_report = fixture_digest("changed-portfolio-report")
 
     def count(payload):
         if isinstance(payload, dict) and payload.get("kind") == "PortfolioExposureProjection":
@@ -210,10 +215,10 @@ def test_the_scope_selects_by_the_canonical_lexicographic_rule(monkeypatch) -> N
     with stage_digests():
         projection = _projection()
         assert type(projection).model_validate_json(projection.model_dump_json()) == projection
-        changed = {**projection.model_dump(mode="json"), "report_hash": "f" * 64}
+        changed = {**projection.model_dump(mode="json"), "report_hash": changed_report}
         with pytest.raises(ValueError, match=r"portfolio_evidence\.identity_invalid"):
             type(projection).model_validate(changed)
-    assert hashed_reports == ["c" * 64, "f" * 64]
+    assert hashed_reports == [projection.report_hash, changed_report]
 
     scope = _scope()
 
@@ -416,7 +421,7 @@ def test_a_run_of_many_units_carries_a_plan_task_control_admits() -> None:
         request_for=lambda entities, when, read: policy.request(
             ordered_entity_ids=entities, evidence_as_of=when, read_filings=read
         ),
-        resource_binding_hash="1" * 64,
+        resource_binding_hash=fixture_digest("evidence-resource-binding"),
         network_consent=False,
         admit_live_official=False,
         admit_model_review=False,
@@ -843,7 +848,8 @@ def test_a_sealed_review_reads_back_and_a_retired_policy_name_is_refused(
     assert store.load("cro-review-recommendations", identity, type(recommendation)) == (
         recommendation
     )
-    assert (store.root / "cro-review-recommendations" / f"{identity}.json").is_file()
+    path = store.root / "cro-review-recommendations" / f"{blake3_filename(identity)}.json"
+    assert path.is_file()
 
     retired = (
         "chief_risk_officer.portfolio-review-route.v2",
@@ -1203,11 +1209,11 @@ def _agent_binding() -> AgentExecutionBinding:
     return AgentExecutionBinding(
         profile_id="qa-scripted",
         mode="STRUCTURED_OUTPUT",
-        profile_hash="a" * 64,
-        document_hash="b" * 64,
+        profile_hash=fixture_digest("agent-profile"),
+        document_hash=fixture_digest("agent-document"),
         response_protocol="TOOL_FREE_STRUCTURED_OUTPUT",
-        response_protocol_hash="c" * 64,
-        concrete_schema_hash="d" * 64,
+        response_protocol_hash=fixture_digest("response-protocol"),
+        concrete_schema_hash=fixture_digest("concrete-schema"),
     )
 
 
@@ -1447,6 +1453,7 @@ def test_an_open_issue_is_stated_again_resolved_or_counted_as_last_assessed() ->
         PortfolioReviewAnswerRisk,
         PortfolioReviewDossier,
         PortfolioReviewOpenIssue,
+        raised_issue_handle,
     )
     from alphalattice.oversight.chief_risk_officer.decision.submissions import (
         screen_review_answer,
@@ -1454,7 +1461,7 @@ def test_an_open_issue_is_stated_again_resolved_or_counted_as_last_assessed() ->
 
     base = _dossier()
     opened = PortfolioReviewOpenIssue(
-        open_issue_handle="OPEN-" + "A" * 12,
+        open_issue_handle=raised_issue_handle(base.dossier_hash, "ISSUE-1"),
         affected_entities=(ENTITY,),
         raised_on=(_NOW - timedelta(days=40)).date(),
         assessed_on=(_NOW - timedelta(days=5)).date(),

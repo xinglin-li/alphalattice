@@ -7,6 +7,7 @@ from types import MappingProxyType
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 from alphalattice.capabilities.domain_contracts.identity import canonical_hash
+from alphalattice.kernel.identity import BLAKE3_PATTERN
 
 from .contracts import PortfolioPolicyAdapter, PortfolioPolicyRecipe
 
@@ -26,7 +27,7 @@ class PortfolioPolicyCatalogBinding(_Contract):
     """Content identity of the explicitly installed Host policy capabilities."""
 
     ordered_capabilities: tuple[PortfolioPolicyCapabilityIdentity, ...] = Field(min_length=1)
-    catalog_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
+    catalog_hash: str = Field(pattern=BLAKE3_PATTERN)
 
     @model_validator(mode="after")  # type: ignore[untyped-decorator]
     def validate_identity(self) -> PortfolioPolicyCatalogBinding:

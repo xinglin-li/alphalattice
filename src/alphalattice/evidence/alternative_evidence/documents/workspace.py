@@ -8,12 +8,12 @@ from datetime import datetime
 from pathlib import Path
 from uuid import UUID
 
-from alphalattice.capabilities.domain_contracts.domain.serialization import sha256_hex
 from alphalattice.capabilities.domain_contracts.identity import canonical_hash
 from alphalattice.capabilities.domain_contracts.persistence import fsync_directory, write_new
 from alphalattice.control.workspace_runtime.core import Workspace
 from alphalattice.control.workspace_runtime.paths import make_confined_parents, resolve_confined
 from alphalattice.foundation.data_layer import history
+from alphalattice.kernel.identity import blake3_digest, blake3_hex
 
 from ..contracts import AlternativeEvidenceReadingDepth, seal_contract
 from ..sources.contracts import (
@@ -105,7 +105,7 @@ class AlternativeEvidenceDocumentPublisher:
         without keeping anything: the content address is the bytes' own.
         """
         return AcquiredEvidenceDocumentReference.of(
-            document, content_sha256=sha256_hex(document.content)
+            document, content_digest=blake3_digest(document.content)
         )
 
     def holds_source_object(
@@ -290,11 +290,11 @@ class AlternativeEvidenceDocumentPublisher:
 
 def _workspace_document_id(document: AlternativeEvidenceCanonicalDocument) -> str:
     entity = document.entity_id.casefold().replace("_", "-")
-    return f"ae.{entity}.{document.document_hash[:24]}"
+    return f"ae.{entity}.{blake3_hex(document.document_hash)[:24]}"
 
 
 def _stable_uuid(identity: str) -> UUID:
-    return UUID(bytes=bytes.fromhex(identity[:32]), version=4)
+    return UUID(bytes=bytes.fromhex(blake3_hex(identity)[:32]), version=4)
 
 
 __all__ = ["AlternativeEvidenceDocumentPublisher"]

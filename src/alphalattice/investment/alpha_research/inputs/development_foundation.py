@@ -41,6 +41,7 @@ from pydantic import (
 from alphalattice.capabilities.domain_contracts.identity import canonical_hash
 from alphalattice.capabilities.validation.enums import RebalanceFrequency
 from alphalattice.foundation.research_foundation.contracts import ResearchFoundationBinding
+from alphalattice.kernel.identity import BLAKE3_PATTERN
 
 
 @runtime_checkable
@@ -152,9 +153,9 @@ class AlphaDevelopmentExecutionOutcomeRef(_Contract):
 
     kind: Literal["AlphaDevelopmentExecutionOutcomeRef"] = "AlphaDevelopmentExecutionOutcomeRef"
     research_cadence: Literal[RebalanceFrequency.DAILY]  # type: ignore[valid-type]
-    snapshot_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
+    snapshot_hash: str = Field(pattern=BLAKE3_PATTERN)
     manifest_ref: str = Field(min_length=1, max_length=512)
-    listing_set_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
+    listing_set_hash: str = Field(pattern=BLAKE3_PATTERN)
 
 
 class AlphaDevelopmentFoundationBinding(_Contract):
@@ -169,9 +170,9 @@ class AlphaDevelopmentFoundationBinding(_Contract):
 
     kind: Literal["AlphaDevelopmentFoundationBinding"] = "AlphaDevelopmentFoundationBinding"
     research_cadence: Literal[RebalanceFrequency.DAILY]  # type: ignore[valid-type]
-    feature_panel_snapshot_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
-    logical_panel_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
-    logical_semantic_index_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
+    feature_panel_snapshot_hash: str = Field(pattern=BLAKE3_PATTERN)
+    logical_panel_hash: str = Field(pattern=BLAKE3_PATTERN)
+    logical_semantic_index_hash: str = Field(pattern=BLAKE3_PATTERN)
     execution_outcome: AlphaDevelopmentExecutionOutcomeRef
     ordered_factor_ids: tuple[str, ...] = Field(min_length=1, max_length=128)
     """The declared development feature axis, in the order the Host validated.
@@ -202,12 +203,12 @@ class AlphaDevelopmentFoundationBinding(_Contract):
     computed over a different question.
     """
 
-    factor_development_receipt_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
-    factor_development_checkpoint_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
-    factor_development_program_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
-    factor_development_binding_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
-    sector_revision: str | None = Field(default=None, pattern=r"^[0-9a-f]{64}$")
-    sector_coverage_hash: str | None = Field(default=None, pattern=r"^[0-9a-f]{64}$")
+    factor_development_receipt_hash: str = Field(pattern=BLAKE3_PATTERN)
+    factor_development_checkpoint_hash: str = Field(pattern=BLAKE3_PATTERN)
+    factor_development_program_hash: str = Field(pattern=BLAKE3_PATTERN)
+    factor_development_binding_hash: str = Field(pattern=BLAKE3_PATTERN)
+    sector_revision: str | None = Field(default=None, pattern=BLAKE3_PATTERN)
+    sector_coverage_hash: str | None = Field(default=None, pattern=BLAKE3_PATTERN)
     """Exact Sector labels over a wider historical input axis, when needed.
 
     This is input coverage, not a replacement for the Panel's Sector revision.
@@ -215,7 +216,7 @@ class AlphaDevelopmentFoundationBinding(_Contract):
     unchanged under the existing omit-unpopulated rule.
     """
     feature_authority_outcome_snapshot_hash: str | None = Field(
-        default=None, pattern=r"^[0-9a-f]{64}$"
+        default=None, pattern=BLAKE3_PATTERN
     )
     """The outcome clock the Factor evidence answered on, when it is not this run's.
 
@@ -234,7 +235,7 @@ class AlphaDevelopmentFoundationBinding(_Contract):
     research_foundation: ResearchFoundationBinding | None = None
     """Optional admitted research snapshot; never grants current publication."""
 
-    foundation_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
+    foundation_hash: str = Field(pattern=BLAKE3_PATTERN)
 
     @classmethod
     def create(cls, **values: object) -> Self:

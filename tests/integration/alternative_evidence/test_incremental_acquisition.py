@@ -32,6 +32,7 @@ from alphalattice.evidence.alternative_evidence.sources.sec_edgar import (
 )
 from alphalattice.evidence.alternative_evidence.storage import world_reads
 from alphalattice.foundation.data_layer import recall
+from alphalattice.kernel.identity import blake3_filename, blake3_from_filename
 from tests.alternative_evidence_desk.incremental_acquisition_support import (
     AAPL,
     EIGHT_K,
@@ -85,8 +86,8 @@ def test_a_fresh_source_check_with_no_change_downloads_no_body_again(tmp_path: P
         assert transport.inventory_calls == 1, "a fresh check reads the inventory once"
         assert transport.body_calls == [], f"no body is fetched again: {transport.body_calls}"
         assert transport.registry_calls == 0, "the registry the caller supplies is reused"
-        assert {d.content_sha256 for d in source_set_again.documents} == {
-            d.content_sha256 for d in source_set.documents
+        assert {d.content_digest for d in source_set_again.documents} == {
+            d.content_digest for d in source_set.documents
         }
         assert snapshot_again.status.value == "COMPLETE"
         accounting = snapshot_again.acquisition
@@ -161,8 +162,8 @@ def test_overlapping_portfolios_share_one_physical_copy_of_each_body(tmp_path: P
         # three AAPL bodies are named by both sets and held once.
         references = len(first_set.documents) + len(second_set.documents)
         assert references == 8 and len(_source_objects(runtime)) == 5
-        assert {d.content_sha256 for d in first_set.documents} <= {
-            d.content_sha256 for d in second_set.documents
+        assert {d.content_digest for d in first_set.documents} <= {
+            d.content_digest for d in second_set.documents
         }
     finally:
         runtime.close()
@@ -193,7 +194,7 @@ def test_two_securities_of_one_issuer_share_the_issuer_bodies(tmp_path: Path) ->
         assert outcomes.count(("GOOG", "REUSED_LOCAL")) == 3
         assert len(_source_objects(runtime)) == 3, "one physical copy per body"
         by_security = {
-            security: {d.content_sha256 for d in source_set.documents if d.entity_id == security}
+            security: {d.content_digest for d in source_set.documents if d.entity_id == security}
             for security in ("GOOGL", "GOOG")
         }
         assert by_security["GOOGL"] == by_security["GOOG"] and len(by_security["GOOG"]) == 3
@@ -324,7 +325,11 @@ def test_a_known_oversize_body_is_deferred_by_its_record_and_not_transferred_aga
         assert record.admitted_cap_bytes == cap and record.observed_bytes >= cap
         assert record.form == "8-K" and record.observed_at == NOW
         assert record.recheck_after is None, "no time-based recheck (W6)"
-        sealed = runtime.artifacts.root / SOURCE_DEFERRAL_CATEGORY / f"{record.deferral_hash}.json"
+        sealed = (
+            runtime.artifacts.root
+            / SOURCE_DEFERRAL_CATEGORY
+            / f"{blake3_filename(record.deferral_hash)}.json"
+        )
         assert sealed.is_file()
 
         # The same resource under the same cap at a later cutoff, in this
@@ -652,7 +657,7 @@ def test_an_amendment_fetches_only_itself_and_the_original_stays_as_sealed(
             EIGHT_K.accession: "REUSED_LOCAL",
         }
         kept = next(d for d in source_set.documents if d.revision == TEN_K.accession)
-        assert kept.content_sha256 == original.content_sha256
+        assert kept.content_digest == original.content_digest
         assert runtime.documents.resolve_source_object(original, as_of=None).content == (
             runtime.documents.resolve_source_object(kept, as_of=None).content
         )
@@ -702,9 +707,9 @@ def test_a_corrupt_commit_record_is_a_named_integrity_refusal_not_a_cache_miss(
             and SOURCE_COMMIT_CATEGORY in v
             for v in snapshot.limitations
         )
-        assert (
-            reopened.local_sources.damaged and commits[0].stem in reopened.local_sources.damaged[0]
-        )
+        commit_hash = blake3_from_filename(commits[0].stem)
+        assert commit_hash is not None
+        assert reopened.local_sources.damaged and commit_hash in reopened.local_sources.damaged[0]
         assert sorted((reopened.artifacts.root / SOURCE_COMMIT_CATEGORY).glob("*.json")) == commits
         assert commits[0].read_bytes() == damaged, "nothing resealed or repaired in place"
         assert len(_source_objects(reopened)) == 1, "the retained body is untouched"

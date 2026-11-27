@@ -5,8 +5,8 @@ from __future__ import annotations
 from collections import Counter
 from dataclasses import asdict
 from datetime import UTC, datetime, time
-from hashlib import sha256
 
+from alphalattice.capabilities.domain_contracts.identity import canonical_hash
 from alphalattice.control.data_platform.preflight import resolve_trading_session_authority
 from alphalattice.control.workspace_runtime.artifacts import ArtifactResolver
 from alphalattice.foundation.feature_engine.panels.closure_artifacts import (
@@ -88,7 +88,7 @@ def prepare_friday_sector(provider, market, manifest, now, gate):
         manifest=manifest,
         provider=provider,
         artifact_root=market.workspace / "staging" / "sector-reference",
-        staging_id="fixture-friday-" + manifest.revision_sha256,
+        staging_id=canonical_hash(["fixture-friday", manifest.revision_sha256]),
         activation_coordinator=coordinator,
     )
     assert stager.acquire(observed_at=now).status == "completed"
@@ -136,7 +136,7 @@ def append_friday(provider, market, manifest, target):
                 provider_symbol=listing.provider_symbol,
                 sector_name=example.sector_name,
                 sector_key=example.sector_key,
-                payload_hash=sha256(("fixture-sector:" + listing.listing_id).encode()).hexdigest(),
+                payload_hash=canonical_hash(["fixture-sector", listing.listing_id]),
             )
 
     def sector(*, provider_symbol):

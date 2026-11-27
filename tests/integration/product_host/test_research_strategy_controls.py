@@ -7,9 +7,11 @@ from datetime import UTC, date, datetime, timedelta
 from pathlib import Path
 from types import SimpleNamespace
 from typing import Any
+from uuid import UUID
 
 import pytest
 
+from alphalattice.capabilities.domain_contracts.identity import canonical_hash
 from alphalattice.control.product_host.composition.research_workspace import (
     ResearchWorkspaceManifest,
     publish_research_workspace_manifest,
@@ -18,6 +20,7 @@ from alphalattice.control.product_host.data_preparation import research_strategy
 from alphalattice.control.product_host.data_preparation.research_strategy import (
     ResearchStrategyPreparation,
 )
+from alphalattice.control.task_control.contracts import TaskLifecycle
 
 RISK = {
     "lifecycle": "SUCCEEDED",
@@ -98,7 +101,8 @@ def test_strategy_controls_fill_the_plan_once_its_parents_are_determined(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     """requirement (fewer agent steps): one completed study per component and one Risk study
-    covering the calibrated study's window, on one input, fill the plan's declaration."""
+    covering the calibrated study's window, on one input, fill the plan's declaration
+    and let it seal its output directory."""
     # The input's calendar and the Risk study's returns reach far enough before the first
     # formation.
     history = tuple(date(2015, 1, 1) + timedelta(days=day) for day in range(4300))
@@ -113,14 +117,27 @@ def test_strategy_controls_fill_the_plan_once_its_parents_are_determined(
     owner = _owner(tmp_path, studies)
     required = owner.controls()["required_components"]
     window = {"start": "2023-01-03", "end": "2026-06-30"}
+    binding = canonical_hash({"input": "fixture"})
+    alpha_tasks = [str(UUID(int=index + 1)) for index in range(len(required))]
     studies.extend(
-        _alpha(c, task_id=f"alpha-{c}", input_binding_hash="h", sessions=window) for c in required
+        _alpha(c, task_id=task, input_binding_hash=binding, sessions=window)
+        for c, task in zip(required, alpha_tasks, strict=True)
     )
-    studies.append({**RISK, "task_id": RISK_TASK, "input_binding_hash": "h"})
+    studies.append({**RISK, "task_id": RISK_TASK, "input_binding_hash": binding})
     filled = owner.controls()
     assert filled["risk_windows"]
-    assert filled["next_requests"]["plan"]["experiment_document"] == {
-        "input_binding_hash": "h",
-        "alpha_task_ids": [f"alpha-{c}" for c in required],
+    declaration = filled["next_requests"]["plan"]["experiment_document"]
+    assert declaration == {
+        "input_binding_hash": binding,
+        "alpha_task_ids": alpha_tasks,
         "risk_task_id": RISK_TASK,
     }
+    owner.session.task_control_registry = SimpleNamespace(
+        task=lambda _: SimpleNamespace(lifecycle=TaskLifecycle.SUCCEEDED),
+        tasks=lambda: (),
+    )
+    answer = owner.plan(declaration)
+    plan = owner.last_plan
+    assert plan is not None and answer["plan_hash"] == plan.plan_hash
+    request_hex = canonical_hash(answer["declaration"]).split(":", 1)[1]
+    assert plan.artifact_root_relative == f"artifacts/research-strategy-inputs/blake3-{request_hex}"

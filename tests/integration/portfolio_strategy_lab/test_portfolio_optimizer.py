@@ -108,7 +108,7 @@ def test_rank_buffered_recipe_is_fixed_and_installed() -> None:
         normalization_reference_id="SESSION_ROLE_NORMALIZED_TARGET_Z_SCORE",
     )
     assert historical.recipe_hash == (
-        "72a5f8978431f745e0209f811063374e87fb07d114fdd4cab4a3857f50e415e2"
+        "blake3:fcb838a6c5700386fcb12525d470cf5bcd205639c7e29a1f2b5abfbe179d0163"
     )
 
 

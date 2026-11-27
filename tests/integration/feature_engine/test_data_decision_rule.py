@@ -24,7 +24,9 @@ from alphalattice.control.product_host.composition.research_workspace import (
 )
 from alphalattice.foundation.feature_engine.inputs.gateway import FeatureInputGateway
 from alphalattice.foundation.market_data_ops.runtime.remediation import canonical_hash
+from alphalattice.kernel.identity import blake3_hex
 from alphalattice.protocols.actor_execution import ActorKind
+from tests._support.identity_fixtures import fixture_digest
 from tests.feature_input_gateway.gateway_support import (
     NOW,
     _evidence,
@@ -43,6 +45,7 @@ from tests.feature_input_gateway.gateway_support import (
         ({0}, "data.provider_timeout", 0, QUARANTINE),
         ({0, 1, 2}, "data.unexplained_raw_move", 1, ESCALATE),
     ],
+    ids=("isolated-move", "repeated-move", "provider-timeout", "past-cap"),
 )
 def test_the_rule_retains_an_isolated_move_quarantines_the_rest_and_escalates_past_its_cap(
     failed: set[int], code: str, sessions: int, chosen: str
@@ -51,8 +54,9 @@ def test_the_rule_retains_an_isolated_move_quarantines_the_rest_and_escalates_pa
     evidence."""
     manifest = _manifest(100)
     moved = tuple(date(2026, 6, day) for day in range(1, sessions + 1))
+    anomaly_signature = fixture_digest("isolated-move")
     evidence = tuple(
-        replace(item, unexplained_sessions=moved, anomaly_signature_hash="a" * 64)
+        replace(item, unexplained_sessions=moved, anomaly_signature_hash=anomaly_signature)
         if item.failure_code
         else item
         for item in _evidence(
@@ -117,7 +121,7 @@ def test_the_rule_retains_an_isolated_move_quarantines_the_rest_and_escalates_pa
     )
     # The newest decision on an anomaly wins: the person's later choice ends the rule's hold,
     # and a quarantine since released holds nothing.
-    document, key = json.dumps(case.document()), (case.listing_ids[0], "a" * 64)
+    document, key = json.dumps(case.document()), (case.listing_ids[0], anomaly_signature)
 
     def receipt(option: str, kind: str, actor: str) -> dict:
         proposal = {
@@ -132,16 +136,17 @@ def test_the_rule_retains_an_isolated_move_quarantines_the_rest_and_escalates_pa
             "effect": {"status": "APPLIED"},
         }
 
-    ruled = receipt(RETAIN, "HOST_FALLBACK", f"host-rule:{rule.rule_hash[:16]}")
+    rule_actor = f"host-rule:{blake3_hex(rule.rule_hash)[:16]}"
+    ruled = receipt(RETAIN, "HOST_FALLBACK", rule_actor)
     person = receipt(QUARANTINE, "HUMAN", "person")
     assert held_decisions([(document, ruled)], rule.rule_hash) == {key: RETAIN}
     assert held_decisions([(document, ruled), (document, person)], rule.rule_hash) == {}
-    set_aside = receipt(QUARANTINE, "HOST_FALLBACK", f"host-rule:{rule.rule_hash[:16]}")
+    set_aside = receipt(QUARANTINE, "HOST_FALLBACK", rule_actor)
     assert held_decisions([(document, set_aside)], rule.rule_hash) == {}
     assert held_decisions([(document, set_aside)], rule.rule_hash, {key[0]}) == {key: QUARANTINE}
     signed = rule.submission(cases[0], chosen, "goal-1")
     assert signed.actor_kind is ActorKind.HOST_FALLBACK
-    assert signed.actor_id == f"host-rule:{rule.rule_hash[:16]}"
+    assert signed.actor_id == rule_actor
     assert signed.submission.proposal.rationale == f"first-use-goal:goal-1; rule:{rule.rule_hash}"
     # The cap is the rule's identity: a changed number is another rule, with its own hash.
     assert DataDecisionRule(max_cases=3).rule_hash != rule.rule_hash

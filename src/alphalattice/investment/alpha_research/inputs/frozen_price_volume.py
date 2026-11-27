@@ -33,6 +33,7 @@ from alphalattice.investment.alpha_research.inputs.panel_feature_views import (
 from alphalattice.investment.alpha_research.inputs.preprocessing.sector_context import (
     scale_mapped_sector_context_by_listing_session,
 )
+from alphalattice.kernel.identity import is_blake3
 
 type FloatArray = npt.NDArray[np.float64]
 type IntArray = npt.NDArray[np.int64]
@@ -104,7 +105,7 @@ class FrozenPriceVolumeInputs:
             or tuple(sorted(set(self.formation_sessions))) != self.formation_sessions
             or len(set(self.ordered_listing_ids)) != listings
             or set(self.sector_by_listing_id) != set(self.ordered_listing_ids)
-            or len(self.source_binding_hash) != 64
+            or not is_blake3(self.source_binding_hash)
         ):
             raise PanelFeatureBoundaryError("alpha_research.frozen_input_axis_invalid")
         for name in ("open", "high", "low", "close", "volume"):

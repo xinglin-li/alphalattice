@@ -72,11 +72,13 @@ from alphalattice.investment.alpha_research.scores.temporal_aggregation import (
     row_axis_hash,
     score_value_hash,
 )
+from alphalattice.kernel.identity import blake3_filename
 from alphalattice.protocols.actor_execution import (
     ActorKind,
     AgentExecutionBinding,
     seal_actor_submission,
 )
+from tests._support.identity_fixtures import fixture_digest
 
 
 def _request() -> AlphaDevelopmentRequest:
@@ -120,23 +122,23 @@ def _program(
     catalog = build_alpha_campaign_development_catalog()
     program = compile_alpha_development_program(
         request=request or _request(),
-        factor_checkpoint_hash="1" * 64,
-        feature_source_hash="2" * 64,
+        factor_checkpoint_hash=fixture_digest("1"),
+        feature_source_hash=fixture_digest("2"),
         ordered_factor_ids=ordered_factor_ids,
         horizon_authority={
             1: AlphaHorizonAuthority(
                 horizon_sessions=1,
-                target_evidence_hash="3" * 64,
-                target_recipe_binding_hash="4" * 64,
-                outcome_method_binding_hash="5" * 64,
+                target_evidence_hash=fixture_digest("3"),
+                target_recipe_binding_hash=fixture_digest("4"),
+                outcome_method_binding_hash=fixture_digest("5"),
                 maturity_lag_sessions=2,
                 embargo_sessions=1,
             ),
             5: AlphaHorizonAuthority(
                 horizon_sessions=5,
-                target_evidence_hash="6" * 64,
-                target_recipe_binding_hash="7" * 64,
-                outcome_method_binding_hash="8" * 64,
+                target_evidence_hash=fixture_digest("6"),
+                target_recipe_binding_hash=fixture_digest("7"),
+                outcome_method_binding_hash=fixture_digest("8"),
                 maturity_lag_sessions=6,
                 embargo_sessions=5,
             ),
@@ -144,7 +146,7 @@ def _program(
         model_catalog=catalog,
         scale_catalog=build_alpha_campaign_cross_sectional_scale_catalog(),
         ordered_context_ids=ordered_context_ids,
-        context_source_hash="9" * 64 if ordered_context_ids else None,
+        context_source_hash=fixture_digest("9") if ordered_context_ids else None,
     )
     return program, catalog
 
@@ -240,7 +242,7 @@ def test_actor_profile_changes_do_not_change_host_policy_identity() -> None:
 
     policy = alpha_campaign_decision_policy_hash()
     submission = AlphaCampaignDecisionSubmission.create(
-        dossier_hash="1" * 64,
+        dossier_hash=fixture_digest("1"),
         selected_method_ids=(),
         selected_scale_method_ids=(),
         selected_blend_recipe_hash=None,
@@ -250,11 +252,11 @@ def test_actor_profile_changes_do_not_change_host_policy_identity() -> None:
     agent_execution = AgentExecutionBinding(
         profile_id="alpha-campaign-analyst",
         mode="STRUCTURED",
-        profile_hash="a" * 64,
-        document_hash="b" * 64,
+        profile_hash=fixture_digest("a"),
+        document_hash=fixture_digest("b"),
         response_protocol="alpha-decision.v1",
-        response_protocol_hash="c" * 64,
-        concrete_schema_hash="d" * 64,
+        response_protocol_hash=fixture_digest("c"),
+        concrete_schema_hash=fixture_digest("d"),
     )
     for actor_kind, actor_id, execution in (
         (ActorKind.HUMAN, "researcher-1", None),
@@ -270,7 +272,7 @@ def test_actor_profile_changes_do_not_change_host_policy_identity() -> None:
         values = {
             "kind": "AlphaCampaignDecisionReceipt",
             "submission": submission.model_dump(mode="json"),
-            "program_hash": "2" * 64,
+            "program_hash": fixture_digest("2"),
             "actor_submission": actor_submission.model_dump(mode="json"),
             "decision_policy_hash": policy,
             "disposition": "DEVELOPMENT_NOT_SELECTED",
@@ -278,7 +280,7 @@ def test_actor_profile_changes_do_not_change_host_policy_identity() -> None:
         receipts.append(
             AlphaCampaignDecisionReceipt(
                 submission=submission,
-                program_hash="2" * 64,
+                program_hash=fixture_digest("2"),
                 actor_submission=actor_submission,
                 decision_policy_hash=policy,
                 disposition="DEVELOPMENT_NOT_SELECTED",
@@ -310,23 +312,23 @@ def test_yaml_subset_selection_controls_the_compiled_program() -> None:
     )
     program = compile_alpha_development_program(
         request=request,
-        factor_checkpoint_hash="1" * 64,
-        feature_source_hash="2" * 64,
+        factor_checkpoint_hash=fixture_digest("1"),
+        feature_source_hash=fixture_digest("2"),
         ordered_factor_ids=("control", "market_drawdown_x_momentum"),
         horizon_authority={
             1: AlphaHorizonAuthority(
                 horizon_sessions=1,
-                target_evidence_hash="3" * 64,
-                target_recipe_binding_hash="4" * 64,
-                outcome_method_binding_hash="5" * 64,
+                target_evidence_hash=fixture_digest("3"),
+                target_recipe_binding_hash=fixture_digest("4"),
+                outcome_method_binding_hash=fixture_digest("5"),
                 maturity_lag_sessions=2,
                 embargo_sessions=1,
             ),
             5: AlphaHorizonAuthority(
                 horizon_sessions=5,
-                target_evidence_hash="6" * 64,
-                target_recipe_binding_hash="7" * 64,
-                outcome_method_binding_hash="8" * 64,
+                target_evidence_hash=fixture_digest("6"),
+                target_recipe_binding_hash=fixture_digest("7"),
+                outcome_method_binding_hash=fixture_digest("8"),
                 maturity_lag_sessions=6,
                 embargo_sessions=5,
             ),
@@ -415,7 +417,7 @@ def _canonical_materialization(
     sectors = {value: f"SECTOR{index % 2}" for index, value in enumerate(sorted(listings))}
     recipe = build_canonical_alpha_target_recipe(
         execution_outcome_recipe_id="one-session-open-to-open",
-        sector_revision="a" * 64,
+        sector_revision=fixture_digest("a"),
         minimum_coverage=0.5,
         minimum_sector_sample=2,
     )
@@ -425,15 +427,15 @@ def _canonical_materialization(
     binding = CanonicalAlphaTargetRecipeBinding.create(
         recipe=recipe,
         target_catalog_hash=build_installed_alpha_target_catalog().binding.catalog_hash,
-        causal_outcome_snapshot_hash="b" * 64,
-        outcome_method_binding_hash="c" * 64,
+        causal_outcome_snapshot_hash=fixture_digest("b"),
+        outcome_method_binding_hash=fixture_digest("c"),
         maturity_lag_sessions=2,
     )
     return CanonicalTargetMaterialization(
         evidence=seal_canonical_alpha_target_evidence(surface=surface, recipe_binding=binding),
         recipe_binding=binding,
         surface=surface,
-        outcome_method_binding_hash="c" * 64,
+        outcome_method_binding_hash=fixture_digest("c"),
         maturity_lag_sessions=2,
         simple_economic_return_identity=surface.lane_identity.simple_economic_return_identity,
     )
@@ -451,8 +453,8 @@ def test_calibration_shrinkage_is_dimensionless() -> None:
     _, base = calibrate_stock_returns_cross_fitted(
         recipe=StockCalibrationRecipe.create(),
         horizon_sessions=1,
-        target_identity="1" * 64,
-        score_identity="2" * 64,
+        target_identity=fixture_digest("1"),
+        score_identity=fixture_digest("2"),
         ordered_formation_sessions=sessions,
         scores=scores,
         raw_economic_returns=returns,
@@ -465,8 +467,8 @@ def test_calibration_shrinkage_is_dimensionless() -> None:
     _, scaled = calibrate_stock_returns_cross_fitted(
         recipe=StockCalibrationRecipe.create(),
         horizon_sessions=1,
-        target_identity="1" * 64,
-        score_identity="3" * 64,
+        target_identity=fixture_digest("1"),
+        score_identity=fixture_digest("3"),
         ordered_formation_sessions=sessions,
         scores=scaled_scores,
         raw_economic_returns=scaled_returns,
@@ -515,10 +517,10 @@ def test_calibration_shrinkage_is_dimensionless() -> None:
                 fold_index=index,
                 horizon_sessions=1,
                 selected_method_id="RIDGE",
-                selected_trial_hash=f"{index:0>64x}",
-                inner_selection_record_hash=f"{index + 10:0>64x}",
-                prediction_artifact_hash=f"{index + 20:0>64x}",
-                prediction_value_hash=f"{index + 30:0>64x}",
+                selected_trial_hash=fixture_digest(("trial", index)),
+                inner_selection_record_hash=fixture_digest(("selection", index)),
+                prediction_artifact_hash=fixture_digest(("prediction-artifact", index)),
+                prediction_value_hash=fixture_digest(("prediction-value", index)),
                 formation_session_count=3,
             )
             for index in range(3)
@@ -527,7 +529,7 @@ def test_calibration_shrinkage_is_dimensionless() -> None:
         row_listing_ids=row_listings,
         predicted_z=predicted,
         ordered_fold_row_counts=fold_counts,
-        row_axis_hash="d" * 64,
+        row_axis_hash=fixture_digest("d"),
     )
     economic = np.asarray(
         surface.targets["simple_economic_return"].combine_chunks().to_numpy(zero_copy_only=False),
@@ -544,16 +546,16 @@ def test_calibration_shrinkage_is_dimensionless() -> None:
         recipe=StockCalibrationRecipe.create(),
         horizon_sessions=1,
         target_identity=materialization.evidence.evidence_hash,
-        score_identity="4" * 64,
+        score_identity=fixture_digest("4"),
         ordered_formation_sessions=row_sessions,
         scores=predicted,
         raw_economic_returns=np.ascontiguousarray(economic),
         folds=superseded_folds,
     )
     projection = AlphaSelectedScoreProjection.create(
-        dossier_hash="5" * 64,
-        decision_receipt_hash="6" * 64,
-        program_hash="7" * 64,
+        dossier_hash=fixture_digest("5"),
+        decision_receipt_hash=fixture_digest("6"),
+        program_hash=fixture_digest("7"),
         target_evidence_hash=materialization.evidence.evidence_hash,
         target_recipe_binding_hash=materialization.recipe_binding.binding_hash,
         outcome_method_binding_hash=materialization.outcome_method_binding_hash,
@@ -564,7 +566,7 @@ def test_calibration_shrinkage_is_dimensionless() -> None:
         ordered_listing_ids=listings,
         resolved_cell_count=len(row_sessions),
         unresolved_cell_count=0,
-        predicted_z_values_hash="e" * 64,
+        predicted_z_values_hash=fixture_digest("e"),
     )
 
     capability = installed_alpha_return_unit_capability()
@@ -714,7 +716,9 @@ def test_calibration_shrinkage_is_dimensionless() -> None:
     # tell a real other build from a value that was simply typed in. The name says
     # what is known -- mismatched, and unverified -- and the outcome is the same
     # either way, which is that nothing is admitted.
-    mismatched = _reseal(capability_binding_hash="8" * 64, implementation_closure_hash="9" * 64)
+    mismatched = _reseal(
+        capability_binding_hash=fixture_digest("8"), implementation_closure_hash=fixture_digest("9")
+    )
     unverified = _resolve(mismatched)
     assert unverified.disposition == "READBACK_ONLY_UNVERIFIED_CAPABILITY_MISMATCH"
     assert unverified.rederived is False
@@ -727,7 +731,7 @@ def test_calibration_shrinkage_is_dimensionless() -> None:
     # around the Desk's own ValueError subclass.
     assert issubclass(AlphaReturnUnitCalibrationError, ValueError)
     with pytest.raises(ValueError, match="authority_partial"):
-        _reseal(capability_binding_hash="8" * 64, implementation_closure_hash=None)
+        _reseal(capability_binding_hash=fixture_digest("8"), implementation_closure_hash=None)
     # The capability identity is Host-derived and has three parts, none of which a
     # caller can supply.
     assert capability.method_id == "DISPERSION_SCALED_NORMALIZED_MOMENT_NONNEGATIVE_SLOPE"
@@ -778,22 +782,22 @@ def test_prediction_surface_is_durable_and_identity_bound(tmp_path: Path) -> Non
     value_hash = alpha_model_array_content_hash(values)
     axis_hash = str(canonical_hash(rows))
     artifact_hash = alpha_campaign_prediction_artifact_hash(
-        program_hash="1" * 64,
+        program_hash=fixture_digest("1"),
         horizon_sessions=1,
-        trial_hash="2" * 64,
+        trial_hash=fixture_digest("2"),
         fold_index=0,
         prediction_value_hash=value_hash,
         validation_row_axis_hash=axis_hash,
     )
     evidence = AlphaDevelopmentTrialEvidence.create(
-        program_hash="1" * 64,
+        program_hash=fixture_digest("1"),
         horizon_sessions=1,
-        trial_hash="2" * 64,
+        trial_hash=fixture_digest("2"),
         fold_index=0,
-        inner_selection_record_hash="6" * 64,
-        training_binding_hash="3" * 64,
-        estimator_content_hash="4" * 64,
-        numerical_environment_hash="5" * 64,
+        inner_selection_record_hash=fixture_digest("6"),
+        training_binding_hash=fixture_digest("3"),
+        estimator_content_hash=fixture_digest("4"),
+        numerical_environment_hash=fixture_digest("5"),
         prediction_value_hash=value_hash,
         prediction_artifact_hash=artifact_hash,
         validation_row_axis_hash=axis_hash,
@@ -829,7 +833,7 @@ def test_prediction_surface_is_durable_and_identity_bound(tmp_path: Path) -> Non
 
     dossier = Document(
         {
-            "dossier_hash": "a" * 64,
+            "dossier_hash": fixture_digest("a"),
             "program": {"horizons": [{"horizon_sessions": 1}]},
             "trial_evidence": [evidence.model_dump(mode="json")],
             "inner_selection_records": [
@@ -837,14 +841,14 @@ def test_prediction_surface_is_durable_and_identity_bound(tmp_path: Path) -> Non
                     "horizon_sessions": 1,
                     "fold_index": 0,
                     "selected_method_id": "RIDGE",
-                    "record_hash": "6" * 64,
-                    "selected_trial_hash": "2" * 64,
+                    "record_hash": fixture_digest("6"),
+                    "selected_trial_hash": fixture_digest("2"),
                 }
             ],
         }
     )
     decision = Document(
-        {"submission": {"dossier_hash": "a" * 64, "selected_method_ids": ["RIDGE"]}}
+        {"submission": {"dossier_hash": fixture_digest("a"), "selected_method_ids": ["RIDGE"]}}
     )
     resolved = project_alpha_selected_rows(
         dossier=dossier,
@@ -955,7 +959,7 @@ def test_sealed_inner_selection_record_survives_the_new_members() -> None:
     """Sealed inner selection record survives the new members."""
 
     legacy: dict[str, Any] = {
-        "trial_hash": "1" * 64,
+        "trial_hash": fixture_digest("1"),
         "method_id": "RIDGE",
         "inner_validation_mse": 0.9957086753244833,
         "inner_validation_rank_ic": 0.018586,
@@ -995,13 +999,13 @@ def test_regularized_lightgbm_grid_has_no_duplicate_configuration() -> None:
 def _curated_payload(**overrides: object) -> dict[str, object]:
     payload: dict[str, object] = {
         "kind": "CuratedFactorCheckpoint",
-        "deterministic_checkpoint_hash": "1" * 64,
-        "campaign_dossier_hash": "2" * 64,
-        "curation_decision_hash": "3" * 64,
+        "deterministic_checkpoint_hash": fixture_digest("1"),
+        "campaign_dossier_hash": fixture_digest("2"),
+        "curation_decision_hash": fixture_digest("3"),
         "control_factor_ids": ("alpha", "beta"),
         "curated_candidate_ids": ("gamma",),
         "ordered_factor_ids": ("alpha", "beta", "gamma"),
-        "feature_source_hash": "9" * 64,
+        "feature_source_hash": fixture_digest("9"),
         "development_only": True,
     }
     payload.update(overrides)
@@ -1026,7 +1030,7 @@ def test_curated_checkpoint_sealed_before_pruning_keeps_its_identity() -> None:
 def test_curated_checkpoint_narrows_its_axis_only_by_naming_what_it_dropped() -> None:
     payload = _curated_payload(
         ordered_factor_ids=("alpha", "gamma"),
-        redundancy_structure_hash="4" * 64,
+        redundancy_structure_hash=fixture_digest("4"),
         redundancy_pruned_factor_ids=("beta",),
     )
 
@@ -1050,7 +1054,7 @@ def test_curated_checkpoint_refuses_a_narrowed_axis_without_provenance() -> None
 def test_curated_checkpoint_refuses_an_axis_its_pruned_set_does_not_explain() -> None:
     payload = _curated_payload(
         ordered_factor_ids=("alpha",),
-        redundancy_structure_hash="4" * 64,
+        redundancy_structure_hash=fixture_digest("4"),
         redundancy_pruned_factor_ids=("beta",),
     )
 
@@ -1339,13 +1343,13 @@ def test_aggregation_program_evidence_and_surface_have_durable_readback(
         "selection_lane_id": "RAW_ECONOMIC_SIMPLE_RETURN",
         "selection_cost_bps": 5.0,
         "maturity_policy": "OUTCOME_MATURITY_STRICTLY_BEFORE_CURRENT_FOLD_FIRST_FORMATION",
-        "capability_hash": "a" * 64,
-        "implementation_binding_hash": "b" * 64,
-        "installed_catalog_hash": "c" * 64,
+        "capability_hash": fixture_digest("a"),
+        "implementation_binding_hash": fixture_digest("b"),
+        "installed_catalog_hash": fixture_digest("c"),
     }
     provisional = AlphaScoreAggregationProgram.model_construct(
         **values,
-        program_hash="0" * 64,
+        program_hash=fixture_digest("0"),
     )
     program_values = provisional.model_dump(mode="json", exclude={"program_hash"})
     program = AlphaScoreAggregationProgram(
@@ -1372,12 +1376,12 @@ def test_aggregation_program_evidence_and_surface_have_durable_readback(
         program_hash=program.program_hash,
         methodology_id="HISTORICAL_TEST_ARM",
         horizon_sessions=1,
-        upstream_score_projection_hash="1" * 64,
-        upstream_dossier_hash="2" * 64,
-        upstream_decision_receipt_hash="3" * 64,
-        target_recipe_binding_hash="4" * 64,
-        outcome_snapshot_hash="5" * 64,
-        outcome_method_binding_hash="6" * 64,
+        upstream_score_projection_hash=fixture_digest("1"),
+        upstream_dossier_hash=fixture_digest("2"),
+        upstream_decision_receipt_hash=fixture_digest("3"),
+        target_recipe_binding_hash=fixture_digest("4"),
+        outcome_snapshot_hash=fixture_digest("5"),
+        outcome_method_binding_hash=fixture_digest("6"),
         execution_clock_id="OPEN_T_PLUS_ONE_TO_FOLLOWING_OPEN",
         row_axis_hash=row_axis_hash(sessions, listings),
         fold_axis_hash=canonical_hash((0, 0)),
@@ -1402,7 +1406,7 @@ def test_aggregation_program_evidence_and_surface_have_durable_readback(
         ("development/score-aggregation/evidence", evidence, evidence.evidence_hash),
         ("development/score-aggregation/surfaces", surface, surface.surface_hash),
     ):
-        target = store.root / category / f"{identity}.json"
+        target = store.root / category / f"{blake3_filename(identity)}.json"
         target.parent.mkdir(parents=True, exist_ok=True)
         target.write_text(
             json.dumps(value.model_dump(mode="json"), sort_keys=True, separators=(",", ":")),
@@ -1412,7 +1416,9 @@ def test_aggregation_program_evidence_and_surface_have_durable_readback(
     import pyarrow.parquet as pq
 
     parquet = (
-        store.root / "development/score-aggregation/surfaces" / f"{surface.surface_hash}.parquet"
+        store.root
+        / "development/score-aggregation/surfaces"
+        / f"{blake3_filename(surface.surface_hash)}.parquet"
     )
     pq.write_table(
         pa.table(

@@ -37,6 +37,7 @@ from alphalattice.interface.local_application.goals import (
 from alphalattice.interface.local_application.operations import GRAMMAR
 from alphalattice.kernel.door import DECISIONS_DATABASE, Decisions
 from alphalattice.kernel.execution import EVENTS
+from alphalattice.kernel.identity import blake3_filename
 
 EXPERIENCE_RECORD_WORDS = (
     "Start alphalattice_maintainer in RECORD mode with this goal (goal show {subject}), "
@@ -279,7 +280,7 @@ class GoalStore:
     def declared(self, key: str) -> UUID | None:
         """The goal opened under this `declaration_hash`, if any: one file per (encoding
         version, hash), and the hash covers the opener, so each is unique on all three."""
-        path = self._declarations() / f"{key}.json"
+        path = self._declarations() / f"{blake3_filename(key)}.json"
         if not path.is_file():
             return None
         try:
@@ -295,7 +296,7 @@ class GoalStore:
             if held is not None:
                 return held
             entry = {"goal_id": str(goal_id), "opener": opener, "encoding": DECLARATION_ENCODING}
-            path = self._declarations() / f"{key}.json"
+            path = self._declarations() / f"{blake3_filename(key)}.json"
             self.content.atomic_write(path, json.dumps(entry, sort_keys=True).encode())
             return goal_id
 
@@ -355,7 +356,7 @@ class GoalStore:
         producer sequence only with the same content, so a replay reads the first receipt's
         answer rather than deciding again after its session took another goal.
         """
-        path = self.content.root / "events" / f"{key}.json"
+        path = self.content.artifact_path(category="events", content_hash=key)
         decided = None if path.is_file() else decide()
         with self.lock:
             if not path.is_file():
@@ -372,7 +373,7 @@ class GoalStore:
         self, key: str, record: Mapping[str, object], *, operation: str
     ) -> dict[str, object] | None:
         """Read legacy reservations and reserve new relays through the Door."""
-        path = self.content.root / "relays" / f"{key}.json"
+        path = self.content.artifact_path(category="relays", content_hash=key)
         if path.is_file():  # contract: retained relays still refuse reuse after upgrade
             held: dict[str, object] = json.loads(path.read_bytes())
             return held
@@ -440,7 +441,7 @@ class GoalStore:
         Goal-only receipts stay readable with an unknown packet; a retry never backfills
         them from later assignments or a new Session binding.
         """
-        path = self.content.root / "events" / f"{key}.json"
+        path = self.content.artifact_path(category="events", content_hash=key)
         with self.lock:
             if not path.is_file():
                 context = decide()

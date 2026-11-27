@@ -19,6 +19,7 @@ from alphalattice.foundation.feature_engine.contracts import (
     PANEL_ROW_IDENTITY_BY_CROSS_SECTION,
     PanelSourceExclusion,
 )
+from alphalattice.kernel.identity import BLAKE3_PATTERN
 
 Hash = str
 
@@ -55,8 +56,8 @@ class ClosureArtifactRef(_Contract):
     """Locate an immutable artifact by URI, bytes, and digest."""
 
     kind: str = Field(min_length=1)
-    content_hash: Hash = Field(pattern=r"^[0-9a-f]{64}$")
-    physical_sha256: Hash = Field(pattern=r"^[0-9a-f]{64}$")
+    content_hash: Hash = Field(pattern=BLAKE3_PATTERN)
+    physical_digest: Hash = Field(pattern=BLAKE3_PATTERN)
     byte_count: int = Field(ge=0)
     row_count: int = Field(ge=0)
     uri: str = Field(min_length=1)
@@ -70,18 +71,18 @@ class SectorRevisionEntry(_Contract):
     provider_symbol: str = Field(min_length=1)
     sector_name: str = Field(min_length=1)
     sector_key: str | None = None
-    payload_hash: Hash = Field(pattern=r"^[0-9a-f]{64}$")
-    evidence_hash: Hash = Field(pattern=r"^[0-9a-f]{64}$")
+    payload_hash: Hash = Field(pattern=BLAKE3_PATTERN)
+    evidence_hash: Hash = Field(pattern=BLAKE3_PATTERN)
 
 
 class SectorRevisionMap(_Contract):
     """Record the sector revisions used by a Panel closure."""
 
     kind: Literal["SectorRevisionMap"] = "SectorRevisionMap"
-    manifest_revision: Hash = Field(pattern=r"^[0-9a-f]{64}$")
-    sector_revision: Hash = Field(pattern=r"^[0-9a-f]{64}$")
+    manifest_revision: Hash = Field(pattern=BLAKE3_PATTERN)
+    sector_revision: Hash = Field(pattern=BLAKE3_PATTERN)
     entries: tuple[SectorRevisionEntry, ...]
-    map_hash: Hash = Field(pattern=r"^[0-9a-f]{64}$")
+    map_hash: Hash = Field(pattern=BLAKE3_PATTERN)
 
     @model_validator(mode="after")  # type: ignore[untyped-decorator]
     def validate_map(self) -> SectorRevisionMap:
@@ -98,14 +99,14 @@ class SectorRevisionBackfillReceipt(_Contract):
     """Record a verified sector revision backfill."""
 
     kind: Literal["SectorRevisionBackfillReceipt"] = "SectorRevisionBackfillReceipt"
-    sector_map_hash: Hash = Field(pattern=r"^[0-9a-f]{64}$")
+    sector_map_hash: Hash = Field(pattern=BLAKE3_PATTERN)
     revision_ledger_row_count: int = Field(ge=0)
     correction_row_count: int = Field(ge=0)
     reconstruction_basis: Literal[
         "CURRENT_ROWS_EXACT",
         "CURRENT_ROWS_WITH_ZERO_CORRECTION_LEDGER",
     ]
-    receipt_hash: Hash = Field(pattern=r"^[0-9a-f]{64}$")
+    receipt_hash: Hash = Field(pattern=BLAKE3_PATTERN)
 
     @model_validator(mode="after")  # type: ignore[untyped-decorator]
     def validate_receipt(self) -> SectorRevisionBackfillReceipt:
@@ -125,7 +126,7 @@ class PanelBaseKeyChunk(_Contract):
     """Locate the annual key axis of a base value closure."""
 
     year: int = Field(ge=1900, le=2200)
-    key_hash: Hash = Field(pattern=r"^[0-9a-f]{64}$")
+    key_hash: Hash = Field(pattern=BLAKE3_PATTERN)
     first_session: date
     last_session: date
     listing_count: int = Field(gt=0)
@@ -138,8 +139,8 @@ class PanelBaseValueChunk(_Contract):
 
     year: int = Field(ge=1900, le=2200)
     factor_id: str = Field(min_length=1)
-    key_hash: Hash = Field(pattern=r"^[0-9a-f]{64}$")
-    value_hash: Hash = Field(pattern=r"^[0-9a-f]{64}$")
+    key_hash: Hash = Field(pattern=BLAKE3_PATTERN)
+    value_hash: Hash = Field(pattern=BLAKE3_PATTERN)
     null_count: int = Field(ge=0)
     artifact: ClosureArtifactRef
 
@@ -148,7 +149,7 @@ class PanelBaseValueClosureManifest(_Contract):
     """Bind annual key and factor chunks into a recoverable base closure."""
 
     kind: Literal["PanelBaseValueClosureManifest"] = "PanelBaseValueClosureManifest"
-    catalog_hash: Hash = Field(pattern=r"^[0-9a-f]{64}$")
+    catalog_hash: Hash = Field(pattern=BLAKE3_PATTERN)
     history_start: date
     as_of_session: date
     factor_ids: tuple[str, ...]
@@ -157,7 +158,7 @@ class PanelBaseValueClosureManifest(_Contract):
     absent_source_keys: ClosureArtifactRef | None = Field(
         default=None, exclude_if=lambda v: v is None
     )
-    manifest_hash: Hash = Field(pattern=r"^[0-9a-f]{64}$")
+    manifest_hash: Hash = Field(pattern=BLAKE3_PATTERN)
 
     @model_validator(mode="after")  # type: ignore[untyped-decorator]
     def validate_manifest(self) -> PanelBaseValueClosureManifest:
@@ -189,12 +190,12 @@ class PanelAvailabilityClosure(_Contract):
     """Record availability rows for a Panel binding and session range."""
 
     kind: Literal["PanelAvailabilityClosure"] = "PanelAvailabilityClosure"
-    panel_binding_hash: Hash = Field(pattern=r"^[0-9a-f]{64}$")
+    panel_binding_hash: Hash = Field(pattern=BLAKE3_PATTERN)
     history_start: date
     as_of_session: date
     availability_count: int = Field(gt=0)
     artifact: ClosureArtifactRef
-    closure_hash: Hash = Field(pattern=r"^[0-9a-f]{64}$")
+    closure_hash: Hash = Field(pattern=BLAKE3_PATTERN)
 
     @model_validator(mode="after")  # type: ignore[untyped-decorator]
     def validate_closure(self) -> PanelAvailabilityClosure:
@@ -209,10 +210,10 @@ class PanelRowReceiptAssignment(_Contract):
     """Bind a Panel content identity to its row receipt artifact."""
 
     kind: Literal["PanelRowReceiptAssignment"] = "PanelRowReceiptAssignment"
-    panel_content_hash: Hash = Field(pattern=r"^[0-9a-f]{64}$")
+    panel_content_hash: Hash = Field(pattern=BLAKE3_PATTERN)
     row_count: int = Field(gt=0)
     artifact: ClosureArtifactRef
-    assignment_hash: Hash = Field(pattern=r"^[0-9a-f]{64}$")
+    assignment_hash: Hash = Field(pattern=BLAKE3_PATTERN)
 
     @model_validator(mode="after")  # type: ignore[untyped-decorator]
     def validate_assignment(self) -> PanelRowReceiptAssignment:
@@ -228,7 +229,7 @@ class PanelCrossSectionRecord(_Contract):
 
     first_session: date
     last_session: date
-    cross_section_identity: Hash = Field(pattern=r"^[0-9a-f]{64}$")
+    cross_section_identity: Hash = Field(pattern=BLAKE3_PATTERN)
     member_count: int = Field(gt=0)
 
     @model_validator(mode="after")  # type: ignore[untyped-decorator]
@@ -246,9 +247,9 @@ class ExpectedPanelChunk(_Contract):
     first_session: date
     last_session: date
     row_count: int = Field(gt=0)
-    chunk_hash: Hash = Field(pattern=r"^[0-9a-f]{64}$")
-    metadata_hash: Hash = Field(pattern=r"^[0-9a-f]{64}$")
-    physical_sha256: Hash = Field(pattern=r"^[0-9a-f]{64}$")
+    chunk_hash: Hash = Field(pattern=BLAKE3_PATTERN)
+    metadata_hash: Hash = Field(pattern=BLAKE3_PATTERN)
+    physical_digest: Hash = Field(pattern=BLAKE3_PATTERN)
     byte_count: int = Field(gt=0)
     uri: str = Field(min_length=1)
     # The binding the chunk was hashed and written under, when it is not the
@@ -256,7 +257,7 @@ class ExpectedPanelChunk(_Contract):
     # partition reuse and for chunks the snapshot's build composed itself;
     # the identity rule excludes absent values, so legacy recipes re-derive
     # their recorded hash unchanged.
-    origin_binding_hash: Hash | None = Field(default=None, pattern=r"^[0-9a-f]{64}$")
+    origin_binding_hash: Hash | None = Field(default=None, pattern=BLAKE3_PATTERN)
     # Under the session-cross-section rule: the identity each range of the
     # chunk's sessions was computed over, as the snapshot manifest recorded
     # it. Absent under the binding rule.
@@ -293,11 +294,11 @@ class PanelPartitionOrigin(_Contract):
     catalog computes alike, and are replayed under their own binding.
     """
 
-    panel_binding_hash: Hash = Field(pattern=r"^[0-9a-f]{64}$")
-    spy_revision: Hash = Field(pattern=r"^[0-9a-f]{64}$")
-    manifest_revision: Hash | None = Field(default=None, pattern=r"^[0-9a-f]{64}$")
-    sector_revision: Hash | None = Field(default=None, pattern=r"^[0-9a-f]{64}$")
-    catalog_hash: Hash | None = Field(default=None, pattern=r"^[0-9a-f]{64}$")
+    panel_binding_hash: Hash = Field(pattern=BLAKE3_PATTERN)
+    spy_revision: Hash = Field(pattern=BLAKE3_PATTERN)
+    manifest_revision: Hash | None = Field(default=None, pattern=BLAKE3_PATTERN)
+    sector_revision: Hash | None = Field(default=None, pattern=BLAKE3_PATTERN)
+    catalog_hash: Hash | None = Field(default=None, pattern=BLAKE3_PATTERN)
 
 
 class PanelMembershipBasisRecord(_Contract):
@@ -329,7 +330,7 @@ class PanelMembershipRecord(_Contract):
     basis_ranges: tuple[PanelMembershipBasisRecord, ...] = Field(min_length=1)
     epochs: tuple[PanelMembershipEpochRecord, ...] = Field(min_length=1)
     journal_sequence: int = Field(ge=0)
-    bootstrap_record_hash: Hash | None = Field(default=None, pattern=r"^[0-9a-f]{64}$")
+    bootstrap_record_hash: Hash | None = Field(default=None, pattern=BLAKE3_PATTERN)
     bootstrap_t0_session: date | None = None
     source_exclusions: tuple[PanelSourceExclusion, ...] | None = Field(
         default=None, exclude_if=lambda value: value is None
@@ -370,16 +371,16 @@ class PanelDerivationRecipe(_Contract):
     """Bind Panel source inputs to expected chunks for exact recovery."""
 
     kind: Literal["PanelDerivationRecipe"] = "PanelDerivationRecipe"
-    snapshot_hash: Hash = Field(pattern=r"^[0-9a-f]{64}$")
-    panel_content_hash: Hash = Field(pattern=r"^[0-9a-f]{64}$")
-    panel_binding_hash: Hash = Field(pattern=r"^[0-9a-f]{64}$")
-    schema_hash: Hash = Field(pattern=r"^[0-9a-f]{64}$")
-    manifest_revision: Hash = Field(pattern=r"^[0-9a-f]{64}$")
-    sector_revision: Hash = Field(pattern=r"^[0-9a-f]{64}$")
-    sector_map_hash: Hash = Field(pattern=r"^[0-9a-f]{64}$")
-    catalog_hash: Hash = Field(pattern=r"^[0-9a-f]{64}$")
-    policy_hash: Hash = Field(pattern=r"^[0-9a-f]{64}$")
-    spy_revision: Hash = Field(pattern=r"^[0-9a-f]{64}$")
+    snapshot_hash: Hash = Field(pattern=BLAKE3_PATTERN)
+    panel_content_hash: Hash = Field(pattern=BLAKE3_PATTERN)
+    panel_binding_hash: Hash = Field(pattern=BLAKE3_PATTERN)
+    schema_hash: Hash = Field(pattern=BLAKE3_PATTERN)
+    manifest_revision: Hash = Field(pattern=BLAKE3_PATTERN)
+    sector_revision: Hash = Field(pattern=BLAKE3_PATTERN)
+    sector_map_hash: Hash = Field(pattern=BLAKE3_PATTERN)
+    catalog_hash: Hash = Field(pattern=BLAKE3_PATTERN)
+    policy_hash: Hash = Field(pattern=BLAKE3_PATTERN)
+    spy_revision: Hash = Field(pattern=BLAKE3_PATTERN)
     history_start: date
     as_of_session: date
     listing_ids: tuple[str, ...]
@@ -387,10 +388,10 @@ class PanelDerivationRecipe(_Contract):
     factor_ids: tuple[str, ...]
     row_hash_factor_ids: tuple[str, ...]
     session_batch_size: int = Field(gt=0)
-    base_closure_hash: Hash = Field(pattern=r"^[0-9a-f]{64}$")
-    base_value_catalog_hash: Hash = Field(pattern=r"^[0-9a-f]{64}$")
-    availability_closure_hash: Hash = Field(pattern=r"^[0-9a-f]{64}$")
-    row_receipt_assignment_hash: Hash = Field(pattern=r"^[0-9a-f]{64}$")
+    base_closure_hash: Hash = Field(pattern=BLAKE3_PATTERN)
+    base_value_catalog_hash: Hash = Field(pattern=BLAKE3_PATTERN)
+    availability_closure_hash: Hash = Field(pattern=BLAKE3_PATTERN)
+    row_receipt_assignment_hash: Hash = Field(pattern=BLAKE3_PATTERN)
     expected_chunks: tuple[ExpectedPanelChunk, ...]
     rematerialization_policy: Literal["CURRENT_ENVIRONMENT_BYTE_PARITY_REQUIRED"]
     # Every build whose cells the snapshot holds, as its manifest recorded
@@ -407,7 +408,7 @@ class PanelDerivationRecipe(_Contract):
     sector_reclassifications: tuple[PanelSectorReclassification, ...] | None = Field(
         default=None, exclude_if=lambda value: value is None
     )
-    recipe_hash: Hash = Field(pattern=r"^[0-9a-f]{64}$")
+    recipe_hash: Hash = Field(pattern=BLAKE3_PATTERN)
 
     # The identity and the published shape exclude absent optional values
     # (``durable_payload``), so a recipe written before those fields existed
@@ -553,8 +554,8 @@ class PanelRetentionAssessment(_Contract):
     """Record recoverability and potential reclaim for a Panel snapshot."""
 
     kind: Literal["PanelRetentionAssessment"] = "PanelRetentionAssessment"
-    snapshot_hash: Hash = Field(pattern=r"^[0-9a-f]{64}$")
-    recipe_hash: Hash | None = Field(default=None, pattern=r"^[0-9a-f]{64}$")
+    snapshot_hash: Hash = Field(pattern=BLAKE3_PATTERN)
+    recipe_hash: Hash | None = Field(default=None, pattern=BLAKE3_PATTERN)
     disposition: Literal[
         "REMATERIALIZATION_VERIFIED_CURRENT_ENVIRONMENT",
         "PHYSICAL_RETENTION_REQUIRED",
@@ -565,7 +566,7 @@ class PanelRetentionAssessment(_Contract):
     future_reclaim_candidate_bytes: int = Field(ge=0)
     eviction_authorized: Literal[False] = False
     verified_at: datetime
-    assessment_hash: Hash = Field(pattern=r"^[0-9a-f]{64}$")
+    assessment_hash: Hash = Field(pattern=BLAKE3_PATTERN)
 
     @model_validator(mode="after")  # type: ignore[untyped-decorator]
     def validate_assessment(self) -> PanelRetentionAssessment:

@@ -41,30 +41,13 @@ from alphalattice.investment.portfolio_strategy_lab.policies.contracts import (
 from alphalattice.investment.portfolio_strategy_lab.policies.tranche_book import (
     FrozenSleeveWeightRule,
 )
-from alphalattice.kernel.identity import identity_sha256, integrity_sha256
+from alphalattice.kernel.identity import BLAKE3_PATTERN, FileDigestTrust, blake3_digest
 
 type FloatArray = npt.NDArray[np.float64]
 
 POST_OBSERVED_AUTHORITY_MANIFEST_NAME: Final = "post-observed-strategy-authority.json"
-POST_OBSERVED_RESEARCH_SHA: Final = "6fc04e3412dba5b4f95439bcac64ccf75587a873"
-POST_OBSERVED_DESCRIPTOR_SHA256: Final = (
-    "7efd550a89b40b254a7ae524edcb62635b40e902530e0295feecae12c066e92a"
-)
-POST_OBSERVED_QV_MAP_SHA256: Final = (
-    "1ca7310f5519dc8090734599d4e1536ada98d9ac11b8d66f7adbd1e59075885b"
-)
-POST_OBSERVED_MODEL_INDEX_SHA256: Final = (
-    "2541eb51f81531060230dd533e872bc296a92ffc9970b3adec7013d5e2819d71"
-)
-POST_OBSERVED_ASSET_INDEX_SHA256: Final = (
-    "8beed2894aa481d8b15500ec68f78fb0387c73a3e303ec95a03e66223bd2f7b0"
-)
-POST_OBSERVED_FINAL_RECEIPT_SHA256: Final = (
-    "a8f065a8da474b6b8247d7f1c7e1bd7e0fd60e06d7369b5b2012b3b29019d05c"
-)
-POST_OBSERVED_AUTHORITY_HASH: Final = (
-    "552f149da1e080bc0b62ec715489a21f979dd68d6ef80efa493221907dd86930"
-)
+POST_OBSERVED_AUTHORITY_HASH: Final[str | None] = None
+"""An independently admitted BLAKE3 authority manifest. No replacement is installed."""
 
 TREND_CANDIDATE_COMPONENT_ID: Final = "G2_R0_TREND"
 FAST_REBOUND_COMPONENT_ID: Final = "G6_R0_FAST_REBOUND"
@@ -84,7 +67,7 @@ class FrozenAuthorityArtifact(_Contract):
 
     artifact_id: str = Field(min_length=1, max_length=120)
     relative_path: str = Field(min_length=1, max_length=512)
-    sha256: str = Field(pattern=r"^[0-9a-f]{64}$")
+    digest: str = Field(pattern=BLAKE3_PATTERN)
     bytes: int = Field(gt=0)
     dtype: str | None = None
     shape: tuple[int, ...] | None = None
@@ -120,15 +103,14 @@ class PostObservedStrategyAuthorityManifest(_Contract):
     """Complete runtime authority, with no source-worktree path in its payload."""
 
     kind: Literal["PostObservedStrategyAuthorityManifest"] = "PostObservedStrategyAuthorityManifest"
-    schema_version: Literal[1] = 1
+    schema_version: Literal[2] = 2
     status: Literal["POST_OBSERVED_HISTORICAL_AUTHORITY"] = "POST_OBSERVED_HISTORICAL_AUTHORITY"
     research_repository_sha: str = Field(pattern=r"^[0-9a-f]{40}$")
-    source_descriptor_sha256: str = Field(pattern=r"^[0-9a-f]{64}$")
-    source_qv_map_sha256: str = Field(pattern=r"^[0-9a-f]{64}$")
-    source_model_index_sha256: str = Field(pattern=r"^[0-9a-f]{64}$")
-    source_asset_index_sha256: str = Field(pattern=r"^[0-9a-f]{64}$")
-    source_final_receipt_sha256: str = Field(pattern=r"^[0-9a-f]{64}$")
-    source_shared_input_snapshot_sha256: str = Field(pattern=r"^[0-9a-f]{64}$")
+    source_descriptor_digest: str = Field(pattern=BLAKE3_PATTERN)
+    source_qv_map_digest: str = Field(pattern=BLAKE3_PATTERN)
+    source_model_index_digest: str = Field(pattern=BLAKE3_PATTERN)
+    source_asset_index_digest: str = Field(pattern=BLAKE3_PATTERN)
+    source_final_receipt_digest: str = Field(pattern=BLAKE3_PATTERN)
     formation_sessions: tuple[date, ...] = Field(min_length=1)
     ordered_listing_ids: tuple[str, ...] = Field(min_length=1)
     source_score_prefix_rows: Literal[4] = 4
@@ -143,7 +125,7 @@ class PostObservedStrategyAuthorityManifest(_Contract):
     ] = "ASSUMED_FULL_FILL_FIXED_COST_HISTORICAL_REPLAY"
     capacity_disposition: Literal["NOT_ADMITTED"] = "NOT_ADMITTED"
     artifacts: tuple[FrozenAuthorityArtifact, ...] = Field(min_length=1)
-    authority_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
+    authority_hash: str = Field(pattern=BLAKE3_PATTERN)
 
     @classmethod
     def create(cls, **values: object) -> Self:
@@ -175,15 +157,7 @@ class PostObservedStrategyAuthorityManifest(_Contract):
             PostObservedAuthorityError: Installed research/source pins, authority, ordered unique
                 support/count/endpoints, complete sorted artifact set or canonical identity differs.
         """
-        required_source = (
-            self.research_repository_sha == POST_OBSERVED_RESEARCH_SHA
-            and self.source_descriptor_sha256 == POST_OBSERVED_DESCRIPTOR_SHA256
-            and self.source_qv_map_sha256 == POST_OBSERVED_QV_MAP_SHA256
-            and self.source_model_index_sha256 == POST_OBSERVED_MODEL_INDEX_SHA256
-            and self.source_asset_index_sha256 == POST_OBSERVED_ASSET_INDEX_SHA256
-            and self.source_final_receipt_sha256 == POST_OBSERVED_FINAL_RECEIPT_SHA256
-        )
-        if not required_source or self.authority_hash != POST_OBSERVED_AUTHORITY_HASH:
+        if self.authority_hash != POST_OBSERVED_AUTHORITY_HASH:
             raise PostObservedAuthorityError(
                 "portfolio_application.post_observed_source_authority_invalid"
             )
@@ -257,17 +231,13 @@ class PostObservedStrategyAuthorityManifest(_Contract):
         )
 
 
-def _sha256(path: Path) -> str:
-    digest = integrity_sha256()
+def _file_digest(path: Path) -> str:
     try:
-        with path.open("rb") as handle:
-            for block in iter(lambda: handle.read(1024 * 1024), b""):
-                digest.update(block)
+        return FileDigestTrust.fresh_digest(path)
     except OSError as error:
         raise PostObservedAuthorityError(
             "portfolio_application.post_observed_artifact_unreadable"
         ) from error
-    return digest.hexdigest()
 
 
 class AdmittedPostObservedStrategyAuthority:
@@ -287,11 +257,18 @@ class AdmittedPostObservedStrategyAuthority:
         manifest_path = self.root / POST_OBSERVED_AUTHORITY_MANIFEST_NAME
         try:
             payload = json.loads(manifest_path.read_text(encoding="utf-8"))
+            if isinstance(payload, dict) and payload.get("schema_version") == 1:
+                raise PostObservedAuthorityError(
+                    "portfolio_application.post_observed_manifest_refused: "
+                    "authority was made before BLAKE3; start a fresh data root"
+                )
             self.manifest = cast(
                 PostObservedStrategyAuthorityManifest,
                 PostObservedStrategyAuthorityManifest.model_validate(payload),
             )
-        except (OSError, ValueError, json.JSONDecodeError) as error:
+        except PostObservedAuthorityError:
+            raise
+        except (OSError, ValueError) as error:
             raise PostObservedAuthorityError(
                 "portfolio_application.post_observed_manifest_refused"
             ) from error
@@ -326,7 +303,7 @@ class AdmittedPostObservedStrategyAuthority:
                 raise PostObservedAuthorityError(
                     f"portfolio_application.post_observed_artifact_unreadable:{artifact.artifact_id}"
                 ) from error
-            if size != artifact.bytes or _sha256(path) != artifact.sha256:
+            if size != artifact.bytes or _file_digest(path) != artifact.digest:
                 raise PostObservedAuthorityError(
                     f"portfolio_application.post_observed_artifact_tampered:{artifact.artifact_id}"
                 )
@@ -355,7 +332,7 @@ class AdmittedPostObservedStrategyAuthority:
                 f"portfolio_application.post_observed_artifact_not_array:{artifact_id}"
             )
         path = self._path(artifact)
-        if _sha256(path) != artifact.sha256:
+        if _file_digest(path) != artifact.digest:
             raise PostObservedAuthorityError(
                 f"portfolio_application.post_observed_artifact_tampered:{artifact_id}"
             )
@@ -398,7 +375,7 @@ class PostObservedHistoricalSharedMarketSource:
         Returns:
             Declared shared_decision_eligible SHA256.
         """
-        return self._authority.manifest.artifact("shared_decision_eligible").sha256
+        return self._authority.manifest.artifact("shared_decision_eligible").digest
 
     @property
     def execution_outcome_manifest_hash(self) -> str:
@@ -407,7 +384,7 @@ class PostObservedHistoricalSharedMarketSource:
         Returns:
             Declared shared_realized_returns SHA256.
         """
-        return self._authority.manifest.artifact("shared_realized_returns").sha256
+        return self._authority.manifest.artifact("shared_realized_returns").digest
 
     def resolve(self) -> FrozenSharedMarketInputs:
         """Verify authority and load exact common eligibility, execution and realized-return arrays.
@@ -514,8 +491,7 @@ def _score_receipt(
                 "strategy_id": strategy_id,
                 "formation_session": session.isoformat(),
                 "component_row_hashes": [
-                    identity_sha256(np.ascontiguousarray(row, dtype="<f8").tobytes()).hexdigest()
-                    for row in rows
+                    blake3_digest(np.ascontiguousarray(row, dtype="<f8").tobytes()) for row in rows
                 ],
             }
         )
@@ -776,15 +752,9 @@ def admit_post_observed_strategy_authority(
 
 __all__ = [
     "FAST_REBOUND_COMPONENT_ID",
-    "POST_OBSERVED_ASSET_INDEX_SHA256",
     "POST_OBSERVED_AUTHORITY_HASH",
     "POST_OBSERVED_AUTHORITY_MANIFEST_NAME",
     "POST_OBSERVED_COMPONENT_IDS",
-    "POST_OBSERVED_DESCRIPTOR_SHA256",
-    "POST_OBSERVED_FINAL_RECEIPT_SHA256",
-    "POST_OBSERVED_MODEL_INDEX_SHA256",
-    "POST_OBSERVED_QV_MAP_SHA256",
-    "POST_OBSERVED_RESEARCH_SHA",
     "TREND_CANDIDATE_COMPONENT_ID",
     "AdmittedPostObservedStrategyAuthority",
     "FrozenAuthorityArtifact",

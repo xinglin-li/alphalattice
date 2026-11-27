@@ -18,7 +18,7 @@ import pyarrow.parquet as pq
 
 from alphalattice.capabilities.quant.sector_history import SectorHistory, SectorReclassification
 from alphalattice.control.workspace_runtime.artifacts import ArtifactResolver
-from alphalattice.control.workspace_runtime.verified_facts import file_sha256
+from alphalattice.control.workspace_runtime.verified_facts import verified_file_digest
 from alphalattice.foundation.feature_engine.contracts import (
     PANEL_ROW_IDENTITY_BY_BINDING,
     PANEL_ROW_IDENTITY_BY_CROSS_SECTION,
@@ -61,7 +61,7 @@ from alphalattice.foundation.feature_engine.producers.preprocessing.robust_cross
     allows_missing_source_rows,
     panel_ordered_members_identity,
 )
-from alphalattice.kernel.identity import identity_sha256
+from alphalattice.kernel.identity import blake3_filename, identity_blake3, tagged_blake3
 
 if TYPE_CHECKING:
     import pandas as pd
@@ -79,7 +79,7 @@ class RematerializedChunkEvidence:
     row_count: int
     chunk_hash: str
     metadata_hash: str
-    physical_sha256: str
+    physical_digest: str
     byte_count: int
 
 
@@ -301,16 +301,18 @@ class ArtifactOnlyPanelRematerializer:
                     **_calendar(expected),
                     b"alphalattice.schema_hash": schema_hash.encode("ascii"),
                 }
-                output = temp_root / f"{expected.chunk_hash}.parquet"
+                output = temp_root / f"{blake3_filename(expected.chunk_hash)}.parquet"
                 pq.write_table(hashed.replace_schema_metadata(metadata), output, compression="zstd")
-                physical_sha = file_sha256(output)  # a temporary file: read once, never kept
+                physical_sha = verified_file_digest(
+                    output
+                )  # a temporary file: read once, never kept
                 metadata_hash = _metadata_hash(output)
                 if metadata_hash != expected.metadata_hash:
                     raise PanelRematerializationMismatch(
                         "feature_panel.rematerialization_physical_mismatch"
                     )
                 if (
-                    physical_sha != expected.physical_sha256
+                    physical_sha != expected.physical_digest
                     or output.stat().st_size != expected.byte_count
                 ):
                     raise PanelRematerializationMismatch(
@@ -334,7 +336,7 @@ class ArtifactOnlyPanelRematerializer:
                         row_count=hashed.num_rows,
                         chunk_hash=chunk_hash,
                         metadata_hash=metadata_hash,
-                        physical_sha256=physical_sha,
+                        physical_digest=physical_sha,
                         byte_count=output.stat().st_size,
                     )
                 )
@@ -1035,7 +1037,7 @@ def _metadata_hash(path: Path) -> str:
         key.decode("utf-8"): value.decode("utf-8") for key, value in sorted(metadata.items())
     }
     payload = json.dumps(normalized, sort_keys=True, separators=(",", ":"))
-    return identity_sha256(payload.encode("utf-8")).hexdigest()
+    return tagged_blake3(identity_blake3(payload.encode("utf-8")))
 
 
 def recipe_sector_history(

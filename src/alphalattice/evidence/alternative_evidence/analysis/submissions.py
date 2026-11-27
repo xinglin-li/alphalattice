@@ -20,6 +20,7 @@ from alphalattice.capabilities.domain_contracts.domain.serialization import cano
 from alphalattice.capabilities.domain_contracts.identity import canonical_hash, schema_structure
 from alphalattice.capabilities.domain_contracts.sealing import seal_payload_digest
 from alphalattice.capabilities.domain_contracts.source_identity import source_rule_closure_hash
+from alphalattice.kernel.identity import BLAKE3_PATTERN
 from alphalattice.protocols.actor_execution import (
     ActorKind,
     ActorSubmissionBinding,
@@ -82,10 +83,10 @@ class AlternativeEvidenceHostPolicyBinding(BaseModel):  # type: ignore[misc]
     kind: Literal["AlternativeEvidenceHostPolicyBinding"] = "AlternativeEvidenceHostPolicyBinding"
     owner_id: str = Field(min_length=1, max_length=128)
     policy_version: str = Field(min_length=1, max_length=32)
-    contract_schema_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
-    validation_source_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
-    semantics_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
-    binding_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
+    contract_schema_hash: str = Field(pattern=BLAKE3_PATTERN)
+    validation_source_hash: str = Field(pattern=BLAKE3_PATTERN)
+    semantics_hash: str = Field(pattern=BLAKE3_PATTERN)
+    binding_hash: str = Field(pattern=BLAKE3_PATTERN)
 
     @model_validator(mode="after")  # type: ignore[untyped-decorator]
     def validate_binding(self) -> Self:

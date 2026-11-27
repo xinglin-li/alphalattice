@@ -37,6 +37,7 @@ from alphalattice.foundation.feature_engine.panels.feature_closure_contracts imp
     SectorRevisionMapActivationReceipt,
 )
 from alphalattice.foundation.feature_engine.panels.sector_classification import classified
+from alphalattice.kernel.identity import blake3_filename
 
 
 class FeatureClosureLedger:
@@ -524,11 +525,11 @@ class FeatureClosureLedger:
 
     @staticmethod
     def _pointer_name(group: str, identity: str) -> str:
-        if len(identity) != 64 or any(
-            character not in "0123456789abcdef" for character in identity
-        ):
-            raise ValueError("Feature closure pointer identity is invalid")
-        return f"feature-ledger/operational/{group}/{identity}.json"
+        try:
+            name = blake3_filename(identity)
+        except ValueError as error:
+            raise ValueError("Feature closure pointer identity is invalid") from error
+        return f"feature-ledger/operational/{group}/{name}.json"
 
     def _pointer(self, group: str, identity: str) -> dict[str, object] | None:
         """The pointer's payload, or None when the ledger holds none."""

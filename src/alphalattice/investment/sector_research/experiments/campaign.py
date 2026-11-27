@@ -27,6 +27,7 @@ from typing import Literal, Self, cast
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 from alphalattice.capabilities.domain_contracts.identity import canonical_hash
+from alphalattice.kernel.identity import BLAKE3_PATTERN
 from alphalattice.protocols.research_authoring.contracts import AuthoringError
 from alphalattice.protocols.research_authoring.selection import (
     load_safe_yaml_document,
@@ -65,8 +66,8 @@ class SectorCampaignRequest(BaseModel):  # type: ignore[misc]
     model_config = ConfigDict(extra="forbid", frozen=True)
 
     kind: Literal["SectorCampaignRequest"] = "SectorCampaignRequest"
-    causal_outcome_snapshot_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
-    sector_revision: str = Field(pattern=r"^[0-9a-f]{64}$")
+    causal_outcome_snapshot_hash: str = Field(pattern=BLAKE3_PATTERN)
+    sector_revision: str = Field(pattern=BLAKE3_PATTERN)
     method_ids: tuple[str, ...] = Field(min_length=2)
     method_parameters: dict[str, dict[str, int]] = Field(default_factory=dict)
     training_start: date

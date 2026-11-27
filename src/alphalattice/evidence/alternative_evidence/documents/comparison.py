@@ -25,7 +25,7 @@ from collections.abc import Sequence
 from dataclasses import dataclass
 from difflib import SequenceMatcher
 
-from alphalattice.kernel.identity import integrity_sha256
+from alphalattice.kernel.identity import blake3_digest
 
 COMPARISON_RULES_ID = "alternative-evidence.temporal-comparison.v1"
 """v1 (2026-09-22): alignment by (family, normalized title, stated case
@@ -101,7 +101,7 @@ def normalized_text(text: str) -> str:
 
 def text_digest(text: str) -> str:
     """Hash the normalized text used to compare disclosure units."""
-    return integrity_sha256(normalized_text(text).encode("utf-8")).hexdigest()
+    return blake3_digest(normalized_text(text).encode("utf-8"))
 
 
 def alignment_key(unit: ComparableUnit) -> tuple[str, str]:

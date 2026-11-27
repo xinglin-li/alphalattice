@@ -7,6 +7,8 @@ from typing import Literal, Self
 
 from pydantic import Field, model_validator
 
+from alphalattice.kernel.identity import BLAKE3_PATTERN
+
 from ..experiments.mandate import AlphaModelRecipeProposal
 from .contracts import (
     LegacyModelSpec,
@@ -70,7 +72,7 @@ class AlphaGoalTaskRecord(_Contract):
     frozen_model_recipes: tuple[AlphaModelRecipeProposal, ...] = ()
     nominated_candidate_ids: tuple[str, ...] = ()
     feedback_ref: str | None = None
-    record_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
+    record_hash: str = Field(pattern=BLAKE3_PATTERN)
 
     @model_validator(mode="after")  # type: ignore[untyped-decorator]
     def validate_record(self) -> Self:
@@ -111,13 +113,13 @@ class AlphaGoalTaskBoard(_Contract):
 
     kind: Literal["AlphaGoalTaskBoard"] = "AlphaGoalTaskBoard"
     board_id: str = Field(min_length=1)
-    program_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
-    research_goal_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
+    program_hash: str = Field(pattern=BLAKE3_PATTERN)
+    research_goal_hash: str = Field(pattern=BLAKE3_PATTERN)
     revision: int = Field(ge=0, le=64)
     tasks: tuple[AlphaGoalTaskRecord, ...] = Field(min_length=1, max_length=15)
     current_index: int = Field(ge=0, le=15)
     final_disposition: AlphaGoalRunDisposition
-    board_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
+    board_hash: str = Field(pattern=BLAKE3_PATTERN)
 
     @model_validator(mode="after")  # type: ignore[untyped-decorator]
     def validate_board(self) -> Self:

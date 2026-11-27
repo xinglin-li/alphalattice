@@ -22,9 +22,8 @@ from alphalattice.foundation.causal_outcomes.execution.readers import (
     CausalExecutionOutcomeDevelopmentReader,
     DevelopmentOnlyExecutionOutcomeReader,
 )
+from alphalattice.kernel.identity import is_blake3
 from alphalattice.protocols.research_authoring.contracts import AuthoringError
-
-_HASH_CHARACTERS = frozenset("0123456789abcdef")
 
 
 def selected_snapshot_hash(handle: str, *, manifest_uri: Callable[[str], str]) -> str:
@@ -37,7 +36,7 @@ def selected_snapshot_hash(handle: str, *, manifest_uri: Callable[[str], str]) -
     each independently pass. What it cannot do is smuggle a hash the Host has
     not re-derived from the artifact it names.
 
-    Either the bare 64-hex snapshot hash or the store's own URI spelling of that
+    Either the tagged BLAKE3 snapshot hash or the store's own URI spelling of that
     manifest. A URI in any other shape is refused rather than parsed leniently:
     a second spelling of where artifacts live is a second definition of it.
 
@@ -52,7 +51,7 @@ def selected_snapshot_hash(handle: str, *, manifest_uri: Callable[[str], str]) -
         AuthoringError: The handle is neither spelling.
     """
     value = handle.rsplit("/", 1)[-1] if "/" in handle else handle
-    if len(value) != 64 or not set(value).issubset(_HASH_CHARACTERS):
+    if not is_blake3(value):
         raise AuthoringError("research_authoring.execution_outcome_handle_invalid")
     if "/" in handle and handle != manifest_uri(value):
         raise AuthoringError("research_authoring.execution_outcome_handle_invalid")

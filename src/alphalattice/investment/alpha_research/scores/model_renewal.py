@@ -93,7 +93,13 @@ from alphalattice.investment.alpha_research.scores.product_replay import (
 from alphalattice.investment.alpha_research.targets.component_training import (
     compile_frozen_component_training_targets,
 )
-from alphalattice.kernel.identity import identity_sha256
+from alphalattice.kernel.identity import (
+    BLAKE3_PATTERN,
+    blake3_filename,
+    identity_blake3,
+    is_blake3,
+    tagged_blake3,
+)
 
 type FloatArray = npt.NDArray[np.float64]
 
@@ -238,13 +244,13 @@ class AlphaTrainingObservations(_LifecycleContract):
     """A target owner's labels, availability axis and independent observation seal."""
 
     purpose: Literal["POST_OBSERVED_MODEL_RENEWAL_QA"] = "POST_OBSERVED_MODEL_RENEWAL_QA"
-    observation_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
+    observation_hash: str = Field(pattern=BLAKE3_PATTERN)
     target_method_id: str
-    target_authority_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
+    target_authority_hash: str = Field(pattern=BLAKE3_PATTERN)
     label_available_sessions: tuple[date | None, ...]
-    array_file_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
+    array_file_hash: str = Field(pattern=BLAKE3_PATTERN)
     training_support_hash: str | None = Field(
-        default=None, pattern=r"^[0-9a-f]{64}$", exclude_if=lambda v: v is None
+        default=None, pattern=BLAKE3_PATTERN, exclude_if=lambda v: v is None
     )
 
 
@@ -411,10 +417,10 @@ class AlphaPreparedRefit(_LifecycleContract):
     """Bind one resolved causal refit plan to prepared row/value authority and market scaling."""
 
     plan: ResolvedAlphaRefitPlan
-    observations_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
-    array_file_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
-    training_binding_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
-    row_axis_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
+    observations_hash: str = Field(pattern=BLAKE3_PATTERN)
+    array_file_hash: str = Field(pattern=BLAKE3_PATTERN)
+    training_binding_hash: str = Field(pattern=BLAKE3_PATTERN)
+    row_axis_hash: str = Field(pattern=BLAKE3_PATTERN)
     row_count: int = Field(ge=1)
     market_scale: FrozenMarketScale
 
@@ -608,7 +614,7 @@ def prepare_alpha_refit(
         {
             "sessions": plan.training_sessions,
             "listings": plan.ordered_listing_ids,
-            "positions": identity_sha256(rows.tobytes()).hexdigest(),
+            "positions": tagged_blake3(identity_blake3(rows.tobytes())),
         }
     )
     with span("hash", "refit_arrays"):
@@ -639,27 +645,27 @@ def prepare_alpha_refit(
 class AlphaRenewedChild(_LifecycleContract):
     """Retain one fitted vintage/seed child and its operation/content/provenance evidence."""
 
-    prepared_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
-    lifecycle_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
+    prepared_hash: str = Field(pattern=BLAKE3_PATTERN)
+    lifecycle_hash: str = Field(pattern=BLAKE3_PATTERN)
     vintage: str
     seed: int
-    operation_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
-    estimator_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
-    provenance_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
-    environment_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
+    operation_hash: str = Field(pattern=BLAKE3_PATTERN)
+    estimator_hash: str = Field(pattern=BLAKE3_PATTERN)
+    provenance_hash: str = Field(pattern=BLAKE3_PATTERN)
+    environment_hash: str = Field(pattern=BLAKE3_PATTERN)
 
 
 class AlphaImportedChild(_LifecycleContract):
     """Explicit historical payload admission, never a claim that this runtime fitted it."""
 
-    prepared_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
-    lifecycle_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
+    prepared_hash: str = Field(pattern=BLAKE3_PATTERN)
+    lifecycle_hash: str = Field(pattern=BLAKE3_PATTERN)
     vintage: str
     seed: int
-    estimator_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
-    payload_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
-    source_index_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
-    environment_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
+    estimator_hash: str = Field(pattern=BLAKE3_PATTERN)
+    payload_hash: str = Field(pattern=BLAKE3_PATTERN)
+    source_index_hash: str = Field(pattern=BLAKE3_PATTERN)
+    environment_hash: str = Field(pattern=BLAKE3_PATTERN)
 
 
 @spanned("verify", "lifecycle_child")
@@ -761,9 +767,11 @@ class AlphaRefitBudget:
         if self.store is not None and self.admission_hash is not None:
             spent = len(
                 tuple(
-                    (self.store.root / "current/lifecycle-fit-attempts" / self.admission_hash).glob(
-                        "*.json"
-                    )
+                    (
+                        self.store.root
+                        / "current/lifecycle-fit-attempts"
+                        / blake3_filename(self.admission_hash)
+                    ).glob("*.json")
                 )
             )
         if count > self.maximum_fit_attempts - spent:
@@ -780,9 +788,13 @@ class AlphaRefitBudget:
                 is exhausted.
         """
         if self.store is not None:
-            if self.admission_hash is None or len(self.admission_hash) != 64:
+            if self.admission_hash is None or not is_blake3(self.admission_hash):
                 raise AlphaLifecycleError("alpha_research.refit_budget_admission_invalid")
-            root = self.store.root / "current/lifecycle-fit-attempts" / self.admission_hash
+            root = (
+                self.store.root
+                / "current/lifecycle-fit-attempts"
+                / blake3_filename(self.admission_hash)
+            )
             self.attempts = len(tuple(root.glob("*.json")))
         if self.maximum_fit_attempts < 0 or self.attempts >= self.maximum_fit_attempts:
             raise AlphaLifecycleError("alpha_research.refit_budget_exhausted")
@@ -913,8 +925,7 @@ def fit_alpha_refit_child(
         recipe_hash=recipe.recipe_hash,
         numerical_binding_hash=numerical.numerical_binding_hash,
     )
-    pointer = store.root / "current/model-fit-sidecar-by-operation" / f"{operation}.json"
-    if not pointer.exists():
+    if not store.has_model_fit_sidecar(operation):
         # FIXED_ITERATION consumes no tuning partition. Preserve the existing
         # capability protocol without manufacturing an early-stopping experiment.
         fit_plan = BoundAlphaModelFitInput(
@@ -997,7 +1008,7 @@ def reuse_refit_child(
     operation = prepared.child_operation(
         recipe_hash=recipe.recipe_hash, numerical_binding_hash=numeric
     )
-    if not (source.root / "current/model-fit-sidecar-by-operation" / f"{operation}.json").exists():
+    if not source.has_model_fit_sidecar(operation):
         return False
     _, model, receipt = source.load_model_fit_sidecar(operation)
     if (
@@ -1155,24 +1166,24 @@ class AlphaModelLifecycleAdmission(_LifecycleContract):
     purpose: Literal["POST_OBSERVED_MODEL_RENEWAL_QA"] = "POST_OBSERVED_MODEL_RENEWAL_QA"
     component: HeterogeneousAlphaComponentRecipe
     lifecycle: AlphaModelLifecycleRecipe
-    observations_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
+    observations_hash: str = Field(pattern=BLAKE3_PATTERN)
     prepared: tuple[AlphaPreparedRefit, ...]
     initial_children: tuple[AlphaImportedChild, ...]
     formation_start: date
     formation_end: date
     maximum_fit_attempts: int = Field(ge=0)
-    environment_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
+    environment_hash: str = Field(pattern=BLAKE3_PATTERN)
     fit_vintages: tuple[str, ...] = Field(default=(), exclude_if=lambda v: not v)
     training_factor_ids: tuple[str, ...] = Field(default=(), exclude_if=lambda v: not v)
     previous_admission_hash: str | None = Field(
-        default=None, pattern=r"^[0-9a-f]{64}$", exclude_if=lambda v: v is None
+        default=None, pattern=BLAKE3_PATTERN, exclude_if=lambda v: v is None
     )
     source_transition_hash: str | None = Field(
-        default=None, pattern=r"^[0-9a-f]{64}$", exclude_if=lambda v: v is None
+        default=None, pattern=BLAKE3_PATTERN, exclude_if=lambda v: v is None
     )
     renewal_through: date | None = Field(default=None, exclude_if=lambda v: v is None)
     fit_budget_binding_hash: str | None = Field(
-        default=None, pattern=r"^[0-9a-f]{64}$", exclude_if=lambda v: v is None
+        default=None, pattern=BLAKE3_PATTERN, exclude_if=lambda v: v is None
     )
 
     @property
@@ -1318,9 +1329,7 @@ class AlphaModelLifecycleAdmission(_LifecycleContract):
                 operation = prepared.child_operation(
                     recipe_hash=recipe.recipe_hash, numerical_binding_hash=numeric
                 )
-                if (
-                    store.root / "current/model-fit-sidecar-by-operation" / f"{operation}.json"
-                ).exists():
+                if store.has_model_fit_sidecar(operation):
                     _, _, receipt = store.load_model_fit_sidecar(operation)
                     if (
                         receipt.recipe_hash != recipe.recipe_hash

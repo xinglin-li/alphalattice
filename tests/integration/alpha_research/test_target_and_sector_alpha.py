@@ -29,6 +29,8 @@ from alphalattice.investment.sector_research.models.legacy_excess_ema import (
     SectorEmaAlphaSurface,
     sector_ema_table_content_hash,
 )
+from alphalattice.kernel.identity import blake3_filename
+from tests._support.identity_fixtures import fixture_digest
 
 
 def _sessions(count: int) -> tuple[date, ...]:
@@ -70,12 +72,12 @@ def _source(count: int = 45) -> tuple[pa.Table, dict[str, str]]:
     return pa.Table.from_pylist(rows), sectors
 
 
-@pytest.mark.parametrize("lane", tuple(AlphaTargetLane))
+@pytest.mark.parametrize("lane", tuple(AlphaTargetLane), ids=lambda lane: lane.value)
 def test_alpha_target_lanes_share_sector_treatment_and_preserve_economic_return(
     lane: AlphaTargetLane,
 ) -> None:
     source, sectors = _source()
-    policy = build_alpha_target_policy(lane=lane, sector_revision="a" * 64)
+    policy = build_alpha_target_policy(lane=lane, sector_revision=fixture_digest("sector revision"))
     surface = compile_alpha_target_surface(
         source_table=source,
         policy=policy,
@@ -115,7 +117,8 @@ def test_extreme_outlier_is_clipped_in_the_fit_lane_and_never_in_the_raw_lanes()
     )
 
     policy = build_alpha_target_policy(
-        lane=AlphaTargetLane.SECTOR_RESIDUAL_ROBUST_Z, sector_revision="a" * 64
+        lane=AlphaTargetLane.SECTOR_RESIDUAL_ROBUST_Z,
+        sector_revision=fixture_digest("sector revision"),
     )
     surface = compile_alpha_target_surface(
         source_table=outlier_source,
@@ -151,7 +154,7 @@ def test_alpha_target_fails_closed_for_incomplete_sector_authority() -> None:
             source_table=source,
             policy=build_alpha_target_policy(
                 lane=AlphaTargetLane.SECTOR_RESIDUAL_ROBUST_Z,
-                sector_revision="2" * 64,
+                sector_revision=fixture_digest("incomplete sector revision"),
             ),
             sector_by_listing_id=sectors,
         )
@@ -169,14 +172,16 @@ def _sector_ema_surface() -> SectorEmaAlphaSurface:
         }
     )
     values = {
-        "policy_hash": "8" * 64,
-        "source_surface_hash": "7" * 64,
+        "policy_hash": fixture_digest("sector EMA policy"),
+        "source_surface_hash": fixture_digest("sector EMA input"),
         "session_count": 1,
         "sector_ids": ("sector-a", "sector-b"),
         "available_value_count": 2,
         "table_content_hash": sector_ema_table_content_hash(table),
     }
-    draft = SectorEmaAlphaManifest.model_construct(**values, manifest_hash="0" * 64)
+    draft = SectorEmaAlphaManifest.model_construct(
+        **values, manifest_hash=fixture_digest("unsealed sector EMA manifest")
+    )
     manifest = SectorEmaAlphaManifest(
         **values,
         manifest_hash=canonical_hash(draft.model_dump(mode="json", exclude={"manifest_hash"})),
@@ -195,7 +200,7 @@ def test_sector_ema_artifact_readback_rejects_tampered_table(tmp_path) -> None:
         / "alpha-research"
         / "goal-driven"
         / "sector-ema-surfaces"
-        / f"{surface.manifest.manifest_hash}.parquet"
+        / f"{blake3_filename(surface.manifest.manifest_hash)}.parquet"
     )
     table_path.write_bytes(b"tampered")
     with pytest.raises(pa.ArrowInvalid):
@@ -204,10 +209,10 @@ def test_sector_ema_artifact_readback_rejects_tampered_table(tmp_path) -> None:
 
 def test_sector_context_is_causal_and_uses_four_shared_features(tmp_path) -> None:
     source, sectors = _source(60)
-    policy = build_sector_context_policy(sector_revision="c" * 64)
+    policy = build_sector_context_policy(sector_revision=fixture_digest("sector context revision"))
     surface, _table, payload = compile_sector_context_surface(
         source_table=source,
-        source_surface_hash="d" * 64,
+        source_surface_hash=fixture_digest("initial sector context input"),
         policy=policy,
         sector_by_listing_id=sectors,
     )
@@ -228,7 +233,7 @@ def test_sector_context_is_causal_and_uses_four_shared_features(tmp_path) -> Non
     )
     future, _future_table, _future_payload = compile_sector_context_surface(
         source_table=changed,
-        source_surface_hash="e" * 64,
+        source_surface_hash=fixture_digest("changed sector context input"),
         policy=policy,
         sector_by_listing_id=sectors,
     )
@@ -257,6 +262,7 @@ def test_sector_context_is_causal_and_uses_four_shared_features(tmp_path) -> Non
             "causal_order_invalid",
         ),
     ],
+    ids=("missing-end-clock", "formation-clock-mismatch", "reversed-causal-order"),
 )
 def test_sector_context_refuses_each_unusable_clock(column, edit, code) -> None:
     """regression: the clocks are checked as arrays, not one value at a time; a
@@ -269,8 +275,10 @@ def test_sector_context_refuses_each_unusable_clock(column, edit, code) -> None:
     with pytest.raises(SectorContextBoundaryError, match=f"sector_context_{code}$"):
         compile_sector_context_surface(
             source_table=source,
-            source_surface_hash="d" * 64,
-            policy=build_sector_context_policy(sector_revision="c" * 64),
+            source_surface_hash=fixture_digest("initial sector context input"),
+            policy=build_sector_context_policy(
+                sector_revision=fixture_digest("sector context revision")
+            ),
             sector_by_listing_id=sectors,
         )
 
@@ -316,7 +324,7 @@ def test_canonical_target_bounds_the_residual_then_repairs_the_sector_mean() -> 
     source = _canonical_source(sessions, _CANONICAL_LISTINGS, outlier=0.90)
     recipe = build_canonical_alpha_target_recipe(
         execution_outcome_recipe_id="NEXT_OPEN_TO_OPEN_ONE_SESSION",
-        sector_revision="a" * 64,
+        sector_revision=fixture_digest("sector revision"),
     )
     surface = compile_canonical_alpha_target_surface(
         source_table=source, recipe=recipe, sector_by_listing_id=_CANONICAL_SECTORS
@@ -395,7 +403,7 @@ def test_joint_primary_target_bounds_once_then_demeans_once_and_standardizes() -
     source = _canonical_source(sessions, _CANONICAL_LISTINGS, outlier=0.90)
     recipe = build_joint_primary_alpha_target_recipe(
         execution_outcome_recipe_id="NEXT_OPEN_TO_OPEN_ONE_SESSION",
-        sector_revision="a" * 64,
+        sector_revision=fixture_digest("sector revision"),
     )
     surface = compile_canonical_alpha_target_surface(
         source_table=source, recipe=recipe, sector_by_listing_id=_CANONICAL_SECTORS
@@ -582,21 +590,21 @@ def test_total_return_target_is_installed_with_whole_universe_not_sector_authori
     )
 
     method = installed_alpha_target_methods(
-        sector_revision="a" * 64,
+        sector_revision=fixture_digest("sector revision"),
         execution_outcome_recipe_id="NEXT_OPEN_TO_OPEN_ONE_SESSION",
     ).resolve(TOTAL_RETURN_ALPHA_TARGET_RECIPE_ID)
     assert isinstance(method, TotalReturnTargetMethod)
     binding = WholeUniverseAlphaTargetMethodBinding.create(
         method=method,
-        listing_set_hash="b" * 64,
+        listing_set_hash=fixture_digest("whole-universe listings"),
         execution_outcome_recipe_id="NEXT_OPEN_TO_OPEN_ONE_SESSION",
-        causal_outcome_snapshot_hash="c" * 64,
-        outcome_method_binding_hash="d" * 64,
+        causal_outcome_snapshot_hash=fixture_digest("whole-universe outcomes"),
+        outcome_method_binding_hash=fixture_digest("whole-universe outcome method"),
         maturity_lag_sessions=2,
     )
 
     assert binding.cross_sectional_authority_id == "WHOLE_ACTIVE_UNIVERSE"
-    assert binding.listing_set_hash == "b" * 64
+    assert binding.listing_set_hash == fixture_digest("whole-universe listings")
     assert "sector_revision" not in binding.model_dump(mode="json")
 
 
@@ -619,7 +627,7 @@ def test_dispersion_forecast_takes_its_lag_from_the_sealed_outcome_method() -> N
     sessions = tuple(date(2026, 1, day) for day in (5, 6, 7, 8, 9, 12, 13, 14))
     recipe = build_canonical_alpha_target_recipe(
         execution_outcome_recipe_id="NEXT_OPEN_TO_OPEN_ONE_SESSION",
-        sector_revision="a" * 64,
+        sector_revision=fixture_digest("sector revision"),
     )
     surface = compile_canonical_alpha_target_surface(
         source_table=_canonical_source(sessions, _CANONICAL_LISTINGS),
@@ -632,15 +640,15 @@ def test_dispersion_forecast_takes_its_lag_from_the_sealed_outcome_method() -> N
         binding = CanonicalAlphaTargetRecipeBinding.create(
             recipe=recipe,
             target_catalog_hash=catalog_hash,
-            causal_outcome_snapshot_hash="b" * 64,
-            outcome_method_binding_hash="c" * 64,
+            causal_outcome_snapshot_hash=fixture_digest("dispersion outcomes"),
+            outcome_method_binding_hash=fixture_digest("dispersion outcome method"),
             maturity_lag_sessions=lag,
         )
         evidence = seal_canonical_alpha_target_evidence(surface=surface, recipe_binding=binding)
         forecast = compile_cross_sectional_dispersion_forecast(
             target_evidence=evidence,
             target_recipe_binding=binding,
-            outcome_method_binding_hash="c" * 64,
+            outcome_method_binding_hash=fixture_digest("dispersion outcome method"),
             maturity_lag_sessions=lag,
         )
         realized = evidence.cross_sectional_dispersion
@@ -672,7 +680,7 @@ def test_dispersion_forecast_refuses_mismatched_authority_before_computing() -> 
     sessions = tuple(date(2026, 1, day) for day in (5, 6, 7, 8))
     recipe = build_canonical_alpha_target_recipe(
         execution_outcome_recipe_id="NEXT_OPEN_TO_OPEN_ONE_SESSION",
-        sector_revision="a" * 64,
+        sector_revision=fixture_digest("sector revision"),
     )
     surface = compile_canonical_alpha_target_surface(
         source_table=_canonical_source(sessions, _CANONICAL_LISTINGS),
@@ -682,21 +690,24 @@ def test_dispersion_forecast_refuses_mismatched_authority_before_computing() -> 
     binding = CanonicalAlphaTargetRecipeBinding.create(
         recipe=recipe,
         target_catalog_hash=build_installed_alpha_target_catalog().binding.catalog_hash,
-        causal_outcome_snapshot_hash="b" * 64,
-        outcome_method_binding_hash="c" * 64,
+        causal_outcome_snapshot_hash=fixture_digest("dispersion outcomes"),
+        outcome_method_binding_hash=fixture_digest("dispersion outcome method"),
         maturity_lag_sessions=2,
     )
     evidence = seal_canonical_alpha_target_evidence(surface=surface, recipe_binding=binding)
     baseline = {
         "target_evidence": evidence,
         "target_recipe_binding": binding,
-        "outcome_method_binding_hash": "c" * 64,
+        "outcome_method_binding_hash": binding.outcome_method_binding_hash,
         "maturity_lag_sessions": 2,
     }
 
     for override, expected in (
         ({"maturity_lag_sessions": 6}, "SCALING_MATURITY_LAG_MISMATCH"),
-        ({"outcome_method_binding_hash": "d" * 64}, "SCALING_OUTCOME_METHOD_MISMATCH"),
+        (
+            {"outcome_method_binding_hash": fixture_digest("wrong outcome method")},
+            "SCALING_OUTCOME_METHOD_MISMATCH",
+        ),
         ({"recipe_id": "EWMA_XS_DISPERSION"}, "SCALING_RECIPE_NOT_INSTALLED"),
     ):
         with pytest.raises(CrossSectionalScalingError, match=expected):
@@ -707,8 +718,8 @@ def test_dispersion_forecast_refuses_mismatched_authority_before_computing() -> 
     other = CanonicalAlphaTargetRecipeBinding.create(
         recipe=recipe,
         target_catalog_hash=build_installed_alpha_target_catalog().binding.catalog_hash,
-        causal_outcome_snapshot_hash="e" * 64,
-        outcome_method_binding_hash="c" * 64,
+        causal_outcome_snapshot_hash=fixture_digest("other dispersion outcomes"),
+        outcome_method_binding_hash=fixture_digest("dispersion outcome method"),
         maturity_lag_sessions=2,
     )
     with pytest.raises(

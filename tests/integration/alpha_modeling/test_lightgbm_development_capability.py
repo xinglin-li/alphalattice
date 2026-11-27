@@ -77,6 +77,7 @@ from alphalattice.investment.alpha_research.inputs.folds import (
 from alphalattice.investment.alpha_research.inputs.training import (
     build_alpha_training_input_binding,
 )
+from tests._support.identity_fixtures import fixture_digest
 from tests.alpha_research.fixtures import research_foundation_binding
 
 FACTOR_IDS = ("nonlinear-a", "nonlinear-b", "size", "trend")
@@ -359,13 +360,13 @@ def test_dynamic_panel_ridge_batch_reuses_one_eigh_with_predecessor_parity(
         validation_targets = np.asarray(validation_y, dtype=np.float64)
         feature_ids = tuple(f"feature-{value}" for value in range(features.shape[1]))
         inputs = BoundAlphaTrainingInput(
-            training_binding_hash=f"{case_index + 1:x}" * 64,
+            training_binding_hash=fixture_digest(("ridge-training", case_index)),
             ordered_feature_ids=feature_ids,
             features=features,
             targets=targets,
         )
         fit_plan = BoundAlphaModelFitInput(
-            fit_plan_hash=f"{case_index + 5:x}" * 64,
+            fit_plan_hash=fixture_digest(("ridge-fit", case_index)),
             protocol_id="DIRECT_FIT",
             parent_training_binding_hash=inputs.training_binding_hash,
             ordered_feature_ids=feature_ids,
@@ -750,13 +751,13 @@ def test_lightgbm_curve_and_stored_trees_do_not_move_with_the_thread_count(
     recipe = build_dynamic_panel_lightgbm_recipe(parameters)
     feature_ids = tuple(f"feature-{index}" for index in range(train_x.shape[1]))
     inputs = BoundAlphaTrainingInput(
-        training_binding_hash="a" * 64,
+        training_binding_hash=fixture_digest("training-binding"),
         ordered_feature_ids=feature_ids,
         features=_readonly(train_x),
         targets=_readonly(train_x[:, 0] * train_x[:, 1] - train_x[:, 2]),
     )
     fit_plan = BoundAlphaModelFitInput(
-        fit_plan_hash="b" * 64,
+        fit_plan_hash=fixture_digest("fit-plan"),
         protocol_id="DIRECT_FIT",
         parent_training_binding_hash=inputs.training_binding_hash,
         ordered_feature_ids=feature_ids,
@@ -974,7 +975,9 @@ def test_a_booster_cache_scope_parses_each_model_once_and_predicts_the_same_bits
     rows = np.ascontiguousarray(features[:50])
     rows.setflags(write=False)
     inputs = BoundAlphaPredictionInput(
-        training_binding_hash="a" * 64, ordered_feature_ids=feature_ids, features=rows
+        training_binding_hash=fixture_digest("training-binding"),
+        ordered_feature_ids=feature_ids,
+        features=rows,
     )
     fresh = adapter.predict(estimator=estimator, inputs=inputs).predictions
 
@@ -1020,7 +1023,7 @@ def test_a_fixed_fit_measures_its_training_error_unless_the_plan_reads_none(
     recipe = build_dynamic_panel_lightgbm_recipe(parameters)
     feature_ids = tuple(f"feature-{index}" for index in range(train_x.shape[1]))
     inputs = BoundAlphaTrainingInput(
-        training_binding_hash="a" * 64,
+        training_binding_hash=fixture_digest("training-binding"),
         ordered_feature_ids=feature_ids,
         features=_readonly(train_x),
         targets=_readonly(train_x[:, 0] - train_x[:, 1]),
@@ -1049,7 +1052,7 @@ def test_a_fixed_fit_measures_its_training_error_unless_the_plan_reads_none(
                 recipe=recipe,
                 inputs=inputs,
                 fit_plan=BoundAlphaModelFitInput(
-                    fit_plan_hash="b" * 64,
+                    fit_plan_hash=fixture_digest("fit-plan"),
                     protocol_id="DIRECT_FIT",
                     parent_training_binding_hash=inputs.training_binding_hash,
                     ordered_feature_ids=feature_ids,

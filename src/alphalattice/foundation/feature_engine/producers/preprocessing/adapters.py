@@ -66,7 +66,6 @@ def _robust_sector_neutral_z_content_hash() -> str:
     kept at its byte value while its rule is the one the switch recorded.
     """
     return feature_component_identity(
-        "PANEL_PREPROCESSING:robust_sector_neutral_z",
         owners=(
             "alphalattice.foundation.feature_engine.producers.preprocessing.robust_cross_section",
             "alphalattice.kernel.quant.cross_section",
@@ -82,7 +81,6 @@ def _robust_sector_neutral_z_content_hash() -> str:
 def _development_preprocessing_content_hash() -> str:
     """The identity of the development preprocessing, with the Panel kernel it runs."""
     return feature_component_identity(
-        "DEVELOPMENT_PANEL_PREPROCESSING:development",
         owners=(
             "alphalattice.foundation.feature_engine.producers.preprocessing.development",
             "alphalattice.foundation.feature_engine.producers.preprocessing.adapters",

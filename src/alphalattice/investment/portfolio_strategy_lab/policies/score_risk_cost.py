@@ -22,6 +22,7 @@ from alphalattice.investment.portfolio_strategy_lab.optimizer.service import (
     solver_numerical_environment,
     stable_rank_buffered_top_k,
 )
+from alphalattice.kernel.identity import BLAKE3_PATTERN
 
 from .contracts import (
     PORTFOLIO_POLICY_PACKAGE,
@@ -67,7 +68,7 @@ class ScoreRiskCostDevelopmentRecipe(BaseModel):  # type: ignore[misc]
     sector_capacity: float | None = Field(default=None, gt=0.0, le=1.0)
     score_scale: float = Field(gt=0.0)
     normalization_reference_id: str = Field(min_length=1, max_length=128)
-    recipe_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
+    recipe_hash: str = Field(pattern=BLAKE3_PATTERN)
 
     @classmethod
     def create(cls, **values: object) -> Self:
@@ -308,7 +309,7 @@ class ScoreRiskCostTrialRecipe(BaseModel):  # type: ignore[misc]
     risk_aversion: float = Field(gt=0.0)
     turnover_regularization: float = Field(ge=0.0)
     score_utility_coefficient: float = Field(ge=0.0)
-    recipe_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
+    recipe_hash: str = Field(pattern=BLAKE3_PATTERN)
 
     @classmethod
     def create(cls, **values: object) -> Self:

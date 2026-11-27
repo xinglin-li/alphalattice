@@ -44,6 +44,7 @@ from alphalattice.protocols.research_authoring.contracts import (
     ResearchExperimentEnvelope,
     SealedResearchProgram,
 )
+from tests._support.identity_fixtures import fixture_digest
 from tests.researcher_methodology_surface.real_workspace import RealRiskWorkspace
 
 _FIXTURE = (
@@ -171,12 +172,12 @@ def test_run_executes_for_real_and_replay_reads_back_with_zero_calls(
     alpha_program = SealedResearchProgram.create(
         kind=alpha_envelope.kind,
         envelope_hash=alpha_envelope.envelope_hash,
-        desk_program_hash="1" * 64,
+        desk_program_hash=fixture_digest("1"),
         resolved_sessions=program.resolved_sessions,
-        catalog_hash="2" * 64,
-        method_binding_hash="3" * 64,
-        parameter_domain_hash="4" * 64,
-        authority_hash="5" * 64,
+        catalog_hash=fixture_digest("2"),
+        method_binding_hash=fixture_digest("3"),
+        parameter_domain_hash=fixture_digest("4"),
+        authority_hash=fixture_digest("5"),
     )
     alpha_evidence = ResearchExecutionEvidence.create(
         kind=alpha_program.kind,
@@ -188,7 +189,7 @@ def test_run_executes_for_real_and_replay_reads_back_with_zero_calls(
         numerical_call_count=1,
         artifact_uris=("playpen://alpha-sealed/root",),
         formation_sessions=alpha_program.resolved_sessions,
-        desk_input_binding_hash="6" * 64,
+        desk_input_binding_hash=fixture_digest("6"),
     )
     alpha_output = tmp_path / alpha_envelope.output_workspace
     ResearchProgramStore(alpha_output).publish(

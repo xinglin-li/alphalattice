@@ -10,7 +10,7 @@ from typing import TYPE_CHECKING
 
 import numpy as np
 
-from alphalattice.kernel.identity import identity_sha256
+from alphalattice.kernel.identity import identity_blake3, tagged_blake3
 
 if TYPE_CHECKING:
     import pandas as pd
@@ -54,8 +54,8 @@ def feature_source_values_hash(frame: pd.DataFrame, columns: Sequence[str]) -> s
         {
             "columns": numeric,
             "sessions": dates,
-            "values": identity_sha256(np.where(missing, 0.0, values).tobytes()).hexdigest(),
-            "missing": identity_sha256(missing.tobytes()).hexdigest(),
+            "values": tagged_blake3(identity_blake3(np.where(missing, 0.0, values).tobytes())),
+            "missing": tagged_blake3(identity_blake3(missing.tobytes())),
         }
     )
 
@@ -83,7 +83,7 @@ def _canonical_hash(value: object) -> str:
     payload = json.dumps(
         value, ensure_ascii=False, sort_keys=True, separators=(",", ":"), default=str
     )
-    return identity_sha256(payload.encode("utf-8")).hexdigest()
+    return tagged_blake3(identity_blake3(payload.encode("utf-8")))
 
 
 def feature_materialization_receipt_hash(
@@ -180,7 +180,7 @@ def feature_row_content_hash_from_canonical(
         f'"values":{_ROW_VALUES_ENCODER.encode(dict(zip(factor_ids, values, strict=True)))}'
         "}"
     )
-    return identity_sha256(payload.encode("utf-8")).hexdigest()
+    return tagged_blake3(identity_blake3(payload.encode("utf-8")))
 
 
 def feature_row_is_numerically_identical(

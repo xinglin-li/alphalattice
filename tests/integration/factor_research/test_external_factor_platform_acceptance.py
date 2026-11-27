@@ -88,12 +88,14 @@ from alphalattice.foundation.feature_engine.producers.factors.specifications imp
     build_installed_factor_formula_specifications,
     golden_example_frame,
 )
+from alphalattice.kernel.identity import blake3_filename, is_blake3
 from alphalattice.protocols.actor_execution.contracts import ActorKind
 from alphalattice.protocols.research_authoring.contracts import (
     AuthoringError,
     ResearchExecutionEvidence,
     ResearchExperimentEnvelope,
 )
+from tests._support.identity_fixtures import fixture_digest
 from tests._support.researcher_methodology_session_fixtures import build_external_factor_workspace
 from tests._support.researcher_methodology_session_fixtures import (
     outcome_catalog_root as outcome_catalog_root,
@@ -258,12 +260,12 @@ def test_an_external_method_reaches_a_published_panel_with_a_measured_identity(
     installed = workspace.feature_catalog.factors
     assert len(installed) == len(FeatureCatalog.load().factors) + 1
     assert len(inventory) == len(installed)
-    assert all(len(entry.methodology_hash) == 64 for entry in inventory)
+    assert all(is_blake3(entry.methodology_hash) for entry in inventory)
     assert EXTERNAL_FACTOR_ID in by_factor
 
     entry = by_factor[EXTERNAL_FACTOR_ID]
-    assert len(entry.implementation_hash) == 64
-    assert len(entry.methodology_hash) == 64
+    assert is_blake3(entry.implementation_hash)
+    assert is_blake3(entry.methodology_hash)
     assert entry.implementation_hash != entry.methodology_hash
 
     # Re-derived from the injected registry rather than read back from the Panel
@@ -277,7 +279,7 @@ def test_an_external_method_reaches_a_published_panel_with_a_measured_identity(
     # contain this family, and the identity function still answers for it.
     assert EXTERNAL_METHOD_FAMILY not in FACTOR_METHOD_FAMILY_OWNERS
     measured = method_family_content_hash(EXTERNAL_METHOD_FAMILY, EXTERNAL_METHOD_FAMILY_OWNERS)
-    assert len(measured) == 64
+    assert is_blake3(measured)
 
     # And the controls are untouched by the new family's presence, which is the
     # identity isolation this whole platform rests on.
@@ -365,7 +367,7 @@ def test_the_verifier_refuses_a_fully_resealed_graph(development_run: ExternalFa
 
     for label, rewritten in (
         ("axis", {"context_factors": reordered}),
-        ("panel", {"feature_panel_snapshot_hash": "b" * 64}),
+        ("panel", {"feature_panel_snapshot_hash": fixture_digest("wrong Feature Panel")}),
     ):
         values = {
             name: getattr(binding, name) for name in ("selected_factor_ids", "context_factors")
@@ -437,7 +439,10 @@ def test_a_missing_deterministic_child_fails_replay(
     _receipt, child = FactorDevelopmentReceiptReader(output).load(evidence.artifact_uris[0])
 
     stored = (
-        output / "development" / "factor-deterministic-evidence" / f"{child.checkpoint_hash}.json"
+        output
+        / "development"
+        / "factor-deterministic-evidence"
+        / f"{blake3_filename(child.checkpoint_hash)}.json"
     )
     assert stored.is_file()
     stored.unlink()
@@ -567,7 +572,7 @@ def test_a_curation_decision_the_host_never_admitted_cannot_be_persisted(
         "receipt_hash",
         submission=honest.submission,
         actor_submission=honest.actor_submission,
-        decision_policy_hash="9" * 64,
+        decision_policy_hash=fixture_digest("uninstalled Factor decision policy"),
     )
     with pytest.raises(FactorResearchDecisionAuthorityError, match="policy_not_installed"):
         publish_factor_development_curation(

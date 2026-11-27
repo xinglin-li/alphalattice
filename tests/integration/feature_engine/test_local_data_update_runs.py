@@ -38,7 +38,9 @@ from alphalattice.interface.local_application.portfolio_research import (
     PortfolioResearchRequestDocument as PortfolioResearchAgentRequest,
 )
 from alphalattice.kernel import storage
+from alphalattice.kernel.identity import blake3_filename
 from tests._support import development_universe, sufficient_universe
+from tests._support.identity_fixtures import fixture_digest
 from tests.portfolio_strategy_lab.host_requests import _json, _request
 from tests.portfolio_strategy_lab.local_web_support import (
     InstalledAgent,
@@ -494,8 +496,9 @@ def test_a_restarted_host_runs_a_maintenance_plan_by_its_hash_within_its_hour(qu
     finally:
         service.stop()
     plan_hash = planned["plan_hash"]
-    assert (workspace / f"runtime/plan-previews/data-update/{plan_hash}.json").is_file()
-    assert not (workspace / f"runtime/artifacts/data-update-plans/{plan_hash}.json").exists()
+    name = f"{blake3_filename(plan_hash)}.json"
+    assert (workspace / "runtime/plan-previews/data-update" / name).is_file()
+    assert not (workspace / "runtime/artifacts/data-update-plans" / name).exists()
     clock[0] = NOW + timedelta(minutes=59)
     service = boot()
     try:
@@ -503,7 +506,7 @@ def test_a_restarted_host_runs_a_maintenance_plan_by_its_hash_within_its_hour(qu
         assert owner.last_plan is None
         assert owner.prepare(plan_hash).content_hash == plan_hash
         clock[0] = NOW + timedelta(minutes=61)
-        for hash_sent in (plan_hash, "e" * 64):
+        for hash_sent in (plan_hash, fixture_digest("unknown update plan")):
             refused = _json(
                 service,
                 "/api/data-update/run",
@@ -1796,9 +1799,9 @@ def test_a_feature_build_that_failed_names_its_cause_beside_its_code(
     def unexplained(self, *_args, **_kwargs):  # a set change no session it lacked explains
         return (
             ProviderAdjustedSeriesRevision(
-                receipt_hash="1" * 64,
-                next_series_hash="1" * 64,
-                source_receipt_hash="1" * 64,
+                receipt_hash=fixture_digest("changed series receipt"),
+                next_series_hash=fixture_digest("changed series"),
+                source_receipt_hash=fixture_digest("changed series receipt"),
                 listing_id="listing-a",
                 provider="fixture",
                 prior_series_hash=None,
@@ -1970,13 +1973,13 @@ def test_update_authority_and_missing_input_refuse_before_work(qualified, tmp_pa
             (
                 workspace
                 / "artifacts/feature-panel/manifests"
-                / f"{planned['inputs']['panel_hash']}.json"
+                / f"{blake3_filename(planned['inputs']['panel_hash'])}.json"
             ).read_text()
         )
         chunk = (
             workspace
             / "artifacts/feature-panel/chunks"
-            / f"{panel['chunks'][0]['chunk_hash']}.parquet"
+            / f"{blake3_filename(panel['chunks'][0]['chunk_hash'])}.parquet"
         )
         held = chunk.with_suffix(".held")
         chunk.rename(held)

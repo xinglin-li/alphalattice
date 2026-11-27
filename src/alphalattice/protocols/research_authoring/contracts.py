@@ -26,10 +26,12 @@ from alphalattice.capabilities.domain_contracts.sealing import (
     scoped_model_digest,
     seal_payload_digest,
 )
+from alphalattice.kernel.identity import BLAKE3_PATTERN
 
-_HASH = r"^[0-9a-f]{64}$"
+_HASH = BLAKE3_PATTERN
 _HANDLE = r"^[a-z0-9][a-z0-9._-]{0,95}$"
-_SNAPSHOT_HANDLE = r"^[a-z0-9][a-z0-9._-]{0,95}(?:@[0-9a-f]{64})?$"
+_DIGEST = BLAKE3_PATTERN[1:-1]
+_SNAPSHOT_HANDLE = rf"^(?:{_DIGEST}|[a-z0-9][a-z0-9._-]{{0,95}}(?:@{_DIGEST})?)$"
 
 
 class AuthoringError(ValueError):

@@ -29,7 +29,6 @@ from alphalattice.capabilities.domain_contracts.identity import canonical_hash
 from alphalattice.capabilities.domain_contracts.project_layout import resolve_playpen_root
 from alphalattice.capabilities.domain_contracts.source_identity import (
     source_rule_closure_hash,
-    switched_identity,
 )
 from alphalattice.capabilities.portfolio_backtesting.clocks import ScoredFormationClock
 from alphalattice.capabilities.portfolio_backtesting.contracts import (
@@ -73,6 +72,7 @@ from alphalattice.investment.portfolio_strategy_lab.publication.artifacts import
     PortfolioResearchArtifactStore,
 )
 from alphalattice.investment.risk_research.surfaces.decomposition import RiskAllocationProjection
+from alphalattice.kernel.identity import BLAKE3_PATTERN, blake3_from_filename
 from alphalattice.protocols.research_authoring.contracts import (
     AuthoringError,
     DeskExecutionResult,
@@ -98,7 +98,7 @@ KIND = "portfolio.policy-development"
 RECEIPTS = "development/authored-replay"
 SEGMENTS = "development/authored-segments"
 LANES = "development/authored-lanes"
-_HASH = r"^[0-9a-f]{64}$"
+_HASH = BLAKE3_PATTERN
 _ROOT = resolve_playpen_root(Path(__file__))
 type FloatArray = npt.NDArray[np.float64]
 
@@ -376,7 +376,7 @@ def implementation_hash() -> str:
         semantic_owner="portfolio_strategy_lab",
         numerical_role="AUTHORED_EW_REPLAY",
     )
-    return switched_identity(f"research_experiment.{KIND}.implementation", rule, root=_ROOT)
+    return rule
 
 
 class PortfolioExperimentCompiler:
@@ -1023,7 +1023,7 @@ class PortfolioExperimentExecutor:
         prior: dict[int, PortfolioReplaySegment] = {}
         for path in (store.root / SEGMENTS).glob("*.json"):
             meta = PortfolioReplaySegment.model_validate_json(path.read_bytes())
-            if meta.segment_hash != path.stem:
+            if meta.segment_hash != blake3_from_filename(path.stem):
                 raise AuthoringError("portfolio_research.segment_misfiled")
             if meta.program_hash == program.program_hash:
                 if meta.start_index in prior:

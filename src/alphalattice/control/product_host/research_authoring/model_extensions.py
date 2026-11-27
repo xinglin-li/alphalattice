@@ -31,6 +31,7 @@ from alphalattice.capabilities.alpha_modeling.model_contract import check_model,
 from alphalattice.capabilities.alpha_modeling.runtime.numerical_environment import (
     resolve_alpha_model_numerical_environment,
 )
+from alphalattice.kernel.identity import BLAKE3_PATTERN
 
 REGISTRY = Path("runtime") / "extensions" / "alpha-models.json"
 
@@ -43,9 +44,9 @@ class ModelSandboxRecord(_Contract):
     """One sandbox trial of a model's identity: its study and saved-object readback on a copy."""
 
     model_id: str
-    declaration_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
-    numerical_binding_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
-    contract_receipt_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
+    declaration_hash: str = Field(pattern=BLAKE3_PATTERN)
+    numerical_binding_hash: str = Field(pattern=BLAKE3_PATTERN)
+    contract_receipt_hash: str = Field(pattern=BLAKE3_PATTERN)
     study_task_id: str = Field(min_length=1)
     study_model_id: str | None = None
     """The model the sandbox study ran, read back from the study; a record without it
@@ -68,9 +69,9 @@ class ModelActivation(_Contract):
     """A person's activation of one model identity for this workspace."""
 
     model_id: str
-    declaration_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
-    numerical_binding_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
-    contract_receipt_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
+    declaration_hash: str = Field(pattern=BLAKE3_PATTERN)
+    numerical_binding_hash: str = Field(pattern=BLAKE3_PATTERN)
+    contract_receipt_hash: str = Field(pattern=BLAKE3_PATTERN)
     sandbox: ModelSandboxRecord
     activated_by: Literal["HUMAN"] = "HUMAN"
     activated_at: datetime

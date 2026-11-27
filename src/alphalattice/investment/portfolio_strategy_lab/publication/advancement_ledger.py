@@ -30,6 +30,7 @@ from alphalattice.investment.portfolio_strategy_lab.application.advancement impo
 from alphalattice.investment.portfolio_strategy_lab.publication.portfolio_ledger import (
     ObservationStore,
 )
+from alphalattice.kernel.identity import blake3_filename
 
 
 class AdvancementLedgerStoreError(ValueError):
@@ -38,8 +39,6 @@ class AdvancementLedgerStoreError(ValueError):
 
 class AdvancementLedgerStore(ObservationStore):
     """Content-addressed advancement artifacts plus one by-program receipt index."""
-
-    _observation_category = "market-inputs"
 
     def __init__(self, artifact_root: Path) -> None:
         """Bind content-addressed advancement evidence to the caller-owned artifact root.
@@ -230,10 +229,12 @@ class AdvancementLedgerStore(ObservationStore):
         return receipt
 
     def _receipt_index(self, program_hash: str) -> Path:
-        return self.root / "index" / "by-program" / f"{program_hash}.json"
+        return self.root / "index" / "by-program" / f"{blake3_filename(program_hash)}.json"
 
     def _outcome_index(self, *, program_hash: str, lane: str) -> Path:
-        return self.root / "index" / "by-program-lane" / program_hash / f"{lane}.json"
+        return (
+            self.root / "index" / "by-program-lane" / blake3_filename(program_hash) / f"{lane}.json"
+        )
 
 
 __all__ = ["AdvancementLedgerStore", "AdvancementLedgerStoreError"]

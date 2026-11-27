@@ -90,13 +90,13 @@ from alphalattice.foundation.feature_engine.catalog.contracts import FeatureCata
 from alphalattice.foundation.feature_engine.catalog.observation_clock import (
     installed_feature_availability_policy,
 )
-from alphalattice.kernel.identity import identity_sha256
+from alphalattice.kernel.identity import BLAKE3_PATTERN, identity_blake3, tagged_blake3
 from alphalattice.protocols.research_authoring.contracts import MarketPhase
 
 type FloatArray = npt.NDArray[np.float64]
 type IntArray = npt.NDArray[np.int64]
 
-_HASH = r"^[0-9a-f]{64}$"
+_HASH = BLAKE3_PATTERN
 
 ALPHA_SCORE_AGGREGATION_METHOD_ID: Final = "TRAILING_MEAN_FORMATION_SCORE"
 """The one installed aggregation method. A domain name, not a version."""
@@ -327,7 +327,7 @@ class AlphaScoreAggregationSurface(_Contract):
 
 def score_value_hash(values: FloatArray) -> str:
     """Byte identity of a score vector, non-finite values included."""
-    return identity_sha256(np.ascontiguousarray(values, dtype=np.float64).tobytes()).hexdigest()
+    return tagged_blake3(identity_blake3(np.ascontiguousarray(values, dtype=np.float64).tobytes()))
 
 
 def row_axis_hash(row_sessions: tuple[date, ...], row_listing_ids: tuple[str, ...]) -> str:

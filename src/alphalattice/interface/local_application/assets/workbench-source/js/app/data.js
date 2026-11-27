@@ -942,8 +942,8 @@ const Data = (() => {
 function dataDecisionWords(receipt) {
   const actor=receipt?.actor_submission, rationale=receipt?.submission?.proposal?.rationale || '';
   const delegated=rationale.startsWith('first-use-goal:') || actor?.actor_id?.startsWith('first-use-goal:');
-  const rule=rationale.split('; rule:')[1];
-  const ruled=actor?.actor_kind==='HOST_FALLBACK' && /^[a-f0-9]{64}$/.test(rule || '') && actor.actor_id==='host-rule:'+rule.slice(0,16);
+  const rule=/^blake3:([a-f0-9]{16})[a-f0-9]{48}$/.exec(rationale.split('; rule:')[1] || '');
+  const ruled=actor?.actor_kind==='HOST_FALLBACK' && rule && actor.actor_id==='host-rule:'+rule[1];
   return {word:t(actor?.actor_kind==='HUMAN'?'Your decision':'Decision'), facts:[
     ruled ? ['',t('Decided by rule')] : [t('Decided by'),actor?.actor_kind && !(delegated && actor.actor_kind==='HUMAN') ? actorWords(actor.actor_kind) : ''],
     [t('Decision'),delegated ? t('Decided under first-use delegation') : ''],

@@ -90,7 +90,9 @@ from alphalattice.investment.risk_research.surfaces.decomposition import (
 from alphalattice.investment.risk_research.surfaces.returns import (
     CausalRiskReturnReader,
     RiskReturnArtifactStore,
+    RiskReturnSurfaceError,
 )
+from alphalattice.kernel.identity import blake3_from_filename, is_blake3
 
 type FloatArray = npt.NDArray[np.float64]
 type BoolArray = npt.NDArray[np.bool_]
@@ -193,9 +195,7 @@ class ResolvedPortfolioAuthorities:
             raise PortfolioResearchCompositionError(
                 "portfolio_application.authority_listing_axis_invalid"
             )
-        if len(self.public_path_source_hash) != 64 or any(
-            value not in "0123456789abcdef" for value in self.public_path_source_hash
-        ):
+        if not is_blake3(self.public_path_source_hash):
             raise PortfolioResearchCompositionError(
                 "portfolio_application.authority_source_identity_invalid"
             )
@@ -510,7 +510,10 @@ def _risk_surface(artifact_root: Path):  # type: ignore[no-untyped-def]
         raise PortfolioResearchCompositionError(
             "portfolio_application.risk_return_surface_not_unique"
         )
-    return store.load_manifest(manifests[0].stem)
+    digest = blake3_from_filename(manifests[0].stem)
+    if digest is None:
+        raise RiskReturnSurfaceError("risk_research.return_artifact_identity_invalid")
+    return store.load_manifest(digest)
 
 
 def _sector_map(artifact_root: Path, *, manifest_revision: str) -> SectorRevisionMap:
@@ -518,9 +521,12 @@ def _sector_map(artifact_root: Path, *, manifest_revision: str) -> SectorRevisio
     store = PanelClosureArtifactStore(ArtifactResolver(artifact_root))
     matches: list[SectorRevisionMap] = []
     for path in sorted((store.root / "sector-maps").glob("*.json")):
+        digest = blake3_from_filename(path.stem)
+        if digest is None:
+            raise ValueError("identity.blake3_digest_invalid")
         value = store.load_model(
             category="sector-maps",
-            content_hash=path.stem,
+            content_hash=digest,
             model=SectorRevisionMap,
         )
         if value.manifest_revision == manifest_revision:
@@ -564,7 +570,10 @@ def _execution_authority(
     manifests: list[CausalExecutionOutcomeManifest] = []
     root = artifact_root / "data-operations" / "execution-outcomes" / "manifests"
     for path in sorted(root.glob("*.json")):
-        value = reader.load_manifest(path.stem)
+        digest = blake3_from_filename(path.stem)
+        if digest is None:
+            raise ValueError("identity.blake3_digest_invalid")
+        value = reader.load_manifest(digest)
         if set(listings).issubset(value.listing_ids):
             manifests.append(value)
     if not manifests:

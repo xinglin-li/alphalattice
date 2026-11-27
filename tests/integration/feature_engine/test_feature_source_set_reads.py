@@ -5,7 +5,6 @@ from __future__ import annotations
 import json
 from dataclasses import replace
 from datetime import UTC, datetime, timedelta
-from hashlib import sha256
 
 import pytest
 
@@ -18,6 +17,8 @@ from alphalattice.foundation.market_data_ops.publication import projection
 from alphalattice.foundation.market_data_ops.sources.contracts import CorporateActionEvent
 from alphalattice.foundation.market_data_ops.storage import duckdb as market_storage
 from alphalattice.foundation.market_data_ops.storage.duckdb import MarketDataRepository
+from alphalattice.kernel.identity import blake3_digest
+from tests._support.identity_fixtures import fixture_digest
 from tests._support.researcher_methodology_session_fixtures import (
     real_risk_workspace,
 )
@@ -48,7 +49,7 @@ def _frozen_raw_evidence_hash(connection, listing, provider, start, end):
         separators=(",", ":"),
         default=str,
     )
-    return sha256(payload.encode("utf-8")).hexdigest()
+    return blake3_digest(payload.encode("utf-8"))
 
 
 def test_one_read_for_every_listing_equals_each_listings_own_read(
@@ -81,8 +82,8 @@ def test_one_read_for_every_listing_equals_each_listings_own_read(
                 [
                     f"r{revision}",
                     session,
-                    "a" * 64,
-                    "b" * 64,
+                    fixture_digest("a"),
+                    fixture_digest("b"),
                     datetime(2026, 7, 1, tzinfo=UTC),
                     listing,
                 ],
@@ -152,7 +153,7 @@ def test_one_read_for_every_listing_equals_each_listings_own_read(
         connection.execute(
             "UPDATE raw_daily_bar_current SET payload_hash = ? "
             "WHERE listing_id = ? AND provider = ? AND session_date = ?",
-            ["c" * 64, first, provider, first_session],
+            [fixture_digest("c"), first, provider, first_session],
         )
         after = feature.feature_source_inputs_by_listing(
             starts, through=through, _connection=connection

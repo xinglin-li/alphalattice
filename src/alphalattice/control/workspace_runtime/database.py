@@ -51,7 +51,11 @@ from alphalattice.capabilities.domain_contracts.persistence import (
     replace_with_retry,
 )
 from alphalattice.capabilities.domain_contracts.spans import span
-from alphalattice.control.workspace_runtime.reader_threads import configure_duckdb, connect_duckdb
+from alphalattice.control.workspace_runtime.reader_threads import (
+    configure_duckdb,
+    connect_duckdb,
+    install_blake3_sql,
+)
 from alphalattice.kernel import storage
 from alphalattice.kernel.execution import interruptible
 
@@ -137,6 +141,9 @@ def _fresh_connection(path: Path, *, read_only: bool) -> duckdb.DuckDBPyConnecti
     with span("read", "duckdb_instance_open"):
         raw = _connect(path, read_only=read_only)
     try:
+        # Layered Feature views persist across closes. Reattach to an already
+        # open instance through _attached_connection, which inherits the function.
+        install_blake3_sql(raw)
         record = _seal_record(path)
         epoch = record.get("epoch")
         if not isinstance(epoch, str) or record.get("fingerprint") != before:

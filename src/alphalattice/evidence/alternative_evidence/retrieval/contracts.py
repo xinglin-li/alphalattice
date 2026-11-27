@@ -7,6 +7,8 @@ from typing import Literal, Self, cast
 
 from pydantic import Field, model_validator
 
+from alphalattice.kernel.identity import BLAKE3_PATTERN
+
 from ..contracts import (
     AlternativeEvidenceContract,
     AlternativeEvidenceReadingDepth,
@@ -25,17 +27,17 @@ class _RetrievalGenerationRecord(AlternativeEvidenceContract):
     kind: Literal["AlternativeEvidenceRetrievalGeneration"] = (
         "AlternativeEvidenceRetrievalGeneration"
     )
-    document_set_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
+    document_set_hash: str = Field(pattern=BLAKE3_PATTERN)
     workspace_snapshot_id: str
-    workspace_snapshot_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
-    retrieval_binding_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
+    workspace_snapshot_hash: str = Field(pattern=BLAKE3_PATTERN)
+    retrieval_binding_hash: str = Field(pattern=BLAKE3_PATTERN)
     reading_depth: AlternativeEvidenceReadingDepth
-    index_id: str = Field(pattern=r"^[0-9a-f]{64}$")
-    index_spec_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
+    index_id: str = Field(pattern=BLAKE3_PATTERN)
+    index_spec_hash: str = Field(pattern=BLAKE3_PATTERN)
     document_count: int = Field(ge=1, le=24)
     chunk_count: int = Field(ge=1)
     built_at: datetime
-    generation_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
+    generation_hash: str = Field(pattern=BLAKE3_PATTERN)
 
     @model_validator(mode="after")  # type: ignore[untyped-decorator]
     def validate_generation(self) -> Self:
@@ -52,10 +54,10 @@ class AlternativeEvidenceRetrievalGeneration(_RetrievalGenerationRecord):
     recipe and embedded by its one model; requests over the same revisions share their chunks and
     vectors, so only a revision the store has not seen is chunked or embedded. The record keeps
     the request's own snapshot and cutoff (its question and provenance) and what a search of it
-    reads, each a SHA-256 of canonical JSON a reopen recomputes from the store and compares:
+    reads, each a BLAKE3 digest a reopen recomputes from the store and compares:
 
     - `index_id`: the corpus under the spec, `{"revisions": [[document id, revision, content
-      SHA-256], ...] in document order, "spec": index_spec_hash}`, the same for every request
+      digest], ...] in document order, "spec": index_spec_hash}`, the same for every request
       over the same revisions, so a sealed selection over it is found again;
     - `index_spec_hash`: the recipe, the embedding model, the reranker and the search settings
       (`recall.reference_spec`), so a change to any of them is a different generation;
@@ -66,8 +68,8 @@ class AlternativeEvidenceRetrievalGeneration(_RetrievalGenerationRecord):
     """
 
     generation_format: Literal["knowledge-store-v1"] = RETRIEVAL_GENERATION_FORMAT
-    chunk_set_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
-    vector_set_hash: str = Field(pattern=r"^blake3:[0-9a-f]{64}$")
+    chunk_set_hash: str = Field(pattern=BLAKE3_PATTERN)
+    vector_set_hash: str = Field(pattern=BLAKE3_PATTERN)
 
 
 class HybridV4RetrievalGeneration(_RetrievalGenerationRecord):
@@ -79,8 +81,8 @@ class HybridV4RetrievalGeneration(_RetrievalGenerationRecord):
     """
 
     generation_format: Literal["knowledge-hybrid-v4"] = HYBRID_V4_FORMAT
-    corpus_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
-    index_manifest_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
+    corpus_hash: str = Field(pattern=BLAKE3_PATTERN)
+    index_manifest_hash: str = Field(pattern=BLAKE3_PATTERN)
     vector_payload_sha256: str = Field(pattern=r"^[0-9a-f]{64}$")
     execution_class: str | None = Field(
         default=None, max_length=200, exclude_if=lambda value: value is None
@@ -113,7 +115,7 @@ class WholeFilingsGeneration(_RetrievalGenerationRecord):
     """
 
     generation_format: Literal["whole-filings-v1"] = WHOLE_FILINGS_FORMAT
-    corpus_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
+    corpus_hash: str = Field(pattern=BLAKE3_PATTERN)
 
 
 RetrievalGenerationRecord = (
@@ -250,7 +252,7 @@ class TableViewBinding(AlternativeEvidenceContract):
 
     rules_id: str = Field(min_length=1, max_length=80)
     parser_rules_id: str = Field(min_length=1, max_length=80)
-    parent_source_content_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
+    parent_source_content_hash: str = Field(pattern=BLAKE3_PATTERN)
     parent_media_type: str = Field(min_length=1, max_length=40)
     table_ordinal: int = Field(ge=1)
     rows_total: int = Field(ge=0)
@@ -372,10 +374,10 @@ class AlternativeEvidenceResolvedSpanSet(AlternativeEvidenceContract):
     """
 
     kind: Literal["AlternativeEvidenceResolvedSpanSet"] = "AlternativeEvidenceResolvedSpanSet"
-    request_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
-    retrieval_generation_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
+    request_hash: str = Field(pattern=BLAKE3_PATTERN)
+    retrieval_generation_hash: str = Field(pattern=BLAKE3_PATTERN)
     spans: tuple[AlternativeEvidenceResolvedSpan, ...]
-    span_set_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
+    span_set_hash: str = Field(pattern=BLAKE3_PATTERN)
 
     @model_validator(mode="after")  # type: ignore[untyped-decorator]
     def validate_span_set(self) -> Self:
@@ -421,12 +423,12 @@ class PairScoreCommitmentRecord(AlternativeEvidenceContract):
     """
 
     kind: Literal["PairScoreCommitmentRecord"] = "PairScoreCommitmentRecord"
-    reranker_context_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
-    index_spec_logical_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
-    retrieval_generation_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
+    reranker_context_hash: str = Field(pattern=BLAKE3_PATTERN)
+    index_spec_logical_hash: str = Field(pattern=BLAKE3_PATTERN)
+    retrieval_generation_hash: str = Field(pattern=BLAKE3_PATTERN)
     blocks: tuple[PairScoreBlockRecord, ...] = Field(min_length=1, max_length=64)
     sealed_at: datetime
-    commitment_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
+    commitment_hash: str = Field(pattern=BLAKE3_PATTERN)
 
     @model_validator(mode="after")  # type: ignore[untyped-decorator]
     def validate_commitment(self) -> Self:

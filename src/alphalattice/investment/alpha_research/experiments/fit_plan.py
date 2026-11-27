@@ -21,6 +21,7 @@ from alphalattice.capabilities.alpha_modeling.contracts import (
     alpha_model_array_content_hash,
 )
 from alphalattice.capabilities.domain_contracts.identity import canonical_hash
+from alphalattice.kernel.identity import BLAKE3_PATTERN
 
 from ..inputs.folds import AlphaFoldArrays
 
@@ -47,38 +48,34 @@ class AlphaModelFitPlan(_Contract):
 
     kind: Literal["AlphaModelFitPlan"] = "AlphaModelFitPlan"
     protocol_id: AlphaModelFitProtocol
-    parent_training_binding_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
-    fold_commitment_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
-    search_domain_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
-    numerical_binding_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
+    parent_training_binding_hash: str = Field(pattern=BLAKE3_PATTERN)
+    fold_commitment_hash: str = Field(pattern=BLAKE3_PATTERN)
+    search_domain_hash: str = Field(pattern=BLAKE3_PATTERN)
+    numerical_binding_hash: str = Field(pattern=BLAKE3_PATTERN)
     ordered_feature_ids: tuple[str, ...] = Field(min_length=1)
     outer_training_sessions: tuple[date, ...] = Field(min_length=1)
-    outer_training_sessions_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
+    outer_training_sessions_hash: str = Field(pattern=BLAKE3_PATTERN)
     outer_training_session_count: int = Field(ge=1)
     tuning_training_sessions: tuple[date, ...] | None = None
-    tuning_training_sessions_hash: str | None = Field(default=None, pattern=r"^[0-9a-f]{64}$")
+    tuning_training_sessions_hash: str | None = Field(default=None, pattern=BLAKE3_PATTERN)
     tuning_training_session_count: int | None = Field(default=None, ge=1)
-    tuning_training_row_axis_hash: str | None = Field(default=None, pattern=r"^[0-9a-f]{64}$")
-    purge_sessions_hash: str | None = Field(default=None, pattern=r"^[0-9a-f]{64}$")
+    tuning_training_row_axis_hash: str | None = Field(default=None, pattern=BLAKE3_PATTERN)
+    purge_sessions_hash: str | None = Field(default=None, pattern=BLAKE3_PATTERN)
     purge_sessions: tuple[date, ...] | None = None
     purge_session_count: int | None = Field(default=None, ge=1)
-    purge_row_axis_hash: str | None = Field(default=None, pattern=r"^[0-9a-f]{64}$")
-    tuning_validation_sessions_hash: str | None = Field(default=None, pattern=r"^[0-9a-f]{64}$")
+    purge_row_axis_hash: str | None = Field(default=None, pattern=BLAKE3_PATTERN)
+    tuning_validation_sessions_hash: str | None = Field(default=None, pattern=BLAKE3_PATTERN)
     tuning_validation_sessions: tuple[date, ...] | None = None
     tuning_validation_session_count: int | None = Field(default=None, ge=1)
-    tuning_validation_row_axis_hash: str | None = Field(default=None, pattern=r"^[0-9a-f]{64}$")
-    tuning_training_feature_values_hash: str | None = Field(default=None, pattern=r"^[0-9a-f]{64}$")
-    tuning_training_target_values_hash: str | None = Field(default=None, pattern=r"^[0-9a-f]{64}$")
-    tuning_validation_feature_values_hash: str | None = Field(
-        default=None, pattern=r"^[0-9a-f]{64}$"
-    )
-    tuning_validation_target_values_hash: str | None = Field(
-        default=None, pattern=r"^[0-9a-f]{64}$"
-    )
+    tuning_validation_row_axis_hash: str | None = Field(default=None, pattern=BLAKE3_PATTERN)
+    tuning_training_feature_values_hash: str | None = Field(default=None, pattern=BLAKE3_PATTERN)
+    tuning_training_target_values_hash: str | None = Field(default=None, pattern=BLAKE3_PATTERN)
+    tuning_validation_feature_values_hash: str | None = Field(default=None, pattern=BLAKE3_PATTERN)
+    tuning_validation_target_values_hash: str | None = Field(default=None, pattern=BLAKE3_PATTERN)
     selection_metric_id: str | None = Field(default=None, min_length=1, max_length=64)
     maximum_iterations: int | None = Field(default=None, ge=1)
     early_stopping_rounds: int | None = Field(default=None, ge=1)
-    fit_plan_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
+    fit_plan_hash: str = Field(pattern=BLAKE3_PATTERN)
 
     @classmethod
     def create(cls, **values: Any) -> Self:

@@ -41,11 +41,13 @@ from alphalattice.investment.portfolio_strategy_lab.publication.artifacts import
     PortfolioPublicationError,
     PortfolioResearchArtifactStore,
 )
+from alphalattice.kernel.identity import blake3_filename
+from tests._support.identity_fixtures import fixture_digest
 
 PLAYPEN_ROOT = Path(__file__).resolve().parents[3]
 PLAYPEN_SRC = PLAYPEN_ROOT / "src"
 
-_HASHES = tuple(f"{value:064x}" for value in range(1, 50))
+_HASHES = tuple(fixture_digest(("retired Portfolio Lab", value)) for value in range(1, 50))
 
 
 def _program(offset: int = 0) -> PortfolioExperimentProgram:
@@ -104,7 +106,7 @@ def _ledger(program_hash: str) -> PortfolioTrialLedger:
                 "turnover_regularization": 0.1,
             },
             state=TrialState.FAILED,
-            evidence_hash=f"{1000 + index:064x}",
+            evidence_hash=fixture_digest(("failed trial evidence", index)),
             failure_code="portfolio_strategy_lab.fixture_failure",
         )
         for index in range(144)
@@ -381,7 +383,7 @@ def test_current_readback_requires_complete_dossier_rfc_and_review(tmp_path: Pat
     _, _, review, _, bundle = values
     _publish_children(store, program, values)
     _install_historical_current_fixture(store, bundle=bundle, ledger=ledger)
-    (store.root / "reviews" / f"{review.review_hash}.json").unlink()
+    (store.root / "reviews" / f"{blake3_filename(review.review_hash)}.json").unlink()
     # Missing sealed work offers recovery; it does not accuse a changed workspace.
     with pytest.raises(PortfolioPublicationError, match="artifact_absent"):
         store.read_current()
@@ -399,7 +401,7 @@ def test_portfolio_artifact_readers_keep_missing_corrupt_and_invalid_distinct(
     from alphalattice.interface.local_application.cli_contract import refusal_words
 
     store = PortfolioResearchArtifactStore(tmp_path)
-    identity = "a" * 64
+    identity = fixture_digest("unpublished Portfolio artifact")
     category = "trial-evidence" if reader == "model" else "qa"
     load = {
         "model": lambda value: store.load_trial_evidence(value),
@@ -425,7 +427,7 @@ def test_portfolio_artifact_readers_keep_missing_corrupt_and_invalid_distinct(
     else:
         folder = store.root / category
         folder.mkdir(parents=True)
-        (folder / f"{identity}.json").write_bytes(b"corrupt")
+        (folder / f"{blake3_filename(identity)}.json").write_bytes(b"corrupt")
     # Corrupt bytes are refused by name where they are proved: under full proof (LAWS.md EV2).
     with (
         full_content_proof(),
@@ -452,37 +454,37 @@ def test_indexed_missing_content_is_lost_work_and_not_a_tampered_index(
         PortfolioLedgerStore,
     )
 
-    program, child = "a" * 64, "b" * 64
-    spec, authorities = "c" * 64, "d" * 64
+    program, child = fixture_digest("index program"), fixture_digest("index child")
+    spec, authorities = fixture_digest("index spec"), fixture_digest("index authorities")
     store = PortfolioLedgerStore(tmp_path)
     advancement = AdvancementLedgerStore(tmp_path)
     if lookup == "execution":
-        path = store.root / "by-program-execution" / f"{program}.json"
+        path = store.root / "by-program-execution" / f"{blake3_filename(program)}.json"
         entry = {"program_hash": program, "ledger_hash": child}
         load = partial(store.find_execution_for_program, program)
     elif lookup == "program":
         key = canonical_hash({"holdings_spec_hash": spec, "authorities_hash": authorities})
-        path = store.root / "by-holdings" / f"{key}.json"
+        path = store.root / "by-holdings" / f"{blake3_filename(key)}.json"
         entry = {"holdings_spec_hash": spec, "authorities_hash": authorities, "program_hash": child}
         load = partial(
             store.find_program_for, holdings_spec_hash=spec, authorities_hash=authorities
         )
     elif lookup == "plan":
         key = canonical_hash({"spec_hash": spec, "authorities_hash": authorities})
-        path = store.root / "by-plan" / f"{key}.json"
+        path = store.root / "by-plan" / f"{blake3_filename(key)}.json"
         entry = {"spec_hash": spec, "authorities_hash": authorities, "result_hash": child}
         load = partial(store.find_planned_result, spec_hash=spec, authorities_hash=authorities)
     elif lookup == "result":
         key = canonical_hash({"program_hash": program, "spec_hash": spec})
-        path = store.root / "by-request" / f"{key}.json"
+        path = store.root / "by-request" / f"{blake3_filename(key)}.json"
         entry = {"program_hash": program, "spec_hash": spec, "result_hash": child}
         load = partial(store.find_result_for, program_hash=program, spec_hash=spec)
     elif lookup == "outcome":
-        path = advancement.root / "index/by-program-lane" / program / "RISK.json"
+        path = advancement.root / "index/by-program-lane" / blake3_filename(program) / "RISK.json"
         entry = {"program_hash": program, "lane": "RISK", "receipt_hash": child}
         load = partial(advancement.find_outcome_for, program_hash=program, lane="RISK")
     else:
-        path = advancement.root / "index/by-program" / f"{program}.json"
+        path = advancement.root / "index/by-program" / f"{blake3_filename(program)}.json"
         entry = {"program_hash": program, "receipt_hash": child}
         load = partial(advancement.find_receipt_for, program)
     path.parent.mkdir(parents=True)

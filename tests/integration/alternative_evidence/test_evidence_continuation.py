@@ -38,6 +38,7 @@ from alphalattice.evidence.alternative_evidence.sources.recorded import Recorded
 from alphalattice.interface.local_application.portfolio_research import (
     PortfolioResearchRequestDocument,
 )
+from tests._support.identity_fixtures import fixture_digest
 from tests.alternative_evidence_desk.document_intelligence_support import _document_with_text
 from tests.alternative_evidence_desk.litigation_support import BOILERPLATE, _filing
 from tests.alternative_evidence_desk.matter_selection_support import _long_matter
@@ -174,7 +175,7 @@ def test_continuation_is_an_executable_product_operation_over_pending_scope(
         # can make is the receipt it names.
         forged = _continue(
             service,
-            {**request, "continuation_of": "f" * 64},
+            {**request, "continuation_of": fixture_digest("unknown continuation")},
             session_limit=5,
             window_limit=320,
         )
@@ -186,7 +187,7 @@ def test_continuation_is_an_executable_product_operation_over_pending_scope(
         # since superseded: its reading plan is not continued, by name, and
         # nothing is written; the rotation is undone for the chain below.
         current_binding = adapter.runtime.retrieval_binding_hash
-        adapter.runtime.retrieval_binding_hash = "1" * 64
+        adapter.runtime.retrieval_binding_hash = fixture_digest("moved retrieval binding")
         try:
             superseded = _continue(service, request, session_limit=5, window_limit=320)
         finally:

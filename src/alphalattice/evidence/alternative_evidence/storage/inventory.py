@@ -13,6 +13,8 @@ import os
 from dataclasses import dataclass
 from pathlib import Path
 
+from alphalattice.kernel.identity import blake3_filename
+
 from ..sources.contracts import (
     SOURCE_COMMIT_CATEGORY,
     SOURCE_OBJECT_ROOT,
@@ -91,12 +93,14 @@ class EvidenceStorageInventory:
             for path in sorted(directory.glob("*.json")):
                 value = parse_source_set(json.loads(path.read_bytes()))
                 if isinstance(value, AcquiredEvidenceSourceReferenceSet):
-                    referenced.update(document.content_sha256 for document in value.documents)
+                    referenced.update(
+                        blake3_filename(doc.content_digest) for doc in value.documents
+                    )
         commits = self.binding.artifact_root / SOURCE_COMMIT_CATEGORY
         if commits.is_dir():
             for path in sorted(commits.glob("*.json")):
                 commit = AcquiredEvidenceSourceCommit.model_validate_json(path.read_bytes())
-                referenced.add(commit.reference.content_sha256)
+                referenced.add(blake3_filename(commit.reference.content_digest))
         return [
             path
             for path in sorted(objects_root.iterdir())

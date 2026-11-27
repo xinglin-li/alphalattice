@@ -56,6 +56,7 @@ from alphalattice.foundation.market_data_ops.sources.contracts import (
     CorporateActionEvent,
     RawDailyBar,
 )
+from tests._support.identity_fixtures import fixture_digest
 
 FORMULAS = (
     "close / lag(close, 20) - 1",
@@ -210,7 +211,7 @@ def test_the_research_plan_keeps_a_formula_factor_as_its_kernel_derives_it() -> 
         factor_id="volume_price_corr_20",
     )
     request = ResearchFeatureChange(
-        input_binding_hash="a" * 64,
+        input_binding_hash=fixture_digest("a"),
         base_revision_hash=revision.revision_hash,
         edits=[
             {
@@ -223,7 +224,10 @@ def test_the_research_plan_keeps_a_formula_factor_as_its_kernel_derives_it() -> 
         reason="a formula factor",
     )
     plan = plan_research_feature_change(
-        catalog=catalog, base=revision, source_panel_snapshot_hash="b" * 64, request=request
+        catalog=catalog,
+        base=revision,
+        source_panel_snapshot_hash=fixture_digest("b"),
+        request=request,
     )
     kept = next(
         v.specification for v in plan.candidate.features if v.factor_id == "volume_price_corr_20"
@@ -262,7 +266,7 @@ def test_the_research_plan_keeps_a_formula_factor_as_its_kernel_derives_it() -> 
         plan_research_feature_change(
             catalog=catalog,
             base=revision,
-            source_panel_snapshot_hash="b" * 64,
+            source_panel_snapshot_hash=fixture_digest("b"),
             request=request.model_copy(update={"edits": (refused,)}),
         )
     assert caught.value.failure_code == "factor_formula.not_scale_invariant"
@@ -282,7 +286,7 @@ def test_a_formula_factor_names_its_preprocessing_recipe_and_no_other_factor_doe
 
     def change(*edits: dict[str, object]) -> ResearchFeatureChange:
         return ResearchFeatureChange(
-            input_binding_hash="a" * 64,
+            input_binding_hash=fixture_digest("a"),
             base_revision_hash=revision.revision_hash,
             edits=list(edits),
             reason="recipes",
@@ -298,7 +302,7 @@ def test_a_formula_factor_names_its_preprocessing_recipe_and_no_other_factor_doe
             plan_research_feature_change(
                 catalog=catalog,
                 base=revision,
-                source_panel_snapshot_hash="b" * 64,
+                source_panel_snapshot_hash=fixture_digest("b"),
                 request=change(edit),
             )
         assert code in caught.value.failure_code
@@ -307,7 +311,7 @@ def test_a_formula_factor_names_its_preprocessing_recipe_and_no_other_factor_doe
         plan_research_feature_change(
             catalog=catalog,
             base=revision,
-            source_panel_snapshot_hash="b" * 64,
+            source_panel_snapshot_hash=fixture_digest("b"),
             request=change(
                 {
                     "operation": "CREATE",
@@ -321,15 +325,15 @@ def test_a_formula_factor_names_its_preprocessing_recipe_and_no_other_factor_doe
     first = plan_research_feature_change(
         catalog=catalog,
         base=revision,
-        source_panel_snapshot_hash="b" * 64,
+        source_panel_snapshot_hash=fixture_digest("b"),
         request=change({**create, "preprocessing_recipe": "ROBUST_SECTOR_NEUTRAL_Z"}),
     )
     renamed = plan_research_feature_change(
         catalog=FeatureCatalog.from_payload(first.candidate_payload),
         base=first.candidate,
-        source_panel_snapshot_hash="b" * 64,
+        source_panel_snapshot_hash=fixture_digest("b"),
         request=ResearchFeatureChange(
-            input_binding_hash="a" * 64,
+            input_binding_hash=fixture_digest("a"),
             base_revision_hash=first.candidate.revision_hash,
             parent_plan_hash=first.plan_hash,
             edits=[
@@ -348,9 +352,9 @@ def test_a_formula_factor_names_its_preprocessing_recipe_and_no_other_factor_doe
     retired = plan_research_feature_change(
         catalog=FeatureCatalog.from_payload(renamed.candidate_payload),
         base=renamed.candidate,
-        source_panel_snapshot_hash="b" * 64,
+        source_panel_snapshot_hash=fixture_digest("b"),
         request=ResearchFeatureChange(
-            input_binding_hash="a" * 64,
+            input_binding_hash=fixture_digest("a"),
             base_revision_hash=renamed.candidate.revision_hash,
             parent_plan_hash=renamed.plan_hash,
             edits=[{"operation": "RETIRE", "factor_id": "reversal_five"}],
@@ -577,9 +581,9 @@ def test_the_daily_build_carries_the_as_traded_fields_its_catalog_reads() -> Non
     plan = plan_research_feature_change(
         catalog=shipped,
         base=revision,
-        source_panel_snapshot_hash="b" * 64,
+        source_panel_snapshot_hash=fixture_digest("b"),
         request=ResearchFeatureChange(
-            input_binding_hash="a" * 64,
+            input_binding_hash=fixture_digest("a"),
             base_revision_hash=revision.revision_hash,
             edits=[
                 {
@@ -636,7 +640,7 @@ def test_a_one_session_formula_reviews_its_empty_boundary_golden() -> None:
     revision = FeatureCatalogCrudPlanner(default_extension_kernel_registry()).revision(catalog)
     declared = _declared("close / open - 1", factor_id="open_to_close_return")
     request = ResearchFeatureChange(
-        input_binding_hash="a" * 64,
+        input_binding_hash=fixture_digest("a"),
         base_revision_hash=revision.revision_hash,
         edits=[
             {
@@ -649,7 +653,10 @@ def test_a_one_session_formula_reviews_its_empty_boundary_golden() -> None:
         reason="a one-session formula",
     )
     plan = plan_research_feature_change(
-        catalog=catalog, base=revision, source_panel_snapshot_hash="b" * 64, request=request
+        catalog=catalog,
+        base=revision,
+        source_panel_snapshot_hash=fixture_digest("b"),
+        request=request,
     )
     planned = {v.factor_id: v.specification for v in plan.candidate.features}
     kept = planned[declared.factor_id]
@@ -703,7 +710,7 @@ def test_every_operators_smallest_formula_runs_its_goldens() -> None:
     for operator, formula in _SMALLEST.items():
         declared = _declared(formula, factor_id="smallest_formula")
         request = ResearchFeatureChange(
-            input_binding_hash="a" * 64,
+            input_binding_hash=fixture_digest("a"),
             base_revision_hash=revision.revision_hash,
             edits=[
                 {
@@ -716,7 +723,10 @@ def test_every_operators_smallest_formula_runs_its_goldens() -> None:
             reason="the smallest formula of an operator",
         )
         plan = plan_research_feature_change(
-            catalog=catalog, base=revision, source_panel_snapshot_hash="b" * 64, request=request
+            catalog=catalog,
+            base=revision,
+            source_panel_snapshot_hash=fixture_digest("b"),
+            request=request,
         )
         kept = {v.factor_id: v.specification for v in plan.candidate.features}[declared.factor_id]
         specification = build_research_formula_specification(

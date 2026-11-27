@@ -21,6 +21,7 @@ from alphalattice.investment.alpha_research.calibration.stock_returns import (
 from alphalattice.investment.alpha_research.scaling.evaluation import (
     CrossSectionalScaleComparisonEvidence,
 )
+from alphalattice.kernel.identity import BLAKE3_PATTERN
 from alphalattice.protocols.actor_execution import (
     ActorSubmissionBinding,
 )
@@ -58,7 +59,9 @@ class _PopulatedContract(_Contract):
 
 
 class AlphaInnerTrialScore(_PopulatedContract):
-    trial_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
+    """Record an inner-fold trial's error, ranking, turnover and usable-session counts."""
+
+    trial_hash: str = Field(pattern=BLAKE3_PATTERN)
     method_id: str
     inner_validation_mse: float = Field(ge=0.0, allow_inf_nan=False)
     inner_validation_rank_ic: float | None = Field(default=None, ge=-1.0, le=1.0)
@@ -74,22 +77,22 @@ class AlphaInnerSelectionRecord(_PopulatedContract):
     """One outer fold's complete chronological inner search and its choice."""
 
     kind: Literal["AlphaInnerSelectionRecord"] = "AlphaInnerSelectionRecord"
-    program_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
+    program_hash: str = Field(pattern=BLAKE3_PATTERN)
     horizon_sessions: Literal[1, 5]
     fold_index: int = Field(ge=0)
     inner_training_row_count: int = Field(ge=40)
     inner_purge_row_count: int = Field(ge=0)
     inner_validation_row_count: int = Field(ge=20)
-    inner_training_row_axis_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
-    inner_validation_row_axis_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
+    inner_training_row_axis_hash: str = Field(pattern=BLAKE3_PATTERN)
+    inner_validation_row_axis_hash: str = Field(pattern=BLAKE3_PATTERN)
     trial_scores: tuple[AlphaInnerTrialScore, ...] = Field(min_length=1)
     selected_method_id: str
-    selected_trial_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
+    selected_trial_hash: str = Field(pattern=BLAKE3_PATTERN)
     selection_rule_id: AlphaInnerSelectionRuleId
     fit_call_count: int = Field(ge=1)
     predict_call_count: int = Field(ge=1)
     metric_call_count: int = Field(ge=1)
-    record_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
+    record_hash: str = Field(pattern=BLAKE3_PATTERN)
 
     @classmethod
     def create(cls, **values: object) -> Self:
@@ -115,17 +118,17 @@ class AlphaDevelopmentTrialEvidence(_Contract):
     """One outer fold's single selected-method refit and honest prediction."""
 
     kind: Literal["AlphaDevelopmentTrialEvidence"] = "AlphaDevelopmentTrialEvidence"
-    program_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
+    program_hash: str = Field(pattern=BLAKE3_PATTERN)
     horizon_sessions: Literal[1, 5]
-    trial_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
+    trial_hash: str = Field(pattern=BLAKE3_PATTERN)
     fold_index: int = Field(ge=0)
-    inner_selection_record_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
-    training_binding_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
-    estimator_content_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
-    numerical_environment_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
-    prediction_value_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
-    prediction_artifact_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
-    validation_row_axis_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
+    inner_selection_record_hash: str = Field(pattern=BLAKE3_PATTERN)
+    training_binding_hash: str = Field(pattern=BLAKE3_PATTERN)
+    estimator_content_hash: str = Field(pattern=BLAKE3_PATTERN)
+    numerical_environment_hash: str = Field(pattern=BLAKE3_PATTERN)
+    prediction_value_hash: str = Field(pattern=BLAKE3_PATTERN)
+    prediction_artifact_hash: str = Field(pattern=BLAKE3_PATTERN)
+    validation_row_axis_hash: str = Field(pattern=BLAKE3_PATTERN)
     validation_mse: float = Field(ge=0.0, allow_inf_nan=False)
     validation_rank_ic: float | None = Field(default=None, ge=-1.0, le=1.0)
     raw_economic_return_correlation: float | None = Field(default=None, ge=-1.0, le=1.0)
@@ -136,7 +139,7 @@ class AlphaDevelopmentTrialEvidence(_Contract):
     fit_call_count: int = Field(ge=1)
     predict_call_count: int = Field(ge=1)
     metric_call_count: int = Field(ge=1)
-    evidence_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
+    evidence_hash: str = Field(pattern=BLAKE3_PATTERN)
 
     @classmethod
     def create(cls, **values: object) -> Self:
@@ -156,6 +159,8 @@ class AlphaDevelopmentTrialEvidence(_Contract):
 
 
 class AlphaDevelopmentMethodEvidence(_Contract):
+    """Summarize a method's triggered trials and their out-of-sample measurements."""
+
     kind: Literal["AlphaDevelopmentMethodEvidence"] = "AlphaDevelopmentMethodEvidence"
     method_id: str
     horizon_sessions: Literal[1, 5]
@@ -167,7 +172,7 @@ class AlphaDevelopmentMethodEvidence(_Contract):
     outer_trial_evidence_hashes: tuple[str, ...]
     mean_outer_validation_mse: float | None = Field(default=None, ge=0.0, allow_inf_nan=False)
     mean_outer_validation_rank_ic: float | None = Field(default=None, ge=-1.0, le=1.0)
-    evidence_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
+    evidence_hash: str = Field(pattern=BLAKE3_PATTERN)
 
     @classmethod
     def create(cls, **values: object) -> Self:
@@ -199,11 +204,13 @@ class AlphaDevelopmentMethodEvidence(_Contract):
 
 
 class AlphaRawEconomicEvaluationEvidence(_Contract):
+    """Bind the raw economic return correlations to the trials that produced them."""
+
     kind: Literal["AlphaRawEconomicEvaluationEvidence"] = "AlphaRawEconomicEvaluationEvidence"
     horizon_sessions: Literal[1, 5]
     trial_evidence_hashes: tuple[str, ...] = Field(min_length=1)
     mean_raw_economic_return_correlation: float | None = Field(default=None, ge=-1.0, le=1.0)
-    evidence_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
+    evidence_hash: str = Field(pattern=BLAKE3_PATTERN)
 
     @classmethod
     def create(cls, **values: object) -> Self:
@@ -223,6 +230,8 @@ class AlphaRawEconomicEvaluationEvidence(_Contract):
 
 
 class AlphaDevelopmentDecisionDossier(_Contract):
+    """Collect the numerical evidence and cost counts for an Alpha development decision."""
+
     kind: Literal["AlphaDevelopmentDecisionDossier"] = "AlphaDevelopmentDecisionDossier"
     program: AlphaDevelopmentProgram
     inner_selection_records: tuple[AlphaInnerSelectionRecord, ...] = Field(min_length=2)
@@ -235,7 +244,7 @@ class AlphaDevelopmentDecisionDossier(_Contract):
     ]
     scale_trigger_dispositions: dict[str, Literal["EVALUATED", "NOT_TRIGGERED"]]
     calibration_evidence: tuple[StockCalibrationEvidence, StockCalibrationEvidence]
-    fast_slow_evidence_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
+    fast_slow_evidence_hash: str = Field(pattern=BLAKE3_PATTERN)
     raw_economic_evidence: tuple[
         AlphaRawEconomicEvaluationEvidence,
         AlphaRawEconomicEvaluationEvidence,
@@ -245,7 +254,7 @@ class AlphaDevelopmentDecisionDossier(_Contract):
     metric_call_count: int = Field(ge=0)
     factor_numerical_call_count: int = Field(ge=0)
     limitations: tuple[str, ...] = Field(min_length=1)
-    dossier_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
+    dossier_hash: str = Field(pattern=BLAKE3_PATTERN)
 
     @model_validator(mode="after")  # type: ignore[untyped-decorator]
     def validate_dossier(self) -> Self:
@@ -323,12 +332,12 @@ class AlphaCampaignDecisionSubmission(_Contract):
     """Typed Alpha-domain submission; carries selections, never authority."""
 
     kind: Literal["AlphaCampaignDecisionSubmission"] = "AlphaCampaignDecisionSubmission"
-    dossier_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
+    dossier_hash: str = Field(pattern=BLAKE3_PATTERN)
     selected_method_ids: tuple[str, ...]
     selected_scale_method_ids: tuple[str, ...]
-    selected_blend_recipe_hash: str | None = Field(default=None, pattern=r"^[0-9a-f]{64}$")
+    selected_blend_recipe_hash: str | None = Field(default=None, pattern=BLAKE3_PATTERN)
     rationale: str = Field(min_length=1)
-    submission_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
+    submission_hash: str = Field(pattern=BLAKE3_PATTERN)
 
     @classmethod
     def create(cls, **values: object) -> Self:
@@ -355,11 +364,11 @@ class AlphaCampaignDecisionReceipt(_Contract):
 
     kind: Literal["AlphaCampaignDecisionReceipt"] = "AlphaCampaignDecisionReceipt"
     submission: AlphaCampaignDecisionSubmission
-    program_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
+    program_hash: str = Field(pattern=BLAKE3_PATTERN)
     actor_submission: ActorSubmissionBinding
-    decision_policy_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
+    decision_policy_hash: str = Field(pattern=BLAKE3_PATTERN)
     disposition: Literal["DEVELOPMENT_SELECTED", "DEVELOPMENT_NOT_SELECTED"]
-    receipt_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
+    receipt_hash: str = Field(pattern=BLAKE3_PATTERN)
 
     @model_validator(mode="after")  # type: ignore[untyped-decorator]
     def validate_identity(self) -> Self:
@@ -373,9 +382,11 @@ class AlphaCampaignDecisionReceipt(_Contract):
 
 
 class AlphaRecursiveReplayReceipt(_Contract):
+    """Record the verified children and operations exercised by an Alpha decision replay."""
+
     kind: Literal["AlphaRecursiveReplayReceipt"] = "AlphaRecursiveReplayReceipt"
-    dossier_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
-    decision_receipt_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
+    dossier_hash: str = Field(pattern=BLAKE3_PATTERN)
+    decision_receipt_hash: str = Field(pattern=BLAKE3_PATTERN)
     verified_child_count: int = Field(ge=1)
     disposition: Literal["REUSED_EXACT"] = "REUSED_EXACT"
     fit_call_count: Literal[0] = 0
@@ -383,7 +394,7 @@ class AlphaRecursiveReplayReceipt(_Contract):
     metric_call_count: Literal[0] = 0
     factor_numerical_call_count: Literal[0] = 0
     pointer_mutation_count: Literal[0] = 0
-    replay_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
+    replay_hash: str = Field(pattern=BLAKE3_PATTERN)
 
     @model_validator(mode="after")  # type: ignore[untyped-decorator]
     def validate_identity(self) -> Self:

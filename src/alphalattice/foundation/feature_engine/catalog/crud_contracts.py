@@ -9,6 +9,7 @@ from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 from alphalattice.capabilities.domain_contracts.identity import canonical_hash
 from alphalattice.capabilities.quant.factor_contracts import FactorSpec
+from alphalattice.kernel.identity import BLAKE3_PATTERN
 
 
 class _Contract(BaseModel):  # type: ignore[misc]
@@ -39,11 +40,11 @@ class FeatureRevision(_Contract):
     factor_id: str
     specification: FactorSpec
     implementation_id: str
-    implementation_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
+    implementation_hash: str = Field(pattern=BLAKE3_PATTERN)
     maintenance_cost: str
     maximum_invalidation_sessions: int = Field(ge=1)
     status: FeatureRevisionStatus = FeatureRevisionStatus.ACTIVE
-    revision_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
+    revision_hash: str = Field(pattern=BLAKE3_PATTERN)
 
     @model_validator(mode="after")  # type: ignore[untyped-decorator]
     def validate_revision(self) -> FeatureRevision:
@@ -86,12 +87,12 @@ class FeatureCatalogRevision(_Contract):
 
     kind: Literal["FeatureCatalogRevision"] = "FeatureCatalogRevision"
     stable_id: str
-    parent_revision_hash: str | None = Field(default=None, pattern=r"^[0-9a-f]{64}$")
-    core_bundle_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
+    parent_revision_hash: str | None = Field(default=None, pattern=BLAKE3_PATTERN)
+    core_bundle_hash: str = Field(pattern=BLAKE3_PATTERN)
     features: tuple[FeatureRevision, ...]
     maintenance_policy: dict[str, object]
-    maintenance_policy_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
-    revision_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
+    maintenance_policy_hash: str = Field(pattern=BLAKE3_PATTERN)
+    revision_hash: str = Field(pattern=BLAKE3_PATTERN)
 
     @model_validator(mode="after")  # type: ignore[untyped-decorator]
     def validate_catalog_revision(self) -> FeatureCatalogRevision:
@@ -141,8 +142,8 @@ class FeatureCatalogDelta(_Contract):
     """Record the typed operations and affected Formula IDs of an edit."""
 
     kind: Literal["FeatureCatalogDelta"] = "FeatureCatalogDelta"
-    base_revision_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
-    candidate_revision_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
+    base_revision_hash: str = Field(pattern=BLAKE3_PATTERN)
+    candidate_revision_hash: str = Field(pattern=BLAKE3_PATTERN)
     operations: tuple[FeatureCatalogOperation, ...]
     created_factor_ids: tuple[str, ...] = ()
     retired_factor_ids: tuple[str, ...] = ()
@@ -150,7 +151,7 @@ class FeatureCatalogDelta(_Contract):
     research_classification_updated_factor_ids: tuple[str, ...] = ()
     numerical_updated_factor_ids: tuple[str, ...] = ()
     rename_pairs: tuple[tuple[str, str], ...] = ()
-    delta_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
+    delta_hash: str = Field(pattern=BLAKE3_PATTERN)
 
     @model_validator(mode="after")  # type: ignore[untyped-decorator]
     def validate_delta(self) -> FeatureCatalogDelta:
@@ -176,7 +177,7 @@ class FactorReconciliationScope(_Contract):
     family_fdr_ids: tuple[str, ...]
     redundancy_factor_ids: tuple[str, ...]
     decision_surface_changed: bool
-    scope_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
+    scope_hash: str = Field(pattern=BLAKE3_PATTERN)
 
     @model_validator(mode="after")  # type: ignore[untyped-decorator]
     def validate_scope(self) -> FactorReconciliationScope:
@@ -190,15 +191,15 @@ class FeatureCatalogUpdatePlan(_Contract):
     """Describe the numerical and Panel work required by an edit."""
 
     kind: Literal["FeatureCatalogUpdatePlan"] = "FeatureCatalogUpdatePlan"
-    base_revision_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
-    candidate_revision_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
-    delta_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
+    base_revision_hash: str = Field(pattern=BLAKE3_PATTERN)
+    candidate_revision_hash: str = Field(pattern=BLAKE3_PATTERN)
+    delta_hash: str = Field(pattern=BLAKE3_PATTERN)
     base_compute_factor_ids: tuple[str, ...]
     panel_compute_factor_ids: tuple[str, ...]
     panel_drop_factor_ids: tuple[str, ...]
     numerical_work_required: bool
     factor_reconciliation: FactorReconciliationScope
-    plan_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
+    plan_hash: str = Field(pattern=BLAKE3_PATTERN)
 
     @model_validator(mode="after")  # type: ignore[untyped-decorator]
     def validate_plan(self) -> FeatureCatalogUpdatePlan:

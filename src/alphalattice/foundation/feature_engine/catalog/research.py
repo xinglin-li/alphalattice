@@ -36,8 +36,9 @@ from alphalattice.foundation.feature_engine.producers.factors.formula import (
 from alphalattice.foundation.feature_engine.producers.factors.formula_language import (
     FormulaError,
 )
+from alphalattice.kernel.identity import BLAKE3_PATTERN
 
-_HASH = r"^[0-9a-f]{64}$"
+_HASH = BLAKE3_PATTERN
 
 
 class ResearchFeatureEdit(BaseModel):  # type: ignore[misc]

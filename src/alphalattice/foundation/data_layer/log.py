@@ -61,7 +61,13 @@ from alphalattice.foundation.data_layer.project import (
     require_lineage,
 )
 from alphalattice.foundation.data_layer.project import uuid7 as uuid7
-from alphalattice.foundation.data_layer.root import build_log, seed_rows, sqlite_read_only_uri
+from alphalattice.foundation.data_layer.root import (
+    SCHEMA_VERSION,
+    build_log,
+    require_log_schema,
+    seed_rows,
+    sqlite_read_only_uri,
+)
 from alphalattice.kernel.clock import wall_time_ns
 from alphalattice.kernel.execution import EVENTS
 
@@ -178,11 +184,11 @@ class HostLog:
         `data_layer.host_running` when another Host holds the lock, `data_layer.chain_broken` when
         the log no longer matches its head.
         """
+        log_path = root / "machine" / "log.sqlite"
+        require_log_schema(log_path)
         lock = _take_lock(root / "machine" / LOCK_NAME)
         try:
-            con = sqlite3.connect(
-                root / "machine" / "log.sqlite", isolation_level=None, check_same_thread=False
-            )
+            con = sqlite3.connect(log_path, isolation_level=None, check_same_thread=False)
             con.row_factory = sqlite3.Row
             con.execute("PRAGMA foreign_keys = ON")
             con.execute("PRAGMA synchronous = NORMAL")
@@ -591,7 +597,9 @@ def _run(actions: list[Callable[[bool], None]], *, committed: bool) -> None:
 def attach(root: Path, *, shared: bool = False) -> sqlite3.Connection:
     """A read-only connection to the data root's log, for any process but the Host; `shared`, one
     any thread may use under its holder's lock."""
-    uri = sqlite_read_only_uri((root / "machine" / "log.sqlite").absolute())
+    path = (root / "machine" / "log.sqlite").absolute()
+    require_log_schema(path)
+    uri = sqlite_read_only_uri(path)
     con = sqlite3.connect(uri, uri=True, check_same_thread=not shared)
     con.row_factory = sqlite3.Row
     return con
@@ -937,6 +945,7 @@ def replay(source: sqlite3.Connection, path: Path) -> sqlite3.Connection:
             text, body = event["text"], event["body"]
             admit(row, text, _spec(con, row), _superseded(con), live=False, body=body)
             _write(con, row, text, body, live=False, legacy_identity=legacy_identity)
+        con.execute(f"PRAGMA user_version = {SCHEMA_VERSION}")
         con.execute("COMMIT")
     except BaseException:
         con.execute("ROLLBACK")

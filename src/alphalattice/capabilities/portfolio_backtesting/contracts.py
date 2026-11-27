@@ -12,6 +12,7 @@ import numpy.typing as npt
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 from alphalattice.capabilities.domain_contracts.identity import canonical_hash
+from alphalattice.kernel.identity import BLAKE3_PATTERN
 
 type FloatArray = npt.NDArray[np.float64]
 type BoolArray = npt.NDArray[np.bool_]
@@ -61,7 +62,7 @@ class PortfolioTransactionCostConvention(BaseModel):  # type: ignore[misc]
     human_readable_label: Literal["bps per one-way asset turnover; not a per-side rate"] = (
         "bps per one-way asset turnover; not a per-side rate"
     )
-    convention_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
+    convention_hash: str = Field(pattern=BLAKE3_PATTERN)
 
     @classmethod
     def installed(cls) -> PortfolioTransactionCostConvention:
@@ -214,7 +215,7 @@ class PortfolioPerSideCostAssumption(BaseModel):  # type: ignore[misc]
     kind: Literal["PortfolioPerSideCostAssumption"] = "PortfolioPerSideCostAssumption"
     quote_basis: Literal["PER_SIDE"] = "PER_SIDE"
     cost_bps_per_side_tenths: int = Field(ge=0, le=MAXIMUM_COST_BPS_PER_SIDE_TENTHS)
-    assumption_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
+    assumption_hash: str = Field(pattern=BLAKE3_PATTERN)
 
     @classmethod
     def create(cls, *, cost_bps_per_side_tenths: int) -> Self:
@@ -698,7 +699,7 @@ class RebalanceClockBinding(BaseModel):  # type: ignore[misc]
     clock_id: str = Field(min_length=1, max_length=96)
     parameters: tuple[tuple[str, int], ...] = ()
     formation_indices: tuple[int, ...] | None = Field(default=None, exclude_if=lambda v: v is None)
-    binding_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
+    binding_hash: str = Field(pattern=BLAKE3_PATTERN)
 
     @model_validator(mode="after")  # type: ignore[untyped-decorator]
     def validate_identity(self) -> RebalanceClockBinding:
@@ -986,8 +987,8 @@ class PortfolioStateTransitionBinding(BaseModel):  # type: ignore[misc]
 
     kind: Literal["PortfolioStateTransitionBinding"] = "PortfolioStateTransitionBinding"
     initial_state_semantics: Literal["FLAT_BOOK_ALL_CASH"] = FLAT_BOOK_ALL_CASH
-    transition_implementation_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
-    execution_method_binding_hash: str | None = Field(default=None, pattern=r"^[0-9a-f]{64}$")
+    transition_implementation_hash: str = Field(pattern=BLAKE3_PATTERN)
+    execution_method_binding_hash: str | None = Field(default=None, pattern=BLAKE3_PATTERN)
     rebalance_clock: RebalanceClockBinding
     """The cadence, in full, so a replay can rebuild it at the installed catalog.
 
@@ -1010,11 +1011,11 @@ class PortfolioStateTransitionBinding(BaseModel):  # type: ignore[misc]
     not a filesystem path, so it names an artifact rather than a machine.
     """
 
-    mark_surface_hash: str | None = Field(default=None, pattern=r"^[0-9a-f]{64}$")
-    mark_epoch_hash: str | None = Field(default=None, pattern=r"^[0-9a-f]{64}$")
+    mark_surface_hash: str | None = Field(default=None, pattern=BLAKE3_PATTERN)
+    mark_epoch_hash: str | None = Field(default=None, pattern=BLAKE3_PATTERN)
     mark_price_basis: str | None = Field(default=None, min_length=1, max_length=64)
-    mark_source_watermark_hash: str | None = Field(default=None, pattern=r"^[0-9a-f]{64}$")
-    mark_availability_policy_hash: str | None = Field(default=None, pattern=r"^[0-9a-f]{64}$")
+    mark_source_watermark_hash: str | None = Field(default=None, pattern=BLAKE3_PATTERN)
+    mark_availability_policy_hash: str | None = Field(default=None, pattern=BLAKE3_PATTERN)
     mark_availability_policy_id: str | None = Field(default=None, min_length=1, max_length=96)
     """Which installed availability owner, by name, so a replay can re-resolve it.
 
@@ -1024,7 +1025,7 @@ class PortfolioStateTransitionBinding(BaseModel):  # type: ignore[misc]
     somebody already guessed.
     """
 
-    binding_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
+    binding_hash: str = Field(pattern=BLAKE3_PATTERN)
 
     @property
     def marks_to_close(self) -> bool:

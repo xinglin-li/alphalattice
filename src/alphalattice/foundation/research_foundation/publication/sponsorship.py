@@ -31,6 +31,7 @@ from alphalattice.foundation.research_foundation.mandate.foundation import (
     ResearchFoundationService,
     build_current_research_foundation_binding,
 )
+from alphalattice.kernel.identity import blake3_filename
 from alphalattice.protocols.actor_execution.contracts import ActorSubmissionBinding
 
 
@@ -129,7 +130,9 @@ def publish_foundation_admission(
     if actor.submission_hash != admission.admission_hash:
         raise ValueError("research_foundation.confirmation_mismatch")
     existed = (
-        store.root / "research-desk/foundation-admissions" / f"{admission.admission_hash}.json"
+        store.root
+        / "research-desk/foundation-admissions"
+        / f"{blake3_filename(admission.admission_hash)}.json"
     ).exists()
     ResearchFoundationService(artifact_store=store, mutation_gate=WorkspaceMutationGate()).publish(
         binding=admission.foundation,

@@ -53,6 +53,7 @@ from alphalattice.control.product_host.composition.saved_object_readback import 
 from alphalattice.control.product_host.composition.saved_object_readback import (  # noqa: E402
     probe as product_probe,
 )
+from alphalattice.kernel.identity import blake3_from_filename  # noqa: E402
 
 
 def probe(harvest: Path, work: Path, out: Path, *, keep: bool = False) -> None:
@@ -210,7 +211,9 @@ def probe_harness(harvest: Path, work: Path, rows: list[dict[str, Any]]) -> None
             for publication in sorted(
                 root.glob("evidence/artifacts/alternative-evidence/cro-review-publications/*.json")
             ):
-                ph = publication.stem
+                ph = blake3_from_filename(publication.stem)
+                if ph is None:
+                    continue
                 read(
                     "review",
                     ph[:12],

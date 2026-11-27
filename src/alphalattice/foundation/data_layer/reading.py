@@ -35,6 +35,7 @@ from alphalattice.foundation.data_layer.root import (
     catalog_matches,
     configure_read_cache,
     duckdb_session,
+    require_log_schema,
     sql_path,
     view_statements,
     world_table_ids,
@@ -73,7 +74,9 @@ def _configure_reading(connection: Any, root: Path, *, log: bool, shared: bool) 
     configure_read_cache(connection)
     connection.execute("SET TimeZone = 'UTC'").complete()
     if log:
-        path = sql_path(machine / "log.sqlite")
+        log_path = machine / "log.sqlite"
+        require_log_schema(log_path)
+        path = sql_path(log_path)
         connection.execute(f"ATTACH '{path}' AS log (TYPE SQLITE, READ_ONLY)").complete()
     lake = (machine / "catalog.sqlite").exists()
     if lake:

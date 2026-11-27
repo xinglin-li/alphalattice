@@ -12,19 +12,20 @@ import pyarrow.parquet as pq
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 from alphalattice.capabilities.domain_contracts.identity import canonical_hash
+from alphalattice.control.workspace_runtime.verified_facts import verified_file_digest
 from alphalattice.investment.alpha_research.inputs.dynamic_panel import (
     DynamicPanelFoldDossier,
     DynamicPanelScaleReceipt,
     dynamic_panel_array_identity,
 )
-from alphalattice.kernel.identity import integrity_sha256
+from alphalattice.kernel.identity import BLAKE3_PATTERN, blake3_filename, is_blake3
 
 from .dynamic_panel_campaign import (
     DynamicPanelModelCampaignDossier,
     DynamicPanelModelProgram,
 )
 
-_HASH = r"^[0-9a-f]{64}$"
+_HASH = BLAKE3_PATTERN
 _SURFACE_CATEGORY = "development/dynamic-panel/surfaces"
 _SCALE_CATEGORY = "development/dynamic-panel/scale-receipts"
 _DOSSIER_CATEGORY = "development/dynamic-panel/fold-dossiers"
@@ -48,6 +49,8 @@ def _contract[T: _Contract](model: type[T], values: dict[str, object], field: st
 
 
 class DynamicPanelBlockArtifact(_Contract):
+    """Seal the ordered features and storage location of one Dynamic Panel block."""
+
     kind: Literal["DynamicPanelBlockArtifact"] = "DynamicPanelBlockArtifact"
     block_id: str
     storage_mode: Literal[
@@ -59,12 +62,14 @@ class DynamicPanelBlockArtifact(_Contract):
     ordered_feature_ids: tuple[str, ...] = Field(min_length=1)
     array_identity: str = Field(pattern=_HASH)
     parquet_relative_path: str | None = None
-    parquet_sha256: str | None = Field(default=None, pattern=_HASH)
+    parquet_digest: str | None = Field(default=None, pattern=_HASH)
 
     @model_validator(mode="after")  # type: ignore[untyped-decorator]
     def validate_storage(self) -> Self:
+        """Verify that the storage mode agrees with the block's physical reference."""
+
         if (self.storage_mode == "SOURCE_REFERENCE") != (
-            self.parquet_relative_path is None and self.parquet_sha256 is None
+            self.parquet_relative_path is None and self.parquet_digest is None
         ):
             raise DynamicPanelArtifactError("alpha_research.dynamic_panel_block_storage_invalid")
         return self
@@ -149,14 +154,6 @@ class DynamicPanelFoldContextManifest(_Contract):
         return self
 
 
-def _sha256_file(path: Path) -> str:
-    digest = integrity_sha256()
-    with path.open("rb") as stream:
-        while chunk := stream.read(1024 * 1024):
-            digest.update(chunk)
-    return digest.hexdigest()
-
-
 def _table_values(table: pa.Table, feature_ids: tuple[str, ...]) -> np.ndarray:
     values = np.column_stack(
         [
@@ -182,12 +179,12 @@ class DynamicPanelArtifactStore:
 
     @staticmethod
     def _require_hash(value: str) -> None:
-        if len(value) != 64 or any(character not in "0123456789abcdef" for character in value):
+        if not is_blake3(value):
             raise DynamicPanelArtifactError("alpha_research.dynamic_panel_artifact_hash_invalid")
 
     def _json_path(self, category: str, content_hash: str) -> Path:
         self._require_hash(content_hash)
-        return self.root / category / f"{content_hash}.json"
+        return self.root / category / f"{blake3_filename(content_hash)}.json"
 
     def _load_json(
         self,
@@ -228,11 +225,13 @@ class DynamicPanelArtifactStore:
         )
 
     def load_surface_manifest(self, content_hash: str) -> DynamicPanelSurfaceManifest:
+        """Read and verify the manifest of the named Dynamic Panel surface."""
+
         self._require_hash(content_hash)
         cached = self._surface_cache.get(content_hash)
         if cached is not None:
             return cached
-        directory = self.root / _SURFACE_CATEGORY / content_hash
+        directory = self.root / _SURFACE_CATEGORY / blake3_filename(content_hash)
         path = directory / "manifest.json"
         if not path.is_file():
             raise FileNotFoundError("Dynamic Panel surface manifest is missing")
@@ -243,9 +242,9 @@ class DynamicPanelArtifactStore:
             if artifact.storage_mode == "SOURCE_REFERENCE":
                 continue
             assert artifact.parquet_relative_path is not None
-            assert artifact.parquet_sha256 is not None
+            assert artifact.parquet_digest is not None
             parquet = directory / artifact.parquet_relative_path
-            if not parquet.is_file() or _sha256_file(parquet) != artifact.parquet_sha256:
+            if not parquet.is_file() or verified_file_digest(parquet) != artifact.parquet_digest:
                 raise DynamicPanelArtifactError(
                     "alpha_research.dynamic_panel_block_parquet_invalid"
                 )
@@ -261,8 +260,10 @@ class DynamicPanelArtifactStore:
         return manifest
 
     def load_fold_context_manifest(self, content_hash: str) -> DynamicPanelFoldContextManifest:
+        """Read the named Dynamic Panel fold context and verify its content identity."""
+
         self._require_hash(content_hash)
-        directory = self.root / _FOLD_CONTEXT_CATEGORY / content_hash
+        directory = self.root / _FOLD_CONTEXT_CATEGORY / blake3_filename(content_hash)
         path = directory / "manifest.json"
         if not path.is_file():
             raise FileNotFoundError("Dynamic Panel fold context is missing")
@@ -277,9 +278,9 @@ class DynamicPanelArtifactStore:
         surface = self.load_surface_manifest(manifest.surface_manifest_hash)
         for artifact in manifest.ordered_context_blocks:
             assert artifact.parquet_relative_path is not None
-            assert artifact.parquet_sha256 is not None
+            assert artifact.parquet_digest is not None
             parquet = directory / artifact.parquet_relative_path
-            if not parquet.is_file() or _sha256_file(parquet) != artifact.parquet_sha256:
+            if not parquet.is_file() or verified_file_digest(parquet) != artifact.parquet_digest:
                 raise DynamicPanelArtifactError(
                     "alpha_research.dynamic_panel_fold_context_parquet_invalid"
                 )

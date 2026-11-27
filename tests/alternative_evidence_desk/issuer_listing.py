@@ -76,7 +76,7 @@ def _registry(
             )
             for index, ticker in enumerate(tickers)
         ),
-        source_content_hash="1" * 64,
+        source_content_hash="blake3:" + "1" * 64,
     )
 
 

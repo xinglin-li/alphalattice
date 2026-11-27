@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import hashlib
 import json
 import shutil
 import sys
@@ -14,6 +13,7 @@ from setuptools.command.build_py import build_py
 ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(ROOT / "src"))
 from alphalattice.capabilities.domain_contracts import spawn  # noqa: E402
+from alphalattice.kernel.identity import integrity_blake3_path  # noqa: E402
 
 MANIFEST = ROOT / "config/release/runtime-resources.json"
 
@@ -83,7 +83,7 @@ class BuildPy(build_py):
             shutil.copyfile(ROOT / relative, destination)
         document = json.loads(MANIFEST.read_text(encoding="utf-8"))
         hashes = {
-            path: hashlib.sha256((ROOT / path).read_bytes()).hexdigest()
+            path: integrity_blake3_path(ROOT / path)
             for path in sorted(document["development_source_hashes"])
         }
         (target / "config/release/source-hashes.json").write_text(

@@ -24,6 +24,7 @@ from alphalattice.investment.portfolio_strategy_lab.publication.rolling_history 
     append_rolling_report_head,
     project_rolling_report,
 )
+from alphalattice.kernel.identity import blake3_filename
 from tests.portfolio_strategy_lab.synthetic_numerical import (
     build_numerical,
     prepared_for,
@@ -219,7 +220,7 @@ def test_rolling_head_store_reopens_by_hash_and_detects_tamper(rolling_fixture, 
     )
     assert store.has_rolling_report_head(head.head_hash)
     assert store.load_rolling_report_head(head.head_hash) == head
-    path = store.root / "rolling-report-heads" / f"{head.head_hash}.json"
+    path = store.content.artifact_path(category="rolling-report-heads", content_hash=head.head_hash)
     original = path.read_bytes()
     tampered = original.replace(b'"increment_outcome_count":0', b'"increment_outcome_count":1')
     assert tampered != original
@@ -293,8 +294,12 @@ def test_two_daily_heads_append_only_two_refs_each_and_detect_earlier_file_tampe
         category="decision-updates", value=predecessor, identity_field="content_hash"
     )
     baseline_files = _snapshot_files(store.root)
-    report_path = store.root / "reports" / f"{report_ref.report_hash}.json"
-    result_path = store.root / "results" / f"{result_ref.result_hash}.json"
+    report_path = store.content.artifact_path(
+        category="reports", content_hash=report_ref.report_hash
+    )
+    result_path = store.content.artifact_path(
+        category="results", content_hash=result_ref.result_hash
+    )
     report_bytes = report_path.read_bytes()
     result_bytes = result_path.read_bytes()
 
@@ -321,12 +326,12 @@ def test_two_daily_heads_append_only_two_refs_each_and_detect_earlier_file_tampe
         previous_publication = publication
 
     expected_first_append = {
-        f"decision-updates/{publications[0].content_hash}.json",
-        f"rolling-report-heads/{heads[0].head_hash}.json",
+        f"decision-updates/{blake3_filename(publications[0].content_hash)}.json",
+        f"rolling-report-heads/{blake3_filename(heads[0].head_hash)}.json",
     }
     expected_second_append = {
-        f"decision-updates/{publications[1].content_hash}.json",
-        f"rolling-report-heads/{heads[1].head_hash}.json",
+        f"decision-updates/{blake3_filename(publications[1].content_hash)}.json",
+        f"rolling-report-heads/{blake3_filename(heads[1].head_hash)}.json",
     }
     assert set(snapshots[0]) - set(baseline_files) == expected_first_append
     assert set(snapshots[1]) - set(snapshots[0]) == expected_second_append
@@ -334,11 +339,17 @@ def test_two_daily_heads_append_only_two_refs_each_and_detect_earlier_file_tampe
     assert all(snapshots[1][path] == data for path, data in snapshots[0].items())
     assert report_path.read_bytes() == report_bytes
     assert result_path.read_bytes() == result_bytes
-    assert len(snapshots[0][f"rolling-report-heads/{heads[0].head_hash}.json"]) < 4096
-    assert len(snapshots[1][f"rolling-report-heads/{heads[1].head_hash}.json"]) < 4096
+    assert (
+        len(snapshots[0][f"rolling-report-heads/{blake3_filename(heads[0].head_hash)}.json"]) < 4096
+    )
+    assert (
+        len(snapshots[1][f"rolling-report-heads/{blake3_filename(heads[1].head_hash)}.json"]) < 4096
+    )
     assert store.load_rolling_report_head(heads[0].head_hash) == heads[0]
 
-    increment_path = store.root / "decision-updates" / f"{publications[0].content_hash}.json"
+    increment_path = store.content.artifact_path(
+        category="decision-updates", content_hash=publications[0].content_hash
+    )
     original_increment = increment_path.read_bytes()
     increment_path.write_bytes(original_increment[:-1] + bytes([original_increment[-1] ^ 1]))
     try:

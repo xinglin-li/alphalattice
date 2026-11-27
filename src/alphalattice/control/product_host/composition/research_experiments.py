@@ -30,7 +30,6 @@ from alphalattice.capabilities.domain_contracts.identity_successors import is_cu
 from alphalattice.capabilities.domain_contracts.project_layout import resolve_playpen_root
 from alphalattice.capabilities.domain_contracts.source_identity import (
     source_rule_closure_hash,
-    switched_identity,
 )
 from alphalattice.control.product_host.composition.application_session import (
     WorkspaceApplicationSession,
@@ -86,6 +85,7 @@ from alphalattice.control.product_host.research_authoring.comparison import (
 )
 from alphalattice.control.product_host.research_authoring.factor_inputs import (
     confined,
+    factor_input_baseline,
     factor_input_paths,
     factor_template,
     factor_workflow,
@@ -192,6 +192,7 @@ from alphalattice.investment.risk_research.experiments.identity import (
     risk_development_source_closure_hash,
     risk_numerical_source_closure_hash,
 )
+from alphalattice.kernel.identity import blake3_from_filename, is_blake3
 from alphalattice.protocols.actor_execution.contracts import (
     ActorKind,
     ActorSubmissionBinding,
@@ -326,7 +327,7 @@ def _implementation_hash(kind: str = FACTOR_EXPERIMENT_KIND) -> str:
                 }
             )
         )
-        return switched_identity(f"research_experiment.{kind}.implementation", rule, root=root)
+        return rule
     if kind == PORTFOLIO_EXPERIMENT_KIND:
         return portfolio_implementation_hash()
     closure = source_rule_closure_hash(
@@ -675,14 +676,15 @@ class ResearchExperimentApplication:
         )
         drafts: dict[str, dict[str, str]] = {}
         for path in sorted(root.glob("*.json")):
-            listed = self._foundation_listed(path.stem)
+            digest = blake3_from_filename(path.stem) or ""
+            listed = self._foundation_listed(digest)
             if listed.get("standing") != "CURRENT":
                 continue
             admission = cast(dict[str, object], listed["admission"])
             if admission["input_binding_hash"] == input_binding_hash:
                 drafts[f"alpha-draft-{path.stem[:12]}"] = {
                     "operation": "EXPERIMENT_FOUNDATION_DRAFT",
-                    "foundation_admission_hash": path.stem,
+                    "foundation_admission_hash": digest,
                 }
         return {
             "detail": "No prepared component source serves a lifecycle study of this input; an "
@@ -789,7 +791,8 @@ class ResearchExperimentApplication:
             return {
                 "status": "AVAILABLE",
                 "foundations": [
-                    self._foundation_listed(p.stem) for p in sorted(root.glob("*.json"))
+                    self._foundation_listed(blake3_from_filename(path.stem) or "")
+                    for path in sorted(root.glob("*.json"))
                 ],
             }
         if op == "EXPERIMENT_FOUNDATION_PREVIEW":
@@ -905,7 +908,7 @@ class ResearchExperimentApplication:
         if not handle.startswith("research-features@"):
             return None
         identity = handle.removeprefix("research-features@")
-        if len(identity) != 64 or any(c not in "0123456789abcdef" for c in identity):
+        if not is_blake3(identity):
             raise AuthoringError("research_experiment.prepared_features_handle_invalid")
         from ..data_preparation.feature_research import (  # lazy: a prepared-features handle
             ResearchFeatureBuildApplication,
@@ -2553,7 +2556,7 @@ class ResearchExperimentApplication:
         if prior.alpha_source is not None:
             document["experiment"].update(
                 output_workspace=prior.document["experiment"]["output_workspace"],
-                baseline_workspace=f"research-inputs/{binding.binding_hash}/source",
+                baseline_workspace=factor_input_baseline(binding.binding_hash),
             )
             self._prepare_alpha(
                 binding,

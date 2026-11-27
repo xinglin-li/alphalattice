@@ -18,26 +18,29 @@ from alphalattice.investment.risk_research.experiments.replay_identity import (
     program_follows_recorded_moves,
 )
 from alphalattice.protocols.research_authoring.contracts import SealedResearchProgram
+from tests._support.identity_fixtures import fixture_digest
 
 ADAPTER = "risk-covariance-ewma-standardized-ledoit-wolf"
 
 
-def _binding(catalog: str, numerical: str, recipe: str = "c" * 64) -> RiskDevelopmentProgramBinding:
+def _binding(
+    catalog: str, numerical: str, recipe: str = fixture_digest("c")
+) -> RiskDevelopmentProgramBinding:
     return RiskDevelopmentProgramBinding.create(
         catalog_hash=catalog,
         selected_adapter_id=ADAPTER,
         selected_numerical_binding_hash=numerical,
         recipe_hash=recipe,
-        parameter_domain_hash="d" * 64,
+        parameter_domain_hash=fixture_digest("d"),
     )
 
 
 def _program(
-    binding: RiskDevelopmentProgramBinding, *, authority: str = "e" * 64
+    binding: RiskDevelopmentProgramBinding, *, authority: str = fixture_digest("e")
 ) -> SealedResearchProgram:
     return SealedResearchProgram.create(
         kind=RISK_EXPERIMENT_KIND,
-        envelope_hash="f" * 64,
+        envelope_hash=fixture_digest("f"),
         desk_program_hash=binding.selected_method_binding_hash,
         resolved_sessions=(date(2024, 1, 2),),
         catalog_hash=binding.catalog_hash,
@@ -70,8 +73,8 @@ def _moves(root: Path, *moves: tuple[str, str, str]) -> Path:
 def test_a_replay_follows_its_estimators_recorded_moves_and_nothing_else(tmp_path: Path) -> None:
     """A replay follows its estimator's recorded moves and nothing else."""
 
-    old_catalog, new_catalog = "1" * 64, "2" * 64
-    old_numerical, new_numerical = "3" * 64, "4" * 64
+    old_catalog, new_catalog = fixture_digest("1"), fixture_digest("2")
+    old_numerical, new_numerical = fixture_digest("3"), fixture_digest("4")
     recorded = _program(_binding(old_catalog, old_numerical))
     binding = _binding(new_catalog, new_numerical)
     installed = _program(binding)
@@ -85,7 +88,7 @@ def test_a_replay_follows_its_estimators_recorded_moves_and_nothing_else(tmp_pat
     assert program_follows_recorded_moves(recorded, installed, binding, root=moved)
     unrecorded = _moves(tmp_path / "unrecorded")
     assert not program_follows_recorded_moves(recorded, installed, binding, root=unrecorded)
-    other_recipe = _program(_binding(old_catalog, old_numerical, recipe="9" * 64))
+    other_recipe = _program(_binding(old_catalog, old_numerical, recipe=fixture_digest("9")))
     assert not program_follows_recorded_moves(other_recipe, installed, binding, root=moved)
-    elsewhere = _program(_binding(old_catalog, old_numerical), authority="8" * 64)
+    elsewhere = _program(_binding(old_catalog, old_numerical), authority=fixture_digest("8"))
     assert not program_follows_recorded_moves(elsewhere, installed, binding, root=moved)

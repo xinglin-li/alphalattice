@@ -14,12 +14,12 @@ from pydantic import BaseModel, ConfigDict, Field, model_validator
 from tiktoken_ext import openai_public
 
 from alphalattice.capabilities.domain_contracts.identity import canonical_hash
-from alphalattice.kernel.identity import integrity_sha256
+from alphalattice.kernel.identity import BLAKE3_PATTERN, blake3_digest
 
 ENCODING = Path(__file__).with_name("cl100k_base.tiktoken.gz")
 """The cl100k encoding the package ships: tiktoken's rank file (NOTICE), gzipped, read in memory
-and checked by tiktoken's own SHA-256, so a count needs no download and writes no file."""
-_RANKS_SHA256 = "223921b76ee99bde995b7ff738513eef100fb51d18c93597a113bcffe865b2a7"
+and checked by its pinned BLAKE3 digest, so a count needs no download and writes no file."""
+_RANKS_DIGEST = "blake3:65afa6a4947e558c7e52ca1dc682285a6aff053a60ce9ba951bf154da0cb980f"
 # tiktoken's published cl100k split pattern and special tokens (tiktoken_ext.openai_public).
 _PATTERN = (
     r"""'(?i:[sdmt]|ll|ve|re)|[^\r\n\p{L}\p{N}]?+\p{L}++|\p{N}{1,3}+| ?[^\s\p{L}\p{N}]++[\r\n]*+"""
@@ -34,12 +34,18 @@ _SPECIAL = {
 }
 
 
+def verified_rank_bytes() -> bytes:
+    """Read the exact tokenizer ranks the package ships."""
+    data = gzip.decompress(ENCODING.read_bytes())
+    if blake3_digest(data) != _RANKS_DIGEST:
+        raise ValueError("actor_execution.encoding_damaged")
+    return data
+
+
 @cache
 def _cl100k() -> tiktoken.Encoding:
     """The encoding, built once on the first count from the ranks the package ships."""
-    data = gzip.decompress(ENCODING.read_bytes())
-    if integrity_sha256(data).hexdigest() != _RANKS_SHA256:
-        raise ValueError("actor_execution.encoding_damaged")
+    data = verified_rank_bytes()
     ranks = {
         base64.b64decode(token): int(rank)
         for token, rank in (line.split() for line in data.splitlines() if line)
@@ -74,8 +80,8 @@ class ModelFacingProjection(BaseModel):
 
     projection_id: str = Field(min_length=1, max_length=160)
     media_type: Literal["text/markdown"] = "text/markdown"
-    semantics_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
-    content_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
+    semantics_hash: str = Field(pattern=BLAKE3_PATTERN)
+    content_hash: str = Field(pattern=BLAKE3_PATTERN)
     source_hashes: tuple[str, ...]
     content: str = Field(min_length=1)
     utf8_bytes: int = Field(ge=1)

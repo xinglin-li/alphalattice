@@ -82,14 +82,20 @@ from alphalattice.investment.risk_research.surfaces.returns import (
     CausalRiskReturnReader,
     RiskReturnArtifactStore,
 )
-from alphalattice.kernel.identity import identity_sha256
+from alphalattice.kernel.identity import (
+    BLAKE3_PATTERN,
+    blake3_filename,
+    identity_blake3,
+    is_blake3,
+    tagged_blake3,
+)
 
 
 class FrozenPortfolioPreparationRequest(BaseModel):  # type: ignore[misc]
     """Declare exact Alpha/Risk parents and explicit local outcome policy for frozen preparation."""
 
     model_config = ConfigDict(extra="forbid", frozen=True)
-    input_binding_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
+    input_binding_hash: str = Field(pattern=BLAKE3_PATTERN)
     alpha_task_ids: tuple[UUID, ...] = Field(min_length=1)
     risk_task_id: UUID
     unavailable_return_policy: Literal["require_complete", "quarantine_listings"] = (
@@ -132,15 +138,11 @@ def risk_return_surface(workspace: Path, risk: dict[str, Any]) -> tuple[Path, An
             surface for it.
     """
     return_hash = risk.get("risk_input", {}).get("return_surface_hash")
-    if (
-        not isinstance(return_hash, str)
-        or len(return_hash) != 64
-        or any(c not in "0123456789abcdef" for c in return_hash)
-    ):
+    if not isinstance(return_hash, str) or not is_blake3(return_hash):
         raise ValueError("frozen_portfolio.single_return_epoch_required")
     matches = tuple(
         (workspace / "artifacts/research-risk-inputs").glob(
-            f"*/data-operations/risk-returns/manifests/{return_hash}.json"
+            f"*/data-operations/risk-returns/manifests/{blake3_filename(return_hash)}.json"
         )
     )
     if len(matches) != 1 or not matches[0].resolve().is_relative_to(workspace):
@@ -215,7 +217,7 @@ def prepare_frozen_portfolio_authority(
         checkpoint()
         array = np.ascontiguousarray(values, dtype=dtype)
         if not store.holds_array(
-            category=LANES, content_hash=identity_sha256(array.tobytes()).hexdigest()
+            category=LANES, content_hash=tagged_blake3(identity_blake3(array.tobytes()))
         ):
             require_storage_capacity(workspace, additional_bytes=array.nbytes)
         return store.publish_array(category=LANES, values=array)
@@ -288,9 +290,9 @@ def prepare_frozen_portfolio_authority(
         input_binding_hash=request.input_binding_hash,
         method_recipe_hash=build_one_session_recipe().recipe_hash,
         source_rows_hash=canonical_hash(qa_rows["row_hash"].to_pylist()),
-        returns_hash=identity_sha256(
-            np.ascontiguousarray(qa_returns, dtype="<f8").tobytes()
-        ).hexdigest(),
+        returns_hash=tagged_blake3(
+            identity_blake3(np.ascontiguousarray(qa_returns, dtype="<f8").tobytes())
+        ),
         formation_sessions=sessions,
         listing_axis_hash=canonical_hash(listings),
         through=bundle.sessions[-1],
@@ -438,7 +440,7 @@ def prepare_frozen_portfolio_authority(
         data_exclusions=market.data_exclusions,
     )
     store.publish(category=CATEGORY, value=authority, identity_field="authority_hash")
-    path = store.root / CATEGORY / f"{authority.authority_hash}.json"
+    path = store.root / CATEGORY / f"{blake3_filename(authority.authority_hash)}.json"
     for recipe in recipes:
         source_owner = LifecycleResearchScoreSource(manifest_path=path, recipe=recipe)
         source_owner.verify()

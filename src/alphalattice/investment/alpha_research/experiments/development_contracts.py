@@ -14,7 +14,7 @@ from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 from alphalattice.capabilities.domain_contracts.identity import canonical_hash
 from alphalattice.capabilities.domain_contracts.sealing import seal_model
-from alphalattice.kernel.identity import identity_sha256
+from alphalattice.kernel.identity import BLAKE3_PATTERN, identity_blake3, tagged_blake3
 
 from ..evaluation.contracts import AlphaCandidateMetrics, AlphaFoldMetrics
 from ..targets.authority import InstalledAlphaTargetMethodBinding
@@ -51,17 +51,19 @@ class AlphaSelectionAction(StrEnum):
 
 
 class AlphaDevelopmentSurfaceBinding(_Contract):
+    """Bind one development surface to its admitted input axes and exact fold selections."""
+
     kind: Literal["AlphaDevelopmentSurfaceBinding"] = "AlphaDevelopmentSurfaceBinding"
-    foundation_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
-    logical_panel_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
-    logical_semantic_index_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
-    causal_outcome_snapshot_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
-    listing_set_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
-    ordered_listing_ids_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
-    ordered_factor_ids_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
-    split_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
+    foundation_hash: str = Field(pattern=BLAKE3_PATTERN)
+    logical_panel_hash: str = Field(pattern=BLAKE3_PATTERN)
+    logical_semantic_index_hash: str = Field(pattern=BLAKE3_PATTERN)
+    causal_outcome_snapshot_hash: str = Field(pattern=BLAKE3_PATTERN)
+    listing_set_hash: str = Field(pattern=BLAKE3_PATTERN)
+    ordered_listing_ids_hash: str = Field(pattern=BLAKE3_PATTERN)
+    ordered_factor_ids_hash: str = Field(pattern=BLAKE3_PATTERN)
+    split_hash: str = Field(pattern=BLAKE3_PATTERN)
     fold_commitment_hashes: tuple[str, ...] = Field(min_length=1)
-    binding_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
+    binding_hash: str = Field(pattern=BLAKE3_PATTERN)
 
     @model_validator(mode="after")  # type: ignore[untyped-decorator]
     def validate_identity(self) -> AlphaDevelopmentSurfaceBinding:
@@ -73,13 +75,15 @@ class AlphaDevelopmentSurfaceBinding(_Contract):
 
 
 class AlphaCandidateExecutionBinding(_Contract):
+    """Tie one candidate's executable package to its source surface and fold."""
+
     kind: Literal["AlphaCandidateExecutionBinding"] = "AlphaCandidateExecutionBinding"
-    development_surface_binding_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
+    development_surface_binding_hash: str = Field(pattern=BLAKE3_PATTERN)
     candidate_id: str
-    candidate_card_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
-    fold_commitment_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
+    candidate_card_hash: str = Field(pattern=BLAKE3_PATTERN)
+    fold_commitment_hash: str = Field(pattern=BLAKE3_PATTERN)
     algorithm_package_identity: str
-    execution_binding_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
+    execution_binding_hash: str = Field(pattern=BLAKE3_PATTERN)
 
     @model_validator(mode="after")  # type: ignore[untyped-decorator]
     def validate_identity(self) -> AlphaCandidateExecutionBinding:
@@ -91,15 +95,17 @@ class AlphaCandidateExecutionBinding(_Contract):
 
 
 class AlphaParentRequestBinding(_Contract):
+    """Tie the parent's plans and candidate order to the authorized development surface."""
+
     kind: Literal["AlphaParentRequestBinding"] = "AlphaParentRequestBinding"
-    request_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
-    pm_plan_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
-    effort_plan_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
-    inventory_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
-    development_surface_binding_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
+    request_hash: str = Field(pattern=BLAKE3_PATTERN)
+    pm_plan_hash: str = Field(pattern=BLAKE3_PATTERN)
+    effort_plan_hash: str = Field(pattern=BLAKE3_PATTERN)
+    inventory_hash: str = Field(pattern=BLAKE3_PATTERN)
+    development_surface_binding_hash: str = Field(pattern=BLAKE3_PATTERN)
     ordered_candidate_ids: tuple[str, ...] = Field(min_length=1)
     ordered_candidate_card_hashes: tuple[str, ...] = Field(min_length=1)
-    binding_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
+    binding_hash: str = Field(pattern=BLAKE3_PATTERN)
 
     @model_validator(mode="after")  # type: ignore[untyped-decorator]
     def validate_identity(self) -> AlphaParentRequestBinding:
@@ -113,20 +119,22 @@ class AlphaParentRequestBinding(_Contract):
 
 
 class AlphaDevelopmentSurfaceManifest(_Contract):
+    """Name the admitted development inputs, candidates and exact fold commitments."""
+
     kind: Literal["AlphaDevelopmentSurfaceManifest"] = "AlphaDevelopmentSurfaceManifest"
-    request_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
-    foundation_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
-    logical_panel_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
-    logical_semantic_index_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
-    causal_outcome_snapshot_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
-    listing_set_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
-    ordered_listing_ids_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
-    ordered_factor_ids_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
+    request_hash: str = Field(pattern=BLAKE3_PATTERN)
+    foundation_hash: str = Field(pattern=BLAKE3_PATTERN)
+    logical_panel_hash: str = Field(pattern=BLAKE3_PATTERN)
+    logical_semantic_index_hash: str = Field(pattern=BLAKE3_PATTERN)
+    causal_outcome_snapshot_hash: str = Field(pattern=BLAKE3_PATTERN)
+    listing_set_hash: str = Field(pattern=BLAKE3_PATTERN)
+    ordered_listing_ids_hash: str = Field(pattern=BLAKE3_PATTERN)
+    ordered_factor_ids_hash: str = Field(pattern=BLAKE3_PATTERN)
     candidate_ids: tuple[str, ...] = Field(min_length=1)
     candidate_card_hashes: tuple[str, ...] = Field(min_length=1)
     fold_commitment_hashes: tuple[str, ...] = Field(min_length=1)
-    split_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
-    surface_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
+    split_hash: str = Field(pattern=BLAKE3_PATTERN)
+    surface_hash: str = Field(pattern=BLAKE3_PATTERN)
 
     @model_validator(mode="after")  # type: ignore[untyped-decorator]
     def validate_identity(self) -> AlphaDevelopmentSurfaceManifest:
@@ -195,10 +203,12 @@ class AlphaFactorContributionDiagnostic(_Contract):
 
 
 class AlphaCurrentRefitDiagnosticReport(_Contract):
+    """Record development-versus-refit stability diagnostics and their admission consequence."""
+
     kind: Literal["AlphaCurrentRefitDiagnosticReport"] = "AlphaCurrentRefitDiagnosticReport"
-    prior_runtime_marker_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
-    foundation_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
-    request_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
+    prior_runtime_marker_hash: str = Field(pattern=BLAKE3_PATTERN)
+    foundation_hash: str = Field(pattern=BLAKE3_PATTERN)
+    request_hash: str = Field(pattern=BLAKE3_PATTERN)
     selected_candidate_id: str
     development: tuple[AlphaMatrixDiagnostic, ...] = Field(min_length=1)
     current: AlphaMatrixDiagnostic
@@ -210,7 +220,7 @@ class AlphaCurrentRefitDiagnosticReport(_Contract):
         "OBSERVED_MODEL_INSTABILITY",
     ]
     downstream_expansion_permitted: bool
-    report_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
+    report_hash: str = Field(pattern=BLAKE3_PATTERN)
 
     @model_validator(mode="after")  # type: ignore[untyped-decorator]
     def validate_identity(self) -> AlphaCurrentRefitDiagnosticReport:
@@ -236,7 +246,7 @@ class AlphaEstimatorState(_Contract):
     """
 
     kind: Literal["AlphaEstimatorState"] = "AlphaEstimatorState"
-    request_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
+    request_hash: str = Field(pattern=BLAKE3_PATTERN)
     candidate_id: str
     scope: Literal["DEVELOPMENT_FOLD", "CURRENT_REFIT"]
     family_id: str = Field(default="ridge", min_length=1, max_length=96)
@@ -245,13 +255,13 @@ class AlphaEstimatorState(_Contract):
         default=None, min_length=1, max_length=96, exclude_if=lambda v: v is None
     )
     numerical_binding_hash: str | None = Field(
-        default=None, pattern=r"^[0-9a-f]{64}$", exclude_if=lambda v: v is None
+        default=None, pattern=BLAKE3_PATTERN, exclude_if=lambda v: v is None
     )
     fit_evidence_hash: str | None = Field(
-        default=None, pattern=r"^[0-9a-f]{64}$", exclude_if=lambda v: v is None
+        default=None, pattern=BLAKE3_PATTERN, exclude_if=lambda v: v is None
     )
     state_projection_hash: str | None = Field(
-        default=None, pattern=r"^[0-9a-f]{64}$", exclude_if=lambda v: v is None
+        default=None, pattern=BLAKE3_PATTERN, exclude_if=lambda v: v is None
     )
     state_schema_id: str | None = Field(
         default=None, min_length=1, max_length=128, exclude_if=lambda v: v is None
@@ -266,7 +276,7 @@ class AlphaEstimatorState(_Contract):
     coefficient_l2_norm: float = Field(ge=0, allow_inf_nan=False)
     coefficient_max_abs: float = Field(ge=0, allow_inf_nan=False)
     nonzero_support_count: int | None = Field(default=None, ge=0)
-    model_text_hash: str | None = Field(default=None, pattern=r"^[0-9a-f]{64}$")
+    model_text_hash: str | None = Field(default=None, pattern=BLAKE3_PATTERN)
     best_iteration: int | None = Field(default=None, ge=1)
     feature_gain_hex: tuple[str, ...] = ()
     top_feature_gain_share: float | None = Field(default=None, ge=0, le=1)
@@ -275,7 +285,7 @@ class AlphaEstimatorState(_Contract):
     validation_score_std: float = Field(ge=0, allow_inf_nan=False)
     validation_score_coverage: float = Field(ge=0, le=1, allow_inf_nan=False)
     validation_session_statistics: tuple[AlphaSessionScoreStatistics, ...] = Field(min_length=1)
-    state_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
+    state_hash: str = Field(pattern=BLAKE3_PATTERN)
 
     @model_validator(mode="after")  # type: ignore[untyped-decorator]
     def validate_identity(self) -> AlphaEstimatorState:
@@ -400,16 +410,16 @@ class AlphaDevelopmentEstimatorState(_Contract):
     """Estimator state whose identity is independent of the parent Alpha request."""
 
     kind: Literal["AlphaDevelopmentEstimatorState"] = "AlphaDevelopmentEstimatorState"
-    execution_binding_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
-    development_surface_binding_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
+    execution_binding_hash: str = Field(pattern=BLAKE3_PATTERN)
+    development_surface_binding_hash: str = Field(pattern=BLAKE3_PATTERN)
     candidate_id: str
-    candidate_card_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
+    candidate_card_hash: str = Field(pattern=BLAKE3_PATTERN)
     fold_index: int = Field(ge=0)
-    fold_commitment_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
+    fold_commitment_hash: str = Field(pattern=BLAKE3_PATTERN)
     adapter_id: str | None = Field(default=None, min_length=1, max_length=96)
-    numerical_binding_hash: str | None = Field(default=None, pattern=r"^[0-9a-f]{64}$")
-    fit_evidence_hash: str | None = Field(default=None, pattern=r"^[0-9a-f]{64}$")
-    state_projection_hash: str | None = Field(default=None, pattern=r"^[0-9a-f]{64}$")
+    numerical_binding_hash: str | None = Field(default=None, pattern=BLAKE3_PATTERN)
+    fit_evidence_hash: str | None = Field(default=None, pattern=BLAKE3_PATTERN)
+    state_projection_hash: str | None = Field(default=None, pattern=BLAKE3_PATTERN)
     state_schema_id: str | None = Field(default=None, min_length=1, max_length=128)
     projection_payload: dict[str, object] | None = None
     family_id: str = Field(min_length=1, max_length=96)
@@ -420,7 +430,7 @@ class AlphaDevelopmentEstimatorState(_Contract):
     coefficient_l2_norm: float = Field(ge=0, allow_inf_nan=False)
     coefficient_max_abs: float = Field(ge=0, allow_inf_nan=False)
     nonzero_support_count: int | None = Field(default=None, ge=0)
-    model_text_hash: str | None = Field(default=None, pattern=r"^[0-9a-f]{64}$")
+    model_text_hash: str | None = Field(default=None, pattern=BLAKE3_PATTERN)
     best_iteration: int | None = Field(default=None, ge=1)
     feature_gain_hex: tuple[str, ...] = ()
     top_feature_gain_share: float | None = Field(default=None, ge=0, le=1)
@@ -429,7 +439,7 @@ class AlphaDevelopmentEstimatorState(_Contract):
     validation_score_std: float = Field(ge=0, allow_inf_nan=False)
     validation_score_coverage: float = Field(ge=0, le=1, allow_inf_nan=False)
     validation_session_statistics: tuple[AlphaSessionScoreStatistics, ...] = Field(min_length=1)
-    state_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
+    state_hash: str = Field(pattern=BLAKE3_PATTERN)
 
     @model_validator(mode="after")  # type: ignore[untyped-decorator]
     def validate_identity(self) -> AlphaDevelopmentEstimatorState:
@@ -543,52 +553,58 @@ class AlphaDevelopmentEstimatorState(_Contract):
 
 
 class AlphaDevelopmentValidationChunkRef(_Contract):
-    request_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
-    development_surface_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
+    """Address one fold's sealed validation chunk and its metadata."""
+
+    request_hash: str = Field(pattern=BLAKE3_PATTERN)
+    development_surface_hash: str = Field(pattern=BLAKE3_PATTERN)
     fold_index: int = Field(ge=0)
-    fold_commitment_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
+    fold_commitment_hash: str = Field(pattern=BLAKE3_PATTERN)
     row_count: int = Field(ge=1)
-    content_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
-    metadata_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
+    content_hash: str = Field(pattern=BLAKE3_PATTERN)
+    metadata_hash: str = Field(pattern=BLAKE3_PATTERN)
     uri: str
 
 
 class AlphaCandidateDevelopmentScoreChunkRef(_Contract):
-    request_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
-    development_surface_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
+    """Address the score chunk produced for one admitted candidate and fold."""
+
+    request_hash: str = Field(pattern=BLAKE3_PATTERN)
+    development_surface_hash: str = Field(pattern=BLAKE3_PATTERN)
     candidate_id: str
-    candidate_card_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
+    candidate_card_hash: str = Field(pattern=BLAKE3_PATTERN)
     fold_index: int = Field(ge=0)
-    fold_commitment_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
+    fold_commitment_hash: str = Field(pattern=BLAKE3_PATTERN)
     row_count: int = Field(ge=1)
-    content_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
-    metadata_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
+    content_hash: str = Field(pattern=BLAKE3_PATTERN)
+    metadata_hash: str = Field(pattern=BLAKE3_PATTERN)
     uri: str
 
 
 class AlphaNumericalDevelopmentScoreChunkRef(_Contract):
     """Parent-independent score payload owned by one candidate/fold execution."""
 
-    execution_binding_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
-    development_surface_binding_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
+    execution_binding_hash: str = Field(pattern=BLAKE3_PATTERN)
+    development_surface_binding_hash: str = Field(pattern=BLAKE3_PATTERN)
     candidate_id: str
-    candidate_card_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
+    candidate_card_hash: str = Field(pattern=BLAKE3_PATTERN)
     fold_index: int = Field(ge=0)
-    fold_commitment_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
+    fold_commitment_hash: str = Field(pattern=BLAKE3_PATTERN)
     row_count: int = Field(ge=1)
-    content_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
-    metadata_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
+    content_hash: str = Field(pattern=BLAKE3_PATTERN)
+    metadata_hash: str = Field(pattern=BLAKE3_PATTERN)
     uri: str
 
 
 class AlphaDevelopmentFoldSurface(_Contract):
+    """Seal one fold's validation chunk under the development surface that owns it."""
+
     kind: Literal["AlphaDevelopmentFoldSurface"] = "AlphaDevelopmentFoldSurface"
-    request_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
-    development_surface_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
+    request_hash: str = Field(pattern=BLAKE3_PATTERN)
+    development_surface_hash: str = Field(pattern=BLAKE3_PATTERN)
     fold_index: int = Field(ge=0)
-    fold_commitment_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
+    fold_commitment_hash: str = Field(pattern=BLAKE3_PATTERN)
     validation_chunk: AlphaDevelopmentValidationChunkRef
-    surface_fold_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
+    surface_fold_hash: str = Field(pattern=BLAKE3_PATTERN)
 
     @model_validator(mode="after")  # type: ignore[untyped-decorator]
     def validate_identity(self) -> AlphaDevelopmentFoldSurface:
@@ -605,16 +621,16 @@ class AlphaCandidateFoldEvidence(_Contract):
     """Thin parent-owned binding to one reusable numerical fold result."""
 
     kind: Literal["AlphaCandidateFoldEvidence"] = "AlphaCandidateFoldEvidence"
-    execution_binding_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
-    numerical_result_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
-    request_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
-    development_surface_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
-    surface_fold_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
+    execution_binding_hash: str = Field(pattern=BLAKE3_PATTERN)
+    numerical_result_hash: str = Field(pattern=BLAKE3_PATTERN)
+    request_hash: str = Field(pattern=BLAKE3_PATTERN)
+    development_surface_hash: str = Field(pattern=BLAKE3_PATTERN)
+    surface_fold_hash: str = Field(pattern=BLAKE3_PATTERN)
     candidate_id: str
-    candidate_card_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
+    candidate_card_hash: str = Field(pattern=BLAKE3_PATTERN)
     fold_index: int = Field(ge=0)
-    fold_commitment_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
-    fold_evidence_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
+    fold_commitment_hash: str = Field(pattern=BLAKE3_PATTERN)
+    fold_evidence_hash: str = Field(pattern=BLAKE3_PATTERN)
 
     @model_validator(mode="after")  # type: ignore[untyped-decorator]
     def validate_identity(self) -> AlphaCandidateFoldEvidence:
@@ -629,16 +645,16 @@ class LegacyAlphaCandidateFoldEvidence(_Contract):
     """Read-only compatibility for parent artifacts published before thin references."""
 
     kind: Literal["AlphaCandidateFoldEvidence"] = "AlphaCandidateFoldEvidence"
-    execution_binding_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
-    numerical_result_hash: str | None = Field(default=None, pattern=r"^[0-9a-f]{64}$")
-    request_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
-    development_surface_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
-    surface_fold_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
+    execution_binding_hash: str = Field(pattern=BLAKE3_PATTERN)
+    numerical_result_hash: str | None = Field(default=None, pattern=BLAKE3_PATTERN)
+    request_hash: str = Field(pattern=BLAKE3_PATTERN)
+    development_surface_hash: str = Field(pattern=BLAKE3_PATTERN)
+    surface_fold_hash: str = Field(pattern=BLAKE3_PATTERN)
     candidate_id: str
-    candidate_card_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
+    candidate_card_hash: str = Field(pattern=BLAKE3_PATTERN)
     role: AlphaCandidateRole
     fold_index: int = Field(ge=0)
-    fold_commitment_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
+    fold_commitment_hash: str = Field(pattern=BLAKE3_PATTERN)
     status: AlphaCandidateStatus
     score_chunk: (
         AlphaCandidateDevelopmentScoreChunkRef | AlphaNumericalDevelopmentScoreChunkRef | None
@@ -647,9 +663,9 @@ class LegacyAlphaCandidateFoldEvidence(_Contract):
     session_rank_ics: tuple[float, ...]
     session_spreads: tuple[float, ...]
     fit_ledger: AlphaFitLedgerEntry | None = None
-    estimator_state_hash: str | None = Field(default=None, pattern=r"^[0-9a-f]{64}$")
+    estimator_state_hash: str | None = Field(default=None, pattern=BLAKE3_PATTERN)
     failure: AlphaCandidateFailure | None = None
-    fold_evidence_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
+    fold_evidence_hash: str = Field(pattern=BLAKE3_PATTERN)
 
     @model_validator(mode="after")  # type: ignore[untyped-decorator]
     def validate_identity(self) -> LegacyAlphaCandidateFoldEvidence:
@@ -728,22 +744,22 @@ class AlphaCandidateNumericalFoldResult(_Contract):
     """Reusable numerical result; a parent request only references this authority."""
 
     kind: Literal["AlphaCandidateNumericalFoldResult"] = "AlphaCandidateNumericalFoldResult"
-    execution_binding_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
-    development_surface_binding_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
+    execution_binding_hash: str = Field(pattern=BLAKE3_PATTERN)
+    development_surface_binding_hash: str = Field(pattern=BLAKE3_PATTERN)
     candidate_id: str
-    candidate_card_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
+    candidate_card_hash: str = Field(pattern=BLAKE3_PATTERN)
     role: AlphaCandidateRole
     fold_index: int = Field(ge=0)
-    fold_commitment_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
+    fold_commitment_hash: str = Field(pattern=BLAKE3_PATTERN)
     status: AlphaCandidateStatus
     score_chunk: AlphaNumericalDevelopmentScoreChunkRef | None = None
     metrics: AlphaFoldMetrics | None = None
     session_rank_ics: tuple[float, ...]
     session_spreads: tuple[float, ...]
     fit_ledger: AlphaFitLedgerEntry | None = None
-    estimator_state_hash: str | None = Field(default=None, pattern=r"^[0-9a-f]{64}$")
+    estimator_state_hash: str | None = Field(default=None, pattern=BLAKE3_PATTERN)
     failure: AlphaCandidateFailure | None = None
-    numerical_result_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
+    numerical_result_hash: str = Field(pattern=BLAKE3_PATTERN)
 
     @model_validator(mode="after")  # type: ignore[untyped-decorator]
     def validate_identity(self) -> AlphaCandidateNumericalFoldResult:
@@ -771,12 +787,14 @@ class AlphaCandidateNumericalFoldResult(_Contract):
 
 
 class AlphaCandidateDevelopmentReport(_Contract):
+    """Collect the fold evidence, metrics and failures for a development candidate."""
+
     kind: Literal["AlphaCandidateDevelopmentReport"] = "AlphaCandidateDevelopmentReport"
-    request_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
-    development_surface_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
-    foundation_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
+    request_hash: str = Field(pattern=BLAKE3_PATTERN)
+    development_surface_hash: str = Field(pattern=BLAKE3_PATTERN)
+    foundation_hash: str = Field(pattern=BLAKE3_PATTERN)
     candidate_id: str
-    candidate_card_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
+    candidate_card_hash: str = Field(pattern=BLAKE3_PATTERN)
     role: AlphaCandidateRole
     status: AlphaCandidateStatus
     admitted_fold_count: int = Field(ge=1)
@@ -784,7 +802,7 @@ class AlphaCandidateDevelopmentReport(_Contract):
     metrics: AlphaCandidateMetrics | None = None
     estimator_state_hashes: tuple[str, ...]
     failure_codes: tuple[str, ...]
-    report_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
+    report_hash: str = Field(pattern=BLAKE3_PATTERN)
 
     @model_validator(mode="after")  # type: ignore[untyped-decorator]
     def validate_identity(self) -> AlphaCandidateDevelopmentReport:
@@ -803,17 +821,19 @@ class AlphaCandidateDevelopmentReport(_Contract):
 
 
 class AlphaCandidateInferenceEvidence(_Contract):
+    """Name the score chunks and estimator states that support a candidate's inference."""
+
     kind: Literal["AlphaCandidateInferenceEvidence"] = "AlphaCandidateInferenceEvidence"
-    request_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
+    request_hash: str = Field(pattern=BLAKE3_PATTERN)
     candidate_id: str
-    report_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
+    report_hash: str = Field(pattern=BLAKE3_PATTERN)
     score_chunk_hashes: tuple[str, ...]
     successful_fold_count: int = Field(ge=0)
     admitted_fold_count: int = Field(ge=1)
     scored_row_count: int = Field(ge=0)
     common_surface_row_count: int = Field(ge=0)
     estimator_state_hashes: tuple[str, ...]
-    evidence_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
+    evidence_hash: str = Field(pattern=BLAKE3_PATTERN)
 
     @model_validator(mode="after")  # type: ignore[untyped-decorator]
     def validate_identity(self) -> AlphaCandidateInferenceEvidence:
@@ -831,6 +851,8 @@ class AlphaCandidateInferenceEvidence(_Contract):
 
 
 class AlphaCandidateViability(_Contract):
+    """Record a candidate's statistical, coverage and economic checks against its benchmark."""
+
     candidate_id: str
     benchmark_candidate_id: Literal["benchmark.historical-mean"] = "benchmark.historical-mean"
     dm_statistic: float | None = Field(default=None, allow_inf_nan=False)
@@ -846,7 +868,7 @@ class AlphaCandidateViability(_Contract):
     positive_bootstrap_lower: bool
     admitted: bool
     failure_codes: tuple[str, ...]
-    candidate_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
+    candidate_hash: str = Field(pattern=BLAKE3_PATTERN)
 
     @model_validator(mode="after")  # type: ignore[untyped-decorator]
     def validate_identity(self) -> AlphaCandidateViability:
@@ -875,16 +897,18 @@ class AlphaCandidateViability(_Contract):
 
 
 class AlphaModelViabilityAssessment(_Contract):
+    """Collect the benchmark comparisons and identify candidates admitted by the viability rule."""
+
     kind: Literal["AlphaModelViabilityAssessment"] = "AlphaModelViabilityAssessment"
-    request_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
-    surface_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
+    request_hash: str = Field(pattern=BLAKE3_PATTERN)
+    surface_hash: str = Field(pattern=BLAKE3_PATTERN)
     benchmark_candidate_id: Literal["benchmark.historical-mean"] = "benchmark.historical-mean"
     familywise_alpha: float = Field(default=0.05, ge=0, le=1, allow_inf_nan=False)
     hypothesis_count: int = Field(ge=0)
     candidates: tuple[AlphaCandidateViability, ...]
     admissible_candidate_ids: tuple[str, ...]
     disposition: Literal["ADMISSIBLE_MODELS_AVAILABLE", "NO_ADMISSIBLE_ALPHA_MODEL"]
-    assessment_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
+    assessment_hash: str = Field(pattern=BLAKE3_PATTERN)
 
     @model_validator(mode="after")  # type: ignore[untyped-decorator]
     def validate_identity(self) -> AlphaModelViabilityAssessment:
@@ -907,14 +931,16 @@ class AlphaModelViabilityAssessment(_Contract):
 
 
 class AlphaModelSelectionProposal(_Contract):
+    """Bind an offered selection action to its invocation and viability assessment."""
+
     kind: Literal["AlphaModelSelectionProposal"] = "AlphaModelSelectionProposal"
     invocation_token: str
-    viability_assessment_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
+    viability_assessment_hash: str = Field(pattern=BLAKE3_PATTERN)
     action: AlphaSelectionAction
     selected_candidate_id: str | None = None
     reason_code: str
     observed_candidate_ids: tuple[str, ...]
-    proposal_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
+    proposal_hash: str = Field(pattern=BLAKE3_PATTERN)
 
     @model_validator(mode="after")  # type: ignore[untyped-decorator]
     def validate_identity(self) -> AlphaModelSelectionProposal:
@@ -930,14 +956,16 @@ class AlphaModelSelectionProposal(_Contract):
 
 
 class AlphaModelSelectionDecision(_Contract):
+    """Seal the selected action against its authorized proposal and viability assessment."""
+
     kind: Literal["AlphaModelSelectionDecision"] = "AlphaModelSelectionDecision"
-    request_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
-    viability_assessment_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
-    authoritative_proposal_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
+    request_hash: str = Field(pattern=BLAKE3_PATTERN)
+    viability_assessment_hash: str = Field(pattern=BLAKE3_PATTERN)
+    authoritative_proposal_hash: str = Field(pattern=BLAKE3_PATTERN)
     action: AlphaSelectionAction
     selected_candidate_id: str | None = None
     reason_code: str
-    decision_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
+    decision_hash: str = Field(pattern=BLAKE3_PATTERN)
 
     @model_validator(mode="after")  # type: ignore[untyped-decorator]
     def validate_identity(self) -> AlphaModelSelectionDecision:
@@ -953,10 +981,12 @@ class AlphaModelSelectionDecision(_Contract):
 
 
 class AlphaDecisionSample(_Contract):
+    """Record one decision sample's status, call counts and observed cost."""
+
     sample_kind: Literal["AUTHORITATIVE", "SHADOW"]
     sample_index: int = Field(ge=1, le=3)
-    proposal_hash: str | None = Field(default=None, pattern=r"^[0-9a-f]{64}$")
-    decision_surface_hash: str | None = Field(default=None, pattern=r"^[0-9a-f]{64}$")
+    proposal_hash: str | None = Field(default=None, pattern=BLAKE3_PATTERN)
+    decision_surface_hash: str | None = Field(default=None, pattern=BLAKE3_PATTERN)
     status: Literal["SUCCEEDED", "PROTOCOL_DEFERRED", "FAILED"]
     model_calls: int = Field(ge=0)
     tool_calls: int = Field(ge=0)
@@ -974,9 +1004,11 @@ class AlphaDecisionSample(_Contract):
 
 
 class AlphaDecisionReproducibilityReport(_Contract):
+    """Summarize repeated decision samples and whether their recorded outcomes diverged."""
+
     kind: Literal["AlphaDecisionReproducibilityReport"] = "AlphaDecisionReproducibilityReport"
-    decision_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
-    viability_assessment_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
+    decision_hash: str = Field(pattern=BLAKE3_PATTERN)
+    viability_assessment_hash: str = Field(pattern=BLAKE3_PATTERN)
     sampling_protocol: Literal["AUTHORITATIVE_PLUS_TWO_SHADOWS"] = "AUTHORITATIVE_PLUS_TWO_SHADOWS"
     samples: tuple[AlphaDecisionSample, AlphaDecisionSample, AlphaDecisionSample]
     status: Literal[
@@ -985,7 +1017,7 @@ class AlphaDecisionReproducibilityReport(_Contract):
         "PROBE_INCOMPLETE",
     ]
     shadow_divergence_observed: bool
-    report_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
+    report_hash: str = Field(pattern=BLAKE3_PATTERN)
 
     @model_validator(mode="after")  # type: ignore[untyped-decorator]
     def validate_identity(self) -> AlphaDecisionReproducibilityReport:
@@ -1028,21 +1060,21 @@ class AlphaDevelopmentChildLineage(_Contract):
     kind: Literal["AlphaDevelopmentChildLineage"] = "AlphaDevelopmentChildLineage"
     candidate_id: str = Field(min_length=1, max_length=128)
     fold_index: int = Field(ge=0)
-    fold_commitment_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
-    numerical_result_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
-    estimator_state_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
-    fit_evidence_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
-    training_input_binding_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
-    estimator_content_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
-    fit_provenance_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
-    score_evidence_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
+    fold_commitment_hash: str = Field(pattern=BLAKE3_PATTERN)
+    numerical_result_hash: str = Field(pattern=BLAKE3_PATTERN)
+    estimator_state_hash: str = Field(pattern=BLAKE3_PATTERN)
+    fit_evidence_hash: str = Field(pattern=BLAKE3_PATTERN)
+    training_input_binding_hash: str = Field(pattern=BLAKE3_PATTERN)
+    estimator_content_hash: str = Field(pattern=BLAKE3_PATTERN)
+    fit_provenance_hash: str = Field(pattern=BLAKE3_PATTERN)
+    score_evidence_hash: str = Field(pattern=BLAKE3_PATTERN)
     ordered_factor_ids: tuple[str, ...] = Field(min_length=1)
     """The axis the estimator itself recorded, so the child's columns are checked
     against the declaration rather than assumed from the plan."""
 
-    target_recipe_binding_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
-    target_materialization_binding_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
-    lineage_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
+    target_recipe_binding_hash: str = Field(pattern=BLAKE3_PATTERN)
+    target_materialization_binding_hash: str = Field(pattern=BLAKE3_PATTERN)
+    lineage_hash: str = Field(pattern=BLAKE3_PATTERN)
 
     @model_validator(mode="after")  # type: ignore[untyped-decorator]
     def validate_identity(self) -> AlphaDevelopmentChildLineage:
@@ -1068,16 +1100,16 @@ class AlphaDevelopmentExecutionReceipt(_Contract):
     """
 
     kind: Literal["AlphaDevelopmentExecutionReceipt"] = "AlphaDevelopmentExecutionReceipt"
-    program_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
-    desk_program_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
-    method_binding_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
-    desk_input_binding_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
+    program_hash: str = Field(pattern=BLAKE3_PATTERN)
+    desk_program_hash: str = Field(pattern=BLAKE3_PATTERN)
+    method_binding_hash: str = Field(pattern=BLAKE3_PATTERN)
+    desk_input_binding_hash: str = Field(pattern=BLAKE3_PATTERN)
     target_recipe_binding: InstalledAlphaTargetMethodBinding
     target_materialization_binding: AlphaDevelopmentTargetMaterializationBinding
     ordered_base_feature_ids: tuple[str, ...] = Field(min_length=1)
-    research_recipe_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
+    research_recipe_hash: str = Field(pattern=BLAKE3_PATTERN)
     model_adapter_id: str = Field(min_length=1, max_length=96)
-    model_adapter_recipe_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
+    model_adapter_recipe_hash: str = Field(pattern=BLAKE3_PATTERN)
     """The adapter's own recipe identity, which is what the fit evidence records.
 
     Not the same value as ``research_recipe_hash``: that one covers the admitted
@@ -1085,8 +1117,8 @@ class AlphaDevelopmentExecutionReceipt(_Contract):
     fitted against this one.
     """
 
-    development_program_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
-    metric_policy_hash: str | None = Field(default=None, pattern=r"^[0-9a-f]{64}$")
+    development_program_hash: str = Field(pattern=BLAKE3_PATTERN)
+    metric_policy_hash: str | None = Field(default=None, pattern=BLAKE3_PATTERN)
     """The executed metric policy, independently recorded for saved comparisons.
 
     Older receipts remain readable with ``None``; a descriptive comparison refuses
@@ -1100,7 +1132,7 @@ class AlphaDevelopmentExecutionReceipt(_Contract):
     too, but a verifier holding only a receipt would otherwise have to resolve
     the Program to learn what it should have been."""
 
-    model_method_binding_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
+    model_method_binding_hash: str = Field(pattern=BLAKE3_PATTERN)
     """Which model was bound to which target, so the receipt names the whole
     method rather than an estimator that could have been fitted to anything."""
 
@@ -1114,13 +1146,13 @@ class AlphaDevelopmentExecutionReceipt(_Contract):
 
         return str(self.split_policy.policy_hash)
 
-    batch_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
-    batch_result_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
-    development_surface_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
-    development_surface_binding_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
+    batch_hash: str = Field(pattern=BLAKE3_PATTERN)
+    batch_result_hash: str = Field(pattern=BLAKE3_PATTERN)
+    development_surface_hash: str = Field(pattern=BLAKE3_PATTERN)
+    development_surface_binding_hash: str = Field(pattern=BLAKE3_PATTERN)
     fold_surface_hashes: tuple[str, ...] = Field(min_length=1)
     child_lineage: tuple[AlphaDevelopmentChildLineage, ...] = Field(min_length=1)
-    receipt_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
+    receipt_hash: str = Field(pattern=BLAKE3_PATTERN)
 
     @classmethod
     def create(
@@ -1262,7 +1294,7 @@ def canonical_score_value_identity(values: _ScoreArray) -> str:
             {
                 "dtype": str(contiguous.dtype),
                 "shape": [int(value) for value in contiguous.shape],
-                "content": identity_sha256(contiguous.tobytes()).hexdigest(),
+                "content": tagged_blake3(identity_blake3(contiguous.tobytes())),
             }
         )
     )
@@ -1277,16 +1309,16 @@ class CanonicalAlphaScoreFoldRef(_Contract):
 
     kind: Literal["CanonicalAlphaScoreFoldRef"] = "CanonicalAlphaScoreFoldRef"
     fold_index: int = Field(ge=0)
-    fold_commitment_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
-    fold_surface_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
+    fold_commitment_hash: str = Field(pattern=BLAKE3_PATTERN)
+    fold_surface_hash: str = Field(pattern=BLAKE3_PATTERN)
     """The fold surface whose validation chunk gives these scores their axes.
 
     Carried so the surface is self-sufficient: a reader assembling the matrix
     needs the formation and listing of every scored row, and without this it
     would have to resolve the receipt again to find out where to look."""
 
-    numerical_result_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
-    score_chunk_content_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
+    numerical_result_hash: str = Field(pattern=BLAKE3_PATTERN)
+    score_chunk_content_hash: str = Field(pattern=BLAKE3_PATTERN)
     row_count: int = Field(ge=1)
     first_formation_session: date
     last_formation_session: date
@@ -1308,17 +1340,17 @@ class CanonicalAlphaScoreSurface(_Contract):
     """
 
     kind: Literal["CanonicalAlphaScoreSurface"] = "CanonicalAlphaScoreSurface"
-    development_receipt_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
+    development_receipt_hash: str = Field(pattern=BLAKE3_PATTERN)
     candidate_id: str = Field(min_length=1, max_length=128)
-    target_recipe_binding_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
-    target_evidence_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
+    target_recipe_binding_hash: str = Field(pattern=BLAKE3_PATTERN)
+    target_evidence_hash: str = Field(pattern=BLAKE3_PATTERN)
     ordered_fold_refs: tuple[CanonicalAlphaScoreFoldRef, ...] = Field(min_length=1)
     ordered_listing_ids: tuple[str, ...] = Field(min_length=1)
     formation_sessions: tuple[date, ...] = Field(min_length=1)
     score_dtype: Literal["float64"] = "float64"
     score_row_count: int = Field(ge=1)
-    score_value_identity: str = Field(pattern=r"^[0-9a-f]{64}$")
-    surface_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
+    score_value_identity: str = Field(pattern=BLAKE3_PATTERN)
+    surface_hash: str = Field(pattern=BLAKE3_PATTERN)
 
     @model_validator(mode="after")  # type: ignore[untyped-decorator]
     def validate_identity(self) -> Self:

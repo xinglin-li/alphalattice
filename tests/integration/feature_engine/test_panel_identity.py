@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import hashlib
 from datetime import date
 from pathlib import Path
 
@@ -20,7 +19,17 @@ from alphalattice.foundation.feature_engine.panels.identity import (
     panel_chunk_hash,
     panel_schema_hash,
 )
+from alphalattice.kernel.identity import blake3_from_filename
+from tests._support.identity_fixtures import fixture_digest
 from tests.feature_engine.panel_workspace import identity_panel_table
+
+_MANIFEST_REVISION = "blake3:" + "1" * 64
+_ORIGINAL_BINDING = fixture_digest("original-panel-binding")
+_REVISED_BINDING = fixture_digest("revised-panel-binding")
+_ORIGINAL_SPY = fixture_digest("original-spy")
+_REVISED_SPY = fixture_digest("revised-spy")
+_ORIGINAL_RECEIPT = fixture_digest("original-receipt")
+_REVISED_RECEIPT = fixture_digest("revised-receipt")
 
 CASE_ROOT = Path(__file__).resolve().parents[3] / "tests/feature_engine"
 PLAYPEN_ROOT = CASE_ROOT.parents[1]
@@ -31,7 +40,7 @@ def _raw_panel_table() -> pa.Table:
         {
             "session_date": pa.array([date(2026, 1, 2), date(2026, 1, 2)], pa.date32()),
             "listing_id": pa.array(["listing-a", "listing-b"]),
-            "materialization_receipt_hash": pa.array(["a" * 64, "b" * 64]),
+            "materialization_receipt_hash": pa.array(["blake3:" + "a" * 64, "blake3:" + "b" * 64]),
             "factor_a": pa.array([1.25, None], pa.float64()),
             "factor_b": pa.array([0.0, -2.5], pa.float64()),
         }
@@ -39,8 +48,8 @@ def _raw_panel_table() -> pa.Table:
 
 
 @pytest.mark.proves("feature_engine.panel_chunks_stay_bound_to_their_writer")
-def test_ephemeral_duckdb_preserves_legacy_row_hash_golden() -> None:
-    """Control: Ephemeral duckdb preserves legacy row hash golden."""
+def test_ephemeral_duckdb_preserves_row_encoding_under_blake3() -> None:
+    """Hash the existing row encoding, including the null, with tagged BLAKE3."""
     table = identity_panel_table(_raw_panel_table())
 
     assert table.column_names == [
@@ -56,8 +65,8 @@ def test_ephemeral_duckdb_preserves_legacy_row_hash_golden() -> None:
         "factor_b",
     ]
     assert table.column("row_hash").to_pylist() == [
-        "e66e60db73f60b1d9a26a989d27c84debed6a0c16a12892ae537b7b46e6c4ecc",
-        "1ae867a55a0c80ebb9ef4abc2a0c8c1113d0d100c5169785bbb413bb12e48626",
+        "blake3:0f7b7948f4af840b30a0fbe6c832827c6e167f4fc307c2830b7b5ca164e5e7dc",
+        "blake3:4b6a5c5e7f51dfa8c354968ff1c4f0eb6b5881085b806362e9c685ccf1c8105f",
     ]
 
 
@@ -66,11 +75,11 @@ def test_annual_parquet_rewrite_is_byte_stable(tmp_path: Path) -> None:
     """Control: Annual parquet rewrite is byte stable."""
     table = identity_panel_table(_raw_panel_table())
     schema_hash = panel_schema_hash(table.schema)
-    chunk_hash = panel_chunk_hash(table, panel_binding_hash="5" * 64, year=2026)
+    chunk_hash = panel_chunk_hash(table, panel_binding_hash=_ORIGINAL_BINDING, year=2026)
     metadata = {
         b"alphalattice.snapshot_kind": b"FeaturePanelChunk",
         b"alphalattice.chunk_hash": chunk_hash.encode(),
-        b"alphalattice.panel_binding_hash": b"5" * 64,
+        b"alphalattice.panel_binding_hash": _ORIGINAL_BINDING.encode(),
         b"alphalattice.calendar_year": b"2026",
         b"alphalattice.schema_hash": schema_hash.encode(),
     }
@@ -88,26 +97,25 @@ def test_annual_parquet_rewrite_is_byte_stable(tmp_path: Path) -> None:
     assert (
         panel_chunk_hash(
             projected,
-            panel_binding_hash="5" * 64,
+            panel_binding_hash=_ORIGINAL_BINDING,
             year=2026,
             schema=pq.read_schema(first).remove_metadata(),
         )
         == chunk_hash
     )
-    assert panel_chunk_hash(projected, panel_binding_hash="5" * 64, year=2026) != chunk_hash
     assert (
-        hashlib.sha256(first.read_bytes()).hexdigest()
-        == hashlib.sha256(second.read_bytes()).hexdigest()
+        panel_chunk_hash(projected, panel_binding_hash=_ORIGINAL_BINDING, year=2026) != chunk_hash
     )
+    assert first.read_bytes() == second.read_bytes()
 
 
 def _binding(*, as_of_session: date) -> PanelCompositionBinding:
     return PanelCompositionBinding(
-        manifest_revision="1" * 64,
-        sector_revision="2" * 64,
-        catalog_hash="3" * 64,
-        policy_hash="4" * 64,
-        panel_binding_hash="5" * 64,
+        manifest_revision=_MANIFEST_REVISION,
+        sector_revision="blake3:" + "2" * 64,
+        catalog_hash="blake3:" + "3" * 64,
+        policy_hash="blake3:" + "4" * 64,
+        panel_binding_hash=_ORIGINAL_BINDING,
         history_start=date(2025, 12, 31),
         as_of_session=as_of_session,
         factor_ids=("factor_a", "factor_b"),
@@ -119,9 +127,7 @@ def _availability(sessions: tuple[date, ...]) -> list[dict[str, object]]:
         {
             "session_date": session.isoformat(),
             "factor_id": factor_id,
-            "availability_hash": hashlib.sha256(
-                f"{session.isoformat()}:{factor_id}".encode()
-            ).hexdigest(),
+            "availability_hash": fixture_digest((session, factor_id)),
         }
         for session in sessions
         for factor_id in ("factor_a", "factor_b")
@@ -172,7 +178,7 @@ def test_full_tail_and_sparse_composition_are_bounded_by_year(tmp_path: Path) ->
             )
         ],
         factor_ids=("factor_a", "factor_b"),
-        materialization_receipt_hash="a" * 64,
+        materialization_receipt_hash=_ORIGINAL_RECEIPT,
     )
     full = initial.finalize(
         availability=_availability(initial_sessions),
@@ -199,7 +205,7 @@ def test_full_tail_and_sparse_composition_are_bounded_by_year(tmp_path: Path) ->
             for index, listing in enumerate(listings)
         ],
         factor_ids=("factor_a", "factor_b"),
-        materialization_receipt_hash="b" * 64,
+        materialization_receipt_hash=_REVISED_RECEIPT,
     )
     appended = tail.finalize(
         availability=_availability(all_sessions),
@@ -225,7 +231,7 @@ def test_full_tail_and_sparse_composition_are_bounded_by_year(tmp_path: Path) ->
             for index, listing in enumerate(listings)
         ],
         factor_ids=("factor_a",),
-        materialization_receipt_hash="c" * 64,
+        materialization_receipt_hash=fixture_digest("sparse-receipt"),
     )
     corrected = sparse.finalize(
         availability=_availability(all_sessions),
@@ -284,7 +290,7 @@ def test_a_daily_rewrites_only_its_years_open_quarter(tmp_path: Path) -> None:
         session.stage_patch(
             rows=_rows(fresh, listings, offset=float(len(axis))),
             factor_ids=("factor_a", "factor_b"),
-            materialization_receipt_hash="a" * 64,
+            materialization_receipt_hash=_ORIGINAL_RECEIPT,
         )
         return session.finalize(availability=_availability(axis))
 
@@ -307,7 +313,7 @@ def test_a_daily_rewrites_only_its_years_open_quarter(tmp_path: Path) -> None:
 
 
 def _manifest_with_lineage(
-    composition, *, spy_revision: str, manifest_revision: str = "1" * 64
+    composition, *, spy_revision: str, manifest_revision: str = _MANIFEST_REVISION
 ) -> dict[str, object]:
     """A snapshot manifest as the publisher records it: sealed lineage and origins."""
 
@@ -365,12 +371,12 @@ def _published_two_year_panel(
         base_manifest=None,
         sessions=day_one,
         listing_ids=listings,
-        spy_revision="a" * 64,
+        spy_revision=_ORIGINAL_SPY,
     )
     first.stage_patch(
         rows=_rows(day_one, listings),
         factor_ids=("factor_a", "factor_b"),
-        materialization_receipt_hash="a" * 64,
+        materialization_receipt_hash=_ORIGINAL_RECEIPT,
     )
     return first.finalize(availability=_availability(day_one))
 
@@ -386,14 +392,14 @@ def test_a_compatible_base_under_a_new_binding_reuses_closed_years_by_origin(
     day_one = (date(2025, 12, 31), date(2026, 1, 2))
     day_one_panel = _published_two_year_panel(owner, day_one, listings)
     assert {key: value.spy_revision for key, value in day_one_panel.partition_origins.items()} == {
-        "5" * 64: "a" * 64
+        _ORIGINAL_BINDING: _ORIGINAL_SPY
     }
-    assert all(chunk.origin_binding_hash == "5" * 64 for chunk in day_one_panel.chunks)
-    base = _manifest_with_lineage(day_one_panel, spy_revision="a" * 64)
+    assert all(chunk.origin_binding_hash == _ORIGINAL_BINDING for chunk in day_one_panel.chunks)
+    base = _manifest_with_lineage(day_one_panel, spy_revision=_ORIGINAL_SPY)
 
     day_two = (*day_one, date(2026, 1, 5))
     new_binding = PanelCompositionBinding(
-        **{**_binding(as_of_session=day_two[-1]).__dict__, "panel_binding_hash": "6" * 64}
+        **{**_binding(as_of_session=day_two[-1]).__dict__, "panel_binding_hash": _REVISED_BINDING}
     )
     second = owner.begin(
         operation_id="day-two",
@@ -401,7 +407,7 @@ def test_a_compatible_base_under_a_new_binding_reuses_closed_years_by_origin(
         base_manifest=base,
         sessions=day_two,
         listing_ids=listings,
-        spy_revision="b" * 64,
+        spy_revision=_REVISED_SPY,
     )
     assert second.base_compatible
     assert second.unreusable_years() == ()
@@ -409,12 +415,14 @@ def test_a_compatible_base_under_a_new_binding_reuses_closed_years_by_origin(
     second.stage_patch(
         rows=_rows(day_two[-1:], listings, offset=100.0),
         factor_ids=("factor_a", "factor_b"),
-        materialization_receipt_hash="b" * 64,
+        materialization_receipt_hash=_REVISED_RECEIPT,
     )
     day_two_availability = [
         {
             **item,
-            "panel_binding_hash": "5" * 64 if item["session_date"] < "2026-01-05" else "6" * 64,
+            "panel_binding_hash": _ORIGINAL_BINDING
+            if item["session_date"] < "2026-01-05"
+            else _REVISED_BINDING,
         }
         for item in _availability(day_two)
     ]
@@ -422,15 +430,16 @@ def test_a_compatible_base_under_a_new_binding_reuses_closed_years_by_origin(
     assert (day_two_panel.reused_chunk_count, day_two_panel.written_chunk_count) == (1, 1)
     assert day_two_panel.reused_years == (2025,)
     assert day_two_panel.chunks[0] == day_one_panel.chunks[0]
-    assert day_two_panel.chunks[0].origin_binding_hash == "5" * 64
-    assert day_two_panel.chunks[1].origin_binding_hash == "6" * 64
+    assert day_two_panel.chunks[0].origin_binding_hash == _ORIGINAL_BINDING
+    assert day_two_panel.chunks[1].origin_binding_hash == _REVISED_BINDING
     assert day_two_panel.chunks[1].chunk_hash != day_one_panel.chunks[1].chunk_hash
     assert {key: value.spy_revision for key, value in day_two_panel.partition_origins.items()} == {
-        "5" * 64: "a" * 64,
-        "6" * 64: "b" * 64,
+        _ORIGINAL_BINDING: _ORIGINAL_SPY,
+        _REVISED_BINDING: _REVISED_SPY,
     }
     loaded = owner.load(
-        panel_binding_hash="6" * 64, panel_content_hash=day_two_panel.content.panel_content_hash
+        panel_binding_hash=_REVISED_BINDING,
+        panel_content_hash=day_two_panel.content.panel_content_hash,
     )
     assert loaded.chunks == day_two_panel.chunks
     assert dict(loaded.partition_origins) == day_two_panel.partition_origins
@@ -449,17 +458,18 @@ def test_a_compatible_base_under_a_new_binding_reuses_closed_years_by_origin(
         base_manifest=base,
         sessions=day_two,
         listing_ids=listings,
-        spy_revision="b" * 64,
+        spy_revision=_REVISED_SPY,
     )
     third.stage_patch(
         rows=_rows(day_two[-1:], listings, offset=100.0),
         factor_ids=("factor_a", "factor_b"),
-        materialization_receipt_hash="b" * 64,
+        materialization_receipt_hash=_REVISED_RECEIPT,
     )
     with pytest.raises(ValueError, match="cannot resolve the origin"):
         third.finalize(
             availability=[
-                {**item, "panel_binding_hash": "7" * 64} for item in _availability(day_two)
+                {**item, "panel_binding_hash": fixture_digest("unrelated-binding")}
+                for item in _availability(day_two)
             ]
         )
 
@@ -468,11 +478,13 @@ def test_a_compatible_base_under_a_new_binding_reuses_closed_years_by_origin(
         operation_id="day-two-foreign",
         binding=new_binding,
         base_manifest=_manifest_with_lineage(
-            day_one_panel, spy_revision="a" * 64, manifest_revision="9" * 64
+            day_one_panel,
+            spy_revision=_ORIGINAL_SPY,
+            manifest_revision=fixture_digest("other-manifest"),
         ),
         sessions=day_two,
         listing_ids=listings,
-        spy_revision="b" * 64,
+        spy_revision=_REVISED_SPY,
     )
     assert not foreign.base_compatible
     assert foreign.unreusable_years() == (2025, 2026)
@@ -485,7 +497,7 @@ def test_a_compatible_base_under_a_new_binding_reuses_closed_years_by_origin(
         base_manifest=base,
         sessions=day_two,
         listing_ids=(*listings, "listing-c"),
-        spy_revision="b" * 64,
+        spy_revision=_REVISED_SPY,
     )
     assert grown.base_compatible
     assert grown.unreusable_years() == (2025, 2026)
@@ -527,27 +539,31 @@ def test_a_partition_under_another_calendar_is_recomputed_not_reused(
         base_manifest=None,
         sessions=held,
         listing_ids=listings,
-        spy_revision="a" * 64,
+        spy_revision=_ORIGINAL_SPY,
     )
     first.stage_patch(
         rows=_rows(held, listings),
         factor_ids=("factor_a", "factor_b"),
-        materialization_receipt_hash="a" * 64,
+        materialization_receipt_hash=_ORIGINAL_RECEIPT,
     )
     base_panel = first.finalize(availability=_availability(held))
-    base = _manifest_with_lineage(base_panel, spy_revision="a" * 64)
+    base = _manifest_with_lineage(base_panel, spy_revision=_ORIGINAL_SPY)
     assert base["chunks"][0]["first_session"] == requested[0].isoformat()
     assert base["chunks"][0]["row_count"] == len(held) * len(listings)
 
     second = owner.begin(
         operation_id="requested",
         binding=PanelCompositionBinding(
-            **{**binding.__dict__, "as_of_session": requested[-1], "panel_binding_hash": "6" * 64}
+            **{
+                **binding.__dict__,
+                "as_of_session": requested[-1],
+                "panel_binding_hash": _REVISED_BINDING,
+            }
         ),
         base_manifest=base,
         sessions=requested,
         listing_ids=listings,
-        spy_revision="b" * 64,
+        spy_revision=_REVISED_SPY,
     )
     assert second.base_compatible
     assert second.reusable_years() == ()
@@ -556,10 +572,12 @@ def test_a_partition_under_another_calendar_is_recomputed_not_reused(
     second.stage_patch(
         rows=_rows(requested, listings, offset=100.0),
         factor_ids=("factor_a", "factor_b"),
-        materialization_receipt_hash="b" * 64,
+        materialization_receipt_hash=_REVISED_RECEIPT,
     )
     composed = second.finalize(
-        availability=[{**item, "panel_binding_hash": "6" * 64} for item in _availability(requested)]
+        availability=[
+            {**item, "panel_binding_hash": _REVISED_BINDING} for item in _availability(requested)
+        ]
     )
     assert (composed.reused_chunk_count, composed.written_chunk_count) == (0, 1)
     assert composed.chunks[0].chunk_hash != base_panel.chunks[0].chunk_hash
@@ -582,26 +600,29 @@ def test_a_reused_partition_that_no_longer_proves_its_identity_is_refused(
     listings = ("listing-a", "listing-b")
     day_one = (date(2025, 12, 31), date(2026, 1, 2))
     day_one_panel = _published_two_year_panel(owner, day_one, listings)
-    base = _manifest_with_lineage(day_one_panel, spy_revision="a" * 64)
+    base = _manifest_with_lineage(day_one_panel, spy_revision=_ORIGINAL_SPY)
     # The base manifest claims a different row-content identity for 2025 than
     # the file proves under its origin binding.
     tampered = dict(base)
     tampered["chunks"] = [dict(entry) for entry in base["chunks"]]
-    tampered["chunks"][0]["chunk_hash"] = "e" * 64
+    tampered["chunks"][0]["chunk_hash"] = fixture_digest("false-chunk")
     second = owner.begin(
         operation_id="day-two",
         binding=PanelCompositionBinding(
-            **{**_binding(as_of_session=date(2026, 1, 5)).__dict__, "panel_binding_hash": "6" * 64}
+            **{
+                **_binding(as_of_session=date(2026, 1, 5)).__dict__,
+                "panel_binding_hash": _REVISED_BINDING,
+            }
         ),
         base_manifest=tampered,
         sessions=(*day_one, date(2026, 1, 5)),
         listing_ids=listings,
-        spy_revision="b" * 64,
+        spy_revision=_REVISED_SPY,
     )
     second.stage_patch(
         rows=_rows((date(2026, 1, 5),), listings, offset=100.0),
         factor_ids=("factor_a", "factor_b"),
-        materialization_receipt_hash="b" * 64,
+        materialization_receipt_hash=_REVISED_RECEIPT,
     )
     with pytest.raises((ValueError, FileNotFoundError)):
         second.finalize(availability=_availability((*day_one, date(2026, 1, 5))))
@@ -633,13 +654,13 @@ def test_an_interrupted_composition_retried_under_the_same_binding_keeps_its_fil
         base_manifest=None,
         sessions=sessions,
         listing_ids=listings,
-        spy_revision="a" * 64,
+        spy_revision=_ORIGINAL_SPY,
     )
     with pytest.raises(OSError, match="simulated interruption"):
         first.stage_patch(
             rows=_rows(sessions, listings),
             factor_ids=("factor_a", "factor_b"),
-            materialization_receipt_hash="a" * 64,
+            materialization_receipt_hash=_ORIGINAL_RECEIPT,
         )
     monkeypatch.setattr(resolver, "publish_feature_panel_chunk", original)
     chunk_dir = tmp_path / "artifacts" / "feature-panel" / "chunks"
@@ -656,16 +677,16 @@ def test_an_interrupted_composition_retried_under_the_same_binding_keeps_its_fil
         base_manifest=None,
         sessions=sessions,
         listing_ids=listings,
-        spy_revision="a" * 64,
+        spy_revision=_ORIGINAL_SPY,
     )
     retry.stage_patch(
         rows=_rows(sessions, listings),
         factor_ids=("factor_a", "factor_b"),
-        materialization_receipt_hash="a" * 64,
+        materialization_receipt_hash=_ORIGINAL_RECEIPT,
     )
     composition = retry.finalize(availability=_availability(sessions))
     assert [chunk.year for chunk in composition.chunks] == [2025, 2026]
-    assert composition.chunks[0].chunk_hash == written[0].stem
+    assert composition.chunks[0].chunk_hash == blake3_from_filename(written[0].stem)
     assert written[0].read_bytes() == first_bytes
     assert written[0].stat().st_mtime_ns == first_mtime
     assert len(list(chunk_dir.glob("*.parquet"))) == 2
@@ -692,12 +713,12 @@ def test_reader_validates_each_chunk_under_the_binding_that_wrote_it(
     resolver = ArtifactResolver(tmp_path / "artifacts")
     table = identity_panel_table(_raw_panel_table())
     schema_hash = panel_schema_hash(table.schema)
-    chunk_hash = panel_chunk_hash(table, panel_binding_hash="5" * 64, year=2026)
+    chunk_hash = panel_chunk_hash(table, panel_binding_hash=_ORIGINAL_BINDING, year=2026)
     descriptor = resolver.publish_feature_panel_chunk(
         table=table,
         content_hash=chunk_hash,
         metadata={
-            "panel_binding_hash": "5" * 64,
+            "panel_binding_hash": _ORIGINAL_BINDING,
             "calendar_year": "2026",
             "schema_hash": schema_hash,
         },
@@ -712,7 +733,7 @@ def test_reader_validates_each_chunk_under_the_binding_that_wrote_it(
         "uri": descriptor.uri,
     }
     request = FeaturePanelReadRequest(
-        manifest_ref="playpen://feature-panel/manifests/" + "0" * 64,
+        manifest_ref=resolver.feature_panel_manifest_uri(fixture_digest("panel-manifest")),
         start_session=date(2026, 1, 2),
         end_session=date(2026, 1, 2),
         factor_columns=("factor_a",),
@@ -727,24 +748,24 @@ def test_reader_validates_each_chunk_under_the_binding_that_wrote_it(
         }
         return reader._qualified_chunk_paths(manifest, request)
 
-    assert paths(binding="5" * 64, origin=None)
-    assert paths(binding="6" * 64, origin="5" * 64)
+    assert paths(binding=_ORIGINAL_BINDING, origin=None)
+    assert paths(binding=_REVISED_BINDING, origin=_ORIGINAL_BINDING)
     with pytest.raises(ValueError, match="logical content hash mismatch"):
-        paths(binding="6" * 64, origin=None)
+        paths(binding=_REVISED_BINDING, origin=None)
 
     # A value moved under its kept row hash is refused before use (EV2): the row
     # hashes still bind, so only recomputing them from the values finds it.
-    (path,) = paths(binding="5" * 64, origin=None)
+    (path,) = paths(binding=_ORIGINAL_BINDING, origin=None)
     original, first = Path(path).read_bytes(), next(iter(owner._VALUES_VERIFIED))
     pq.write_table(pq.read_table(path), path, compression="NONE")
-    assert paths(binding="5" * 64, origin=None)
+    assert paths(binding=_ORIGINAL_BINDING, origin=None)
     assert len(owner._VALUES_VERIFIED) == 1 and first not in owner._VALUES_VERIFIED
     Path(path).write_bytes(original)
-    assert paths(binding="5" * 64, origin=None)
+    assert paths(binding=_ORIGINAL_BINDING, origin=None)
     moved = pq.read_table(path)
     moved = moved.set_column(
         moved.schema.get_field_index("factor_b"), "factor_b", pa.array([0.0, 99.0], pa.float64())
     )
     pq.write_table(moved, path)
     with pytest.raises(ValueError, match="values do not match their row hashes"):
-        paths(binding="5" * 64, origin=None)
+        paths(binding=_ORIGINAL_BINDING, origin=None)

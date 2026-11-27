@@ -16,6 +16,7 @@ from alphalattice.capabilities.domain_contracts.sealing import (
     seal_payload_digest,
 )
 from alphalattice.capabilities.quant.sector_history import SectorHistory, SectorReclassification
+from alphalattice.kernel.identity import BLAKE3_PATTERN
 
 from ..experiments.development_contracts import seal_current_contract
 
@@ -31,8 +32,8 @@ class WorkspaceObservationHistoryPart(_Contract):
     kind: Literal["WorkspaceObservationHistoryPart"] = "WorkspaceObservationHistoryPart"
     start: int = Field(ge=0)
     stop: int = Field(ge=1)
-    content_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
-    part_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
+    content_hash: str = Field(pattern=BLAKE3_PATTERN)
+    part_hash: str = Field(pattern=BLAKE3_PATTERN)
 
     @model_validator(mode="after")  # type: ignore[untyped-decorator]
     def validate_identity(self) -> WorkspaceObservationHistoryPart:
@@ -54,7 +55,7 @@ class StoredRebase(_Contract):
     """
 
     listing_id: str
-    receipt_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
+    receipt_hash: str = Field(pattern=BLAKE3_PATTERN)
     price_factor: float
     volume_factor: float
     rows: tuple[tuple[int, int], ...] = ()
@@ -84,25 +85,25 @@ class WorkspaceObservationHistoryHead(_Contract):
 
     model_config = ConfigDict(extra="forbid", frozen=True, strict=True)
     kind: Literal["WorkspaceObservationHistoryHead"] = "WorkspaceObservationHistoryHead"
-    scope_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
-    selection_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
-    dependency_prefix_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
+    scope_hash: str = Field(pattern=BLAKE3_PATTERN)
+    selection_hash: str = Field(pattern=BLAKE3_PATTERN)
+    dependency_prefix_hash: str = Field(pattern=BLAKE3_PATTERN)
     formation_sessions: tuple[date, ...] = Field(min_length=1)
     ordered_listing_ids: tuple[str, ...] = Field(min_length=1)
     column_names: tuple[str, ...] = Field(min_length=1)
     dtype: Literal["float64"] = "float64"
     stable_session_count: int = Field(ge=0)
-    predecessor_head_hash: str | None = Field(default=None, pattern=r"^[0-9a-f]{64}$")
+    predecessor_head_hash: str | None = Field(default=None, pattern=BLAKE3_PATTERN)
     parts: tuple[WorkspaceObservationHistoryPart, ...] = Field(min_length=1)
     # The prefix proof's parts, so one restated listing rebuilds alone: the axes every listing
     # shares, one digest a listing and one of its closed years (ordered as its ids), so a day
     # whose prefix holds reads only the open year. A head without them reuses whole.
-    axes_proof: str | None = Field(default=None, pattern=r"^[0-9a-f]{64}$")
+    axes_proof: str | None = Field(default=None, pattern=BLAKE3_PATTERN)
     listing_digests: tuple[str, ...] = ()
     listing_closed: tuple[str, ...] = ()
     rebases: tuple[StoredRebase, ...] = Field(default=(), exclude_if=lambda v: not v)
     """Absent while no split rebased a listing, so an earlier head keeps its seal."""
-    head_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
+    head_hash: str = Field(pattern=BLAKE3_PATTERN)
 
     @classmethod
     def sealed(
@@ -155,10 +156,10 @@ class WorkspaceObservationHistoryMarker(_Contract):
 
     model_config = ConfigDict(extra="forbid", frozen=True, strict=True)
     kind: Literal["WorkspaceObservationHistoryMarker"] = "WorkspaceObservationHistoryMarker"
-    scope_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
-    current_head_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
-    previous_head_hash: str | None = Field(default=None, pattern=r"^[0-9a-f]{64}$")
-    marker_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
+    scope_hash: str = Field(pattern=BLAKE3_PATTERN)
+    current_head_hash: str = Field(pattern=BLAKE3_PATTERN)
+    previous_head_hash: str | None = Field(default=None, pattern=BLAKE3_PATTERN)
+    marker_hash: str = Field(pattern=BLAKE3_PATTERN)
 
     @model_validator(mode="after")  # type: ignore[untyped-decorator]
     def validate_identity(self) -> WorkspaceObservationHistoryMarker:
@@ -237,11 +238,11 @@ class FrozenScoreObservationSnapshot(_Contract):
     sector_history: SectorHistoryRecord | None = Field(default=None, exclude_if=lambda v: v is None)
     """The reclassifications its sessions read beside the current map; absent while
     none is in force, so such a snapshot is what it was."""
-    array_content_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
+    array_content_hash: str = Field(pattern=BLAKE3_PATTERN)
     array_blocks: tuple[str, ...] | None = Field(default=None, exclude_if=lambda v: v is None)
     """The arrays' session blocks, each a packed file, when stored in blocks; then
     array_content_hash is their list's hash. Absent, one file holds the whole history."""
-    source_binding_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
+    source_binding_hash: str = Field(pattern=BLAKE3_PATTERN)
     ordered_formula_ids: tuple[str, ...] = Field(default=(), exclude_if=lambda v: not v)
     reference_eligibility_recorded: bool = Field(default=False, exclude_if=lambda v: not v)
     nominal_population_recorded: bool = Field(default=False, exclude_if=lambda v: not v)
@@ -251,7 +252,7 @@ class FrozenScoreObservationSnapshot(_Contract):
     """The blocks a split day kept as an earlier snapshot's, their values within the rule's
     `kept_agreement` (relative, absolute) of its own recomputed ones; absent while none."""
     kept_agreement: tuple[float, float] | None = Field(default=None, exclude_if=lambda v: v is None)
-    snapshot_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
+    snapshot_hash: str = Field(pattern=BLAKE3_PATTERN)
 
     @property
     def array_files(self) -> tuple[str, ...]:
@@ -279,16 +280,16 @@ class FrozenScoreObservationSnapshot(_Contract):
 
 class FrozenFeaturePreparation(_Contract):
     kind: Literal["FrozenFeaturePreparation"] = "FrozenFeaturePreparation"
-    observation_snapshot_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
-    inference_authority_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
+    observation_snapshot_hash: str = Field(pattern=BLAKE3_PATTERN)
+    inference_authority_hash: str = Field(pattern=BLAKE3_PATTERN)
     formation_session: date
     ordered_listing_ids: tuple[str, ...]
     ordered_feature_ids: tuple[str, ...]
     vintages: tuple[str, ...]
     source_binding_hashes: tuple[str, ...]
     feature_values_hashes: tuple[str, ...]
-    array_content_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
-    preparation_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
+    array_content_hash: str = Field(pattern=BLAKE3_PATTERN)
+    preparation_hash: str = Field(pattern=BLAKE3_PATTERN)
 
     @model_validator(mode="after")  # type: ignore[untyped-decorator]
     def validate_identity(self) -> FrozenFeaturePreparation:
@@ -320,24 +321,24 @@ class FrozenComponentScoreSnapshot(_Contract):
     disposition: Literal["INPUT_TO_SCORE_QA_NOT_PORTFOLIO_RECOMMENDATION"] = (
         "INPUT_TO_SCORE_QA_NOT_PORTFOLIO_RECOMMENDATION"
     )
-    request_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
-    strategy_package_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
-    component_recipe_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
-    inference_authority_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
-    observation_snapshot_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
+    request_hash: str = Field(pattern=BLAKE3_PATTERN)
+    strategy_package_hash: str = Field(pattern=BLAKE3_PATTERN)
+    component_recipe_hash: str = Field(pattern=BLAKE3_PATTERN)
+    inference_authority_hash: str = Field(pattern=BLAKE3_PATTERN)
+    observation_snapshot_hash: str = Field(pattern=BLAKE3_PATTERN)
     formation_session: date
     ordered_listing_ids: tuple[str, ...]
     feature_values_hashes: tuple[str, ...]
     model_identity_hashes: tuple[str, ...]
-    projection_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
+    projection_hash: str = Field(pattern=BLAKE3_PATTERN)
     scores: tuple[float | None, ...]
     live: tuple[bool, ...]
     prediction_calls: int = Field(ge=0)
     fit_calls: int = Field(default=0, ge=0)
     model_set_publication_hash: str | None = Field(
-        default=None, pattern=r"^[0-9a-f]{64}$", exclude_if=lambda value: value is None
+        default=None, pattern=BLAKE3_PATTERN, exclude_if=lambda value: value is None
     )
-    snapshot_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
+    snapshot_hash: str = Field(pattern=BLAKE3_PATTERN)
 
     @model_validator(mode="after")  # type: ignore[untyped-decorator]
     def validate_identity(self) -> FrozenComponentScoreSnapshot:
@@ -390,14 +391,14 @@ class CurrentRefitStabilityAssessment(_Contract):
     """
 
     kind: Literal["CurrentRefitStabilityAssessment"] = "CurrentRefitStabilityAssessment"
-    request_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
+    request_hash: str = Field(pattern=BLAKE3_PATTERN)
     selected_candidate_id: str
     development_state_hashes: tuple[str, ...] = Field(min_length=1)
-    current_state_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
+    current_state_hash: str = Field(pattern=BLAKE3_PATTERN)
     checks: tuple[AlphaStabilityCheck, ...] = Field(min_length=1)
     passed: bool
     failure_code: Literal["alpha_research.current_refit_insufficient"] | None = None
-    assessment_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
+    assessment_hash: str = Field(pattern=BLAKE3_PATTERN)
 
     @model_validator(mode="after")  # type: ignore[untyped-decorator]
     def validate_identity(self) -> CurrentRefitStabilityAssessment:
@@ -428,16 +429,16 @@ class AlphaCurrentCandidateScoreChunkRef(_Contract):
     content/metadata commitments and URI.
     """
 
-    request_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
-    foundation_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
-    logical_panel_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
+    request_hash: str = Field(pattern=BLAKE3_PATTERN)
+    foundation_hash: str = Field(pattern=BLAKE3_PATTERN)
+    logical_panel_hash: str = Field(pattern=BLAKE3_PATTERN)
     candidate_id: str
-    estimator_state_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
-    stability_assessment_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
+    estimator_state_hash: str = Field(pattern=BLAKE3_PATTERN)
+    stability_assessment_hash: str = Field(pattern=BLAKE3_PATTERN)
     formation_session: date
-    ordered_listing_ids_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
-    content_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
-    metadata_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
+    ordered_listing_ids_hash: str = Field(pattern=BLAKE3_PATTERN)
+    content_hash: str = Field(pattern=BLAKE3_PATTERN)
+    metadata_hash: str = Field(pattern=BLAKE3_PATTERN)
     uri: str
     row_count: int = Field(ge=1)
 
@@ -449,17 +450,17 @@ class AlphaCurrentCandidateScoreChild(_Contract):
     """
 
     kind: Literal["AlphaCurrentCandidateScoreChild"] = "AlphaCurrentCandidateScoreChild"
-    request_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
-    foundation_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
-    logical_panel_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
+    request_hash: str = Field(pattern=BLAKE3_PATTERN)
+    foundation_hash: str = Field(pattern=BLAKE3_PATTERN)
+    logical_panel_hash: str = Field(pattern=BLAKE3_PATTERN)
     candidate_id: str
-    estimator_state_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
-    stability_assessment_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
+    estimator_state_hash: str = Field(pattern=BLAKE3_PATTERN)
+    stability_assessment_hash: str = Field(pattern=BLAKE3_PATTERN)
     formation_session: date
     training_cutoff: date
     ordered_listing_ids: tuple[str, ...] = Field(min_length=1)
     chunk: AlphaCurrentCandidateScoreChunkRef
-    child_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
+    child_hash: str = Field(pattern=BLAKE3_PATTERN)
 
     @model_validator(mode="after")  # type: ignore[untyped-decorator]
     def validate_identity(self) -> AlphaCurrentCandidateScoreChild:
@@ -497,13 +498,13 @@ class AlphaCurrentCandidateQualification(_Contract):
     """
 
     candidate_id: str
-    development_candidate_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
-    current_state_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
-    stability_assessment_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
-    current_score_child_hash: str | None = Field(default=None, pattern=r"^[0-9a-f]{64}$")
+    development_candidate_hash: str = Field(pattern=BLAKE3_PATTERN)
+    current_state_hash: str = Field(pattern=BLAKE3_PATTERN)
+    stability_assessment_hash: str = Field(pattern=BLAKE3_PATTERN)
+    current_score_child_hash: str | None = Field(default=None, pattern=BLAKE3_PATTERN)
     stable: bool
     failure_codes: tuple[str, ...]
-    qualification_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
+    qualification_hash: str = Field(pattern=BLAKE3_PATTERN)
 
     @model_validator(mode="after")  # type: ignore[untyped-decorator]
     def validate_identity(self) -> AlphaCurrentCandidateQualification:
@@ -529,8 +530,8 @@ class AlphaCurrentStabilitySurface(_Contract):
     """Seal ordered current qualification and the reconciled dual-qualified peer axis."""
 
     kind: Literal["AlphaCurrentStabilitySurface"] = "AlphaCurrentStabilitySurface"
-    request_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
-    viability_assessment_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
+    request_hash: str = Field(pattern=BLAKE3_PATTERN)
+    viability_assessment_hash: str = Field(pattern=BLAKE3_PATTERN)
     formation_session: date
     training_cutoff: date
     candidates: tuple[AlphaCurrentCandidateQualification, ...] = Field(min_length=1)
@@ -539,7 +540,7 @@ class AlphaCurrentStabilitySurface(_Contract):
         "DUAL_QUALIFIED_MODELS_AVAILABLE",
         "NO_STABLE_CURRENT_ALPHA_MODEL",
     ]
-    surface_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
+    surface_hash: str = Field(pattern=BLAKE3_PATTERN)
 
     @property
     def assessment_hash(self) -> str:
@@ -585,17 +586,17 @@ class AlphaCurrentStabilitySurface(_Contract):
 class CurrentFormationScoreChunkRef(_Contract):
     """Bind selected current formation scores to the decision, estimator and stability."""
 
-    request_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
-    foundation_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
-    logical_panel_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
+    request_hash: str = Field(pattern=BLAKE3_PATTERN)
+    foundation_hash: str = Field(pattern=BLAKE3_PATTERN)
+    logical_panel_hash: str = Field(pattern=BLAKE3_PATTERN)
     selected_candidate_id: str
-    decision_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
-    estimator_state_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
-    stability_assessment_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
+    decision_hash: str = Field(pattern=BLAKE3_PATTERN)
+    estimator_state_hash: str = Field(pattern=BLAKE3_PATTERN)
+    stability_assessment_hash: str = Field(pattern=BLAKE3_PATTERN)
     formation_session: date
-    ordered_listing_ids_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
-    content_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
-    metadata_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
+    ordered_listing_ids_hash: str = Field(pattern=BLAKE3_PATTERN)
+    content_hash: str = Field(pattern=BLAKE3_PATTERN)
+    metadata_hash: str = Field(pattern=BLAKE3_PATTERN)
     uri: str
     row_count: int = Field(ge=1)
 
@@ -608,19 +609,19 @@ class CurrentFormationScoreSnapshot(_Contract):
     """
 
     kind: Literal["CurrentFormationScoreSnapshot"] = "CurrentFormationScoreSnapshot"
-    request_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
-    foundation_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
-    logical_panel_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
+    request_hash: str = Field(pattern=BLAKE3_PATTERN)
+    foundation_hash: str = Field(pattern=BLAKE3_PATTERN)
+    logical_panel_hash: str = Field(pattern=BLAKE3_PATTERN)
     selected_candidate_id: str
-    decision_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
-    estimator_state_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
-    stability_assessment_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
+    decision_hash: str = Field(pattern=BLAKE3_PATTERN)
+    estimator_state_hash: str = Field(pattern=BLAKE3_PATTERN)
+    stability_assessment_hash: str = Field(pattern=BLAKE3_PATTERN)
     formation_session: date
     training_cutoff: date
     ordered_listing_ids: tuple[str, ...] = Field(min_length=1)
     availability_counts: dict[Literal["SCORED", "FEATURE_INCOMPLETE"], int]
     chunk: CurrentFormationScoreChunkRef
-    snapshot_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
+    snapshot_hash: str = Field(pattern=BLAKE3_PATTERN)
 
     @model_validator(mode="after")  # type: ignore[untyped-decorator]
     def validate_identity(self) -> CurrentFormationScoreSnapshot:
@@ -667,20 +668,20 @@ class AlphaCurrentRuntimeMarker(_Contract):
     """
 
     kind: Literal["AlphaCurrentRuntimeMarker"] = "AlphaCurrentRuntimeMarker"
-    request_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
-    foundation_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
-    development_surface_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
+    request_hash: str = Field(pattern=BLAKE3_PATTERN)
+    foundation_hash: str = Field(pattern=BLAKE3_PATTERN)
+    development_surface_hash: str = Field(pattern=BLAKE3_PATTERN)
     development_fold_surface_hashes: tuple[str, ...] = Field(min_length=1)
     candidate_report_hashes: tuple[str, ...] = Field(min_length=1)
     candidate_inference_evidence_hashes: tuple[str, ...] = Field(min_length=1)
-    viability_assessment_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
-    current_stability_surface_hash: str | None = Field(default=None, pattern=r"^[0-9a-f]{64}$")
+    viability_assessment_hash: str = Field(pattern=BLAKE3_PATTERN)
+    current_stability_surface_hash: str | None = Field(default=None, pattern=BLAKE3_PATTERN)
     current_candidate_score_child_hashes: tuple[str, ...] = ()
-    decision_hash: str | None = Field(default=None, pattern=r"^[0-9a-f]{64}$")
-    reproducibility_report_hash: str | None = Field(default=None, pattern=r"^[0-9a-f]{64}$")
-    current_score_snapshot_hash: str | None = Field(default=None, pattern=r"^[0-9a-f]{64}$")
-    current_estimator_state_hash: str | None = Field(default=None, pattern=r"^[0-9a-f]{64}$")
-    current_refit_assessment_hash: str | None = Field(default=None, pattern=r"^[0-9a-f]{64}$")
+    decision_hash: str | None = Field(default=None, pattern=BLAKE3_PATTERN)
+    reproducibility_report_hash: str | None = Field(default=None, pattern=BLAKE3_PATTERN)
+    current_score_snapshot_hash: str | None = Field(default=None, pattern=BLAKE3_PATTERN)
+    current_estimator_state_hash: str | None = Field(default=None, pattern=BLAKE3_PATTERN)
+    current_refit_assessment_hash: str | None = Field(default=None, pattern=BLAKE3_PATTERN)
     disposition: Literal[
         "CURRENT_SCORE_PUBLISHED",
         "NO_ADMISSIBLE_ALPHA_MODEL",
@@ -688,7 +689,7 @@ class AlphaCurrentRuntimeMarker(_Contract):
         "BLOCKED",
     ]
     failure_code: str | None = Field(default=None, max_length=120)
-    marker_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
+    marker_hash: str = Field(pattern=BLAKE3_PATTERN)
 
     @model_validator(mode="after")  # type: ignore[untyped-decorator]
     def validate_identity(self) -> AlphaCurrentRuntimeMarker:
@@ -737,8 +738,8 @@ class AlphaCurrentRuntimeReceipt(_Contract):
     """
 
     kind: Literal["AlphaCurrentRuntimeReceipt"] = "AlphaCurrentRuntimeReceipt"
-    request_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
-    marker_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
+    request_hash: str = Field(pattern=BLAKE3_PATTERN)
+    marker_hash: str = Field(pattern=BLAKE3_PATTERN)
     action: Literal["PUBLISHED", "REUSED_EXACT"]
     admitted_candidate_count: int = Field(ge=1)
     admitted_fold_count: int = Field(ge=1)
@@ -753,7 +754,7 @@ class AlphaCurrentRuntimeReceipt(_Contract):
     duration_seconds: float = Field(ge=0, allow_inf_nan=False)
     peak_rss_bytes: int = Field(ge=0)
     completed_at: datetime
-    receipt_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
+    receipt_hash: str = Field(pattern=BLAKE3_PATTERN)
 
     @model_validator(mode="after")  # type: ignore[untyped-decorator]
     def validate_identity(self) -> AlphaCurrentRuntimeReceipt:
@@ -806,11 +807,11 @@ class AlphaCurrentSafeProjection(_Contract):
         "STOP_WITH_EVIDENCE",
         "PM_OR_HUMAN_REVIEW_REQUIRED",
     ]
-    foundation_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
-    request_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
-    viability_assessment_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
+    foundation_hash: str = Field(pattern=BLAKE3_PATTERN)
+    request_hash: str = Field(pattern=BLAKE3_PATTERN)
+    viability_assessment_hash: str = Field(pattern=BLAKE3_PATTERN)
     selected_candidate_id: str | None = None
-    current_score_snapshot_hash: str | None = Field(default=None, pattern=r"^[0-9a-f]{64}$")
+    current_score_snapshot_hash: str | None = Field(default=None, pattern=BLAKE3_PATTERN)
     candidate_count: int = Field(ge=1)
     fold_count: int = Field(ge=1)
     hypothesis_count: int = Field(ge=0)
@@ -818,7 +819,7 @@ class AlphaCurrentSafeProjection(_Contract):
     failure_code: str | None = Field(default=None, max_length=120)
     limitations: tuple[str, ...]
     updated_at: datetime
-    projection_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
+    projection_hash: str = Field(pattern=BLAKE3_PATTERN)
 
     @model_validator(mode="after")  # type: ignore[untyped-decorator]
     def validate_identity(self) -> AlphaCurrentSafeProjection:

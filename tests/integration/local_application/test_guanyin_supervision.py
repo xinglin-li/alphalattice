@@ -279,7 +279,7 @@ def test_a_remedys_receipt_answers_for_the_task_it_acted_on(tmp_path) -> None:
         workspace_session=SimpleNamespace(workspace=tmp_path),
         recovery_view=lambda _t: {
             "actions": [action("RECOVER", "RECOVER"), action("REPLAN", "EXPERIMENT_PLAN")],
-            "task_record_hash": "a" * 64,
+            "task_record_hash": "blake3:" + "a" * 64,
             "next_requests": {"replan": {"operation": "EXPERIMENT_PLAN"}},
         },
         execute=lambda _request, caller: answers.pop(0),
@@ -293,9 +293,9 @@ def test_a_remedys_receipt_answers_for_the_task_it_acted_on(tmp_path) -> None:
         request = PortfolioResearchOperationRequest(
             operation="TASK_REMEDIATE",
             task_id=task_id,
-            incident_key="b" * 64,
+            incident_key="blake3:" + "b" * 64,
             remedy=remedy,  # type: ignore[arg-type]
-            expected_task_hash="a" * 64,
+            expected_task_hash="blake3:" + "a" * 64,
         )
         return supervisor.remediate(request, selected_by="USER_COMMAND")
 

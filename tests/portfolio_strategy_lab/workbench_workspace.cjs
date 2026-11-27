@@ -86,7 +86,17 @@ c.objectRow=publicBuilders.objectRow;
       if(lang==='zh')assert.notEqual(c.t(authority),english,'the delegation authority has a Chinese key');
       assert.deepEqual(Array.from(facts.find(([key])=>key===c.t('Decided by')) || []),[c.t('Decided by'),c.actorWords(submission.actor_kind)],'the actual agent is named beside its authority');
       const actor=submission.actor_kind,id=submission.actor_id;submission.actor_kind='HOST_FALLBACK';w.page();assert.deepEqual(Array.from(facts.find(([key])=>key===c.t('Decided by')) || []),[c.t('Decided by'),c.actorWords('HOST_FALLBACK')],'a Host with no rule proof is not labelled as a rule');
-      const rule='a'.repeat(64);submission.actor_id='host-rule:'+rule.slice(0,16);proposal.rationale=rationale+'; rule:'+rule;w.page();assert.deepEqual(Array.from(facts.find(([,value])=>value===c.t('Decided by rule')) || []),['',c.t('Decided by rule')]);submission.actor_kind=actor;submission.actor_id=id;proposal.rationale=rationale;
+      const rule='a'.repeat(64);
+      submission.actor_id='host-rule:'+rule.slice(0,16);
+      proposal.rationale=rationale+'; rule:blake3:'+rule;
+      w.page();
+      assert.deepEqual(Array.from(facts.find(([,value])=>value===c.t('Decided by rule')) || []),['',c.t('Decided by rule')]);
+      proposal.rationale=rationale+'; rule:'+rule;
+      w.page();
+      assert.ok(!facts.some(([,value])=>value===c.t('Decided by rule')),'an untagged rule is not attributed');
+      submission.actor_kind=actor;
+      submission.actor_id=id;
+      proposal.rationale=rationale;
       if(lang==='zh')assert.notEqual(c.t('Decided by rule'),'Decided by rule','the rule decision has its owned Chinese words');
       proposal.rationale='ordinary decision';w.page();assert.ok(!facts.some(([key])=>key===c.t('Decision')),'an ordinary decision has no delegation authority');assert.deepEqual(Array.from(facts.find(([key])=>key===c.t('Decided by')) || []),[c.t('Decided by'),c.actorWords(submission.actor_kind)],'an ordinary actor keeps its recorded actor word');proposal.rationale=rationale;
     }

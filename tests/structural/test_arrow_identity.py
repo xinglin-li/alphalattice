@@ -130,23 +130,26 @@ def _batched_row_encoder_hash(payload: dict[str, object], table: pa.Table, batch
     """The UI branch's chunk hash before the merge (2026-09-21): the rows streamed through
     the canonical encoder a batch at a time, under the same three sorted keys."""
 
-    from hashlib import sha256
+    from blake3 import blake3
 
     from alphalattice.capabilities.domain_contracts.identity import canonical_json
 
-    digest = sha256()
+    digest = blake3()
     digest.update(f'{{"identity":{canonical_json(payload["identity"])},"rows":['.encode())
     for offset in range(0, table.num_rows, batch_rows):
         rows = canonical_json(table.slice(offset, batch_rows).to_pylist())
         digest.update(("," if offset else "").encode() + rows[1:-1].encode())
     digest.update(f'],"schema":{canonical_json(str(table.schema))}}}'.encode())
-    return digest.hexdigest()
+    return "blake3:" + digest.hexdigest()
 
 
 @pytest.mark.parametrize("seed", [3, 11])
 def test_the_three_chunk_encoders_state_one_identity(seed: int) -> None:
     """The three chunk encoders state one identity."""
 
+    assert canonical_hash({"z": 2, "a": 1}) == (
+        "blake3:1c1d6f2bd82e6466f9482fa166602fc422a5724c5e5363131c0a143e2986b3fa"
+    )
     rng = random.Random(seed)
     for rows in (0, 1, 7, 2_050):
         table = _random_table(rng, rows)

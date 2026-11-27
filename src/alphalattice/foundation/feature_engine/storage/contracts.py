@@ -2,11 +2,12 @@
 
 from __future__ import annotations
 
-import re
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
 from datetime import date, datetime
 from typing import TYPE_CHECKING
+
+from alphalattice.kernel.identity import is_blake3
 
 if TYPE_CHECKING:
     import pandas as pd
@@ -78,8 +79,7 @@ class FeatureSourceWindow:
     def __post_init__(self) -> None:
         """Reject an invalid input window or noncanonical input hashes."""
         if not self.input_start <= self.first_output_session <= self.input_end or any(
-            re.fullmatch(r"[0-9a-f]{64}", value) is None
-            for value in (self.stock_input_hash, self.market_input_hash)
+            not is_blake3(value) for value in (self.stock_input_hash, self.market_input_hash)
         ):
             raise ValueError("feature.source_window_invalid")
 

@@ -52,7 +52,13 @@ from alphalattice.interface.local_application.retrieval_environment import (
     load,
 )
 from alphalattice.kernel.clock import utc_now
-from alphalattice.kernel.identity import identity_sha256
+from alphalattice.kernel.identity import (
+    blake3_filename,
+    blake3_from_filename,
+    blake3_hex,
+    identity_blake3,
+    tagged_blake3,
+)
 from alphalattice.protocols.actor_execution.answers import AgentAnswerRecord, AnswerVerdict
 from alphalattice.protocols.actor_execution.bundles import AgentBundleRecord
 
@@ -304,8 +310,8 @@ class NativeResearchBinding:
         if host not in HOSTS:
             raise NativeBridgeError("native_bridge.binding_invalid")
         _text(session_id, CORRELATION_CHARACTERS)
-        key = identity_sha256(f"{host}\0{session_id}".encode()).hexdigest()
-        return project / ".codex" / BINDING_DIRECTORY / f"{key}.json"
+        key = tagged_blake3(identity_blake3(f"{host}\0{session_id}".encode()))
+        return project / ".codex" / BINDING_DIRECTORY / f"{blake3_filename(key)}.json"
 
     @classmethod
     def _read_path(cls, project: Path, path: Path) -> NativeResearchBinding | None:
@@ -375,11 +381,9 @@ class NativeResearchBinding:
         values: dict[tuple[str, str], NativeResearchBinding] = {}
         refusals: list[dict[str, str]] = []
         for path in paths:
+            digest = blake3_from_filename(path.stem) if path.suffix == ".json" else None
             try:
-                if (
-                    path.name != BINDING_NAME
-                    and re.fullmatch(r"[0-9a-f]{64}\.json", path.name) is None
-                ):
+                if path.name != BINDING_NAME and digest is None:
                     raise NativeBridgeError("native_bridge.binding_path_invalid")
                 binding = cls._read_path(project, path)
                 if binding is None:
@@ -391,7 +395,7 @@ class NativeResearchBinding:
             except NativeBridgeError as error:
                 refusals.append(
                     {
-                        "binding_key": path.name[:72],
+                        "binding_key": path.name if digest is not None else path.name[:72],
                         "failure_code": public_failure(error, "native_bridge.binding_invalid"),
                     }
                 )
@@ -664,7 +668,7 @@ def pin_differs(pins: dict[str, str], usage: ModelUsage) -> list[str]:
 
 def _digest(event: object) -> str:
     encoded = json.dumps(event, sort_keys=True, separators=(",", ":"), ensure_ascii=False)
-    return identity_sha256(encoded.encode("utf-8")).hexdigest()
+    return tagged_blake3(identity_blake3(encoded.encode("utf-8")))
 
 
 def _subject_bounded(subject: dict[str, str]) -> dict[str, str]:
@@ -842,7 +846,10 @@ def producer_scope(project: Path, binding: NativeResearchBinding) -> str:
     Returns:
         The existing stable producer scope without changing observation identity.
     """
-    return _digest([str(project.resolve()), binding.session_id, str(binding.workspace.resolve())])
+    # The activity wire token admits 64 lowercase characters without punctuation for a tag.
+    return blake3_hex(
+        _digest([str(project.resolve()), binding.session_id, str(binding.workspace.resolve())])
+    )
 
 
 def observation_request(
@@ -872,13 +879,15 @@ def observation_request(
                 "role": LEAD_ROLE,
                 "message_kind": "session_bound",
                 "message_id": "bound-"
-                + _digest(
-                    [
-                        binding.host,
-                        binding.session_id,
-                        str(binding.workspace),
-                        *([] if goal_hash is None else [goal_hash]),
-                    ]
+                + blake3_hex(
+                    _digest(
+                        [
+                            binding.host,
+                            binding.session_id,
+                            str(binding.workspace),
+                            *([] if goal_hash is None else [goal_hash]),
+                        ]
+                    )
                 )[:24],
                 "native_host": binding.host,
                 "input_channel": "PRODUCT_OPERATION",
@@ -905,7 +914,7 @@ def observation_request(
         "event_kind": kind,
         "producer_id": PRODUCERS[binding.host],
         "producer_session": producer_scope(project, binding),
-        "producer_sequence": int(_digest(identity)[:15], 16),
+        "producer_sequence": int(blake3_hex(_digest(identity))[:15], 16),
         "occurred_at": occurred_at,
         "summary": summary,
         "subject": subject,
@@ -1050,7 +1059,7 @@ def deliver_accepted_answer(
             "agent_id": binding.session_id,
             "role": LEAD_ROLE,
             "bundle_role": bundle.role,
-            "message_id": "accepted-" + identity[:24],
+            "message_id": "accepted-" + blake3_hex(identity)[:24],
             "message": summary,
             "reference": task_id,
             "bundle_reference": bundle.record_hash,

@@ -45,6 +45,7 @@ from alphalattice.investment.risk_research.experiments.window import (
 from alphalattice.protocols.research_authoring.contracts import (
     AuthoringError,
 )
+from tests._support.identity_fixtures import fixture_digest
 from tests.researcher_methodology_surface.real_workspace import RealRiskWorkspace
 from tests.researcher_methodology_surface.risk_development_program_support import (
     _admission,
@@ -233,7 +234,7 @@ class _InertAdapter:
             adapter_id=self.adapter_id,
             estimate_content_format_id="case-study-inert",
             implementation_owners=("case_study.inert",),
-            implementation_content_hash="a" * 64,
+            implementation_content_hash=fixture_digest("a"),
             deterministic_policy={"kind": "inert"},
             required_runtime_capabilities=(),
         )
@@ -285,7 +286,7 @@ def test_changed_executable_content_moves_the_selected_numerical_binding() -> No
         adapter_id=original.adapter_id,
         estimate_content_format_id=original.estimate_content_format_id,
         implementation_owners=original.implementation_owners,
-        implementation_content_hash="b" * 64,
+        implementation_content_hash=fixture_digest("b"),
         deterministic_policy=original.deterministic_policy,
         required_runtime_capabilities=original.required_runtime_capabilities,
     )
@@ -331,7 +332,8 @@ def test_every_bound_identity_is_consumed_by_the_program_hash(field: str) -> Non
     """An unread field would not count; each one has to move the identity."""
 
     baseline = _binding()
-    moved = _binding(**{field: "b" * 64})
+    different = "case-study-other" if field == "selected_adapter_id" else fixture_digest(field)
+    moved = _binding(**{field: different})
 
     assert moved.development_binding_hash != baseline.development_binding_hash
 
@@ -341,7 +343,7 @@ def test_a_tampered_binding_fails_its_own_identity_check() -> None:
 
     baseline = _binding()
     payload = baseline.model_dump(mode="json")
-    payload["recipe_hash"] = "c" * 64
+    payload["recipe_hash"] = fixture_digest("c")
 
     with pytest.raises(ValueError, match="selected_method_binding_identity_invalid"):
         RiskDevelopmentProgramBinding(**payload)
@@ -351,7 +353,7 @@ def test_a_tampered_governance_field_fails_the_development_identity_check() -> N
     """A catalog edit is not a methodology edit, and the errors say so."""
 
     payload = _binding().model_dump(mode="json")
-    payload["catalog_hash"] = "c" * 64
+    payload["catalog_hash"] = fixture_digest("c")
 
     # The selected-method identity is untouched -- correctly, since nothing
     # about the computation changed -- so the outer identity is what catches it.
@@ -372,9 +374,9 @@ def test_a_code_closure_no_longer_moves_the_binding_and_an_earlier_one_reads_as_
     earlier = current.model_dump(mode="json", exclude={"selected_method_binding_hash"})
     # A binding sealed before P also folded the environment in, as every one did before E0.
     earlier |= {
-        "source_closure_hash": "a" * 64,
-        "development_source_closure_hash": "b" * 64,
-        "numerical_environment_hash": "c" * 64,
+        "source_closure_hash": fixture_digest("a"),
+        "development_source_closure_hash": fixture_digest("b"),
+        "numerical_environment_hash": fixture_digest("c"),
     }
     earlier["selected_method_binding_hash"] = (
         RiskDevelopmentProgramBinding.selected_method_identity(

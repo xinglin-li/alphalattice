@@ -14,6 +14,7 @@ from alphalattice.capabilities.domain_contracts.identity import canonical_hash
 from alphalattice.control.workspace_runtime.content_store import (
     ContentAddressedStore,
 )
+from alphalattice.kernel.identity import BLAKE3_PATTERN, blake3_filename, blake3_from_filename
 
 
 class PortfolioResearchPipelineManifest(BaseModel):  # type: ignore[misc]
@@ -24,12 +25,12 @@ class PortfolioResearchPipelineManifest(BaseModel):  # type: ignore[misc]
     kind: Literal["PortfolioResearchPipelineManifest"] = "PortfolioResearchPipelineManifest"
     workspace_id: str = Field(min_length=1, max_length=128)
     task_id: UUID
-    task_record_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
-    program_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
-    result_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
-    report_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
+    task_record_hash: str = Field(pattern=BLAKE3_PATTERN)
+    program_hash: str = Field(pattern=BLAKE3_PATTERN)
+    result_hash: str = Field(pattern=BLAKE3_PATTERN)
+    report_hash: str = Field(pattern=BLAKE3_PATTERN)
     completed_at: datetime
-    manifest_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
+    manifest_hash: str = Field(pattern=BLAKE3_PATTERN)
 
     @classmethod
     def create(cls, **values: object) -> Self:
@@ -163,7 +164,13 @@ class PortfolioResearchPipelineStore:
         root = self.content.root / "manifests"
         if not root.is_dir():
             return ()
-        return tuple(self.load(path.stem) for path in sorted(root.glob("*.json")))
+        manifests = []
+        for path in sorted(root.glob("*.json")):
+            digest = blake3_from_filename(path.stem)
+            if digest is None:
+                raise ValueError("portfolio_application.pipeline_manifest_unreadable")
+            manifests.append(self.load(digest))
+        return tuple(manifests)
 
     def _task_index(self, task_id: UUID) -> Path:
         return self.content.root / "index" / "by-task" / f"{task_id}.json"
@@ -200,7 +207,10 @@ class PortfolioResearchPipelineStore:
             return ()
         found: list[PortfolioResearchPipelineManifest] = []
         for path in sorted(root.glob("*.json")):
-            manifest = self.find_for_result(path.stem)
+            digest = blake3_from_filename(path.stem)
+            if digest is None:
+                raise ValueError("portfolio_application.pipeline_manifest_unreadable")
+            manifest = self.find_for_result(digest)
             if manifest is not None:
                 found.append(manifest)
         return tuple(
@@ -254,20 +264,19 @@ class PortfolioResearchPipelineStore:
                 }
             )
         for path in sorted(paths):
-            stem = path.stem
-            valid_hash = len(stem) == 64 and all(
-                character in "0123456789abcdef" for character in stem
-            )
+            digest = blake3_from_filename(path.stem)
             try:
-                manifest = self.find_for_result(stem)
+                if digest is None:
+                    raise ValueError("portfolio_application.pipeline_manifest_unreadable")
+                manifest = self.find_for_result(digest)
             except (OSError, ValueError, KeyError, TypeError):
                 row = {
                     "status": "REFUSED",
                     "failure_code": "portfolio_application.pipeline_manifest_unreadable",
                     "index_file": path.name,
                 }
-                if valid_hash:
-                    row.update(result_hash=stem, entry_id=f"result:{stem}")
+                if digest is not None:
+                    row.update(result_hash=digest, entry_id=f"result:{digest}")
                 else:
                     row["entry_id"] = f"result-index:{path.name}"
                 refused.append(row)
@@ -284,7 +293,7 @@ class PortfolioResearchPipelineStore:
         )
 
     def _result_index(self, result_hash: str) -> Path:
-        return self.content.root / "index" / "by-result" / f"{result_hash}.json"
+        return self.content.root / "index" / "by-result" / f"{blake3_filename(result_hash)}.json"
 
     def load(self, manifest_hash: str) -> PortfolioResearchPipelineManifest:
         """Reopen one exact pipeline manifest through identity-validating content storage.

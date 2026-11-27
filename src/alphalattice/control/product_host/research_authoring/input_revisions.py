@@ -43,6 +43,7 @@ from alphalattice.foundation.causal_outcomes.execution.methods import (
 from alphalattice.foundation.feature_engine.contracts import panel_source_manifest_revision
 from alphalattice.foundation.feature_engine.panels.reader import FeaturePanelReader
 from alphalattice.foundation.market_data_ops.storage.duckdb import MarketDataRepository
+from alphalattice.kernel.identity import BLAKE3_PATTERN, blake3_filename, blake3_from_filename
 
 CAPTURE_TASK_KIND = "research_input_capture"
 
@@ -166,7 +167,7 @@ class ResearchInputRevision(BaseModel):  # type: ignore[misc]
     task_input_hash: str
     chosen_by: Literal["HUMAN"] = "HUMAN"
     published_at: datetime
-    receipt_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
+    receipt_hash: str = Field(pattern=BLAKE3_PATTERN)
 
     @classmethod
     def create(cls, **values: Any) -> Self:
@@ -245,7 +246,7 @@ class ResearchInputRevisions:
             raise ValueError("research_input.publication_invalid")
         identity = body.get("receipt_hash")
         if (
-            path.stem != identity
+            blake3_from_filename(path.stem) != identity
             or canonical_hash({k: v for k, v in body.items() if k != "receipt_hash"}) != identity
         ):
             raise ValueError("research_input.publication_invalid")
@@ -303,7 +304,7 @@ class ResearchInputRevisions:
                 )
             else:
                 continue
-            publication_hash = path.stem
+            publication_hash = blake3_from_filename(path.stem) or path.stem
             refusals.append(
                 {
                     "status": "REFUSED",
@@ -484,7 +485,7 @@ class ResearchInputRevisions:
                 stream.flush()
                 os.fsync(stream.fileno())
                 temporary = Path(stream.name)
-            os.replace(temporary, self.root / f"{revision.receipt_hash}.json")
+            os.replace(temporary, self.root / f"{blake3_filename(revision.receipt_hash)}.json")
             if self.for_task(revision.task_id) != revision:
                 raise ValueError("research_input.publication_readback_failed")
 

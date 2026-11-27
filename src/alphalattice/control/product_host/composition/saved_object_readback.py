@@ -33,7 +33,7 @@ from alphalattice.investment.risk_research.experiments.development_artifacts imp
     carry_risk_covariance,
 )
 from alphalattice.kernel.config import Change, process_override
-from alphalattice.kernel.identity import integrity_sha256
+from alphalattice.kernel.identity import blake3_from_filename, integrity_blake3, tagged_blake3
 
 
 def _request(
@@ -139,7 +139,7 @@ def numbers(status: int, body: bytes) -> dict[str, str]:
 
     walk(data, ())
     return {
-        section: integrity_sha256("\n".join(leaves).encode("utf-8")).hexdigest()[:16]
+        section: tagged_blake3(integrity_blake3("\n".join(leaves).encode("utf-8")))
         + f":{len(leaves)}"
         for section, leaves in sorted(sections.items())
     }
@@ -352,7 +352,9 @@ def _read_routes(read: Callable[..., Any], copy: Path) -> None:
             path = f"/api/feature-trials/readback?feature_trial_id={fid}"
             read("trial", fid[:12], "FEATURE_TRIAL_READBACK", path)
     for publication in sorted(copy.rglob("cro-review-publications/*.json")):
-        ph = publication.stem
+        ph = blake3_from_filename(publication.stem)
+        if ph is None:
+            continue
         path = f"/api/evidence-cro/export?review_publication_hash={ph}"
         read("review", ph[:12], "EVIDENCE_CRO_EXPORT", path)
 

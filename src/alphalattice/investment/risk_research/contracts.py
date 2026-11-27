@@ -8,9 +8,10 @@ from typing import Final, Literal, Self, cast
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 from alphalattice.capabilities.domain_contracts.identity import canonical_hash
+from alphalattice.kernel.identity import BLAKE3_PATTERN
 
 Hash = str
-_HASH_PATTERN = r"^[0-9a-f]{64}$"
+_HASH_PATTERN = BLAKE3_PATTERN
 
 
 class RiskContract(BaseModel):  # type: ignore[misc]

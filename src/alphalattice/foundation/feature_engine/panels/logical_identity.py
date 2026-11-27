@@ -19,7 +19,7 @@ from pydantic import BaseModel
 from alphalattice.capabilities.domain_contracts.environment import package_versions
 from alphalattice.capabilities.domain_contracts.identity import canonical_hash
 from alphalattice.control.workspace_runtime.artifacts import ArtifactResolver
-from alphalattice.control.workspace_runtime.verified_facts import file_sha256
+from alphalattice.control.workspace_runtime.verified_facts import verified_file_digest
 from alphalattice.foundation.feature_engine.contracts import listing_set_digest
 from alphalattice.foundation.feature_engine.panels.closure_artifacts import (
     PanelClosureArtifactStore,
@@ -53,7 +53,12 @@ from alphalattice.foundation.feature_engine.panels.logical_semantic_index import
     logical_calendar_hash,
 )
 from alphalattice.kernel.clock import observation_time
-from alphalattice.kernel.identity import identity_sha256
+from alphalattice.kernel.identity import (
+    blake3_filename,
+    blake3_from_filename,
+    identity_blake3,
+    tagged_blake3,
+)
 
 _Model = TypeVar("_Model", bound=BaseModel)
 _RESERVED_COLUMNS = frozenset(
@@ -133,7 +138,13 @@ class PanelLogicalArtifactStore:
         """The marker published last, by its mapping pointer's write: the next one's predecessor."""
         written = self._store.files.written(f"{self._operational}/snapshot-mappings")
         pointers = [name.removesuffix(".json") for name in written if name.endswith(".json")]
-        return self.marker_for_snapshot(pointers[-1]) if pointers else None
+        if not pointers:
+            return None
+        stem = pointers[-1]
+        snapshot_hash = blake3_from_filename(stem)
+        if snapshot_hash is None:
+            raise ValueError(f"identity.blake3_digest_invalid: {stem}.json")
+        return self.marker_for_snapshot(snapshot_hash)
 
     def current_marker(self) -> PanelPublicationMarker | None:
         """Read the current operational logical publication marker."""
@@ -178,11 +189,7 @@ class PanelLogicalArtifactStore:
         self._write_pointer(pointer, {"marker_hash": marker.marker_hash})
 
     def _mapping_name(self, snapshot_hash: str) -> str:
-        if len(snapshot_hash) != 64 or any(
-            character not in "0123456789abcdef" for character in snapshot_hash
-        ):
-            raise ValueError("invalid Panel identity hash")
-        return f"{self._operational}/snapshot-mappings/{snapshot_hash}.json"
+        return f"{self._operational}/snapshot-mappings/{blake3_filename(snapshot_hash)}.json"
 
     def _pointer(self, name: str) -> dict[str, object] | None:
         """The pointer's payload, or None when there is none."""
@@ -343,7 +350,7 @@ class PanelLogicalIdentityPublisher:
                     schema_hash=str(manifest["schema_hash"]),
                 )
                 if on_chunk_digest is not None:
-                    on_chunk_digest(path, physical_chunk.raw_sha256)
+                    on_chunk_digest(path, physical_chunk.raw_digest)
                 physical_chunks.append(physical_chunk)
         if factor_ids is None or listing_ids is None:
             raise ValueError("feature_panel.logical_content_mismatch")
@@ -758,14 +765,14 @@ def _column_mask_and_bits(column: pa.ChunkedArray) -> tuple[np.ndarray, np.ndarr
 def _logical_column_digest(
     *, factor_id: str, key_hash: str, valid: np.ndarray, bits: np.ndarray
 ) -> str:
-    digest = identity_sha256(b"PanelLogicalValueColumn\0")
+    digest = identity_blake3(b"PanelLogicalValueColumn\0")
     digest.update(factor_id.encode("utf-8"))
     digest.update(b"\0")
     digest.update(key_hash.encode("ascii"))
     digest.update(struct.pack(">Q", len(bits)))
     digest.update(np.ascontiguousarray(valid.astype(np.uint8)).tobytes())
     digest.update(np.ascontiguousarray(bits.astype("<u8", copy=False)).tobytes())
-    return digest.hexdigest()
+    return tagged_blake3(digest)
 
 
 def logical_session_digest(
@@ -785,13 +792,13 @@ def logical_session_digest(
         raise ValueError("logical Panel session matrix differs from its axes")
     axis = (factor_axis_hash or canonical_hash(factor_ids)).encode("ascii")
     session_text = session.isoformat().encode("ascii")
-    digest = identity_sha256(b"FeaturePanelLogicalSession\0")
+    digest = identity_blake3(b"FeaturePanelLogicalSession\0")
     digest.update(session_text)
     digest.update(struct.pack(">I", len(listing_ids)))
     # Each row's hash is the same bytes in the same order as one update per field: its
     # session's prefix hashed once and copied, and its validity and bits sliced from the
     # session's matrices, row by row as they lie.
-    prefix = identity_sha256(b"FeaturePanelLogicalRow\0" + session_text)
+    prefix = identity_blake3(b"FeaturePanelLogicalRow\0" + session_text)
     valid_cells = np.ascontiguousarray(valid)
     bits_cells = np.ascontiguousarray(bits)
     valid_width = valid_cells.itemsize * len(factor_ids)
@@ -809,7 +816,7 @@ def logical_session_digest(
             + bits_rows[row_index * bits_width : (row_index + 1) * bits_width]
         )
         digest.update(row.digest())
-    return digest.hexdigest()
+    return tagged_blake3(digest)
 
 
 def _physical_chunk(
@@ -831,7 +838,7 @@ def _physical_chunk(
         logical_annual_hash=annual_hash,
         legacy_chunk_hash=str(raw_chunk["chunk_hash"]),
         uri=str(raw_chunk["uri"]),
-        raw_sha256=file_sha256(path),
+        raw_digest=verified_file_digest(path),
         byte_count=path.stat().st_size,
         row_count=int(str(raw_chunk["row_count"])),
         part=int(str(raw_chunk["part"])) if raw_chunk.get("part") else None,

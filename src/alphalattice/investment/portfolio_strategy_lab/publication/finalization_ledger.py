@@ -32,6 +32,7 @@ from alphalattice.control.workspace_runtime.content_store import (
     CommittedIndex,
     CommittedKind,
     ContentAddressedStore,
+    ContentAddressedStoreError,
 )
 from alphalattice.investment.portfolio_strategy_lab.application.finalization import (
     FinalPortfolioEvaluationPackage,
@@ -41,6 +42,7 @@ from alphalattice.investment.portfolio_strategy_lab.application.finalization imp
     ReleasedPortfolioArtifacts,
     ValidatedPortfolioHandoff,
 )
+from alphalattice.kernel.identity import blake3_from_filename
 
 
 class FinalizationLedgerStoreError(ValueError):
@@ -124,12 +126,14 @@ class PortfolioFinalizationStore:
         root = self.root / "index" / "by-candidate"
         if not root.is_dir():
             return None
-        matches = [
-            candidate.candidate_hash
-            for path in sorted(root.glob("*.json"))
-            if (candidate := self.open_candidate(path.stem)) is not None
-            and candidate.development_result_hash == result_hash
-        ]
+        matches: list[str] = []
+        for path in sorted(root.glob("*.json")):
+            key = blake3_from_filename(path.stem)
+            if key is None:
+                raise ContentAddressedStoreError("content_store.identity_invalid")
+            candidate = self.open_candidate(key)
+            if candidate is not None and candidate.development_result_hash == result_hash:
+                matches.append(candidate.candidate_hash)
         if len(matches) > 1:
             raise FinalizationLedgerStoreError("portfolio_finalization.result_frozen_twice")
         return matches[0] if matches else None

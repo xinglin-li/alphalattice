@@ -81,7 +81,6 @@ from alphalattice.investment.alpha_research.scores.refit import (
 from tests.alpha_research.fixtures import _ArrayWorkspace as _ArrayWorkspace
 from tests.alpha_research.fixtures import _bound_fold as _bound_fold
 from tests.alpha_research.fixtures import _current_refit_fixture as _current_refit_fixture
-from tests.alpha_research.fixtures import _foundation as _foundation
 from tests.alpha_research.fixtures import _plan_and_workspace as _plan_and_workspace
 from tests.alpha_research.fixtures import _readonly as _readonly
 
@@ -99,16 +98,16 @@ def _program(
             "logical_panel_hash": foundation.logical_panel_hash,
             "logical_semantic_index_hash": foundation.logical_semantic_index_hash,
             "causal_outcome_snapshot_hash": foundation.execution_outcome.snapshot_hash,
-            "pm_plan_hash": "5" * 64,
+            "pm_plan_hash": "blake3:" + "5" * 64,
             "ordered_listing_ids_hash": canonical_hash(plan.ordered_listing_ids),
             "ordered_factor_ids_hash": canonical_hash(plan.foundation.ordered_factor_ids),
-            "split_policy_hash": "8" * 64,
-            "metric_policy_hash": "9" * 64,
-            "package_identity_hash": "0" * 64,
-            "stability_policy_hash": "a" * 64,
-            "goal_criteria_hash": "b" * 64,
-            "user_authorization_hash": "c" * 64,
-            "research_goal_hash": "d" * 64,
+            "split_policy_hash": "blake3:" + "8" * 64,
+            "metric_policy_hash": "blake3:" + "9" * 64,
+            "package_identity_hash": "blake3:" + "0" * 64,
+            "stability_policy_hash": "blake3:" + "a" * 64,
+            "goal_criteria_hash": "blake3:" + "b" * 64,
+            "user_authorization_hash": "blake3:" + "c" * 64,
+            "research_goal_hash": "blake3:" + "d" * 64,
             "model_mandate_hash": admitted_mandate.mandate_hash,
             "model_catalog_hash": admitted_mandate.catalog_binding.catalog_hash,
         },
@@ -159,6 +158,7 @@ def _batch(program: AlphaResearchProgram) -> AlphaExperimentBatch:
         RegularizedLinearParameters(family="lasso", alpha_max_multiplier=0.1),
         RegularizedLinearParameters(family="elastic_net", alpha_max_multiplier=0.1, l1_ratio=0.5),
     ),
+    ids=("ridge", "lasso", "elastic-net"),
 )
 def test_regularized_linear_adapter_preserves_numerical_owner(
     parameters: RegularizedLinearParameters,
@@ -179,7 +179,7 @@ def test_regularized_linear_adapter_preserves_numerical_owner(
     fitted = adapter.fit(
         recipe=recipe,
         inputs=BoundAlphaTrainingInput(
-            training_binding_hash="1" * 64,
+            training_binding_hash="blake3:" + "1" * 64,
             ordered_feature_ids=tuple(f"factor-{value}" for value in range(7)),
             features=training,
             targets=targets,
@@ -188,7 +188,7 @@ def test_regularized_linear_adapter_preserves_numerical_owner(
     predicted = adapter.predict(
         estimator=fitted.estimator_content,
         inputs=BoundAlphaPredictionInput(
-            training_binding_hash="1" * 64,
+            training_binding_hash="blake3:" + "1" * 64,
             ordered_feature_ids=tuple(f"factor-{value}" for value in range(7)),
             features=prediction,
         ),
@@ -212,7 +212,7 @@ def test_estimator_content_is_independent_of_fit_provenance() -> None:
     fitted = adapter.fit(
         recipe=recipe,
         inputs=BoundAlphaTrainingInput(
-            training_binding_hash="1" * 64,
+            training_binding_hash="blake3:" + "1" * 64,
             ordered_feature_ids=("a", "b", "c"),
             features=features,
             targets=targets,
@@ -220,17 +220,17 @@ def test_estimator_content_is_independent_of_fit_provenance() -> None:
     )
     first = AlphaFitProvenanceReceipt.create(
         recipe_hash=recipe.recipe_hash,
-        training_binding_hash="1" * 64,
+        training_binding_hash="blake3:" + "1" * 64,
         estimator_content_hash=fitted.estimator_content.content_hash,
-        package_identity_hash="2" * 64,
+        package_identity_hash="blake3:" + "2" * 64,
         fit_call_count=1,
         predict_call_count=1,
     )
     second = AlphaFitProvenanceReceipt.create(
         recipe_hash=recipe.recipe_hash,
-        training_binding_hash="3" * 64,
+        training_binding_hash="blake3:" + "3" * 64,
         estimator_content_hash=fitted.estimator_content.content_hash,
-        package_identity_hash="2" * 64,
+        package_identity_hash="blake3:" + "2" * 64,
         fit_call_count=1,
         predict_call_count=1,
     )
@@ -562,7 +562,7 @@ def test_nested_fit_plan_binds_exact_partitions_and_readonly_values() -> None:
 def test_nested_fit_plan_rejects_authority_mismatch_before_fit(mutation: str) -> None:
     fold, training_input, domain, numerical_binding = _nested_fit_plan_inputs()
     if mutation == "parent":
-        training_input = replace(training_input, training_binding_hash="f" * 64)
+        training_input = replace(training_input, training_binding_hash="blake3:" + "f" * 64)
     elif mutation == "row_order":
         fold = replace(fold, training_row_sessions=tuple(reversed(fold.training_row_sessions)))
     else:
@@ -609,8 +609,8 @@ def test_same_shape_wrong_target_fails_before_adapter_fit(tmp_path: Path) -> Non
     original = workspace.folds[0]
     assert original.training_input_binding is not None
     values = original.training_input_binding.model_dump(mode="python", exclude={"binding_hash"})
-    values["target_policy_hash"] = "f" * 64
-    values["target_surface_hash"] = "e" * 64
+    values["target_policy_hash"] = "blake3:" + "f" * 64
+    values["target_surface_hash"] = "blake3:" + "e" * 64
     wrong_binding = AlphaTrainingInputBinding(
         **values,
         binding_hash=canonical_hash(values),
@@ -727,12 +727,13 @@ def test_a_formation_scope_verifies_each_sidecar_once_and_copies_the_estimator(
     )
     operation = numerical.execution_binding_hash
     fresh = store.load_model_fit_sidecar(operation)
+    pointer = store._model_fit_sidecar_path(operation)
     reads = 0
     read_text = Path.read_text
 
     def counted(path, *args, **kwargs):
         nonlocal reads
-        if path.name == f"{operation}.json" and path.parent.name.startswith("model-fit-sidecar"):
+        if path == pointer:
             reads += 1
         return read_text(path, *args, **kwargs)
 
@@ -774,12 +775,7 @@ def test_goal_development_reuse_requires_complete_model_sidecar(
     numerical = store.load_candidate_numerical_fold_result(
         result.candidates[0].numerical_result_hashes[0]
     )
-    pointer = (
-        store.root
-        / "current"
-        / "model-fit-sidecar-by-operation"
-        / f"{numerical.execution_binding_hash}.json"
-    )
+    pointer = store._model_fit_sidecar_path(numerical.execution_binding_hash)
     fit_calls = adapter.fit_calls
     if mutation == "missing":
         pointer.unlink()
@@ -787,7 +783,7 @@ def test_goal_development_reuse_requires_complete_model_sidecar(
     else:
         payload = json.loads(pointer.read_text(encoding="utf-8"))
         replacement = AlphaModelFitSidecar.create(
-            operation_binding_hash="f" * 64,
+            operation_binding_hash="blake3:" + "f" * 64,
             estimator_content_hash=str(payload["estimator_content_hash"]),
             fit_provenance_hash=str(payload["fit_provenance_hash"]),
         )
@@ -825,7 +821,7 @@ def _development_state(
         AlphaEstimatorState,
         {
             "kind": "AlphaEstimatorState",
-            "request_hash": "b" * 64,
+            "request_hash": "blake3:" + "b" * 64,
             "candidate_id": candidate_id,
             "scope": "DEVELOPMENT_FOLD",
             "family_id": "ridge",
@@ -888,12 +884,12 @@ def test_goal_current_refit_uses_same_adapter_without_numerical_drift() -> None:
         )
     )
     result = fit_and_assess_current_regularized_linear(
-        request_hash="b" * 64,
+        request_hash="blake3:" + "b" * 64,
         candidate_id=candidate_id,
         parameters=parameters,
         arrays=arrays,
         development_states=development_states,
-        package_identity_hash="0" * 64,
+        package_identity_hash="blake3:" + "0" * 64,
         retain_diagnostic_score=True,
     )
     assert result.estimator_state.coefficient_hex == tuple(
@@ -999,15 +995,15 @@ def _declared_development_state(
         AlphaDevelopmentEstimatorState,
         {
             "kind": "AlphaDevelopmentEstimatorState",
-            "execution_binding_hash": "1" * 64,
-            "development_surface_binding_hash": "2" * 64,
+            "execution_binding_hash": "blake3:" + "1" * 64,
+            "development_surface_binding_hash": "blake3:" + "2" * 64,
             "candidate_id": candidate_id,
-            "candidate_card_hash": "3" * 64,
+            "candidate_card_hash": "blake3:" + "3" * 64,
             "fold_index": fold_index,
-            "fold_commitment_hash": "4" * 64,
+            "fold_commitment_hash": "blake3:" + "4" * 64,
             "adapter_id": adapter.adapter_id,
             "numerical_binding_hash": adapter.describe_numerical_binding().numerical_binding_hash,
-            "fit_evidence_hash": "5" * 64,
+            "fit_evidence_hash": "blake3:" + "5" * 64,
             "state_projection_hash": projection_hash,
             "state_schema_id": adapter.content_format_id,
             "projection_payload": payload,
@@ -1064,12 +1060,12 @@ def test_an_agents_model_of_its_own_kind_is_refitted_through_its_projection() ->
 
     def refit(model: _AgentDeclaredModel):  # type: ignore[no-untyped-def]
         return fit_and_assess_current_model(
-            request_hash="b" * 64,
+            request_hash="blake3:" + "b" * 64,
             candidate_id=candidate_id,
             recipe=recipe,
             arrays=arrays,
             development_states=states,
-            package_identity_hash="0" * 64,
+            package_identity_hash="blake3:" + "0" * 64,
             model_catalog=AlphaModelCatalog((model,)),  # type: ignore[arg-type]
             retain_diagnostic_score=True,
         )

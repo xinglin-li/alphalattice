@@ -73,7 +73,9 @@ from alphalattice.investment.portfolio_strategy_lab.reporting.static import (
 from alphalattice.investment.portfolio_strategy_lab.reporting.units import (
     project_report_unit_rows,
 )
+from alphalattice.kernel.identity import blake3_filename
 from run_public_portfolio_research import build_parser, spec_from_args
+from tests._support.identity_fixtures import fixture_digest
 from tests.portfolio_strategy_lab.local_web_support import (
     _HASH,
     TEST_PACKAGE,
@@ -895,7 +897,7 @@ def test_exact_reuse_performs_no_numerical_resolution(tmp_path: Path) -> None:
             first.pipeline_manifest.task_id,
         )
 
-        index = pipeline.content.root / "index" / "by-result" / f"{first.result.result_hash}.json"
+        index = pipeline._result_index(first.result.result_hash)
         index.unlink()
         named = harness.application.run(spec=spec)
         assert named.result.action == "REUSED_EXACT"
@@ -1089,8 +1091,8 @@ def test_a_degenerate_anchor_refuses_only_the_unit_that_needs_beta() -> None:
 @pytest.mark.parametrize(
     ("field", "value"),
     [
-        ("tradability_hash", "b" * 64),
-        ("outcome_hash", "c" * 64),
+        pytest.param("tradability_hash", fixture_digest("corrected tradability"), id="tradability"),
+        pytest.param("outcome_hash", fixture_digest("corrected outcomes"), id="outcomes"),
     ],
 )
 def test_a_changed_input_authority_rotates_everything_and_reopens_nothing(
@@ -1129,8 +1131,13 @@ def test_the_program_binds_both_input_authorities(tmp_path: Path) -> None:
     with _harness(tmp_path) as harness:
         result = harness.application.run(spec=PortfolioResearchSpec.default()).result
         program = harness.application.program(result.result_hash)
-        assert program.tradability_decision_hash == "f" * 64
-        assert program.execution_outcome_manifest_hash == "1" * 64
+        assert (
+            program.tradability_decision_hash == harness.resolver.resolved.tradability_decision_hash
+        )
+        assert (
+            program.execution_outcome_manifest_hash
+            == harness.resolver.resolved.execution_outcome_manifest_hash
+        )
 
 
 def test_task_admission_binds_the_admission_and_the_authorities(tmp_path: Path) -> None:
@@ -1147,8 +1154,14 @@ def test_task_admission_binds_the_admission_and_the_authorities(tmp_path: Path) 
         assert payload["spec"] == PortfolioResearchSpec.default().model_dump(mode="json")
         assert payload["selected_strategy_package_id"] == TEST_PACKAGE.strategy_id
         assert payload["selected_strategy_package_hash"] == TEST_PACKAGE.package_hash
-        assert payload["program"]["tradability_decision_hash"] == "f" * 64
-        assert payload["program"]["execution_outcome_manifest_hash"] == "1" * 64
+        assert (
+            payload["program"]["tradability_decision_hash"]
+            == harness.resolver.resolved.tradability_decision_hash
+        )
+        assert (
+            payload["program"]["execution_outcome_manifest_hash"]
+            == harness.resolver.resolved.execution_outcome_manifest_hash
+        )
 
 
 def test_the_admission_hash_excludes_cache_state_so_recovery_still_matches(
@@ -1180,7 +1193,9 @@ def test_recovery_refuses_a_task_admitted_under_different_authorities(
         spec = PortfolioResearchSpec.default()
         harness.application.run(spec=spec)
         task = harness.session.task_control_registry.tasks()[-1]
-        harness.resolver.resolved = _resolved(tradability_hash="b" * 64)
+        harness.resolver.resolved = _resolved(
+            tradability_hash=fixture_digest("corrected tradability")
+        )
         with pytest.raises(ValueError, match="recovery_admission_mismatch"):
             harness.application.recover(task_id=task.task_id)
 
@@ -1198,13 +1213,13 @@ def test_numerical_resolution_must_match_the_admitted_authorities(tmp_path: Path
             return _resolved(
                 spec.weight_rule,
                 spec.secondary_benchmark_view,
-                tradability_hash="a" * 64,
-                outcome_hash="2" * 64,
+                tradability_hash=fixture_digest("different execution tradability"),
+                outcome_hash=fixture_digest("different execution outcomes"),
             )
 
     workspace = tmp_path / "workspace"
     workspace.mkdir()
-    resolver = SplitResolver(_resolved(tradability_hash="f" * 64, outcome_hash="1" * 64))
+    resolver = SplitResolver(_resolved())
     with WorkspaceApplicationSession.acquire(workspace) as session:
         application = PortfolioResearchApplication(
             workspace_id="split-authority",
@@ -1248,8 +1263,8 @@ def test_task_contract_refuses_a_program_from_different_authorities(tmp_path: Pa
                 workspace_id="synthetic",
                 spec=spec,
                 program=program,
-                admission_hash="a" * 64,
-                authorities_hash="b" * 64,
+                admission_hash=fixture_digest("admission"),
+                authorities_hash=fixture_digest("unbound authorities"),
                 workspace_manifest_hash=_HASH,
                 strategy_catalog_hash=harness.resolver.strategy_catalog_hash,
                 selected_strategy_package_id=TEST_PACKAGE.strategy_id,
@@ -1335,10 +1350,12 @@ def test_public_path_source_identity_contains_every_direct_remediation_owner(
     def capture(components: dict[str, Path], **metadata: object) -> str:
         del metadata
         captured.update(components)
-        return "9" * 64
+        return fixture_digest("changed public source")
 
     monkeypatch.setattr(portfolio_research_composition, "switched_source_identity", capture)
-    assert portfolio_research_composition._public_path_source_hash() == "9" * 64
+    assert portfolio_research_composition._public_path_source_hash() == fixture_digest(
+        "changed public source"
+    )
     assert {
         "capabilities.portfolio_backtesting.active_metrics",
         "investment.portfolio_strategy_lab.application.contracts",
@@ -1367,10 +1384,15 @@ def test_authority_receipt_binds_the_full_axis_and_frozen_source_snapshot(
         monkeypatch.setattr(
             portfolio_research_composition,
             "_public_path_source_hash",
-            lambda: "9" * 64,
+            lambda: fixture_digest("changed public source"),
         )
         assert admitted.authorities_hash == frozen
-        assert replace(admitted, public_path_source_hash="9" * 64).authorities_hash != frozen
+        assert (
+            replace(
+                admitted, public_path_source_hash=fixture_digest("changed public source")
+            ).authorities_hash
+            != frozen
+        )
 
 
 def test_a_custom_study_end_reports_every_fact_at_that_window_end(
@@ -1887,8 +1909,9 @@ def test_a_later_operation_re_reads_rather_than_trusting_earlier_bytes(tmp_path:
         assert first.distinct_names_held >= 0
         assert dict(ledger.reads) == {"results": 1, "reports": 1, "economics": 1}
 
-        ledger_root = harness.application.ledger.root  # the report's bytes on disk: its descriptor
-        report_file = ledger_root / "report-holdings-descriptors" / f"{result.report_hash}.json"
+        report_file = harness.application.ledger.content.artifact_path(
+            category="report-holdings-descriptors", content_hash=result.report_hash
+        )
         assert report_file.is_file()
         report_file.write_bytes(b"{}")
 
@@ -1915,10 +1938,10 @@ def test_every_task_that_published_a_result_is_named(tmp_path: Path) -> None:
         PortfolioResearchPipelineManifest.create(
             workspace_id="w",
             task_id=task,
-            task_record_hash=f"{index}" * 64,
-            program_hash="b" * 64,
-            result_hash="c" * 64,
-            report_hash="d" * 64,
+            task_record_hash=fixture_digest(("pipeline task", index)),
+            program_hash=fixture_digest("pipeline program"),
+            result_hash=fixture_digest("published result"),
+            report_hash=fixture_digest("pipeline report"),
             completed_at=moment + timedelta(minutes=index),
         )
         for index, task in enumerate((first, second), start=1)
@@ -1926,9 +1949,11 @@ def test_every_task_that_published_a_result_is_named(tmp_path: Path) -> None:
     for value in manifests:
         store.publish(value)
 
-    assert store.find_for_result("c" * 64) == manifests[0], "the first produced it"
+    assert store.find_for_result(fixture_digest("published result")) == manifests[0], (
+        "the first produced it"
+    )
     assert store.find_for_task(second) == manifests[1], "the second is found by its Task"
-    assert store.tasks_for_result("c" * 64) == (first, second)
+    assert store.tasks_for_result(fixture_digest("published result")) == (first, second)
     assert store.find_for_task(uuid4()) is None
 
 
@@ -1948,31 +1973,33 @@ def test_result_collection_keeps_readable_rows_and_names_a_bad_result_index(
         PortfolioResearchPipelineManifest.create(
             workspace_id="w",
             task_id=uuid4(),
-            task_record_hash=f"{index}" * 64,
-            program_hash="b" * 64,
+            task_record_hash=fixture_digest(("pipeline task", index)),
+            program_hash=fixture_digest("pipeline program"),
             result_hash=result_hash,
-            report_hash="d" * 64,
+            report_hash=fixture_digest("pipeline report"),
             completed_at=moment + timedelta(minutes=index),
         )
-        for index, result_hash in enumerate(("c" * 64, "e" * 64), start=1)
+        for index, result_hash in enumerate(
+            (fixture_digest("published result"), fixture_digest("unreadable result")), start=1
+        )
     ]
     for value in values:
         store.publish(value)
-    bad_index = store._result_index("e" * 64)
+    bad_index = store._result_index(fixture_digest("unreadable result"))
     bad_index.write_text("{", encoding="utf-8")
 
     readable, refusals = store.manifest_collection()
-    assert [value.result_hash for value in readable] == ["c" * 64]
+    assert [value.result_hash for value in readable] == [fixture_digest("published result")]
     assert len(refusals) == 1
     assert refusals[0]["status"] == "REFUSED"
-    assert refusals[0]["result_hash"] == "e" * 64
-    assert refusals[0]["entry_id"] == f"result:{'e' * 64}"
+    assert refusals[0]["result_hash"] == fixture_digest("unreadable result")
+    assert refusals[0]["entry_id"] == f"result:{fixture_digest('unreadable result')}"
     assert refusals[0]["index_file"] == bad_index.name
     # This display scan cannot weaken the existing authority used to decide what was published.
     with pytest.raises(ValueError):
         store.manifests()
     with pytest.raises(ValueError):
-        store.find_for_result("e" * 64)
+        store.find_for_result(fixture_digest("unreadable result"))
 
 
 def test_the_shared_axis_says_what_is_missing(
@@ -1992,36 +2019,44 @@ def test_the_shared_axis_says_what_is_missing(
     assert str(absent.value) == "portfolio_application.risk_return_surface_absent"
     manifests = root / "data-operations" / "risk-returns" / "manifests"
     manifests.mkdir(parents=True)
-    for name in ("a" * 64, "b" * 64):
-        (manifests / f"{name}.json").write_text("{}", encoding="utf-8")
+    for digest in ("blake3:" + "a" * 64, "blake3:" + "b" * 64):
+        (manifests / f"{blake3_filename(digest)}.json").write_text("{}", encoding="utf-8")
     with pytest.raises(PortfolioResearchCompositionError) as several:
         resolution._risk_surface(root)
     assert str(several.value) == "portfolio_application.risk_return_surface_not_unique"
 
     # One surface and one sector map, read through the owners' stores.
     epoch = SimpleNamespace(ordered_listing_ids=("R1", "R2"), universe_manifest_revision="u")
+    risk_hash = "blake3:" + "c" * 64
+    sector_hash = "blake3:" + "d" * 64
     sectors = SimpleNamespace(
         manifest_revision="u",
-        map_hash="e" * 64,
+        map_hash=sector_hash,
         entries=tuple(SimpleNamespace(listing_id=v) for v in ("R1", "R2")),
     )
     (tmp_path / "surface" / "manifests").mkdir(parents=True)
-    (tmp_path / "surface" / "manifests" / f"{'c' * 64}.json").write_text("{}", encoding="utf-8")
+    (tmp_path / "surface" / "manifests" / f"{blake3_filename(risk_hash)}.json").write_text(
+        "{}", encoding="utf-8"
+    )
     (tmp_path / "closure" / "sector-maps").mkdir(parents=True)
-    (tmp_path / "closure" / "sector-maps" / f"{'d' * 64}.json").write_text("{}", encoding="utf-8")
+    (tmp_path / "closure" / "sector-maps" / f"{blake3_filename(sector_hash)}.json").write_text(
+        "{}", encoding="utf-8"
+    )
     session = date(2026, 7, 1)
     monkeypatch.setattr(
         resolution,
         "RiskReturnArtifactStore",
         lambda _root: SimpleNamespace(
-            root=tmp_path / "surface", load_manifest=lambda _hash: SimpleNamespace(epoch=epoch)
+            root=tmp_path / "surface",
+            load_manifest={risk_hash: SimpleNamespace(epoch=epoch)}.__getitem__,
         ),
     )
     monkeypatch.setattr(
         resolution,
         "PanelClosureArtifactStore",
         lambda _resolver: SimpleNamespace(
-            root=tmp_path / "closure", load_model=lambda **_fields: sectors
+            root=tmp_path / "closure",
+            load_model=lambda *, content_hash, **_fields: {sector_hash: sectors}[content_hash],
         ),
     )
     monkeypatch.setattr(

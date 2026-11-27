@@ -17,6 +17,7 @@ from alphalattice.foundation.factor_research.evaluation.rank_correlation import 
     period_pair_correlation_matrix,
 )
 from alphalattice.foundation.factor_research.programs.sealed import seal_contract
+from alphalattice.kernel.identity import BLAKE3_PATTERN
 
 type FloatArray = npt.NDArray[np.float64]
 
@@ -41,7 +42,7 @@ class FactorRedundancyPolicy(_Contract):
     minimum_common_listings: int = Field(default=100, ge=2)
     minimum_formal_periods: int = Field(default=20, ge=1)
     distance_cut: float = Field(default=0.2, gt=0.0, lt=1.0)
-    policy_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
+    policy_hash: str = Field(pattern=BLAKE3_PATTERN)
 
     @model_validator(mode="after")  # type: ignore[untyped-decorator]
     def validate_policy(self) -> FactorRedundancyPolicy:
@@ -68,7 +69,7 @@ class FactorRedundancyPairEvidence(_Contract):
     common_formal_period_count: int = Field(ge=0)
     median_cross_section_spearman: float | None
     distance: float | None
-    pair_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
+    pair_hash: str = Field(pattern=BLAKE3_PATTERN)
 
     @model_validator(mode="after")  # type: ignore[untyped-decorator]
     def validate_pair(self) -> FactorRedundancyPairEvidence:
@@ -102,11 +103,11 @@ class FactorRedundancyCluster(_Contract):
     """Sealed member set and within-cluster distance evidence."""
 
     kind: Literal["FactorRedundancyCluster"] = "FactorRedundancyCluster"
-    cluster_id: str = Field(pattern=r"^[0-9a-f]{64}$")
+    cluster_id: str = Field(pattern=BLAKE3_PATTERN)
     member_factor_ids: tuple[str, ...] = Field(min_length=1)
     resolved_within_pair_count: int = Field(ge=0)
     maximum_within_pair_distance: float | None
-    cluster_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
+    cluster_hash: str = Field(pattern=BLAKE3_PATTERN)
 
     @model_validator(mode="after")  # type: ignore[untyped-decorator]
     def validate_cluster(self) -> FactorRedundancyCluster:
@@ -134,14 +135,14 @@ class FactorRedundancyStructure(_Contract):
     """Sealed factor-axis partition into deterministic redundancy clusters."""
 
     kind: Literal["FactorRedundancyStructure"] = "FactorRedundancyStructure"
-    feature_panel_snapshot_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
+    feature_panel_snapshot_hash: str = Field(pattern=BLAKE3_PATTERN)
     feature_panel_manifest_ref: str = Field(min_length=1)
-    policy_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
+    policy_hash: str = Field(pattern=BLAKE3_PATTERN)
     factor_ids: tuple[str, ...] = Field(min_length=1)
     formal_period_count: int = Field(ge=1)
     pair_evidence: tuple[FactorRedundancyPairEvidence, ...]
     clusters: tuple[FactorRedundancyCluster, ...] = Field(min_length=1)
-    structure_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
+    structure_hash: str = Field(pattern=BLAKE3_PATTERN)
 
     @model_validator(mode="after")  # type: ignore[untyped-decorator]
     def validate_structure(self) -> FactorRedundancyStructure:

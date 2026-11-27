@@ -8,6 +8,7 @@ from typing import Literal, Self, cast
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 from alphalattice.capabilities.domain_contracts.identity import canonical_hash
+from alphalattice.kernel.identity import BLAKE3_PATTERN
 
 
 class ProjectionAudit(BaseModel):
@@ -16,8 +17,8 @@ class ProjectionAudit(BaseModel):
     model_config = ConfigDict(extra="forbid", frozen=True)
 
     projection_id: str
-    semantics_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
-    content_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
+    semantics_hash: str = Field(pattern=BLAKE3_PATTERN)
+    content_hash: str = Field(pattern=BLAKE3_PATTERN)
     utf8_bytes: int = Field(ge=1)
     token_estimate_method: Literal["CL100K_PROXY"] = "CL100K_PROXY"
     cl100k_proxy_tokens: int = Field(ge=1)
@@ -58,11 +59,11 @@ class AgentExecutionBinding(BaseModel):
 
     profile_id: str
     mode: str
-    profile_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
-    document_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
+    profile_hash: str = Field(pattern=BLAKE3_PATTERN)
+    document_hash: str = Field(pattern=BLAKE3_PATTERN)
     response_protocol: str
-    response_protocol_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
-    concrete_schema_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
+    response_protocol_hash: str = Field(pattern=BLAKE3_PATTERN)
+    concrete_schema_hash: str = Field(pattern=BLAKE3_PATTERN)
 
 
 class ActorKind(StrEnum):
@@ -81,9 +82,9 @@ class ActorSubmissionBinding(BaseModel):
 
     actor_kind: ActorKind
     actor_id: str = Field(min_length=1, max_length=160)
-    submission_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
+    submission_hash: str = Field(pattern=BLAKE3_PATTERN)
     agent_execution: AgentExecutionBinding | None = None
-    binding_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
+    binding_hash: str = Field(pattern=BLAKE3_PATTERN)
 
     @model_validator(mode="after")
     def validate_actor_evidence(self) -> Self:

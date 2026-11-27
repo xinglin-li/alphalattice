@@ -7,7 +7,6 @@ is a `Listing.cases` name or a dated change below, so a test asserting one reads
 
 from __future__ import annotations
 
-import hashlib
 import json
 from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass, replace
@@ -167,6 +166,12 @@ _FLOOR = {
 that (0.2.7) keeps the original field set; its floor comes from the QA control that builds it."""
 
 
+def _digest(payload: bytes) -> str:
+    from alphalattice.kernel.identity import identity_blake3, tagged_blake3
+
+    return tagged_blake3(identity_blake3(payload))
+
+
 def bootstrap(
     observed_at: datetime = OBSERVED_AT,
     *,
@@ -205,9 +210,7 @@ def bootstrap(
     document.pop("content_hash")
     sealed = json.dumps(document, ensure_ascii=False, sort_keys=True, separators=(",", ":"))
     return CurrentUniverseBootstrap(
-        source_manifest=replace(
-            provisional, content_hash=hashlib.sha256(sealed.encode()).hexdigest()
-        ),
+        source_manifest=replace(provisional, content_hash=_digest(sealed.encode())),
         standard=standard or STANDARD,
     )
 
@@ -456,7 +459,7 @@ class DevelopmentProvider:
             provider_symbol=provider_symbol,
             sector_name=sector,
             sector_key=sector.casefold().replace(" ", "-"),
-            payload_hash=hashlib.sha256(f"{provider_symbol}:{sector}".encode()).hexdigest(),
+            payload_hash=_digest(f"{provider_symbol}:{sector}".encode()),
         )
 
 

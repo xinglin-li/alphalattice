@@ -14,6 +14,7 @@ from pydantic import AwareDatetime, BaseModel, ConfigDict, Field, model_validato
 from alphalattice.capabilities.domain_contracts.identity import canonical_hash
 from alphalattice.control.workspace_runtime.content_store import replace_shared_file
 from alphalattice.kernel.clock import utc_now
+from alphalattice.kernel.identity import BLAKE3_PATTERN
 
 WorkProgressStatus = Literal["RUNNING", "SUCCEEDED", "FAILED", "REUSED_EXACT"]
 
@@ -104,7 +105,7 @@ class WorkProgressProjection(BaseModel):  # type: ignore[misc]
     started_at: AwareDatetime
     updated_at: AwareDatetime
     heartbeat_sequence: int = Field(ge=1)
-    projection_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
+    projection_hash: str = Field(pattern=BLAKE3_PATTERN)
 
     @model_validator(mode="after")  # type: ignore[untyped-decorator]
     def validate_identity(self) -> WorkProgressProjection:

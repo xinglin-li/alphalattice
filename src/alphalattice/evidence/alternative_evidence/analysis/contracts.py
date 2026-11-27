@@ -21,6 +21,7 @@ from typing import ClassVar, Literal, Self
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 from alphalattice.capabilities.domain_contracts.identity import canonical_hash
+from alphalattice.kernel.identity import BLAKE3_PATTERN
 from alphalattice.protocols.actor_execution import ActorSubmissionBinding
 from alphalattice.protocols.actor_execution.answers import AnswerProblem
 
@@ -32,7 +33,7 @@ from ..contracts import (
 )
 from ..retrieval.contracts import SPAN_HANDLE_PATTERN, AlternativeEvidenceResolvedSpan
 
-_HASH = r"^[0-9a-f]{64}$"
+_HASH = BLAKE3_PATTERN
 
 
 class AlternativeEvidenceResearchObligation(AlternativeEvidenceContract):
@@ -1102,7 +1103,7 @@ class PendingCandidateRecord(AlternativeEvidenceContract):
     document_handle: str = Field(pattern=r"^DOC-[A-Z0-9-]{1,48}$")
     character_start: int = Field(ge=0)
     character_end: int = Field(gt=0)
-    passage_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
+    passage_hash: str = Field(pattern=BLAKE3_PATTERN)
     found_by: tuple[str, ...] = Field(min_length=1, max_length=8)
     """The query ids that returned this passage, best first."""
     best_global_rank: int = Field(ge=1)
@@ -1332,8 +1333,8 @@ class FilingComparisonRecord(AlternativeEvidenceContract):
 
     entity_id: str = Field(min_length=1, max_length=32)
     family: str = Field(min_length=1, max_length=32)
-    later_content_sha256: str = Field(pattern=_HASH)
-    earlier_content_sha256: str = Field(pattern=_HASH)
+    later_content_digest: str = Field(pattern=_HASH)
+    earlier_content_digest: str = Field(pattern=_HASH)
     later_units_hash: str = Field(pattern=_HASH)
     earlier_units_hash: str = Field(pattern=_HASH)
     comparison_rules_id: str = Field(min_length=1, max_length=80)
@@ -1359,8 +1360,8 @@ class FilingComparisonRecord(AlternativeEvidenceContract):
         *,
         entity_id: str,
         family: str,
-        later_content_sha256: str,
-        earlier_content_sha256: str,
+        later_content_digest: str,
+        earlier_content_digest: str,
         later_units_hash: str,
         earlier_units_hash: str,
         comparison_rules_id: str,
@@ -1372,8 +1373,8 @@ class FilingComparisonRecord(AlternativeEvidenceContract):
             {
                 "entity_id": entity_id,
                 "family": family,
-                "later_content_sha256": later_content_sha256,
-                "earlier_content_sha256": earlier_content_sha256,
+                "later_content_digest": later_content_digest,
+                "earlier_content_digest": earlier_content_digest,
                 "later_units_hash": later_units_hash,
                 "earlier_units_hash": earlier_units_hash,
                 "comparison_rules_id": comparison_rules_id,
@@ -1400,8 +1401,8 @@ class FilingComparisonRecord(AlternativeEvidenceContract):
         expected = self.closure_hash(
             entity_id=self.entity_id,
             family=self.family,
-            later_content_sha256=self.later_content_sha256,
-            earlier_content_sha256=self.earlier_content_sha256,
+            later_content_digest=self.later_content_digest,
+            earlier_content_digest=self.earlier_content_digest,
             later_units_hash=self.later_units_hash,
             earlier_units_hash=self.earlier_units_hash,
             comparison_rules_id=self.comparison_rules_id,

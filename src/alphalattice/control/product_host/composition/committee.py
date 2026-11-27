@@ -96,7 +96,7 @@ from alphalattice.investment.portfolio_strategy_lab.application.advancement_task
     ADVANCEMENT_TASK_KIND,
 )
 from alphalattice.kernel.execution import EVENTS, EventDeadline
-from alphalattice.kernel.identity import identity_sha256, integrity_hmac_sha256, integrity_sha256
+from alphalattice.kernel.identity import blake3_digest, identity_blake3, integrity_hmac_sha256
 from alphalattice.protocols.actor_execution.bundles import bundle_slot, moment_text
 
 if TYPE_CHECKING:
@@ -1442,7 +1442,7 @@ def member_of(store: GoalStore, claims: Sequence[Mapping[str, Any]]) -> dict[str
 
     A Claude Code subagent declares only its lead's session, so the Host cannot tell it from the
     lead by its requests; its own file can. Each claim (`native_usage.member_claims`) names a
-    thread or a review bundle and the SHA-256 of a key: a member key of that thread is this
+    thread or a review bundle and the BLAKE3 digest of a key: a member key of that thread is this
     member's card, and the messages its accepted submits made (``spoke``) are its own.
 
     Returns:
@@ -1470,7 +1470,7 @@ def _proof(store: GoalStore, claims: Sequence[Mapping[str, Any]]) -> dict[str, s
         role = claim.get("role") or (floor.opened.get("role") if floor is not None else None)
         if floor is None or role not in {*ROLES[1:], *REVIEWERS}:
             continue
-        own = integrity_sha256(floor.key(str(role)).encode()).hexdigest()
+        own = blake3_digest(floor.key(str(role)).encode())
         if hmac.compare_digest(own, str(claim.get("key"))):
             cards.add(_card(floor, str(role)))
             if claim.get("spoke"):
@@ -2019,7 +2019,7 @@ def pm_route(floor: Floor) -> tuple[str, ...]:
 
 def thread_id(reference: str) -> str:
     """The thread a review bundle opens, named by the bundle's own record."""
-    return str(UUID(hex=identity_sha256(reference.encode()).hexdigest()[:32]))
+    return str(UUID(bytes=identity_blake3(reference.encode()).digest()[:16]))
 
 
 def review_route(store: GoalStore, role: str, directory: str | None) -> tuple[str, ...] | None:

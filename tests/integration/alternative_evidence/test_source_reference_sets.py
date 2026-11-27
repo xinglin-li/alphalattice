@@ -26,6 +26,7 @@ from alphalattice.evidence.alternative_evidence.sources.contracts import (
     parse_source_set,
 )
 from alphalattice.evidence.alternative_evidence.storage import world_reads
+from alphalattice.kernel.identity import blake3_digest, blake3_filename
 from tests.alternative_evidence_desk.document_intelligence_support import (
     _counted_runtime,
     _registry,
@@ -59,13 +60,17 @@ def test_source_bytes_are_kept_once_and_referenced_by_every_request(
     assert [value.semantic_handle for value in first.documents] == ["DOC-AAPL-001", "DOC-AAPL-002"]
     objects = _objects(tmp_path)
     assert len(objects) == 2, "one object per distinct content"
-    assert {path.name for path in objects} == {v.content_sha256 for v in first.documents}
+    assert {path.name for path in objects} == {
+        blake3_filename(v.content_digest) for v in first.documents
+    }
     for reference in first.documents:
         content = (
             tmp_path / "workspace" / Path(*reference.content_object_path.split("/"))
         ).read_bytes()
         assert len(content) == reference.content_bytes
-    stored = runtime.artifacts.root / "source-document-sets" / f"{first.source_set_hash}.json"
+        assert blake3_digest(content) == reference.content_digest
+    name = blake3_filename(first.source_set_hash)
+    stored = runtime.artifacts.root / "source-document-sets" / f"{name}.json"
     assert stored.stat().st_size < 4096, "a reference set carries provenance, not bytes"
     assert b'"content":' not in stored.read_bytes()
 
@@ -76,8 +81,8 @@ def test_source_bytes_are_kept_once_and_referenced_by_every_request(
     )
     assert second.source_set_hash != first.source_set_hash
     assert _objects(tmp_path) == objects, "nothing added for bytes already held"
-    assert {v.content_sha256 for v in second.documents} == {
-        v.content_sha256 for v in first.documents
+    assert {v.content_digest for v in second.documents} == {
+        v.content_digest for v in first.documents
     }
 
     # The canonicalizer resolves references through the owner; the loaded set
@@ -181,7 +186,9 @@ def test_the_retained_inline_source_set_still_canonicalizes(tmp_path: Path, now:
     assert _objects(tmp_path) == [], "reading an inline set publishes no object"
     payload = json.loads(
         (
-            runtime.artifacts.root / "source-document-sets" / f"{inline.source_set_hash}.json"
+            runtime.artifacts.root
+            / "source-document-sets"
+            / f"{blake3_filename(inline.source_set_hash)}.json"
         ).read_bytes()
     )
     assert parse_source_set(payload) == inline

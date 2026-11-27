@@ -656,11 +656,10 @@ class StrategyScoringApplication:
 
     def _published(self, plan: StrategyScorePlan) -> FrozenComponentScoreSnapshot | None:
         # Immutable files, not a second index or an in-memory numerical cache.
-        directory = self.store._path("current/frozen-component-scores", "0" * 64, "json").parent
         matches = [
             value
-            for path in sorted(directory.glob("*.json"))
-            if (value := self.store.load_frozen_component_score(path.stem)).request_hash
+            for digest in self.store.development_category_identities("frozen-component-scores")
+            if (value := self.store.load_frozen_component_score(digest)).request_hash
             == plan.plan_hash
         ]
         if len(matches) > 1:

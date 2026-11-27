@@ -13,8 +13,9 @@ from alphalattice.investment.portfolio_strategy_lab.regularization.contracts imp
     PortfolioAgentValueClassification,
     PortfolioResearchTerminalRoute,
 )
+from alphalattice.kernel.identity import BLAKE3_PATTERN
 
-_HASH = r"^[0-9a-f]{64}$"
+_HASH = BLAKE3_PATTERN
 
 
 def _identity(value: PortfolioLabContract, field: str) -> None:

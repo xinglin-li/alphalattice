@@ -10,7 +10,6 @@ from __future__ import annotations
 
 import json
 import os
-import re
 import shutil
 import sqlite3
 import uuid
@@ -36,31 +35,20 @@ from alphalattice.foundation.data_layer.root import (
 from alphalattice.foundation.data_layer.store import StorePort
 from alphalattice.kernel import storage
 from alphalattice.kernel.clock import utc_now
-from alphalattice.kernel.identity import integrity_blake3, integrity_sha256
+from alphalattice.kernel.identity import FileDigestTrust, is_blake3
 
 DATABASES: Final = ("log.sqlite", "catalog.sqlite")
-DIGESTS: Final = {
-    "blake3:v1": integrity_blake3,
-    "blake3": integrity_blake3,
-    "sha256": integrity_sha256,
-}
+MANIFEST_VERSION: Final = 3
 
 
 def _valid_digest(value: Any) -> bool:
-    """A versioned backup seal, or a recognized tagged digest retained from its owner."""
-    if not isinstance(value, str):
-        return False
-    prefix, _, value = value.rpartition(":")
-    return prefix in DIGESTS and bool(re.fullmatch(r"[0-9a-f]{64}", value))
+    """Whether a machine backup records a tagged BLAKE3 digest."""
+    return isinstance(value, str) and is_blake3(value)
 
 
-def _file_digest(path: Path, prefix: str) -> str:
+def _file_digest(path: Path) -> str:
     """Stream one immutable file once at this boundary; never load a large body into memory."""
-    state = DIGESTS[prefix]()
-    with _real(path).open("rb") as source:
-        while block := source.read(1024 * 1024):
-            state.update(block)
-    return prefix + ":" + state.hexdigest()
+    return FileDigestTrust.fresh_digest(_real(path))
 
 
 def _refuse(code: str, message: str) -> DataError:
@@ -93,6 +81,12 @@ def read_manifest(generation: Path) -> dict[str, Any]:
     path = _real(generation.resolve() / "manifest.json")
     try:
         value = json.loads(path.read_text(encoding="utf-8"))
+        if isinstance(value, dict) and value.get("version") == 2:
+            raise _refuse(
+                "schema_mismatch",
+                f"{path} uses an earlier backup format. "
+                "To use this version, start a fresh data root.",
+            )
         head, files = value["head"], value["files"]
         valid_head = (
             type(head["seq"]) is int
@@ -100,31 +94,23 @@ def read_manifest(generation: Path) -> dict[str, Any]:
             and type(head["chain_version"]) is int
             and head["chain_version"] in LINKS
             and isinstance(head["head"], str)
-            and (
-                head["head"] == ""
-                if head["seq"] == 0
-                else bool(re.fullmatch(r"blake3:[0-9a-f]{64}", head["head"]))
-            )
+            and (head["head"] == "" if head["seq"] == 0 else is_blake3(head["head"]))
         )
         paths = [entry["path"] for entry in files]
         valid_files = all(
             _handle(entry["path"])
             and type(entry["size"]) is int
             and entry["size"] >= 0
+            and _valid_digest(entry["digest"])
             and (
-                (entry.get("kind") is None and _valid_digest(entry["digest"]))
-                or (
-                    entry.get("kind") == "array"
-                    and entry["path"].startswith("blobs/")
-                    and isinstance(entry["digest"], str)
-                    and bool(re.fullmatch(r"[0-9a-f]{64}", entry["digest"]))
-                )
+                entry.get("kind") is None
+                or (entry.get("kind") == "array" and entry["path"].startswith("blobs/"))
             )
             for entry in files
         ) and len(set(paths)) == len(paths)
         if (
             type(value["version"]) is not int
-            or value["version"] != 2
+            or value["version"] != MANIFEST_VERSION
             or value["databases"] != list(DATABASES)
             or not valid_head
             or not valid_files
@@ -153,7 +139,7 @@ def _verify_file(path: Path, entry: dict[str, Any], read: Any = None) -> None:
         import alphalattice.foundation.data_layer.arrays as arrays  # lazy: array bodies only
 
         arrays.verify(path.parent.parent, read, entry["digest"], path.name)
-    elif _file_digest(path, entry["digest"].rpartition(":")[0]) != entry["digest"]:
+    elif _file_digest(path) != entry["digest"]:
         raise _refuse(
             "backup_file_changed", f"{path} differs from its sealed bytes; use an intact generation"
         )
@@ -167,16 +153,11 @@ def copy_files(
     for entry in files:
         handle, kind = entry["path"], entry.get("kind")
         valid = (
-            _valid_digest(entry["digest"])
-            if kind is None
-            else (
-                kind == "array"
-                and isinstance(entry["digest"], str)
-                and bool(re.fullmatch(r"[0-9a-f]{64}", entry["digest"]))
-                and handle.startswith("blobs/")
-            )
+            _handle(handle)
+            and _valid_digest(entry["digest"])
+            and (kind is None or (kind == "array" and handle.startswith("blobs/")))
         )
-        if not _handle(handle) or not valid:
+        if not valid:
             raise _refuse(
                 "backup_manifest_invalid", f"machine backup manifest handle {handle!r} is invalid"
             )
@@ -424,10 +405,7 @@ def _owners(machine: Path, data: Path, owner: Any = None) -> dict[str, str | dic
     if any(
         not _handle(path)
         or (
-            not (
-                isinstance(digest.get("digest"), str)
-                and re.fullmatch(r"[0-9a-f]{64}", digest["digest"])
-            )
+            not _valid_digest(digest.get("digest"))
             if isinstance(digest, dict)
             else digest is not None and not _valid_digest(digest)
         )
@@ -448,9 +426,7 @@ def _files(root: Path, machine: Path, owner: Any) -> list[dict[str, Any]]:
     for handle in sorted(handles):
         owner = owners.get(handle)
         proof = (
-            owner
-            if isinstance(owner, dict)
-            else {"digest": owner or _file_digest(root / handle, "blake3:v1")}
+            owner if isinstance(owner, dict) else {"digest": owner or _file_digest(root / handle)}
         )
         files.append({"path": handle, "size": _real(root / handle).stat().st_size, **proof})
     return files
@@ -491,7 +467,7 @@ def backup_data_root(root: Path, repository: Path) -> Path:
                     read=lambda sql, args: saved_log.execute(sql, args).fetchall(),
                 )
             manifest = dict(
-                version=2,
+                version=MANIFEST_VERSION,
                 databases=list(DATABASES),
                 head=head,
                 created_at=utc_now().isoformat(),

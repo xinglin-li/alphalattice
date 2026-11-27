@@ -4,7 +4,6 @@ from __future__ import annotations
 
 import json
 import os
-import re
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
 from pathlib import Path
@@ -17,8 +16,15 @@ from alphalattice.capabilities.domain_contracts.bounded_memo import stage_digest
 from alphalattice.capabilities.domain_contracts.identity import canonical_hash
 from alphalattice.capabilities.domain_contracts.identity_successors import latest
 from alphalattice.capabilities.domain_contracts.sealing import scoped_payload_digest
-from alphalattice.control.workspace_runtime.verified_facts import file_sha256
-from alphalattice.kernel.identity import identity_sha256, integrity_sha256
+from alphalattice.control.workspace_runtime.verified_facts import verified_file_digest
+from alphalattice.kernel.identity import (
+    blake3_filename,
+    blake3_from_filename,
+    identity_blake3,
+    integrity_blake3,
+    is_blake3,
+    tagged_blake3,
+)
 
 
 def _metadata_hash(source: Path | Mapping[bytes, bytes]) -> str:
@@ -32,7 +38,7 @@ def _metadata_hash(source: Path | Mapping[bytes, bytes]) -> str:
         key.decode("utf-8"): value.decode("utf-8") for key, value in sorted(metadata.items())
     }
     payload = json.dumps(normalized, sort_keys=True, separators=(",", ":"))
-    return integrity_sha256(payload.encode("utf-8")).hexdigest()
+    return tagged_blake3(integrity_blake3(payload.encode("utf-8")))
 
 
 def _matches_binding_digest(payload: Mapping[str, object], field: str, expected: object) -> bool:
@@ -75,9 +81,6 @@ class ArtifactReachabilityReport:
     unknown_owner: tuple[str, ...]
 
 
-_HASH = re.compile(r"^[a-f0-9]{64}$")
-
-
 class ArtifactResolver:
     """Resolve only known content-addressed artifact kinds inside trusted code."""
 
@@ -117,7 +120,7 @@ class ArtifactResolver:
         return f"playpen://feature-input/{content_hash}"
 
     def _feature_input_path(self, content_hash: str) -> Path:
-        return self._root / self._FEATURE_INPUT_KIND / f"{content_hash}.parquet"
+        return self._root / self._FEATURE_INPUT_KIND / f"{blake3_filename(content_hash)}.parquet"
 
     @staticmethod
     def feature_panel_chunk_uri(content_hash: str) -> str:
@@ -145,11 +148,21 @@ class ArtifactResolver:
 
     def _feature_panel_chunk_path(self, content_hash: str) -> Path:
         self._require_hash(content_hash)
-        return self._root / self._FEATURE_PANEL_ROOT / "chunks" / f"{content_hash}.parquet"
+        return (
+            self._root
+            / self._FEATURE_PANEL_ROOT
+            / "chunks"
+            / f"{blake3_filename(content_hash)}.parquet"
+        )
 
     def _feature_panel_manifest_path(self, content_hash: str) -> Path:
         self._require_hash(content_hash)
-        return self._root / self._FEATURE_PANEL_ROOT / "manifests" / f"{content_hash}.json"
+        return (
+            self._root
+            / self._FEATURE_PANEL_ROOT
+            / "manifests"
+            / f"{blake3_filename(content_hash)}.json"
+        )
 
     @staticmethod
     def feature_panel_semantic_index_uri(content_hash: str) -> str:
@@ -166,7 +179,12 @@ class ArtifactResolver:
 
     def _feature_panel_semantic_index_path(self, content_hash: str) -> Path:
         self._require_hash(content_hash)
-        return self._root / self._FEATURE_PANEL_ROOT / "semantic-index" / f"{content_hash}.json"
+        return (
+            self._root
+            / self._FEATURE_PANEL_ROOT
+            / "semantic-index"
+            / f"{blake3_filename(content_hash)}.json"
+        )
 
     def _feature_panel_lifecycle_path(self) -> Path:
         return self._root / self._FEATURE_PANEL_ROOT / self._FEATURE_PANEL_LIFECYCLE
@@ -177,7 +195,7 @@ class ArtifactResolver:
             self._root
             / self._DATA_OPERATIONS_ROOT
             / "adjusted-return-semantic-revisions"
-            / f"{chain_hash}.json"
+            / f"{blake3_filename(chain_hash)}.json"
         )
 
     def _adjusted_return_revision_pointer_path(self) -> Path:
@@ -251,14 +269,14 @@ class ArtifactResolver:
                 },
             }
         )
-        staged = target.with_name(f".{content_hash}.{uuid4().hex}.tmp")
+        staged = target.with_name(f".{target.name}.{uuid4().hex}.tmp")
         if target.exists():
             self._validate_feature_panel_chunk(target, content_hash)
         else:
             pq.write_table(table.replace_schema_metadata(merged), staged, compression="zstd")
             os.replace(staged, target)
             self._validate_feature_panel_chunk(target, content_hash)
-            file_sha256(target, written=True)
+            verified_file_digest(target, written=True)
         staged.unlink(missing_ok=True)
         return ArtifactDescriptor(
             kind="feature-panel-chunk",
@@ -279,7 +297,7 @@ class ArtifactResolver:
         serialized = json.dumps(
             payload, ensure_ascii=False, sort_keys=True, separators=(",", ":"), default=str
         ).encode("utf-8")
-        staged = target.with_name(f".{snapshot_hash}.{uuid4().hex}.tmp")
+        staged = target.with_name(f".{target.name}.{uuid4().hex}.tmp")
         if target.exists():
             existing = self._load_feature_panel_manifest(target, snapshot_hash)
             if existing != json.loads(serialized):
@@ -292,7 +310,7 @@ class ArtifactResolver:
         return ArtifactDescriptor(
             kind="feature-panel-manifest",
             content_hash=snapshot_hash,
-            metadata_hash=integrity_sha256(serialized).hexdigest(),
+            metadata_hash=tagged_blake3(integrity_blake3(serialized)),
             uri=self.feature_panel_manifest_uri(snapshot_hash),
         )
 
@@ -311,7 +329,7 @@ class ArtifactResolver:
         ).encode("utf-8")
         target = self._feature_panel_semantic_index_path(index_hash)
         target.parent.mkdir(parents=True, exist_ok=True)
-        staged = target.with_name(f".{index_hash}.{uuid4().hex}.tmp")
+        staged = target.with_name(f".{target.name}.{uuid4().hex}.tmp")
         if target.exists():
             if target.read_bytes() != serialized:
                 raise ValueError("feature panel semantic index identity was reused")
@@ -322,7 +340,7 @@ class ArtifactResolver:
         return ArtifactDescriptor(
             kind="feature-panel-semantic-index",
             content_hash=index_hash,
-            metadata_hash=integrity_sha256(serialized).hexdigest(),
+            metadata_hash=tagged_blake3(integrity_blake3(serialized)),
             uri=self.feature_panel_semantic_index_uri(index_hash),
         )
 
@@ -342,7 +360,10 @@ class ArtifactResolver:
     def _panel_preprocessing_binding_path(self, binding_hash: str) -> Path:
         self._require_hash(binding_hash)
         return (
-            self.root / self._FEATURE_PANEL_ROOT / "preprocessing-bindings" / f"{binding_hash}.json"
+            self.root
+            / self._FEATURE_PANEL_ROOT
+            / "preprocessing-bindings"
+            / f"{blake3_filename(binding_hash)}.json"
         )
 
     def publish_panel_preprocessing_binding(
@@ -365,7 +386,7 @@ class ArtifactResolver:
         ).encode("utf-8")
         target = self._panel_preprocessing_binding_path(binding_hash)
         target.parent.mkdir(parents=True, exist_ok=True)
-        staged = target.with_name(f".{binding_hash}.{uuid4().hex}.tmp")
+        staged = target.with_name(f".{target.name}.{uuid4().hex}.tmp")
         if target.exists():
             # Content-addressed, so identical bytes are the only lawful rewrite and a
             # true collision is the only way to reach the raise.
@@ -378,7 +399,7 @@ class ArtifactResolver:
         return ArtifactDescriptor(
             kind="panel-preprocessing-binding",
             content_hash=binding_hash,
-            metadata_hash=integrity_sha256(serialized).hexdigest(),
+            metadata_hash=tagged_blake3(integrity_blake3(serialized)),
             uri=self.panel_preprocessing_binding_uri(binding_hash),
         )
 
@@ -411,7 +432,12 @@ class ArtifactResolver:
         return f"playpen://feature-panel/clipping-evidence/{evidence_hash}"
 
     def _panel_clipping_evidence_path(self, evidence_hash: str) -> Path:
-        return self.root / self._FEATURE_PANEL_ROOT / "clipping-evidence" / f"{evidence_hash}.json"
+        return (
+            self.root
+            / self._FEATURE_PANEL_ROOT
+            / "clipping-evidence"
+            / f"{blake3_filename(evidence_hash)}.json"
+        )
 
     def publish_panel_clipping_evidence(
         self, *, payload: Mapping[str, object], evidence_hash: str
@@ -437,7 +463,7 @@ class ArtifactResolver:
         ).encode("utf-8")
         target = self._panel_clipping_evidence_path(evidence_hash)
         target.parent.mkdir(parents=True, exist_ok=True)
-        staged = target.with_name(f".{evidence_hash}.{uuid4().hex}.tmp")
+        staged = target.with_name(f".{target.name}.{uuid4().hex}.tmp")
         if target.exists():
             if target.read_bytes() != serialized:
                 raise ValueError("panel clipping evidence identity was reused")
@@ -448,7 +474,7 @@ class ArtifactResolver:
         return ArtifactDescriptor(
             kind="panel-clipping-evidence",
             content_hash=evidence_hash,
-            metadata_hash=integrity_sha256(serialized).hexdigest(),
+            metadata_hash=tagged_blake3(integrity_blake3(serialized)),
             uri=self.panel_clipping_evidence_uri(evidence_hash),
         )
 
@@ -499,7 +525,12 @@ class ArtifactResolver:
 
     def _panel_clip_observation_path(self, receipt_hash: str) -> Path:
         self._require_hash(receipt_hash)
-        return self.root / self._FEATURE_PANEL_ROOT / "clip-observations" / f"{receipt_hash}.json"
+        return (
+            self.root
+            / self._FEATURE_PANEL_ROOT
+            / "clip-observations"
+            / f"{blake3_filename(receipt_hash)}.json"
+        )
 
     def publish_panel_clip_observation(
         self, *, payload: Mapping[str, object], receipt_hash: str
@@ -526,7 +557,7 @@ class ArtifactResolver:
         ).encode("utf-8")
         target = self._panel_clip_observation_path(receipt_hash)
         target.parent.mkdir(parents=True, exist_ok=True)
-        staged = target.with_name(f".{receipt_hash}.{uuid4().hex}.tmp")
+        staged = target.with_name(f".{target.name}.{uuid4().hex}.tmp")
         if target.exists():
             # The receipt hashes the binding, the availability and the
             # admission of the batch, and the observations are a deterministic
@@ -541,7 +572,7 @@ class ArtifactResolver:
         return ArtifactDescriptor(
             kind="panel-clip-observation",
             content_hash=record_hash,
-            metadata_hash=integrity_sha256(serialized).hexdigest(),
+            metadata_hash=tagged_blake3(integrity_blake3(serialized)),
             uri=self.panel_clip_observation_uri(receipt_hash),
         )
 
@@ -570,7 +601,12 @@ class ArtifactResolver:
         return payload
 
     def _panel_preprocessing_marker_path(self, panel_content_hash: str) -> Path:
-        return self.root / "feature-panel" / "preprocessing-markers" / f"{panel_content_hash}.json"
+        return (
+            self.root
+            / "feature-panel"
+            / "preprocessing-markers"
+            / f"{blake3_filename(panel_content_hash)}.json"
+        )
 
     @staticmethod
     def _verify_panel_preprocessing_marker(
@@ -684,14 +720,14 @@ class ArtifactResolver:
                 payload, ensure_ascii=False, sort_keys=True, separators=(",", ":"), default=str
             ).encode("utf-8")
             target.parent.mkdir(parents=True, exist_ok=True)
-            staged = target.with_name(f".{panel_content_hash}.{uuid4().hex}.tmp")
+            staged = target.with_name(f".{target.name}.{uuid4().hex}.tmp")
             staged.write_bytes(marker_bytes)
             os.replace(staged, target)
             staged.unlink(missing_ok=True)
         return ArtifactDescriptor(
             kind="panel-preprocessing-marker",
             content_hash=marker_hash,
-            metadata_hash=integrity_sha256(marker_bytes).hexdigest(),
+            metadata_hash=tagged_blake3(integrity_blake3(marker_bytes)),
             uri=f"playpen://feature-panel/preprocessing-marker/{panel_content_hash}",
         )
 
@@ -746,7 +782,10 @@ class ArtifactResolver:
         root = self._root / self._FEATURE_PANEL_ROOT / "semantic-index"
         matches: list[tuple[dict[str, object], str]] = []
         for path in sorted(root.glob("*.json")) if root.is_dir() else ():
-            uri = self.feature_panel_semantic_index_uri(path.stem)
+            index_hash = blake3_from_filename(path.stem)
+            if index_hash is None:
+                continue
+            uri = self.feature_panel_semantic_index_uri(index_hash)
             payload = self.load_feature_panel_semantic_index(uri)
             if payload.get("panel_snapshot_hash") == panel_snapshot_hash:
                 matches.append((payload, uri))
@@ -788,7 +827,7 @@ class ArtifactResolver:
         ).encode("utf-8")
         target = self._adjusted_return_revision_path(chain_hash)
         target.parent.mkdir(parents=True, exist_ok=True)
-        staged = target.with_name(f".{chain_hash}.{uuid4().hex}.tmp")
+        staged = target.with_name(f".{target.name}.{uuid4().hex}.tmp")
         if target.exists():
             if target.read_bytes() != serialized:
                 raise ValueError("adjusted-return revision identity was reused")
@@ -815,7 +854,7 @@ class ArtifactResolver:
         return ArtifactDescriptor(
             kind="adjusted-return-semantic-revision",
             content_hash=chain_hash,
-            metadata_hash=integrity_sha256(serialized).hexdigest(),
+            metadata_hash=tagged_blake3(integrity_blake3(serialized)),
             uri=self.adjusted_return_semantic_revision_uri(chain_hash),
         )
 
@@ -912,7 +951,7 @@ class ArtifactResolver:
                 raise ValueError("feature panel snapshot physical availability is invalid")
             eviction_plan_hash = item.get("eviction_plan_hash")
             if (physical_availability == "EVICTED_BY_RETENTION") != (
-                isinstance(eviction_plan_hash, str) and bool(_HASH.fullmatch(eviction_plan_hash))
+                isinstance(eviction_plan_hash, str) and is_blake3(eviction_plan_hash)
             ):
                 raise ValueError("feature panel snapshot eviction evidence is incomplete")
             if lifecycle == "ACTIVE" and physical_availability != "AVAILABLE":
@@ -933,7 +972,7 @@ class ArtifactResolver:
         serialized_identity = json.dumps(
             identity, ensure_ascii=False, sort_keys=True, separators=(",", ":")
         ).encode("utf-8")
-        projection_hash = identity_sha256(serialized_identity).hexdigest()
+        projection_hash = tagged_blake3(identity_blake3(serialized_identity))
         payload = {**identity, "projection_hash": projection_hash}
         serialized = json.dumps(
             payload, ensure_ascii=False, sort_keys=True, separators=(",", ":")
@@ -1003,18 +1042,10 @@ class ArtifactResolver:
         )
         identity = dict(payload)
         identity.pop("snapshot_hash", None)
-        if (
-            identity_sha256(
-                json.dumps(
-                    identity,
-                    ensure_ascii=False,
-                    sort_keys=True,
-                    separators=(",", ":"),
-                    default=str,
-                ).encode("utf-8")
-            ).hexdigest()
-            != snapshot_hash
-        ):
+        encoded = json.dumps(
+            identity, ensure_ascii=False, sort_keys=True, separators=(",", ":"), default=str
+        ).encode("utf-8")
+        if tagged_blake3(identity_blake3(encoded)) != snapshot_hash:
             raise ValueError("feature panel manifest payload hash is invalid")
         return payload
 
@@ -1036,14 +1067,14 @@ class ArtifactResolver:
         """Classify panel artifacts by manifest reachability without deleting anything."""
         panel_root = self._root / self._FEATURE_PANEL_ROOT
         manifests = {
-            path.stem: path
+            identity: path
             for path in (panel_root / "manifests").glob("*.json")
-            if _HASH.fullmatch(path.stem)
+            if (identity := blake3_from_filename(path.stem)) is not None
         }
         chunks = {
-            path.stem: path
+            identity: path
             for path in (panel_root / "chunks").glob("*.parquet")
-            if _HASH.fullmatch(path.stem)
+            if (identity := blake3_from_filename(path.stem)) is not None
         }
         reachable_manifests: set[str] = set()
         reachable_chunks: set[str] = set()
@@ -1102,8 +1133,8 @@ class ArtifactResolver:
 
     @staticmethod
     def _require_hash(value: str) -> None:
-        if not _HASH.fullmatch(value):
-            raise ValueError("artifact content hash must be lowercase SHA-256")
+        if not is_blake3(value):
+            raise ValueError("artifact content hash must be tagged BLAKE3")
 
     @staticmethod
     def _validate_feature_panel_chunk(path: Path, content_hash: str) -> Mapping[bytes, bytes]:
@@ -1135,11 +1166,10 @@ class ArtifactResolver:
         claimed_hash = payload.get("projection_hash")
         identity = dict(payload)
         identity.pop("projection_hash", None)
-        actual_hash = identity_sha256(
-            json.dumps(identity, ensure_ascii=False, sort_keys=True, separators=(",", ":")).encode(
-                "utf-8"
-            )
-        ).hexdigest()
+        encoded = json.dumps(
+            identity, ensure_ascii=False, sort_keys=True, separators=(",", ":")
+        ).encode("utf-8")
+        actual_hash = tagged_blake3(identity_blake3(encoded))
         if claimed_hash != actual_hash:
             raise ValueError("feature panel lifecycle projection hash is invalid")
         return payload

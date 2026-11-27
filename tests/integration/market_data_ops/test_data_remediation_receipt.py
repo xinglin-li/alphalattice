@@ -22,6 +22,7 @@ from alphalattice.protocols.actor_execution import (
     ActorKind,
     AgentExecutionBinding,
 )
+from tests._support.identity_fixtures import fixture_digest
 
 
 def _option() -> RemediationOption:
@@ -36,12 +37,14 @@ def _option() -> RemediationOption:
     )
 
 
-def _decision(option: RemediationOption, *, case_token: str = "a" * 64) -> PolicyDecision:
+def _decision(
+    option: RemediationOption, *, case_token: str = fixture_digest("a")
+) -> PolicyDecision:
     """What the owning gateway returns once it has validated the selected option."""
 
     return PolicyDecision(
         case_token=case_token,
-        evidence_hash="b" * 64,
+        evidence_hash=fixture_digest("b"),
         option_id=option.option_id,
         option_hash=option.option_hash,
         policy_hash=canonical_hash(option.policy_args),
@@ -52,13 +55,15 @@ def _decision(option: RemediationOption, *, case_token: str = "a" * 64) -> Polic
 def _submission(option: RemediationOption) -> DataRemediationExecutionSubmission:
     proposal = DataRemediationProposal(
         run_id="run-001",
-        case_token="a" * 64,
-        evidence_hash="b" * 64,
+        case_token=fixture_digest("a"),
+        evidence_hash=fixture_digest("b"),
         option_id=option.option_id,
         rationale="Use the one Host-admitted human review option.",
     )
     values = {"proposal": proposal}
-    draft = DataRemediationExecutionSubmission.model_construct(**values, submission_hash="0" * 64)
+    draft = DataRemediationExecutionSubmission.model_construct(
+        **values, submission_hash=fixture_digest("0")
+    )
     return DataRemediationExecutionSubmission(
         **values,
         submission_hash=canonical_hash(draft.model_dump(mode="json", exclude={"submission_hash"})),
@@ -69,11 +74,11 @@ def _agent_execution() -> AgentExecutionBinding:
     return AgentExecutionBinding(
         profile_id="data-operations.remediation-advisor",
         mode="diagnose_remediation",
-        profile_hash="c" * 64,
-        document_hash="c" * 64,
+        profile_hash=fixture_digest("c"),
+        document_hash=fixture_digest("c"),
         response_protocol="data_remediation_selection",
-        response_protocol_hash="c" * 64,
-        concrete_schema_hash="c" * 64,
+        response_protocol_hash=fixture_digest("c"),
+        concrete_schema_hash=fixture_digest("c"),
     )
 
 
@@ -85,7 +90,7 @@ def test_a_validated_remediation_is_sealed_actor_neutral_before_mutation() -> No
     common = {
         "submission": _submission(option),
         "policy_decision": _decision(option),
-        "execution_policy_hash": "d" * 64,
+        "execution_policy_hash": fixture_digest("d"),
     }
     human = seal_validated_data_remediation_execution(
         **common, actor_kind=ActorKind.HUMAN, actor_id="researcher@example.test"
@@ -120,8 +125,8 @@ def test_a_policy_decision_for_another_case_is_refused() -> None:
     with pytest.raises(ValueError, match="policy decision differs from submission"):
         seal_validated_data_remediation_execution(
             submission=_submission(option),
-            policy_decision=_decision(option, case_token="e" * 64),
+            policy_decision=_decision(option, case_token=fixture_digest("e")),
             actor_kind=ActorKind.HUMAN,
             actor_id="researcher@example.test",
-            execution_policy_hash="d" * 64,
+            execution_policy_hash=fixture_digest("d"),
         )

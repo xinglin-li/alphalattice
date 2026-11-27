@@ -44,7 +44,7 @@ from pathlib import Path, PurePosixPath
 from typing import Any
 
 from alphalattice.capabilities.domain_contracts import spawn
-from alphalattice.capabilities.domain_contracts.source_identity import source_bytes_syntax_sha256
+from alphalattice.capabilities.domain_contracts.source_identity import source_bytes_syntax_digest
 from devtools.architecture import structural
 from devtools.architecture.git_inputs import read_blobs
 from devtools.architecture.identity_closures import closure_sites
@@ -581,7 +581,7 @@ def neutral_verdicts(
 
 def _compare(path: str, before: bytes, after: bytes) -> NeutralVerdict:
     try:
-        equal = source_bytes_syntax_sha256(before) == source_bytes_syntax_sha256(after)
+        equal = source_bytes_syntax_digest(before) == source_bytes_syntax_digest(after)
     except ValueError:
         return NeutralVerdict(path, False, "unparsable")
     if not equal:
@@ -754,7 +754,7 @@ def _imports_changed_only_for(
 def _digest(node: ast.AST) -> str:
     """A statement's syntax digest, docstrings aside, wherever it stands."""
 
-    return source_bytes_syntax_sha256(ast.unparse(node).encode("utf-8"))
+    return source_bytes_syntax_digest(ast.unparse(node).encode("utf-8"))
 
 
 def _bare_string(statement: ast.stmt) -> bool:

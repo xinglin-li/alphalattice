@@ -84,6 +84,7 @@ from alphalattice.control.data_platform.remediation_case import (
     seal_validated_data_remediation_execution,
 )
 from alphalattice.control.task_control.contracts import TaskLifecycle, WorkItemLifecycle
+from alphalattice.kernel.identity import is_blake3
 
 
 def superseded_preparations(
@@ -916,10 +917,7 @@ class WorkspaceDataIssueApplication:
         Raises:
             ValueError: Case page bound or cursor is invalid.
         """
-        if not 1 <= limit <= 50 or (
-            cursor is not None
-            and (len(cursor) != 64 or any(c not in "0123456789abcdef" for c in cursor))
-        ):
+        if not 1 <= limit <= 50 or (cursor is not None and not is_blake3(cursor)):
             raise ValueError("feature_input.case_page_invalid")
         active_manifest = self._active_manifest()
         every, selected, case_index = self._case_index(active_manifest, limit=limit, cursor=cursor)

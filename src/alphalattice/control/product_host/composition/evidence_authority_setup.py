@@ -77,7 +77,7 @@ from alphalattice.control.task_control.contracts import (
 from alphalattice.control.task_control.runner import StageDisposition, StageExecutionResult
 from alphalattice.control.workspace_runtime.artifacts import ArtifactResolver
 from alphalattice.control.workspace_runtime.network_access import network_access
-from alphalattice.control.workspace_runtime.verified_facts import file_sha256
+from alphalattice.control.workspace_runtime.verified_facts import verified_file_digest
 from alphalattice.evidence.alternative_evidence.contracts import (
     DEFAULT_SOURCE_DOCUMENT_BYTES,
     INTEGRATED_FAMILY_SPELLING,
@@ -137,6 +137,7 @@ from alphalattice.interface.local_application.retrieval_environment import (
     load,
 )
 from alphalattice.kernel.clock import utc_now
+from alphalattice.kernel.identity import blake3_filename, blake3_from_filename, is_blake3
 from alphalattice.oversight.chief_risk_officer.portfolio_evidence.contracts import (
     AdmittedListingTicker,
     AdmittedListingTickerAuthority,
@@ -225,7 +226,7 @@ def _read(path: Path, model: Any):  # type: ignore[no-untyped-def]
 
 
 def _read_source(root: Path, category: str, identity: str, model: type, field: str):  # type: ignore[no-untyped-def]
-    path = (root / category / f"{identity}.json").resolve()
+    path = (root / category / f"{blake3_filename(identity)}.json").resolve()
     if not path.is_relative_to(root.resolve()):
         raise ValueError("evidence_review.source_path_escapes_root")
     if model is AcquiredEvidenceDocumentSet:
@@ -267,7 +268,9 @@ def _holding_root(given: Path, source_set_hash: str) -> Path | None:
             given / "artifacts" / "alternative-evidence",
             given / "runtime" / "artifacts" / "alternative-evidence",
         )
-        if (candidate / "source-document-sets" / f"{source_set_hash}.json").is_file()
+        if (
+            candidate / "source-document-sets" / f"{blake3_filename(source_set_hash)}.json"
+        ).is_file()
     ]
     return holding[0] if len(holding) == 1 else None
 
@@ -281,9 +284,11 @@ def _sealed_plans(root: Path, entities: Collection[str]) -> dict[str, list[SecFi
     plans: dict[str, list[SecFilingSelectionPlan]] = {}
     directory = root / "sec-selection-plans"
     for path in sorted(directory.glob("*.json")) if directory.is_dir() else ():
+        if (identity := blake3_from_filename(path.stem)) is None:
+            continue
         try:
             plan = _read_source(
-                root, "sec-selection-plans", path.stem, SecFilingSelectionPlan, "plan_hash"
+                root, "sec-selection-plans", identity, SecFilingSelectionPlan, "plan_hash"
             )
         except (OSError, ValueError):
             continue
@@ -344,7 +349,7 @@ def _publish(
             raise ValueError("evidence_review.immutable_package_conflict")
         return EvidenceReviewArtifactBinding(
             relative_path=path.relative_to(workspace).as_posix(),
-            file_sha256=file_sha256(path),
+            file_digest=verified_file_digest(path),
             content_hash=identity,
         )
     with NamedTemporaryFile(dir=path.parent, prefix=f".{path.stem}-", delete=False) as handle:
@@ -359,7 +364,7 @@ def _publish(
             temporary.unlink()
     return EvidenceReviewArtifactBinding(  # its writer records the digest it holds on disk
         relative_path=path.relative_to(workspace).as_posix(),
-        file_sha256=file_sha256(path, written=True),
+        file_digest=verified_file_digest(path, written=True),
         content_hash=identity,
     )
 
@@ -390,7 +395,7 @@ def _check(arguments: argparse.Namespace) -> None:
         live == archived or (live and (arguments.source_artifact_root or arguments.source_set_hash))
     ):
         raise ValueError("evidence_review.choose_sec_acquisition_or_source_artifacts")
-    if archived and not re.fullmatch(r"[0-9a-f]{64}", arguments.source_set_hash or ""):
+    if archived and not is_blake3(arguments.source_set_hash or ""):
         raise OptionRefused("evidence_review.source_set_hash_invalid", "source_set_hash")
     if rebind and getattr(arguments, "preflight", False):
         raise ValueError("evidence_review.preflight_requires_a_source")
@@ -1378,7 +1383,7 @@ def _seal_package(
             }
         )
     )
-    destination = (workspace / "authority" / "evidence-cro" / package_id).resolve()
+    destination = (workspace / "authority" / "evidence-cro" / blake3_filename(package_id)).resolve()
     if not destination.is_relative_to(workspace):
         raise ValueError("evidence_review.package_path_escapes_workspace")
     registry_binding = _publish(
@@ -1406,7 +1411,7 @@ def _seal_package(
     published = _publish(manifest_path, manifest, manifest.authority_hash, workspace=workspace)
     binding = ResearchWorkspaceEvidenceReview(
         relative_path=published.relative_path,
-        file_sha256=published.file_sha256,
+        file_digest=published.file_digest,
     )
     replaced = None
     if arguments.install:

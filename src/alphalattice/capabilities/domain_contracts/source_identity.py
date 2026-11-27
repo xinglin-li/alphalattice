@@ -8,7 +8,6 @@ from collections.abc import Callable, Iterable, Iterator, Mapping
 from contextlib import contextmanager
 from contextvars import ContextVar
 from dataclasses import dataclass
-from functools import cache
 from pathlib import Path, PurePosixPath
 from threading import Lock
 from typing import Any, cast
@@ -26,9 +25,10 @@ from alphalattice.kernel.identity import (
     RACY_SECONDS,
     FileDigestTrust,
     Stamp,
-    change_sha256,
-    identity_sha256,
-    integrity_sha256,
+    change_xxh3_128_hex,
+    identity_blake3,
+    is_blake3,
+    tagged_blake3,
 )
 
 from .identity import canonical_hash
@@ -138,7 +138,7 @@ _PARSED: dict[tuple[str, str, tuple[tuple[str, str], ...]], tuple[str, tuple[str
 are parsed once a process, and any edit is a new key, so the cache never answers stale."""
 
 
-def source_syntax_sha256(path: Path) -> str:
+def source_syntax_digest(path: Path) -> str:
     """Hash a module's executable AST without bare string statements.
 
     A module's identity as its syntax: the parsed tree without its docstrings and other bare
@@ -150,7 +150,7 @@ def source_syntax_sha256(path: Path) -> str:
         path: Python module file to parse.
 
     Returns:
-        SHA-256 digest of the parsed syntax after removing bare string statements.
+        Tagged BLAKE3 of the parsed syntax after removing bare string statements.
     """
     return _parsed(path, "")[0]
 
@@ -168,8 +168,8 @@ def source_module_imports(path: Path, *, package: str) -> tuple[str, ...]:
     return _parsed(path, package)[1]
 
 
-def source_bytes_syntax_sha256(payload: bytes) -> str:
-    """A module's syntax digest from its bytes, as ``source_syntax_sha256`` reads a file's.
+def source_bytes_syntax_digest(payload: bytes) -> str:
+    """A module's syntax digest from its bytes, as ``source_syntax_digest`` reads a file's.
 
     For a version no file holds, such as the parent commit's: the gate's neutral path (GN)
     compares a changed file with it.
@@ -178,7 +178,7 @@ def source_bytes_syntax_sha256(payload: bytes) -> str:
         payload: The module's source bytes.
 
     Returns:
-        The digest ``source_syntax_sha256`` gives a file holding these bytes.
+        The digest ``source_syntax_digest`` gives a file holding these bytes.
     """
     return _parsed_payload(payload, package="", filename="<bytes>")[0]
 
@@ -493,13 +493,13 @@ def _syntax_digest(tree: ast.Module) -> str:
 
 
 def _text_digest(text: str) -> str:
-    """The SHA-256 of a syntax text: a module's dumped tree, or a canonical module's rendering."""
-    return identity_sha256(text.encode("utf-8")).hexdigest()
+    """Digest a module's dumped tree or a canonical module's rendering."""
+    return tagged_blake3(identity_blake3(text.encode("utf-8")))
 
 
 def _bytes_key(payload: bytes, package: str) -> tuple[str, str]:
-    """A parse cache's key: the module's bytes' SHA-256 and the package it resolves in."""
-    return change_sha256(payload).hexdigest(), package
+    """Key the parse cache by the module's exact bytes and its package."""
+    return change_xxh3_128_hex(payload), package
 
 
 def _dumped(tree: ast.Module) -> str:
@@ -1350,7 +1350,7 @@ def source_rule_closure_hash(
                     "form": CLOSURE_FORM,
                     "modules": sorted(_canonical_digests(parsed, rule).values()),
                     "files": {
-                        source_component_id_from_tracked_path(path): _resource_sha256(
+                        source_component_id_from_tracked_path(path): _resource_digest(
                             root, path, inputs
                         )
                         for path in others
@@ -1363,11 +1363,11 @@ def source_rule_closure_hash(
         return digest
 
 
-def _resource_sha256(root: Path, relative: str, inputs: _ClosureInputs) -> str:
+def _resource_digest(root: Path, relative: str, inputs: _ClosureInputs) -> str:
     path = resource_path(root, relative)
     if inputs.is_file(path):
         inputs.acquired.confirmed.pop(path, None)
-        return integrity_sha256(path.read_bytes()).hexdigest()
+        return FileDigestTrust.fresh_digest(path)
     # Development runners are not runtime entries. The wheel carries the
     # accepted tree's byte commitments, preserving the same closure value.
     manifest = root / "config/release/source-hashes.json"
@@ -1375,72 +1375,9 @@ def _resource_sha256(root: Path, relative: str, inputs: _ClosureInputs) -> str:
         inputs.acquired.confirmed.pop(manifest, None)
         hashes = json.loads(manifest.read_text(encoding="utf-8"))
         value = hashes.get(relative)
-        if isinstance(value, str) and len(value) == 64:
+        if isinstance(value, str) and is_blake3(value):
             return value
     raise ValueError(f"shared_kernel.source_resource_missing:{relative}")
-
-
-IDENTITY_SWITCH_PATH = Path("config") / "identity-switch.json"
-"""Each byte closure the rule replaced, with its rule value and the byte value it had then."""
-
-
-@cache
-def identity_switch(root: Path) -> Mapping[str, Mapping[str, str]]:
-    """The switch table: for each switched closure, its rule and byte values at the switch.
-
-    Args:
-        root: The checkout whose ``config`` holds the table.
-
-    Returns:
-        The recorded values by closure key.
-
-    Raises:
-        ValueError: If the table cannot be read.
-    """
-    try:
-        document = json.loads((root / IDENTITY_SWITCH_PATH).read_text(encoding="utf-8"))
-        return {
-            str(key): {"rule": str(value["rule"]), "byte": str(value["byte"])}
-            for key, value in document["components"].items()
-        }
-    except (OSError, ValueError, KeyError, TypeError, AttributeError) as error:
-        raise ValueError("shared_kernel.identity_switch_unreadable") from error
-
-
-def switched_identity(key: str, rule_value: str, *, root: Path) -> str:
-    """A closure's identity once its byte closure moved onto the rule (LAWS.md ID3).
-
-    While the closure's rule value is the one the switch recorded, it keeps the byte value it
-    had then, so everything sealed before the switch stays current; a comment or docstring no
-    longer moves it, and a changed rule is a new identity.
-
-    Args:
-        key: The closure's key in the switch table.
-        rule_value: Its rule closure's value now.
-        root: The checkout whose ``config`` holds the table.
-
-    Returns:
-        The identity.
-    """
-    anchor = identity_switch(root).get(key)
-    return anchor["byte"] if anchor is not None and anchor["rule"] == rule_value else rule_value
-
-
-def source_switch_key(
-    sources: Mapping[str, Path], *, semantic_owner: str, numerical_role: str
-) -> str:
-    """The switch table's key for a listed closure: its owner, role and entry names.
-
-    Args:
-        sources: The closure's entries by component id.
-        semantic_owner: Who owns the closure.
-        numerical_role: What kind of number it identifies.
-
-    Returns:
-        The key; a changed entry list is a new key.
-    """
-    entries = identity_sha256("\n".join(sorted(sources)).encode("utf-8")).hexdigest()[:16]
-    return f"{semantic_owner}:{numerical_role}:{entries}"
 
 
 def checkout_root(path: Path) -> Path:
@@ -1466,11 +1403,11 @@ def checkout_root(path: Path) -> Path:
 def switched_source_identity(
     sources: Mapping[str, Path], *, semantic_owner: str, numerical_role: str
 ) -> str:
-    """A listed byte closure moved onto the rule and kept at its switch value (ID3, W9b's sites).
+    """Hash the listed source files through the rule closure.
 
     The listed files are the rule closure's entries (``source_rule_closure_hash``): each module
     and what it imports inside the number-deciding packages, as syntax, and any other listed
-    file by its bytes. ``switched_identity`` keeps the value recorded at the switch.
+    file by its bytes.
 
     Args:
         sources: The closure's entries, each file by its component id.
@@ -1487,14 +1424,12 @@ def switched_source_identity(
         raise ValueError("shared_kernel.source_inventory_invalid")
     root = checkout_root(next(iter(sources.values())))
     tracked = tuple(sorted(tracked_path(root, path) for path in sources.values()))
-    rule = source_rule_closure_hash(
+    return source_rule_closure_hash(
         root=root,
         tracked_paths=tracked,
         semantic_owner=semantic_owner,
         numerical_role=numerical_role,
     )
-    key = source_switch_key(sources, semantic_owner=semantic_owner, numerical_role=numerical_role)
-    return switched_identity(key, rule, root=root)
 
 
 def _valid_component_id(value: str) -> bool:
@@ -1505,21 +1440,17 @@ def _valid_component_id(value: str) -> bool:
 
 __all__ = [
     "IDENTITY_ROLES_PATH",
-    "IDENTITY_SWITCH_PATH",
     "NumberDecidingRule",
     "checkout_root",
     "current_module_name",
-    "identity_switch",
     "number_deciding_closure",
     "number_deciding_rule",
     "observe_source_closures",
-    "source_bytes_syntax_sha256",
+    "source_bytes_syntax_digest",
     "source_component_id",
     "source_component_id_from_tracked_path",
     "source_module_imports",
     "source_rule_closure_hash",
-    "source_switch_key",
-    "source_syntax_sha256",
-    "switched_identity",
+    "source_syntax_digest",
     "switched_source_identity",
 ]

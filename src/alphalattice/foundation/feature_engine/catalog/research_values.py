@@ -16,8 +16,9 @@ from alphalattice.foundation.feature_engine.panels.closure_artifacts import (
     arrow_table_logical_hash,
 )
 from alphalattice.foundation.feature_engine.panels.closure_contracts import ClosureArtifactRef
+from alphalattice.kernel.identity import BLAKE3_PATTERN, is_blake3
 
-_HASH = r"^[0-9a-f]{64}$"
+_HASH = BLAKE3_PATTERN
 VALUE_CATEGORY = "research-formula-values"
 COLUMN_CATEGORY = "research-formula-columns"
 INDEX_CATEGORY = "research-formula-value-index"
@@ -130,9 +131,7 @@ class ResearchFeatureMaterialization(_Sealed):
             or set(self.computed_factor_ids) & set(self.reused_factor_ids)
             or set(ids) != set(self.computed_factor_ids) | set(self.reused_factor_ids)
             or set(ids) & set(self.inherited_input_factor_ids)
-            or any(
-                len(h) != 64 or any(c not in "0123456789abcdef" for c in h) for _, h in self.columns
-            )
+            or any(not is_blake3(h) for _, h in self.columns)
         ):
             raise ValueError("feature_research.materialization_scope_invalid")
         return self

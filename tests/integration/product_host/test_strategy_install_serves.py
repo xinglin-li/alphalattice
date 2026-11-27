@@ -16,14 +16,15 @@ from alphalattice.control.product_host.data_preparation.research_strategy import
     CATEGORY,
 )
 from alphalattice.interface.local_application.cli import main
+from alphalattice.investment.alpha_research.scores.product_replay import EVIDENCE_PACKAGE_ID
 from alphalattice.investment.portfolio_strategy_lab.application.contracts import (
     PortfolioResearchSpec,
 )
 from alphalattice.investment.portfolio_strategy_lab.policies.installed_strategies import (
-    BROAD_FEATURE_PACKAGE,
     PRODUCT_EVIDENCE_ROOT_KEY,
     install_frozen_strategies,
 )
+from tests._support.portfolio_strategy_lab_fixtures import _write_package
 from tests.portfolio_strategy_lab.local_web_support import _harness, _run
 
 
@@ -38,13 +39,14 @@ def test_an_installed_strategy_is_served_by_the_running_host_without_a_restart(
     """An installed strategy reaches controls, planning and report disclosure without a restart.
 
     About 13 s: one real Host and a three-formation report."""
-    shipped = install_frozen_strategies(artifacts={PRODUCT_EVIDENCE_ROOT_KEY: tmp_path})
+    evidence = _write_package(tmp_path / "broad")
+    shipped = install_frozen_strategies(artifacts={PRODUCT_EVIDENCE_ROOT_KEY: evidence})
     # The installed artifact's registry reads name the shipped package: a real preparation
     # runs whole Alpha and Risk studies.
     for module in (research_strategy, research_workspace):
         monkeypatch.setattr(module, "install_frozen_strategies", lambda artifacts: shipped)
     live = LocalPortfolioWebSession.from_workspace(tmp_path / "workspace")
-    package_id = BROAD_FEATURE_PACKAGE.strategy_id
+    package_id = shipped[0].package.strategy_id
     with live:
         assert not live.operations.installed()
         file = tmp_path / "book.json"
@@ -121,11 +123,11 @@ def test_an_installed_strategy_is_served_by_the_running_host_without_a_restart(
 
         controls = _cli(live, capsys, "strategy-book", "controls", "--package", package_id)["data"]
         assert controls.get("template"), controls
+        (evidence / f"{EVIDENCE_PACKAGE_ID}.json").unlink()
         plan_file = tmp_path / "plan.json"
         plan_file.write_text(
             json.dumps({"operation": "PLAN", "spec": controls["template"]}), encoding="utf-8"
         )
         planned = _cli(live, capsys, "request", "--file", str(plan_file))
-    # The plan reaches the installed package's own planning, which asks for the score history
-    # this empty fixture lacks, never for an installation or a restart.
+    # The installed package owns the plan's refusal when its admitted score evidence is gone.
     assert planned["failure_code"] == "alpha_research.replay_manifest_absent", planned

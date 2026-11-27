@@ -7,7 +7,6 @@ from __future__ import annotations
 import json
 from collections.abc import Iterator
 from datetime import UTC, date, datetime, timedelta
-from hashlib import sha256
 from pathlib import Path
 from typing import Any
 
@@ -357,7 +356,7 @@ def test_an_acquisition_admits_its_documents_and_they_are_read_through_world(
     with pytest.raises(ValueError, match="source_object_missing"):
         read(reference, as_of=before)
     refused.append(runtime.documents.holds_source_object(reference, as_of=before))
-    assert sha256(served).hexdigest() == reference.content_sha256
+    assert "blake3:" + blake3(served).hexdigest() == reference.content_digest
     assert refused == [False, False]
 
 

@@ -22,6 +22,7 @@ from typing import Literal, Self
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 from alphalattice.capabilities.domain_contracts.identity import canonical_hash
+from alphalattice.kernel.identity import BLAKE3_PATTERN
 
 LAGGED_XS_DISPERSION_RECIPE_ID = "LAGGED_XS_DISPERSION"
 EWMA_XS_DISPERSION_RECIPE_ID = "EWMA_XS_DISPERSION"
@@ -49,12 +50,12 @@ class ScalingImplementationBinding(_Contract):
     kind: Literal["ScalingImplementationBinding"] = "ScalingImplementationBinding"
     implementation_id: str = Field(min_length=1, max_length=128)
     implementation_owners: tuple[str, ...] = Field(min_length=1)
-    implementation_content_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
+    implementation_content_hash: str = Field(pattern=BLAKE3_PATTERN)
     numerical_environment_hash: str | None = Field(
-        default=None, pattern=r"^[0-9a-f]{64}$", exclude_if=lambda v: v is None
+        default=None, pattern=BLAKE3_PATTERN, exclude_if=lambda v: v is None
     )
     """Only on a binding sealed before E0: the environment is provenance (LAWS.md ID6)."""
-    implementation_binding_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
+    implementation_binding_hash: str = Field(pattern=BLAKE3_PATTERN)
 
     @classmethod
     def create(
@@ -135,7 +136,7 @@ class LaggedXsDispersionRecipe(_Contract):
 
     source_offset_sessions: int = Field(ge=2)
     unavailable_source_policy: Literal["FAIL_CLOSED"] = "FAIL_CLOSED"
-    recipe_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
+    recipe_hash: str = Field(pattern=BLAKE3_PATTERN)
 
     @classmethod
     def create(cls, *, source_offset_sessions: int) -> Self:
@@ -202,7 +203,7 @@ class RecursiveXsDispersionRecipe(_Contract):
     har_monthly_sessions: Literal[21] | None = None
     har_minimum_fit_rows: Literal[63] | None = None
     har_ridge_ratio: float | None = Field(default=None, gt=0.0, le=1e-6)
-    recipe_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
+    recipe_hash: str = Field(pattern=BLAKE3_PATTERN)
 
     @classmethod
     def create(
@@ -301,8 +302,8 @@ class CrossSectionalDispersionForecast(_Contract):
 
     kind: Literal["CrossSectionalDispersionForecast"] = "CrossSectionalDispersionForecast"
     recipe_id: str = Field(min_length=1, max_length=96)
-    recipe_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
-    implementation_binding_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
+    recipe_hash: str = Field(pattern=BLAKE3_PATTERN)
+    implementation_binding_hash: str = Field(pattern=BLAKE3_PATTERN)
     implementation: ScalingImplementationBinding
     """The implementation binding itself, not just its digest.
 
@@ -311,16 +312,16 @@ class CrossSectionalDispersionForecast(_Contract):
     because it is small, immutable, and meaningless apart from the forecast that
     cites it."""
 
-    target_evidence_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
-    target_recipe_binding_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
-    outcome_method_binding_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
+    target_evidence_hash: str = Field(pattern=BLAKE3_PATTERN)
+    target_recipe_binding_hash: str = Field(pattern=BLAKE3_PATTERN)
+    outcome_method_binding_hash: str = Field(pattern=BLAKE3_PATTERN)
     maturity_lag_sessions: int = Field(ge=2)
-    ordered_listing_ids_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
-    source_dispersion_identity: str = Field(pattern=r"^[0-9a-f]{64}$")
+    ordered_listing_ids_hash: str = Field(pattern=BLAKE3_PATTERN)
+    source_dispersion_identity: str = Field(pattern=BLAKE3_PATTERN)
     formation_sessions: tuple[date, ...] = Field(min_length=1)
     forecast_values: tuple[float | None, ...] = Field(min_length=1)
     source_sessions: tuple[date | None, ...] = Field(min_length=1)
-    forecast_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
+    forecast_hash: str = Field(pattern=BLAKE3_PATTERN)
 
     @model_validator(mode="after")  # type: ignore[untyped-decorator]
     def validate_identity(self) -> Self:

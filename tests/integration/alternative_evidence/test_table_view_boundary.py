@@ -8,7 +8,6 @@ refused by name, never a view; a recorded text has no view."""
 
 from __future__ import annotations
 
-import hashlib
 from dataclasses import replace
 from pathlib import Path
 
@@ -27,6 +26,7 @@ from alphalattice.evidence.alternative_evidence.retrieval.contracts import (
 )
 from alphalattice.evidence.alternative_evidence.storage import world_reads
 from alphalattice.evidence.live_evidence.online_sources import not_carried_tables, table_lines
+from alphalattice.kernel.identity import blake3_digest
 from tests.alternative_evidence_desk.document_intelligence_support import (
     _document_with_text,
     _open_recorded,
@@ -74,10 +74,10 @@ def test_the_catalogue_and_the_rendering_agree_with_the_original() -> None:
     assert placeholder.unit_declaration[0] == "(In millions, except per share data)"
     tables = not_carried_tables(html, SecTableCarry("10-K"))
     assert [len(rows) for rows in tables] == [9]
-    sha = hashlib.sha256(html).hexdigest()
+    source_digest = blake3_digest(html)
     view = render_table_view(
         html,
-        parent_source_content_hash=sha,
+        parent_source_content_hash=source_digest,
         policy=SecTableCarry("10-K"),
         placeholder=placeholder,
         text=text,
@@ -100,7 +100,7 @@ def test_the_catalogue_and_the_rendering_agree_with_the_original() -> None:
     # A ceiling that holds two rows: whole rows, headings repeated, the rest named.
     small = render_table_view(
         html,
-        parent_source_content_hash=sha,
+        parent_source_content_hash=source_digest,
         policy=SecTableCarry("10-K"),
         placeholder=placeholder,
         text=text,
@@ -112,7 +112,7 @@ def test_the_catalogue_and_the_rendering_agree_with_the_original() -> None:
     )
     next_page = render_table_view(
         html,
-        parent_source_content_hash=sha,
+        parent_source_content_hash=source_digest,
         policy=SecTableCarry("10-K"),
         placeholder=placeholder,
         text=text,
@@ -126,7 +126,7 @@ def test_the_catalogue_and_the_rendering_agree_with_the_original() -> None:
     with pytest.raises(TableViewError, match="table_view_correspondence_unproved"):
         render_table_view(
             html,
-            parent_source_content_hash=sha,
+            parent_source_content_hash=source_digest,
             policy=SecTableCarry("10-K"),
             placeholder=wrong,
             text=text,
@@ -136,7 +136,7 @@ def test_the_catalogue_and_the_rendering_agree_with_the_original() -> None:
     with pytest.raises(TableViewError, match="table_view_correspondence_unproved"):
         render_table_view(
             html,
-            parent_source_content_hash=sha,
+            parent_source_content_hash=source_digest,
             policy=SecTableCarry("10-K"),
             placeholder=beyond,
             text=text,
@@ -145,7 +145,7 @@ def test_the_catalogue_and_the_rendering_agree_with_the_original() -> None:
     with pytest.raises(TableViewError, match="table_view_rows_invalid"):
         render_table_view(
             html,
-            parent_source_content_hash=sha,
+            parent_source_content_hash=source_digest,
             policy=SecTableCarry("10-K"),
             placeholder=placeholder,
             text=text,
@@ -190,7 +190,7 @@ def test_a_table_view_is_delivered_through_the_verified_session_read(tmp_path: P
             assert session.matter_read_count == 1
             assert span.table_view is not None
             assert span.table_view.rules_id == TABLE_VIEW_RULES_ID
-            assert span.table_view.parent_source_content_hash == hashlib.sha256(html).hexdigest()
+            assert span.table_view.parent_source_content_hash == blake3_digest(html)
             assert (
                 span.table_view.rows_total == len(INSTRUMENTS)
                 and span.table_view.remaining_rows == 0
@@ -346,7 +346,7 @@ def test_a_leading_row_of_years_is_the_view_s_heading_row_and_the_canonical_text
         assert table_lines(rows) is None, "the canonical reading has no heading row here"
         view = render_table_view(
             html,
-            parent_source_content_hash=hashlib.sha256(html).hexdigest(),
+            parent_source_content_hash=blake3_digest(html),
             policy=SecTableCarry("10-K"),
             placeholder=placeholder,
             text=text,
@@ -357,7 +357,7 @@ def test_a_leading_row_of_years_is_the_view_s_heading_row_and_the_canonical_text
         )
     view = render_table_view(
         html,
-        parent_source_content_hash=hashlib.sha256(html).hexdigest(),
+        parent_source_content_hash=blake3_digest(html),
         policy=SecTableCarry("10-K"),
         placeholder=plain,
         text=text,
@@ -367,7 +367,7 @@ def test_a_leading_row_of_years_is_the_view_s_heading_row_and_the_canonical_text
     assert "Operating lease cost; 2025: $32; 2024: $34" in view.lines
     view = render_table_view(
         html,
-        parent_source_content_hash=hashlib.sha256(html).hexdigest(),
+        parent_source_content_hash=blake3_digest(html),
         policy=SecTableCarry("10-K"),
         placeholder=labelled,
         text=text,
@@ -378,7 +378,7 @@ def test_a_leading_row_of_years_is_the_view_s_heading_row_and_the_canonical_text
     with pytest.raises(TableViewError, match="table_view_headings_absent"):
         render_table_view(
             html,
-            parent_source_content_hash=hashlib.sha256(html).hexdigest(),
+            parent_source_content_hash=blake3_digest(html),
             policy=SecTableCarry("10-K"),
             placeholder=schedule,
             text=text,

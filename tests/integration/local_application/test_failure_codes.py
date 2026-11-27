@@ -210,8 +210,8 @@ def test_a_contract_failure_answers_one_located_shape() -> None:
         "track": "model",
     }
     document = {
-        "input_binding_hash": "0" * 64,
-        "base_revision_hash": "0" * 64,
+        "input_binding_hash": "blake3:" + "0" * 64,
+        "base_revision_hash": "blake3:" + "0" * 64,
         "edits": [
             {"operation": "CREATE", "factor_id": "example_factor", "specification": specification}
         ],
@@ -228,11 +228,11 @@ def test_a_contract_failure_answers_one_located_shape() -> None:
     crash = public_failure(
         IndexError("single positional indexer is out-of-bounds"), "local_web.handler_failed"
     )
-    assert crash == "local_web.handler_failed:IndexError:503ea14e" and untyped_failure(crash)
+    assert crash == "local_web.handler_failed:IndexError:3245a96c" and untyped_failure(crash)
     assert not untyped_failure("goal.not_found")
     assert not untyped_failure("feature_extension.extensions_page_out_of_range:2 of 1")
     words = refusal_words(crash)
-    assert "503ea14e" not in words["next_action"] and "IndexError:503ea14e" in words["detail"]
+    assert "3245a96c" not in words["next_action"] and "IndexError:3245a96c" in words["detail"]
     code = "storage.managed_capacity_exceeded"
     marker = "private synthetic payload /never/serve with token=not-a-secret"
     error = StorageInventoryError(code, marker)

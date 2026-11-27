@@ -26,8 +26,9 @@ from pydantic import BaseModel, ConfigDict, Field, model_validator
 from alphalattice.capabilities.domain_contracts.identity import canonical_hash
 from alphalattice.capabilities.domain_contracts.sealing import scoped_model_digest, seal_model
 from alphalattice.capabilities.domain_contracts.sector_treatment import SectorHistoryTreatment
+from alphalattice.kernel.identity import BLAKE3_PATTERN
 
-_HASH = r"^[0-9a-f]{64}$"
+_HASH = BLAKE3_PATTERN
 
 
 class SectorContextContract(BaseModel):  # type: ignore[misc]
@@ -90,7 +91,7 @@ class SectorContextManifest(SectorContextContract):
     sector_ids: tuple[str, ...] = Field(min_length=1)
     available_row_count: int = Field(ge=0)
     table_content_hash: str = Field(pattern=_HASH)
-    payload_sha256: str = Field(pattern=_HASH)
+    payload_digest: str = Field(pattern=_HASH)
     manifest_hash: str = Field(pattern=_HASH)
 
     @model_validator(mode="after")  # type: ignore[untyped-decorator]

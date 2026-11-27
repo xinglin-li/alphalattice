@@ -7,7 +7,6 @@ from collections.abc import Sequence
 from contextlib import nullcontext
 from dataclasses import replace
 from datetime import UTC, date, datetime, timedelta, timezone, tzinfo
-from hashlib import sha256
 from pathlib import Path
 from types import SimpleNamespace
 from uuid import uuid4
@@ -46,6 +45,8 @@ from alphalattice.foundation.market_data_ops.storage.duckdb import MarketDataRep
 from alphalattice.foundation.research_foundation.storage.repository import (
     ResearchFoundationStateRepository,
 )
+from alphalattice.kernel.identity import blake3_digest
+from tests._support.identity_fixtures import fixture_digest
 from tests.workspace_maintenance.local_data_provider import flat_adjusted_close_history
 
 _SIMPLE_NAMESPACE = SimpleNamespace
@@ -164,9 +165,9 @@ def _bootstrap(symbols: tuple[str, ...], *, observed_at: datetime) -> CurrentUni
         data_validity_class=provisional.data_validity_class,
         sources=provisional.sources,
         candidates=provisional.candidates,
-        content_hash=sha256(
+        content_hash=blake3_digest(
             json.dumps(document, ensure_ascii=False, sort_keys=True, separators=(",", ":")).encode()
-        ).hexdigest(),
+        ),
     )
     return CurrentUniverseBootstrap(
         source_manifest=manifest,
@@ -366,7 +367,7 @@ def test_readiness_gates_initialization_and_activates_only_completed_transitions
         pending.proposal.transition_id, observed_at=changed_at
     )
     assert running.lifecycle == "RUNNING"
-    child_hashes = tuple(f"{index:x}" * 64 for index in range(1, 7))
+    child_hashes = tuple(fixture_digest(index) for index in range(1, 7))
     fulfilled = foundation_state.fulfill_feature_universe_rebuild(
         pending.proposal.transition_id,
         panel_snapshot_hash=child_hashes[0],
@@ -432,7 +433,7 @@ def test_readiness_gates_initialization_and_activates_only_completed_transitions
     )
     assert (
         fresh._carry_forward_source(
-            replace(recovered, active_membership_fingerprint="f" * 64),
+            replace(recovered, active_membership_fingerprint=fixture_digest("f")),
             observed_at=recovered_at + timedelta(days=1),
         )
         is None
@@ -545,11 +546,11 @@ def test_source_change_with_short_history_addition_keeps_active_set_and_avoids_r
             cohort_hash="",
             manifest_revision=original.manifest.revision_sha256,
             candidate_manifest_hash=initial.source_manifest.content_hash,
-            qualification_policy_hash="1" * 64,
-            feature_input_policy_hash="2" * 64,
+            qualification_policy_hash=fixture_digest("1"),
+            feature_input_policy_hash=fixture_digest("2"),
             source_observed_at=STARTED_AT,
             admitted_at=STARTED_AT,
-            panel_snapshot_hash="3" * 64,
+            panel_snapshot_hash=fixture_digest("3"),
             derivation="FIRST_QUALIFIED_PUBLICATION",
         )
     )
@@ -697,11 +698,11 @@ def test_feature_recheck_scope_resolves_only_across_the_request_own_raw_transiti
             cohort_hash="",
             manifest_revision=original.manifest.revision_sha256,
             candidate_manifest_hash=initial.source_manifest.content_hash,
-            qualification_policy_hash="1" * 64,
-            feature_input_policy_hash="2" * 64,
+            qualification_policy_hash=fixture_digest("1"),
+            feature_input_policy_hash=fixture_digest("2"),
             source_observed_at=STARTED_AT,
             admitted_at=STARTED_AT,
-            panel_snapshot_hash="3" * 64,
+            panel_snapshot_hash=fixture_digest("3"),
             derivation="FIRST_QUALIFIED_PUBLICATION",
         )
     )
@@ -761,7 +762,7 @@ def test_feature_recheck_scope_resolves_only_across_the_request_own_raw_transiti
         gate.resolve_feature_candidate_recheck(scope, prior_revision=prior.revision_sha256)
     # 2. A wrong or stale planned parent is refused although the scope's
     # listings are a subset of the merged parent.
-    for wrong_parent in (prior.revision_sha256, "f" * 64):
+    for wrong_parent in (prior.revision_sha256, fixture_digest("f")):
         with pytest.raises(ValueError, match="candidate_recheck_source_changed"):
             gate.resolve_feature_candidate_recheck(
                 FeatureCandidateRecheck(wrong_parent, (newq,)),
@@ -829,12 +830,12 @@ def test_activated_source_preserves_existing_unusable_members_but_not_index_leav
             cohort_listing_ids=tuple(item.listing_id for item in original.listings),
             cohort_hash="",
             manifest_revision=original.revision_sha256,
-            candidate_manifest_hash="1" * 64,
-            qualification_policy_hash="2" * 64,
-            feature_input_policy_hash="3" * 64,
+            candidate_manifest_hash=fixture_digest("1"),
+            qualification_policy_hash=fixture_digest("2"),
+            feature_input_policy_hash=fixture_digest("3"),
             source_observed_at=STARTED_AT,
             admitted_at=STARTED_AT,
-            panel_snapshot_hash="4" * 64,
+            panel_snapshot_hash=fixture_digest("4"),
             derivation="FIRST_QUALIFIED_PUBLICATION",
         )
     )
@@ -858,7 +859,7 @@ def test_activated_source_preserves_existing_unusable_members_but_not_index_leav
     market.complete_current_universe_onboarding(
         onboarding_id="source-refresh",
         research_manifest=raw_qualified,
-        quality_admission_hash="5" * 64,
+        quality_admission_hash=fixture_digest("5"),
         observed_at=now,
     )
     market.record_manifest_transition(
@@ -894,7 +895,7 @@ def test_activated_source_preserves_existing_unusable_members_but_not_index_leav
     )
 
     # A pointer outside the activated root and its admission lineage still refuses.
-    foreign = replace(result.manifest, manifest_id="foreign", revision_sha256="f" * 64)
+    foreign = replace(result.manifest, manifest_id="foreign", revision_sha256=fixture_digest("f"))
     market.bootstrap(foreign)
     with market._connect() as connection:
         connection.execute(
@@ -932,7 +933,7 @@ def test_universe_spy_divergence_preflight_composes_qualified_inputs(
                     SimpleNamespace(listing_id="listing-a"),
                     SimpleNamespace(listing_id="listing-b"),
                 ),
-                revision_sha256="r" * 64,
+                revision_sha256=fixture_digest("r"),
             )
 
         def projected_feature_frames(self, manifest, listing_ids, *, through, start):
@@ -980,7 +981,7 @@ def test_universe_spy_divergence_preflight_composes_qualified_inputs(
         assert formation_sessions == formations
         return SimpleNamespace(
             simple_returns=spy_by_scenario[scenario["name"]],
-            surface_hash="5" * 64,
+            surface_hash=fixture_digest("5"),
         )
 
     monkeypatch.setattr(readiness, "build_portfolio_benchmark_surface", _stub_surface)
@@ -990,7 +991,7 @@ def test_universe_spy_divergence_preflight_composes_qualified_inputs(
     )
     assert consistent.classification == "CONSISTENT"
     assert consistent.attribution == "UNATTRIBUTED"
-    assert consistent.spy_source_identity == "5" * 64
+    assert consistent.spy_source_identity == fixture_digest("5")
     assert consistent.session_count == 2
 
     scenario["name"] = "breach"

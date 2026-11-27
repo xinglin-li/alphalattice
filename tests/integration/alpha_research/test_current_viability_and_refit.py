@@ -26,6 +26,7 @@ from alphalattice.investment.alpha_research.experiments.development_contracts im
 from alphalattice.investment.alpha_research.experiments.policies import load_alpha_metric_policy
 from alphalattice.investment.alpha_research.inputs.folds import AlphaCurrentRefitArrays
 from alphalattice.investment.alpha_research.scores.refit import fit_and_assess_current_alpha
+from tests._support.identity_fixtures import fixture_digest
 from tests.alpha_research.fixtures import (
     registered_test_cards,
     synthetic_prepared_arrays,
@@ -59,7 +60,7 @@ def _viability_inputs():
                 {
                     "kind": "AlphaCandidateDevelopmentReport",
                     "request_hash": request.request_hash,
-                    "development_surface_hash": "a" * 64,
+                    "development_surface_hash": fixture_digest("development-surface"),
                     "foundation_hash": request.foundation_hash,
                     "candidate_id": card.candidate_id,
                     "candidate_card_hash": card.card_hash,
@@ -119,7 +120,7 @@ def test_viability_uses_directional_dm_and_dynamic_holm_family() -> None:
     request, prepared, results, rows = _viability_inputs()
     assessment = assess_alpha_model_viability(
         request_hash=request.request_hash,
-        surface_hash="a" * 64,
+        surface_hash=fixture_digest("development-surface"),
         candidate_results=results,
         validation_rows=rows,
         robustness_evidence={
@@ -159,7 +160,7 @@ def test_a_refused_candidate_names_the_checks_it_failed() -> None:
     }
     assessment = assess_alpha_model_viability(
         request_hash=request.request_hash,
-        surface_hash="a" * 64,
+        surface_hash=fixture_digest("development-surface"),
         candidate_results=results,
         validation_rows=rows,
         robustness_evidence={
@@ -252,7 +253,7 @@ def test_current_refit_requires_development_vector_and_distribution_envelope() -
         current_features=current,
         current_feature_complete=complete,
     )
-    request_hash = "b" * 64
+    request_hash = fixture_digest("current-refit-request")
     perturbation = np.zeros(card.factor_count, dtype=np.float64)
     perturbation[0] = 0.2
     broad_states = tuple(

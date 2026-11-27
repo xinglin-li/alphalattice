@@ -23,7 +23,6 @@ could actually use.
 
 from __future__ import annotations
 
-import hashlib
 from datetime import UTC, date, datetime
 from pathlib import Path
 from typing import Any, cast
@@ -53,13 +52,10 @@ from alphalattice.foundation.market_data_ops.sources.manifest import (
     MarketProfile,
     UniverseManifest,
 )
+from tests._support.identity_fixtures import fixture_digest as _hash
 
 NOW = datetime(2026, 8, 19, 13, tzinfo=UTC)
 PROFILE_ID = "panel-handoff-fixture"
-
-
-def _hash(value: str) -> str:
-    return hashlib.sha256(value.encode("utf-8")).hexdigest()
 
 
 SNAPSHOT_HASH = _hash("snapshot")
@@ -263,7 +259,7 @@ def test_an_active_snapshot_without_a_semantic_index_is_not_terminal(tmp_path: P
     panel_state.snapshot = {
         "snapshot_hash": SNAPSHOT_HASH,
         "manifest_uri": MANIFEST_URI,
-        "catalog_hash": "0" * 64,
+        "catalog_hash": _hash("other-catalog"),
     }
     assert service._durable_build_stage() == FeatureBuildStage.BASE_CLOSURE_COMPLETE_PANEL_PENDING
 
@@ -376,12 +372,12 @@ def test_the_semantic_index_orders_each_sessions_row_hashes_by_listing_as_before
     import pyarrow as pa
 
     rows = [
-        (date(2026, 1, 6), "Ünion", "c" * 64),
-        (date(2026, 1, 5), "zeta", "d" * 64),
-        (date(2026, 1, 6), "Alpha", "e" * 64),
-        (date(2026, 1, 5), "Ünion", "a" * 64),
-        (date(2026, 1, 5), "zeta", "b" * 64),
-        (date(2026, 1, 6), "zeta", "f" * 64),
+        (date(2026, 1, 6), "Ünion", "blake3:" + "c" * 64),
+        (date(2026, 1, 5), "zeta", "blake3:" + "d" * 64),
+        (date(2026, 1, 6), "Alpha", "blake3:" + "e" * 64),
+        (date(2026, 1, 5), "Ünion", "blake3:" + "a" * 64),
+        (date(2026, 1, 5), "zeta", "blake3:" + "b" * 64),
+        (date(2026, 1, 6), "zeta", "blake3:" + "f" * 64),
     ]
     batches = [
         pa.RecordBatch.from_pylist(

@@ -24,7 +24,7 @@ from alphalattice.capabilities.data.universe import (
     provider_symbol,
 )
 from alphalattice.kernel.clock import observation_time
-from alphalattice.kernel.identity import identity_sha256
+from alphalattice.kernel.identity import identity_blake3, is_blake3, tagged_blake3
 
 
 @dataclass(frozen=True)
@@ -192,8 +192,8 @@ def bootstrap_from_candidate_manifest_document(
     """
     try:
         content_hash = str(document["content_hash"])
-        if len(content_hash) != 64:
-            raise ValueError("candidate manifest hash has the wrong length")
+        if not is_blake3(content_hash):
+            raise ValueError("candidate manifest hash requires a BLAKE3 identity")
         years = document.get("minimum_history_calendar_years", _ORIGINAL_YEARS)
         if type(years) is not int:
             raise ValueError("candidate manifest history floor is not a whole number of years")
@@ -274,7 +274,7 @@ def bootstrap_from_candidate_manifest_document(
 
 def _canonical_hash(value: object) -> str:
     payload = json.dumps(value, ensure_ascii=False, sort_keys=True, separators=(",", ":"))
-    return identity_sha256(payload.encode("utf-8")).hexdigest()
+    return tagged_blake3(identity_blake3(payload.encode("utf-8")))
 
 
 def _build_candidate_manifest(

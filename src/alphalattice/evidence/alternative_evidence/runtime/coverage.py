@@ -30,6 +30,8 @@ from typing import Literal, Self
 
 from pydantic import Field, model_validator
 
+from alphalattice.kernel.identity import BLAKE3_PATTERN
+
 from ..analysis.contracts import AlternativeEvidenceResearchObligation
 from ..contracts import (
     ADMITTED_DOCUMENT_CAPACITY,
@@ -45,7 +47,7 @@ from ..contracts import (
 )
 from ..sources.contracts import SecFilingSelectionPlan
 
-_HASH = r"^[0-9a-f]{64}$"
+_HASH = BLAKE3_PATTERN
 
 UNIT_LIMIT: int = 8
 """The request axis: the most issuers one unit prepares together. The

@@ -1,11 +1,14 @@
 // Declarations, native provenance and receipts stay distinct.
 const fs=require('node:fs'),path=require('node:path'),vm=require('node:vm'),assert=require('node:assert/strict');
+const {randomUUID}=require('node:crypto');
 const library=require('./workbench_library.cjs'); // the library's constants and the scripts' parameters, from the source (Q2)
 const finish=library.guard('workbench_team');
 const root=process.argv[2],reads=[],hashes=[],navigations=[],renders=[],closes=[],frames=[];
 const hash={value:'#page=tasks'},prefs=new Map();
-const P1='1'.repeat(64),P2='2'.repeat(64),TASK='0f0f0f0f-0000-4000-8000-00000000abcd',RESULT='9'.repeat(64);
-const INSTALLED='0a0a0a0a-0000-4000-8000-00000000beef',ORPHAN='0b0b0b0b-0000-4000-8000-00000000beef',RESULT2='7'.repeat(64);
+const RELATED_GOAL=randomUUID();
+const digest=(digit)=>'blake3:'+digit.repeat(64);
+const P1=digest('1'),P2=digest('2'),TASK=randomUUID(),RESULT=digest('9');
+const INSTALLED=randomUUID(),ORPHAN=randomUUID(),RESULT2=digest('7');
 let previewStatus='MISSING',reportBody=null,readbackTask=null,results=[];
 const report=(p)=>{if(!reportBody)throw Error('local_web.result_unknown');const asked=new URLSearchParams(p.split('?')[1]).get('result_hash');return typeof reportBody==='function'?reportBody(asked):reportBody;};
 const c={console,URLSearchParams,Date,Number,Math,Set,Map,Object,Array,String,Promise,JSON,Boolean,Error,PAGES:{},ROUTES:{team:['Research Team','Workroom'],'team-sessions':['Research Team','Sessions'],'team-evidence':['Research Team','Team evidence']}, // the page words (2026-09-21: one word per page, ROUTES owns it)
@@ -72,7 +75,7 @@ const op=(operation,phase,subject,extra={},itemExtra={})=>item('ProductOperation
     op('EXPERIMENT_RUN','REQUESTED',{experiment_plan_hash:P2},{ref:'run2'}),
     op('EXPERIMENT_RUN','RETURNED',{experiment_plan_hash:P2},{ref:'run2',status:'ADMITTED',task_id:TASK,task_lifecycle:'QUEUED'},{task_id:TASK,run_id:'local-web:'+TASK}),
     item('TaskControlTransition',{task_lifecycle:'SUCCEEDED',task_class:'research_experiment',disposition:'COMMAND_RETURNED',verified_prefix_count:2,total_units:2},{task_id:TASK,run_id:'local-web:'+TASK,authority:'TASK_CONTROL_ASSERTION',source_kind:'TASK_CONTROL'}),
-    item('ArtifactVerificationObserved',{artifact_kind:'ResearchExecutionEvidence',artifact_hash:'e'.repeat(64),availability:'AVAILABLE'},{task_id:TASK,run_id:'local-web:'+TASK,authority:'ARTIFACT_ASSERTION',source_kind:'PRODUCT_ARTIFACT'}),
+    item('ArtifactVerificationObserved',{artifact_kind:'ResearchExecutionEvidence',artifact_hash:digest('e'),availability:'AVAILABLE'},{task_id:TASK,run_id:'local-web:'+TASK,authority:'ARTIFACT_ASSERTION',source_kind:'PRODUCT_ARTIFACT'}),
     message(S1,S1,'research_lead','pm_response','Accepted as evidence for the screen; the CRO objection stands on record.',{recipient:'child-cro'}),
     hook(S1,'child-analyst','alternative_analyst','SubagentStop','turn-1','false'),
     message(S1,'child-cro','independent_cro','objection','The PLAN behind that answer is not retained; it cannot be run as stated.',{reference:P1,recipient:S1,message_id:'obj-1'},{eventId:'evt-obj'}), // identical content, same declared id, another observation
@@ -181,15 +184,15 @@ const op=(operation,phase,subject,extra={},itemExtra={})=>item('ProductOperation
   Object.assign(c,originalWords);previewStatus='EXPIRED';
 
   assert.ok(!reads.some(p=>p.includes('/api/workbench/portfolio')),'an authored experiment verifies through its readback, not the Portfolio open');
-  // Exact bare-hash Verify keeps its declared reference.
+  // Exact result digest Verify keeps its declared reference.
   await TM.resolve(RESULT);const found=TM.resolved().get(RESULT);assert.equal(found.level,'discovered','a History hit is discovery');
   assert.equal(JSON.stringify(found.target),JSON.stringify({kind:'result',ref:RESULT}));
   html=readScene();assert.ok(html.includes('<team-verify:'+RESULT+'>'),'Verify carries the reference as written');assert.ok(!html.includes('<team-verify:result:'+RESULT+'>'));
-  assert.ok(html.includes('asked as <span class="mono">result:'+RESULT.slice(0,12)+'…</span>'),'the target is shown beside the reference, a hash by its 12 (Q2)');
+  assert.ok(html.includes('asked as <span class="mono">result:'+RESULT.slice(7,19)+'…</span>'),'the target is shown beside the reference, a hash by its 12 (Q2)');
   await TM.verify(RESULT);assert.equal(TM.resolved().get(RESULT).level,'discovered','the owner refused: the discovery stands, nothing is verified');
   assert.equal(TM.resolved().get(RESULT).failure,'local_web.result_unknown');assert.equal(TM.resolved().has('result:'+RESULT),false,'no second row under the target');
   html=readScene();assert.ok(html.includes('owner readback failed: <span class="mono">local_web.result_unknown</span>')&&html.includes('<team-verify:'+RESULT+'>'),'the refusal is shown on the asking row and Verify is still offered');
-  reportBody={result_hash:'8'.repeat(64),report_hash:'r'.repeat(64),originating_task_id:'x',used_by_task_ids:['x']};await TM.verify(RESULT);
+  reportBody={result_hash:digest('8'),report_hash:'r'.repeat(64),originating_task_id:'x',used_by_task_ids:['x']};await TM.verify(RESULT);
   assert.equal(TM.resolved().get(RESULT).level,'discovered','a report for another result verifies nothing');assert.ok(TM.resolved().get(RESULT).note.includes('the owner answered for another result'));
   reportBody={result_hash:RESULT,report_hash:'r'.repeat(64),originating_task_id:'x',used_by_task_ids:['x']};await TM.verify(RESULT);
   const verified=TM.resolved().get(RESULT);assert.equal(verified.level,'verified');assert.equal(verified.failure,null);assert.equal(JSON.stringify(verified.open),JSON.stringify(['history-open','result:'+RESULT]));
@@ -202,7 +205,7 @@ const op=(operation,phase,subject,extra={},itemExtra={})=>item('ProductOperation
   const asked=reads.length;await TM.verify(INSTALLED);
   const installed=TM.resolved().get(INSTALLED);assert.equal(installed.level,'verified');assert.equal(installed.owner,'Portfolio result');
   assert.equal(JSON.stringify(installed.open),JSON.stringify(['history-open','result:'+RESULT2]),'the reader is the saved result entry');
-  assert.equal(JSON.stringify(reads.slice(asked)),JSON.stringify(['/api/results','/api/report?result_hash='+RESULT2]),'index, then the exact readback; no experiment readback, no Portfolio open');
+  assert.equal(JSON.stringify(reads.slice(asked)),JSON.stringify(['/api/results','/api/report?'+new URLSearchParams({result_hash:RESULT2})]),'index, then the exact readback; no experiment readback, no Portfolio open');
   html=readScene();assert.ok(html.includes('<history-open:result:'+RESULT2+'>')&&!html.includes('<history-open:experiment:'+INSTALLED+'>'),'no experiment entry is invented for an installed Task');
   await TM.resolve(ORPHAN);await TM.verify(ORPHAN);assert.equal(TM.resolved().get(ORPHAN).level,'discovered');assert.ok(TM.resolved().get(ORPHAN).note.includes('no result is recorded for this Task'));
   reportBody=(asked)=>({result_hash:asked,report_hash:'q'.repeat(64),originating_task_id:'x',used_by_task_ids:['x']});await TM.resolve(INSTALLED);await TM.verify(INSTALLED);
@@ -266,7 +269,7 @@ const op=(operation,phase,subject,extra={},itemExtra={})=>item('ProductOperation
   assert.equal(routed.app.page,'team');assert.equal(routed.location.hash,'#page=team&team=exact-session&actor=exact-actor&event=exact-event');
   const priorRead=c.Data.read;let returnedCase=P1;
   // A case reference verifies by the owner's saved-revision read, never the evidence readback.
-  c.Data.read=async p=>{if(p.startsWith('/api/goals/show?'))throw Error('unexpected evidence readback');return p.startsWith('/api/goals/narrative?')?{goal_hash:returnedCase,goal:{goal_hash:returnedCase,goal_id:'11111111-1111-4111-8111-111111111111'},evidence_verification:'NOT_PERFORMED'}:priorRead(p);};
+  c.Data.read=async p=>{if(p.startsWith('/api/goals/show?'))throw Error('unexpected evidence readback');return p.startsWith('/api/goals/narrative?')?{goal_hash:returnedCase,goal:{goal_hash:returnedCase,goal_id:RELATED_GOAL},evidence_verification:'NOT_PERFORMED'}:priorRead(p);};
   await TM.resolve('case:'+P1);await TM.verify('case:'+P1);
   assert.equal(TM.resolved().get('case:'+P1).target.kind,'case');
   assert.deepEqual(Array.from(TM.resolved().get('case:'+P1).open),['goal-open',P1]);
@@ -319,13 +322,13 @@ const op=(operation,phase,subject,extra={},itemExtra={})=>item('ProductOperation
   assert.ok(html.includes('New: 1 Task completion'),'a lone SUCCEEDED transition is a Task completion');
   assert.ok(!html.includes('owner-verified result')&&!html.includes('just-verified')&&!html.includes('new verified fact'),'a completion is not a verified result');
   assert.ok(!html.includes('just-verified'),'a completion alone flashes no verified fact');
-  const art=item('ArtifactVerificationObserved',{artifact_kind:'ResearchExecutionEvidence',artifact_hash:'f'.repeat(64),availability:'AVAILABLE'},{task_id:T4,run_id:'local-web:'+T4,authority:'ARTIFACT_ASSERTION',source_kind:'PRODUCT_ARTIFACT'});
+  const art=item('ArtifactVerificationObserved',{artifact_kind:'ResearchExecutionEvidence',artifact_hash:digest('f'),availability:'AVAILABLE'},{task_id:T4,run_id:'local-web:'+T4,authority:'ARTIFACT_ASSERTION',source_kind:'PRODUCT_ARTIFACT'});
   A.absorbPage(page('CONTINUED',[art]));
   html=TM.section();
   assert.ok(html.includes('1 Task completion · 1 owner-verified result')&&html.includes('just-verified')&&html.includes('id="teamProductFacts"'),'the compatible owner verification is the verified arrival, said on the workroom and shown on the evidence view');
   TM.markSeen();html=TM.section();assert.ok(!html.includes('Task completion')&&!html.includes('owner-verified result'),'mark seen clears both counts');
   // Goal question rendering.
-  const S5='sess-parent-5',H1='3'.repeat(64),H2='4'.repeat(64),H3='6'.repeat(64),H4='8'.repeat(64),refitCase='case:'+H1,turnoverCase='case:'+H2,G1='11111111-1111-4111-8111-111111111111',G2='22222222-2222-4222-8222-222222222222';
+  const S5='sess-parent-5',H1=digest('3'),H2=digest('4'),H3=digest('6'),H4=digest('8'),refitCase='case:'+H1,turnoverCase='case:'+H2,G1=RELATED_GOAL,G2=randomUUID();
   const narratives={[H1]:{id:G1,revision:1,title:'Sector-neutral refit',question:'Sector question'},[H2]:{id:G2,revision:1,title:'Turnover budget',question:'Turnover question'},[H3]:{id:G1,revision:2,title:'Corrected refit',question:'Corrected question'}},narrativeReads=[],folds=[],was5={factsRef:c.factsRef,t:c.t};
   c.factsRef=(key,body)=>{folds.push({key,body});return 'FOLD('+key+')';};c.t=(key,args)=>was5.t(key==='Goal {ref}'?'GOALREF({ref})':key,args);
   c.Data.read=async p=>{if(p.startsWith('/api/goals/show?'))throw Error('unexpected evidence readback');
@@ -345,7 +348,7 @@ const op=(operation,phase,subject,extra={},itemExtra={})=>item('ProductOperation
   Object.assign(c,paging5);hash.value='#page=team&team='+S5;c.app.page='team';
   A.absorbPage(page('CONTINUED',[bound('case:'+H3)]));TM.refresh();await new Promise(r=>setImmediate(r));sum=TM.summary();html=TM.section();const head5=()=>TM.section().split('</header>')[0];
   assert.equal(sum.question.title,narratives[H3].title);assert.equal(sum.question.choice,false);assert.ok(html.includes('data-question="case-verified"')&&html.includes(narratives[H3].question)&&!html.includes('<team-question:'));assert.equal(sum.question.goalId,G1);assert.equal(sum.question.groups.length,1);
-  assert.ok(head5().includes(narratives[H3].question)&&!head5().includes(H1.slice(0,8)));assert.ok(folds.some(f=>f.key===c.t('{n} earlier revision',{n:1})&&f.body.includes(H1.slice(0,8))));
+  assert.ok(head5().includes(narratives[H3].question)&&!head5().includes(H1.slice(7,15)));assert.ok(folds.some(f=>f.key===c.t('{n} earlier revision',{n:1})&&f.body.includes(H1.slice(7,15))));
   const currentMember=attributed(message(S5,'current-member','alphalattice_alpha','answer','Current Goal answer',{reference:turnoverCase}));A.absorbPage(page('CONTINUED',[currentMember]));await TM.resolve(turnoverCase);await TM.verify(turnoverCase);sum=TM.summary();
   assert.equal(sum.participants,2);assert.equal(sum.question.title,narratives[H3].title);assert.ok(TM.section().includes('team-question-related')&&TM.section().includes(narratives[H3].question));assert.ok(head5().includes('FACT('+c.t('Participants')+'=2)'));
   A.absorbPage(page('CONTINUED',[attributed(message(S5,S5,'research_lead','question','Second Goal',{reference:turnoverCase}))]));sum=TM.summary();html=TM.section();
@@ -353,7 +356,7 @@ const op=(operation,phase,subject,extra={},itemExtra={})=>item('ProductOperation
   TM.chooseQuestion(turnoverCase);sum=TM.summary();html=TM.section();assert.equal(sum.question.goalId,G2);assert.equal(sum.question.title,narratives[H2].title);assert.ok(html.includes('data-question="case-verified"')&&html.includes(narratives[H2].question)&&html.includes('[ready:'+c.t('chosen')+']'));
   A.absorbPage(page('CONTINUED',[attributed(message(S5,S5,'research_lead','question','Unread Goal',{reference:'case:'+H4}))]));TM.refresh();assert.equal(TM.summary().question.ref,turnoverCase);assert.ok(TM.section().includes(narratives[H2].question));await new Promise(r=>setImmediate(r));
   assert.equal(TM.resolved().get('case:'+H4).failure,'goal.revision_unknown');assert.equal(TM.summary().question.ref,turnoverCase);const readCount5=narrativeReads.length;TM.section();TM.summary();assert.equal(narrativeReads.length,readCount5);
-  TM.chooseQuestion('case:'+H4);sum=TM.summary();html=TM.section();assert.equal(sum.question.kind,'case-declared');assert.equal(sum.question.text,c.t('Goal {ref}',{ref:H4.slice(0,c.SHORT.hash)}));assert.ok(html.includes('data-question="case-declared"')&&head5().includes(c.t('Goal {ref}',{ref:H4.slice(0,c.SHORT.hash)}))&&html.includes('[ready:'+c.t('chosen')+']'));
+  TM.chooseQuestion('case:'+H4);sum=TM.summary();html=TM.section();assert.equal(sum.question.kind,'case-declared');assert.equal(sum.question.text,c.t('Goal {ref}',{ref:H4.slice(7,7+c.SHORT.hash)}));assert.ok(html.includes('data-question="case-declared"')&&head5().includes(c.t('Goal {ref}',{ref:H4.slice(7,7+c.SHORT.hash)}))&&html.includes('[ready:'+c.t('chosen')+']'));
   TM.chooseQuestion('');html=TM.section();assert.equal(TM.summary().question.text,narratives[H3].question);assert.ok(html.includes('data-question="case-verified"')&&head5().includes(narratives[H3].question));Object.assign(c,was5);
   const S6='sess-parent-6';
   A.absorbPage(page('CONTINUED',[
@@ -589,7 +592,7 @@ const op=(operation,phase,subject,extra={},itemExtra={})=>item('ProductOperation
   }
   Object.assign(c,{table:was51.table,tr:was51.tr,pageOf:was51.pageOf,pager:was51.pager,hint:was51.hint,t:was51.t,I18N:was51.I18N});c.app.page=was51.page;
   // Product records lead with the session's work; time-only duplicate groups stay closed.
-  const S53='sess-parent-53',P53='5'.repeat(64);
+  const S53='sess-parent-53',P53=digest('5');
   const originalGroupRow=c.evidenceRow,originalGroupLink=c.link,groupReadings=[],namedLinks=[],unnamedWhys=[];
   let unnamed53;
   c.evidenceRow=(r,x,o={})=>{if(o.cls==='team-fold-row')groupReadings.push({why:String(r.why),columns:o.columns,props:o.props});if(r.id===unnamed53.observation_id)unnamedWhys.push(String(r.why));return originalGroupRow(r,x,o);};
@@ -624,8 +627,8 @@ const op=(operation,phase,subject,extra={},itemExtra={})=>item('ProductOperation
   const wasLink54=c.link;c.link=(label,page)=>`<a href="#page=${page}">${label}</a>`;
   const S54=S53,reads54=[],ID54=(n)=>'54540000-0000-4000-8000-00000000000'+n;
   const T54=(n,extra={})=>({task_id:ID54(n),task_kind:'research_experiment',lifecycle:'SUCCEEDED',goal_summary:'Refit '+n,last_activity_at:'2026-09-30T10:0'+n+':00Z',submitted_by:{vendor:'claude',session:S54,goal_id:null},final_state:'SUCCEEDED',artifact:null,...extra});
-  const G54=(n,extra={})=>({goal_id:'g-54-'+n,goal_hash:String(n).repeat(64),title:'Refit goal '+n,state:'OPEN',outcome:null,sessions:[{vendor:'claude',session_id:S54}],deliverables:null,completion:null,...extra});
-  let pages54={tasks:{'':{tasks:[T54(1,{artifact:{artifact_kind:'ResearchExecutionEvidence',artifact_hash:'a'.repeat(64),availability:'AVAILABLE',failure_code:null}}),
+  const G54=(n,extra={})=>({goal_id:'g-54-'+n,goal_hash:digest(String(n)),title:'Refit goal '+n,state:'OPEN',outcome:null,sessions:[{vendor:'claude',session_id:S54}],deliverables:null,completion:null,...extra});
+  let pages54={tasks:{'':{tasks:[T54(1,{artifact:{artifact_kind:'ResearchExecutionEvidence',artifact_hash:digest('a'),availability:'AVAILABLE',failure_code:null}}),
     T54(2,{task_kind:'portfolio_run',artifact:{artifact_kind:'PortfolioResearchResult',artifact_hash:null,availability:'UNAVAILABLE',failure_code:'tasks.artifact_readback_absent'}}),
     T54(3,{lifecycle:'RUNNING',final_state:null,submitted_by:{vendor:'claude',session:S54,goal_id:'g-54'}})],next_cursor:ID54(3)},
     [ID54(3)]:{tasks:[T54(4,{task_kind:'data_update',lifecycle:'BLOCKED',final_state:'BLOCKED'})],next_cursor:null}},
@@ -646,7 +649,7 @@ const op=(operation,phase,subject,extra={},itemExtra={})=>item('ProductOperation
   const tasks54=box54(html,'Tasks'),goals54=box54(html,'Goals');
   assert.ok(tasks54.includes('Task|State|Artifact|Goal|Last activity'),'the Tasks box: one table, a Goal column where a row names one: '+tasks54.slice(0,120));
   const rows54=tasks54.split('<tr>').slice(1).map((r)=>r.split('</tr>')[0]);
-  assert.ok(rows54[0].includes('<task:'+ID54(1)+'>{Refit 1}')&&rows54[0].includes('ResearchExecutionEvidence')&&rows54[0].includes('a'.repeat(64)),'a read-back artifact: its kind and hash, the Task opens: '+rows54[0]);
+  assert.ok(rows54[0].includes('<task:'+ID54(1)+'>{Refit 1}')&&rows54[0].includes('ResearchExecutionEvidence')&&rows54[0].includes(digest('a')),'a read-back artifact: its kind and hash, the Task opens: '+rows54[0]);
   assert.ok(rows54[1].includes('Unavailable')&&rows54[1].includes('tasks.artifact_readback_absent'),'one its owner cannot read back says so, with the code: '+rows54[1]);
   assert.ok(rows54[2].includes('[RUNNING:')&&rows54[2].includes('g-54')&&!rows54[2].includes('Unavailable'),'a moving Task: its lifecycle, no artifact yet, its goal: '+rows54[2]);
   assert.ok(goals54.includes('Goal|Check|Deliverables|Checked')&&!goals54.includes('ResearchExecutionEvidence'),'the Goals box apart from the artifacts: '+goals54.slice(0,120));
@@ -1045,7 +1048,7 @@ const op=(operation,phase,subject,extra={},itemExtra={})=>item('ProductOperation
   const selectProduct=(receipt)=>{c.app.page='team';hash.value='#page=team&team='+productSession+(receipt?'&event='+receipt.observation_id:'');return teamSection();};
   const productResponse=(receipt,contribution={text:productText,references:[TASK]},epoch='e1')=>({
     workspace_id:'qa',observation_id:receipt.observation_id,epoch,
-    accepted_answer:{status:'AVAILABLE',observation_id:receipt.observation_id,record_kind:'PRODUCT_OPERATION',...receipt.payload.subject,source_kind:receipt.source_kind,source_id:receipt.source_id,authority:receipt.authority,verdict:receipt.payload.status,answer_digest:'b'.repeat(64),recorded_agent:{host:'codex',session_id:'original-sealed-session',agent_id:null,role:null,model:null,efforts:[],basis:'NOT_OBSERVED'},contribution}
+    accepted_answer:{status:'AVAILABLE',observation_id:receipt.observation_id,record_kind:'PRODUCT_OPERATION',...receipt.payload.subject,source_kind:receipt.source_kind,source_id:receipt.source_id,authority:receipt.authority,verdict:receipt.payload.status,answer_digest:digest('b'),recorded_agent:{host:'codex',session_id:'original-sealed-session',agent_id:null,role:null,model:null,efforts:[],basis:'NOT_OBSERVED'},contribution}
   });
   const productRoles=['ALPHA','CRO','DATA','ANALYST','FACTOR','PORTFOLIO','RISK'];
   for(const lang of ['en','zh']) {

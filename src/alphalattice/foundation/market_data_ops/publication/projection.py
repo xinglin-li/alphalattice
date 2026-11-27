@@ -18,21 +18,23 @@ from alphalattice.foundation.market_data_ops.sources.contracts import (
     ProviderAdjustedClosePoint,
     RawDailyBar,
 )
-from alphalattice.kernel.identity import identity_sha256, integrity_sha256
+from alphalattice.kernel.identity import identity_blake3, integrity_blake3, tagged_blake3
 
 DailyPriceBasis = Literal["unadjusted", "split_adjusted"]
 _RAW_BAR_FIELDS: Final = tuple(item.name for item in fields(RawDailyBar))
 
-ADJUSTED_CLOSE_DIAGNOSTIC_POLICY_HASH = identity_sha256(
-    json.dumps(
-        {
-            "comparison": "provider-backward-action-adjustment",
-            "threshold_bps": 5.0,
-        },
-        sort_keys=True,
-        separators=(",", ":"),
-    ).encode("utf-8")
-).hexdigest()
+ADJUSTED_CLOSE_DIAGNOSTIC_POLICY_HASH = tagged_blake3(
+    identity_blake3(
+        json.dumps(
+            {
+                "comparison": "provider-backward-action-adjustment",
+                "threshold_bps": 5.0,
+            },
+            sort_keys=True,
+            separators=(",", ":"),
+        ).encode("utf-8")
+    )
+)
 
 
 class FeatureAdmissionBlocked(ValueError):
@@ -90,7 +92,7 @@ def _canonical_hash(value: object) -> str:
     payload = json.dumps(
         value, ensure_ascii=False, sort_keys=True, separators=(",", ":"), default=str
     )
-    return identity_sha256(payload.encode("utf-8")).hexdigest()
+    return tagged_blake3(identity_blake3(payload.encode("utf-8")))
 
 
 def _plain_number(value: object) -> str | None:
@@ -153,7 +155,7 @@ def _bar_hash(bar: RawDailyBar) -> str:
         f'"open":{open_},"provider":{provider},'
         f'"session_date":"{bar.session_date.isoformat()}","volume":{volume}}}'
     )
-    return identity_sha256(payload.encode("utf-8")).hexdigest()
+    return tagged_blake3(identity_blake3(payload.encode("utf-8")))
 
 
 def action_set_hash(actions: Iterable[CorporateActionEvent]) -> str:
@@ -187,9 +189,9 @@ def action_set_hash(actions: Iterable[CorporateActionEvent]) -> str:
             ),
         )
     ]
-    return identity_sha256(
-        json.dumps(payload, sort_keys=True, separators=(",", ":")).encode("utf-8")
-    ).hexdigest()
+    return tagged_blake3(
+        identity_blake3(json.dumps(payload, sort_keys=True, separators=(",", ":")).encode("utf-8"))
+    )
 
 
 def provider_adjusted_close_evidence_hash(
@@ -205,9 +207,9 @@ def provider_adjusted_close_evidence_hash(
         }
         for item in sorted(points, key=lambda item: item.session_date)
     ]
-    return integrity_sha256(
-        json.dumps(payload, sort_keys=True, separators=(",", ":")).encode("utf-8")
-    ).hexdigest()
+    return tagged_blake3(
+        integrity_blake3(json.dumps(payload, sort_keys=True, separators=(",", ":")).encode("utf-8"))
+    )
 
 
 def _actions_by_session(

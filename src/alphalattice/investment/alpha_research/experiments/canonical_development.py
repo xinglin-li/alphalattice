@@ -495,12 +495,9 @@ class CanonicalAlphaDevelopmentService:
         decision is made from what is durable rather than from a flag.
         """
 
-        root = self.store.root / "current" / "canonical-target-evidence"
-        if not root.is_dir():
-            return ()
         found: list[str] = []
-        for path in sorted(root.glob("*.json")):
-            evidence = self.store.load_canonical_target_evidence(path.stem)
+        for digest in self.store.development_category_identities("canonical-target-evidence"):
+            evidence = self.store.load_canonical_target_evidence(digest)
             binding = self.store.load_canonical_target_recipe_binding(evidence.recipe_binding_hash)
             if binding.causal_outcome_snapshot_hash == snapshot_hash:
                 found.append(evidence.evidence_hash)
@@ -524,8 +521,10 @@ class CanonicalAlphaDevelopmentService:
         with more than one can refuse rather than pick.
         """
 
-        forecasts_root = self.store.development_category_dir("canonical-dispersion-forecasts")
-        if not forecasts_root.is_dir():
+        forecast_hashes = self.store.development_category_identities(
+            "canonical-dispersion-forecasts"
+        )
+        if not forecast_hashes:
             return ()
         # A Stage 1 study seals the score binding in the reference arm's own
         # development store while the dispersion forecast lives beside the
@@ -536,19 +535,16 @@ class CanonicalAlphaDevelopmentService:
         if development_score_store is not None:
             binding_stores.append(development_score_store)
         forecasts = [
-            self.store.load_canonical_dispersion_forecast(path.stem)
-            for path in sorted(forecasts_root.glob("*.json"))
+            self.store.load_canonical_dispersion_forecast(digest) for digest in forecast_hashes
         ]
         matched: list[tuple[str, str]] = []
         pairs = [
-            (store, path)
+            (store, digest)
             for store in binding_stores
-            for path in sorted(
-                store.development_category_dir("canonical-score-bindings").glob("*.json")
-            )
+            for digest in store.development_category_identities("canonical-score-bindings")
         ]
-        for store, path in pairs:
-            score_binding = store.load_canonical_score_binding(path.stem)
+        for store, digest in pairs:
+            score_binding = store.load_canonical_score_binding(digest)
             if candidate_id is not None and score_binding.candidate_id != candidate_id:
                 continue
             for forecast in forecasts:

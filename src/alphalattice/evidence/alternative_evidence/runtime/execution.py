@@ -45,6 +45,7 @@ from alphalattice.control.observation_runtime.telemetry.process_metrics import (
     runtime_machine_capacity,
 )
 from alphalattice.kernel.execution import EVENTS, EventDeadline
+from alphalattice.kernel.identity import BLAKE3_PATTERN
 from alphalattice.kernel.resources import (
     ResourceAmounts,
     ResourceLeases,
@@ -179,7 +180,7 @@ class TaskReaderExecution(_Record):
 class ModelFitExecution(_Record):
     """What one Alpha study's LightGBM fits ran with, and why."""
 
-    program_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
+    program_hash: str = Field(pattern=BLAKE3_PATTERN)
     cpu_budget: Literal["auto"] | Cores
     cores: int = Field(ge=1)
     lightgbm_threads: int = Field(ge=1)

@@ -59,6 +59,7 @@ from alphalattice.investment.portfolio_strategy_lab.application.finalization imp
     ProtectedPackageInspector,
 )
 from alphalattice.kernel.clock import utc_now
+from alphalattice.kernel.identity import BLAKE3_PATTERN, blake3_from_filename
 
 
 class ProtectedValidationGateError(ValueError):
@@ -71,12 +72,12 @@ class PermitClaimRecord(BaseModel):  # type: ignore[misc]
     model_config = ConfigDict(extra="forbid", frozen=True)
 
     kind: Literal["PermitClaimRecord"] = "PermitClaimRecord"
-    permit_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
-    candidate_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
-    package_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
-    receipt_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
+    permit_hash: str = Field(pattern=BLAKE3_PATTERN)
+    candidate_hash: str = Field(pattern=BLAKE3_PATTERN)
+    package_hash: str = Field(pattern=BLAKE3_PATTERN)
+    receipt_hash: str = Field(pattern=BLAKE3_PATTERN)
     claimed_at: datetime
-    claim_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
+    claim_hash: str = Field(pattern=BLAKE3_PATTERN)
 
     @classmethod
     def create(cls, **values: object) -> Self:
@@ -244,7 +245,10 @@ def validation_upgrade_family(workspace_id: Callable[[Path], str | None]) -> Fam
             for path in paths:
                 if not path.resolve().is_relative_to(workspace.resolve()):
                     raise ProtectedValidationGateError("protected_validation.upgrade_path_invalid")
-                value = store.committed.open(kind, path.stem)
+                key = blake3_from_filename(path.stem)
+                if key is None:
+                    raise ProtectedValidationGateError("protected_validation.upgrade_path_invalid")
+                value = store.committed.open(kind, key)
                 if value is None:
                     raise ProtectedValidationGateError(
                         "protected_validation.upgrade_record_missing"

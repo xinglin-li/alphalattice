@@ -37,6 +37,7 @@ from alphalattice.investment.risk_research.surfaces.decomposition import (
     FactorIdiosyncraticRiskSurface,
     RiskAllocationProjection,
 )
+from alphalattice.kernel.identity import is_blake3
 
 LISTINGS = 120
 BUCKETS = 4
@@ -301,7 +302,7 @@ def test_the_adapter_declares_itself_closed_form_and_solver_free() -> None:
     assert adapter.solver_backed is False
     assert adapter.policy_id == TRANCHE_BOOK_POLICY_ID
     assert binding.solver_semantics == "CLOSED_FORM_TRANCHE_SLEEVE_SCHEDULE_NO_OPTIMIZER"
-    assert len(binding.adapter_implementation_hash) == 64
+    assert is_blake3(binding.adapter_implementation_hash)
     semantics = adapter.selection_allocation_semantics
     assert semantics.allocation_method == "CLOSED_FORM_TRANCHE_SLEEVE_SCHEDULE_BOOK"
     assert semantics.optimizer_selection_claim == "NO_OPTIMIZER_SELECTS_OR_ALLOCATES_THE_BOOK"

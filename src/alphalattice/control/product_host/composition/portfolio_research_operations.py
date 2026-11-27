@@ -8,7 +8,6 @@ Task registry and readback owners into one finite set of product operations.
 from __future__ import annotations
 
 import json
-import re
 import threading
 from collections.abc import Callable, Iterator, Mapping
 from contextlib import AbstractContextManager, contextmanager, nullcontext, suppress
@@ -287,6 +286,7 @@ from alphalattice.investment.portfolio_strategy_lab.reporting.static import (
 )
 from alphalattice.kernel.door import DoorPort, DoorRefusal, question_key
 from alphalattice.kernel.execution import EVENTS, TIMERS, EventDeadline, Timers
+from alphalattice.kernel.identity import is_blake3
 from alphalattice.protocols.actor_execution.answers import (
     AgentAnswerRecord,
     AgentRun,
@@ -2752,7 +2752,7 @@ class PortfolioResearchOperations:
         if expected is None:
             return None
         read = {"recovery": {"operation": "TASK_RECOVERY", "task_id": current["task_id"]}}
-        if not isinstance(expected, str) or not re.fullmatch(r"[0-9a-f]{64}", expected):
+        if not isinstance(expected, str) or not is_blake3(expected):
             return {
                 "status": "REFUSED",
                 "failure_code": "local_application.expected_task_hash_invalid",

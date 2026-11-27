@@ -11,7 +11,7 @@ import pytest
 
 from alphalattice.capabilities.domain_contracts.identity import canonical_hash
 from alphalattice.control.workspace_runtime.artifacts import ArtifactResolver
-from alphalattice.control.workspace_runtime.verified_facts import file_sha256
+from alphalattice.control.workspace_runtime.verified_facts import verified_file_digest
 from alphalattice.foundation.feature_engine.panels.closure_artifacts import (
     PanelClosureArtifactStore,
 )
@@ -72,7 +72,7 @@ def test_physical_encoding_and_provenance_do_not_change_logical_identity(
         for chunk in manifest["chunks"]
     }
     assert len(records) == len(chunks)
-    assert dict(records) == {path: file_sha256(path) for path in chunks}
+    assert dict(records) == {path: verified_file_digest(path) for path in chunks}
     second_marker = publisher.publish_snapshot(second, published_at=_now())
 
     assert first_marker.logical_panel_hash == second_marker.logical_panel_hash
@@ -128,14 +128,14 @@ def test_policy_rotates_revision_without_changing_logical_content_manifest(
         suffix="policy-a",
         values=(1.0, 2.0, 3.0, 4.0),
         valid=(True, True, True, True),
-        policy_hash="4" * 64,
+        policy_hash=canonical_hash("policy-a"),
     )
     second = _publish_fixture(
         resolver,
         suffix="policy-b",
         values=(1.0, 2.0, 3.0, 4.0),
         valid=(True, True, True, True),
-        policy_hash="5" * 64,
+        policy_hash=canonical_hash("policy-b"),
     )
     store = PanelLogicalArtifactStore(PanelClosureArtifactStore(resolver))
     publisher = PanelLogicalIdentityPublisher(resolver=resolver, store=store)
@@ -221,7 +221,10 @@ def test_current_pointer_compare_and_swap_is_fail_closed(tmp_path: Path) -> None
 
     store.compare_and_swap_current(expected_marker_hash=None, next_marker=first_marker)
     with pytest.raises(ValueError, match="identity_migration_cas_failed"):
-        store.compare_and_swap_current(expected_marker_hash="f" * 64, next_marker=second_marker)
+        store.compare_and_swap_current(
+            expected_marker_hash=canonical_hash("different-current-marker"),
+            next_marker=second_marker,
+        )
     assert store.current_marker() == first_marker
 
 
@@ -241,7 +244,9 @@ def test_an_unchanged_chunk_is_taken_as_published(tmp_path: Path, monkeypatch) -
         publisher = PanelLogicalIdentityPublisher(resolver=resolver, store=store)
         if warm:
             publisher.publish_snapshot(_publish_fixture(resolver, **kept), published_at=_now())
-        later = _publish_fixture(resolver, **kept, temporal_identity_hash="a" * 64)
+        later = _publish_fixture(
+            resolver, **kept, temporal_identity_hash=canonical_hash("later-session-axis")
+        )
         markers.append(publisher.publish_snapshot(later, published_at=_now()))
     cold, warm_marker = markers
     for field in (
@@ -260,17 +265,20 @@ def _publish_fixture(
     values: tuple[float, ...],
     valid: tuple[bool, ...],
     metadata_note: str = "same",
-    policy_hash: str = "4" * 64,
-    catalog_hash: str = "3" * 64,
+    policy_hash: str = canonical_hash("policy-a"),
+    catalog_hash: str = canonical_hash("factor-catalog"),
     include_legacy_extra_factor: bool = False,
-    temporal_identity_hash: str = "9" * 64,
+    temporal_identity_hash: str = canonical_hash("first-session-axis"),
 ) -> str:
+    manifest_revision = canonical_hash("market-manifest")
+    sector_revision = canonical_hash("sector-revision")
+    schema_hash = canonical_hash("panel-schema")
     sessions = (date(2026, 1, 2), date(2026, 1, 5))
     listings = ("L01", "L02")
     factor_values = pa.array(values, mask=np.logical_not(valid), type=pa.float64())
     columns: dict[str, object] = {
-        "manifest_revision": ["1" * 64] * 4,
-        "sector_revision": ["2" * 64] * 4,
+        "manifest_revision": [manifest_revision] * 4,
+        "sector_revision": [sector_revision] * 4,
         "catalog_hash": [catalog_hash] * 4,
         "policy_hash": [policy_hash] * 4,
         "session_date": pa.array(
@@ -278,7 +286,7 @@ def _publish_fixture(
         ),
         "listing_id": [listings[0], listings[1], listings[0], listings[1]],
         "row_hash": [canonical_hash([suffix, index]) for index in range(4)],
-        "materialization_receipt_hash": ["6" * 64] * 4,
+        "materialization_receipt_hash": [canonical_hash("materialization-receipt")] * 4,
         "factor_a": factor_values,
     }
     if include_legacy_extra_factor:
@@ -291,7 +299,7 @@ def _publish_fixture(
         metadata={
             "panel_binding_hash": canonical_hash(["binding", suffix]),
             "calendar_year": "2026",
-            "schema_hash": "7" * 64,
+            "schema_hash": schema_hash,
             "note": metadata_note,
         },
     )
@@ -308,11 +316,11 @@ def _publish_fixture(
             }
         },
         "lineage": {
-            "manifest_revision": "1" * 64,
-            "sector_revision": "2" * 64,
+            "manifest_revision": manifest_revision,
+            "sector_revision": sector_revision,
             "catalog_hash": catalog_hash,
             "policy_hash": policy_hash,
-            "spy_revision": "8" * 64,
+            "spy_revision": canonical_hash("spy-revision"),
         },
     }
     identity = {
@@ -325,7 +333,7 @@ def _publish_fixture(
         "temporal_identity_hash": temporal_identity_hash,
         "active_listing_count": 2,
         "listing_set_hash": canonical_hash(listings),
-        "schema_hash": "7" * 64,
+        "schema_hash": schema_hash,
         "chunks": [
             {
                 "year": 2026,
@@ -369,7 +377,9 @@ def test_the_write_batch_does_not_enter_a_panels_derivation_binding(tmp_path: Pa
         manifest = _publish_fixture(resolver, suffix="batch", values=(1.0,) * 4, valid=(True,) * 4)
         ledger = SimpleNamespace(
             panel_binding=lambda _snapshot: SimpleNamespace(
-                catalog_hash="3" * 64, sector_map_hash=None, closure_head_hash=head
+                catalog_hash=canonical_hash("factor-catalog"),
+                sector_map_hash=None,
+                closure_head_hash=head,
             )
         )
         store = PanelLogicalArtifactStore(PanelClosureArtifactStore(resolver))
@@ -384,6 +394,7 @@ def test_the_write_batch_does_not_enter_a_panels_derivation_binding(tmp_path: Pa
         )
         return binding
 
-    eight, sixteen = published("1" * 64, tmp_path / "eight"), published("2" * 64, tmp_path / "16")
+    eight = published(canonical_hash("eight-listings-head"), tmp_path / "eight")
+    sixteen = published(canonical_hash("sixteen-listings-head"), tmp_path / "16")
     assert eight.closure_head_hash is None
     assert eight == sixteen

@@ -52,6 +52,7 @@ from alphalattice.investment.portfolio_management.mandates.paired_panel_grid imp
     RANK_BUFFERED_TURNOVER_SUCCESSOR_GRID,
     PairedPanelPortfolioGrid,
 )
+from alphalattice.kernel.identity import BLAKE3_PATTERN
 from alphalattice.protocols.research_authoring.contracts import (
     AuthoringError,
     DeskProgramCompilation,
@@ -71,7 +72,7 @@ type PanelExecutionStage = Literal[
     "END_TO_END",
 ]
 
-_HASH = r"^[0-9a-f]{64}$"
+_HASH = BLAKE3_PATTERN
 type PanelModelFamilyId = Literal["RIDGE", "ELASTIC_NET", "LIGHTGBM"]
 """The estimator families this Desk installs.
 

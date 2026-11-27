@@ -77,7 +77,9 @@ from alphalattice.investment.portfolio_strategy_lab.reporting.static import (
     format_book_change,
     format_book_weight,
 )
+from alphalattice.kernel.identity import blake3_filename
 from alphalattice.protocols.research_authoring.contracts import AuthoringError
+from tests._support.identity_fixtures import fixture_digest
 from tests.portfolio_strategy_lab.host_requests import _json, _request
 from tests.portfolio_strategy_lab.local_web_support import (
     _agent,
@@ -1273,7 +1275,8 @@ def test_export_describes_the_result_not_whatever_is_in_the_form(
 
 
 def test_an_unfrozen_candidate_reports_not_frozen(read_only_live: LocalPortfolioWebSession) -> None:
-    status = _json(read_only_live, f"/api/finalization?candidate_hash={'a' * 64}")
+    candidate_hash = fixture_digest("unfrozen candidate")
+    status = _json(read_only_live, f"/api/finalization?candidate_hash={candidate_hash}")
     assert status["disposition"] == "NOT_FROZEN"
     assert status["candidate"] is None
 
@@ -1732,11 +1735,12 @@ def test_results_selects_reused_task_metadata_without_scanning_reports(
         stage_id=definition.stage_id,
         observed_at=task.admitted_at,
     )
+    result_hash = fixture_digest("metadata result")
     evidence = (
         TaskEvidence(
             evidence_kind=definition.required_evidence_kinds[0],
-            reference=f"fixture://portfolio-result/{'c' * 64}",
-            content_hash="c" * 64,
+            reference=f"fixture://portfolio-result/{result_hash}",
+            content_hash=result_hash,
         ),
     )
     registry.mark_ready(
@@ -1767,10 +1771,12 @@ def test_results_selects_reused_task_metadata_without_scanning_reports(
         PortfolioResearchPipelineManifest.create(
             workspace_id=live.operations.workspace_manifest.workspace_id,
             task_id=task,
-            task_record_hash=completed.record_hash if task == first else str(index) * 64,
-            program_hash="b" * 64,
-            result_hash="c" * 64,
-            report_hash="d" * 64,
+            task_record_hash=completed.record_hash
+            if task == first
+            else fixture_digest(("reused task", index)),
+            program_hash=fixture_digest("metadata program"),
+            result_hash=result_hash,
+            report_hash=fixture_digest("metadata report"),
             completed_at=moment + timedelta(minutes=index),
         )
         for index, task in enumerate((first, reused), start=1)
@@ -1783,7 +1789,7 @@ def test_results_selects_reused_task_metadata_without_scanning_reports(
 
     monkeypatch.setattr(type(live.operations), "report", no_report)
     collection = _json(live, "/api/results")
-    assert next(row for row in collection["results"] if row["result_hash"] == "c" * 64)[
+    assert next(row for row in collection["results"] if row["result_hash"] == result_hash)[
         "task_id"
     ] == str(first)
     index_path = pipeline._task_index(reused)
@@ -1796,7 +1802,8 @@ def test_results_selects_reused_task_metadata_without_scanning_reports(
         )
     elif association in {"missing-keys", "wrong-shape"}:
         index_path.write_text("{}" if association == "missing-keys" else "[]", encoding="utf-8")
-    pipeline._result_index("e" * 64).write_text("{", encoding="utf-8")
+    bad_hash = fixture_digest("damaged result index")
+    pipeline._result_index(bad_hash).write_text("{", encoding="utf-8")
     browser = _json(live, f"/api/results?task_id={reused}")
     agent = _agent(live, PortfolioResearchAgentRequest(operation="RESULTS", task_id=reused))
     assert agent == browser
@@ -1822,7 +1829,6 @@ def test_results_selects_reused_task_metadata_without_scanning_reports(
             assert refusal["failure_code"] == "portfolio_application.pipeline_task_index_tampered"
     healthy_task_id = str(first)
     healthy_result = {"result_hash": values[0].result_hash}
-    bad_hash = "e" * 64
     pipeline._result_index(bad_hash).write_text("{", encoding="utf-8")
     agent_results = _agent(live, PortfolioResearchAgentRequest(operation="RESULTS"))
     assert agent_results == _json(live, "/api/results")
@@ -1974,14 +1980,14 @@ def test_storage_cleanup_offers_its_exact_confirmation(tmp_path: Path) -> None:
         pending = tmp_path / "artifacts/storage-governance/input-cleanup-started"
         pending.mkdir(parents=True, exist_ok=True)
         intent = {"plan_hash": plan["plan_hash"]}
-        (pending / f"{canonical_hash(intent)}.json").write_text(
+        (pending / f"{blake3_filename(canonical_hash(intent))}.json").write_text(
             json.dumps(intent), encoding="utf-8"
         )
         blocked = _json(
             live,
             "/api/workspace/storage/pin",
             method="POST",
-            payload={"input_binding_hash": "a" * 64, "input_pinned": True},
+            payload={"input_binding_hash": fixture_digest("input to pin"), "input_pinned": True},
         )
         assert blocked["status"] == "REFUSED"
         assert blocked["failure_code"] == "storage.cleanup_recovery_required"
@@ -2578,7 +2584,7 @@ def test_bad_requests_admit_no_task_and_do_not_affect_portfolio(inputs: Path) ->
             session,
             "/api/experiments/run",
             method="POST",
-            payload={"experiment_plan_hash": "0" * 64},
+            payload={"experiment_plan_hash": fixture_digest("unpreviewed experiment plan")},
         )
         assert stale["status"] == "REFUSED" and "preview_required" in stale["failure_code"]
         assert len(session.session.task_control_registry.tasks()) == before
@@ -2646,7 +2652,8 @@ def test_alpha_sector_coverage_follows_the_selected_panel_axis(monkeypatch, tmp_
 
     from alphalattice.control.product_host.research_authoring import authority, execution
 
-    revision, sector_revision = "1" * 64, "2" * 64
+    revision = fixture_digest("source universe revision")
+    sector_revision = fixture_digest("source sector revision")
     manifest = SimpleNamespace(profile=SimpleNamespace(market_profile_id="fixture"))
     seen = []
 

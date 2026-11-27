@@ -16,6 +16,7 @@ from uuid import UUID
 from pydantic import BaseModel, ConfigDict, Field
 
 from alphalattice.capabilities.domain_contracts.identity import canonical_hash
+from alphalattice.kernel.identity import blake3_from_filename
 
 from .contracts import ResearchGoal, ResearchPlan, TaskInputEnvelope
 
@@ -67,7 +68,7 @@ def read_frozen(runtime_root: Path) -> tuple[tuple[TaskAdmissionRequest, str], .
             request = cast(TaskAdmissionRequest, TaskAdmissionRequest.model_validate_json(text))
         except (OSError, ValueError) as error:
             raise ValueError(f"task_control.admission_request_unreadable:{path.name}") from error
-        if path.stem != canonical_hash(request.model_dump(mode="json")):
+        if blake3_from_filename(path.stem) != canonical_hash(request.model_dump(mode="json")):
             raise ValueError(f"task_control.admission_request_unreadable:{path.name}")
         frozen.append((request, text))
     return tuple(sorted(frozen, key=lambda pair: pair[0].admission_sequence))

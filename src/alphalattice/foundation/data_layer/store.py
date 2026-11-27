@@ -348,21 +348,11 @@ class StorePort:
                 enable_catalog_wal(root)
             attach_catalog(lake, root)
         lake.execute("SET TimeZone = 'UTC'").complete()
-        catalog_matches(lake)  # before the views, which name its columns
-        if not storage.first(
-            lake.execute(
-                "SELECT 1 FROM duckdb_tables() WHERE database_name = 'lake'"
-                " AND schema_name = 'results' AND table_name = 'validation_receipt'"
-            )
-        ):  # the one additive 0.2.8 catalog upgrade
-            ddl = next(
-                sql
-                for sql in statements(schema_text("catalog.sql"))
-                if sql.partition("(")[0].strip().endswith("results.validation_receipt")
-            )
-            lake.execute(
-                ddl.replace("results.validation_receipt", "lake.results.validation_receipt", 1)
-            ).complete()
+        try:
+            catalog_matches(lake)  # before the views, which name its columns
+        except DataError:
+            lake.close()
+            raise
         port = cls(root, log, lake)
         for sql in view_statements(port.table_ids):
             if "log." not in sql:

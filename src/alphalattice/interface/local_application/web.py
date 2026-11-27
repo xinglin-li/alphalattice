@@ -92,7 +92,7 @@ from alphalattice.kernel.door import (
     answer_bytes,
     refusal_fields,
 )
-from alphalattice.kernel.identity import integrity_sha256
+from alphalattice.kernel.identity import integrity_sha256_browser_style
 from alphalattice.protocols.research_authoring.selection import rewrite_in_declaration_dialect
 
 if TYPE_CHECKING:
@@ -795,7 +795,7 @@ def report_policy(page: str) -> str:
     """
     digests = [
         "'sha256-"
-        + base64.b64encode(integrity_sha256(block.encode("utf-8")).digest()).decode()
+        + base64.b64encode(integrity_sha256_browser_style(block.encode("utf-8"))).decode()
         + "'"
         for block in re.findall(r"<style[^>]*>(.*?)</style>", page, flags=re.DOTALL)
     ]

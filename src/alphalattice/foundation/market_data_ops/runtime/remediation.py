@@ -10,9 +10,10 @@ from uuid import UUID, uuid5
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
-from alphalattice.kernel.identity import identity_sha256
+from alphalattice.kernel.identity import BLAKE3_PATTERN, identity_blake3, tagged_blake3
 
 _DATA_OPERATIONS_REQUEST_NAMESPACE = UUID("1c881a8f-9961-423b-9982-bf7ad17ac37d")
+_PANEL_MANIFEST_REF_PATTERN = "^playpen://feature-panel/manifests/" + BLAKE3_PATTERN[1:]
 
 
 def canonical_hash(value: object) -> str:
@@ -22,7 +23,7 @@ def canonical_hash(value: object) -> str:
     payload = json.dumps(
         value, ensure_ascii=False, sort_keys=True, separators=(",", ":"), default=str
     )
-    return identity_sha256(payload.encode("utf-8")).hexdigest()
+    return tagged_blake3(identity_blake3(payload.encode("utf-8")))
 
 
 class RemediationAction(StrEnum):
@@ -109,7 +110,7 @@ class RequalifyListingArgs(BaseModel):
     model_config = ConfigDict(extra="forbid", frozen=True)
 
     action: Literal[RemediationAction.REQUALIFY_LISTING]
-    qualification_receipt_hash: str = Field(pattern=r"^[a-f0-9]{64}$")
+    qualification_receipt_hash: str = Field(pattern=BLAKE3_PATTERN)
 
 
 class UseLastKnownGoodArgs(BaseModel):
@@ -118,7 +119,7 @@ class UseLastKnownGoodArgs(BaseModel):
     model_config = ConfigDict(extra="forbid", frozen=True)
 
     action: Literal[RemediationAction.USE_LAST_KNOWN_GOOD]
-    snapshot_ref: str = Field(pattern=r"^playpen://feature-panel/manifests/[a-f0-9]{64}$")
+    snapshot_ref: str = Field(pattern=_PANEL_MANIFEST_REF_PATTERN)
     bound_market_as_of_session: date
 
 
@@ -139,7 +140,7 @@ class VerifiedAliasArgs(BaseModel):
     action: Literal[RemediationAction.USE_VERIFIED_ALIAS]
     candidate_id: str = Field(pattern=r"^[a-z][a-z0-9_-]{2,119}$")
     provider_symbol: str = Field(min_length=1, max_length=80)
-    identity_evidence_hash: str = Field(pattern=r"^[a-f0-9]{64}$")
+    identity_evidence_hash: str = Field(pattern=BLAKE3_PATTERN)
 
 
 class EscalateForHumanArgs(BaseModel):
@@ -175,7 +176,7 @@ class RemediationOption(BaseModel):
     target_listing_ids: tuple[str, ...] = Field(min_length=1)
     disposition: PolicyDisposition
     policy_args: PolicyArgs
-    option_hash: str = Field(pattern=r"^[a-f0-9]{64}$")
+    option_hash: str = Field(pattern=BLAKE3_PATTERN)
 
     @model_validator(mode="after")
     def validate_hash_and_disposition(self) -> RemediationOption:
@@ -240,17 +241,17 @@ class FeaturePanelInputBinding(BaseModel):
 
     model_config = ConfigDict(extra="forbid", frozen=True)
 
-    snapshot_ref: str = Field(pattern=r"^playpen://feature-panel/manifests/[a-f0-9]{64}$")
-    snapshot_hash: str = Field(pattern=r"^[a-f0-9]{64}$")
-    metadata_hash: str = Field(pattern=r"^[a-f0-9]{64}$")
-    panel_binding_hash: str = Field(pattern=r"^[a-f0-9]{64}$")
-    panel_content_hash: str = Field(pattern=r"^[a-f0-9]{64}$")
-    sector_revision: str = Field(pattern=r"^[a-f0-9]{64}$")
-    catalog_hash: str = Field(pattern=r"^[a-f0-9]{64}$")
-    spy_revision: str = Field(pattern=r"^[a-f0-9]{64}$")
-    policy_hash: str = Field(pattern=r"^[a-f0-9]{64}$")
-    temporal_identity_hash: str = Field(pattern=r"^[a-f0-9]{64}$")
-    temporal_risk_hash: str = Field(pattern=r"^[a-f0-9]{64}$")
+    snapshot_ref: str = Field(pattern=_PANEL_MANIFEST_REF_PATTERN)
+    snapshot_hash: str = Field(pattern=BLAKE3_PATTERN)
+    metadata_hash: str = Field(pattern=BLAKE3_PATTERN)
+    panel_binding_hash: str = Field(pattern=BLAKE3_PATTERN)
+    panel_content_hash: str = Field(pattern=BLAKE3_PATTERN)
+    sector_revision: str = Field(pattern=BLAKE3_PATTERN)
+    catalog_hash: str = Field(pattern=BLAKE3_PATTERN)
+    spy_revision: str = Field(pattern=BLAKE3_PATTERN)
+    policy_hash: str = Field(pattern=BLAKE3_PATTERN)
+    temporal_identity_hash: str = Field(pattern=BLAKE3_PATTERN)
+    temporal_risk_hash: str = Field(pattern=BLAKE3_PATTERN)
     as_of_session: date
 
     @model_validator(mode="after")
@@ -274,7 +275,7 @@ class DataOperationsRequest(BaseModel):
     source_handoff_id: UUID
     session_id: UUID
     market: Literal["US"]
-    manifest_revision: str = Field(pattern=r"^[a-f0-9]{64}$")
+    manifest_revision: str = Field(pattern=BLAKE3_PATTERN)
     research_scope: Literal["explicit_symbols", "active_research_universe"]
     listing_ids: tuple[str, ...] = Field(min_length=1, max_length=1_000)
     symbols: tuple[str, ...] = Field(min_length=1, max_length=1_000)
@@ -283,7 +284,7 @@ class DataOperationsRequest(BaseModel):
     requested_range_start: date
     as_of_session: date
     research_goal: str = Field(min_length=3, max_length=400)
-    request_hash: str = Field(pattern=r"^[a-f0-9]{64}$")
+    request_hash: str = Field(pattern=BLAKE3_PATTERN)
 
     @model_validator(mode="after")
     def validate_request(self) -> DataOperationsRequest:
@@ -355,9 +356,9 @@ class PolicyDecision(BaseModel):
 
     model_config = ConfigDict(extra="forbid", frozen=True)
 
-    case_token: str = Field(pattern=r"^[a-f0-9]{64}$")
-    evidence_hash: str = Field(pattern=r"^[a-f0-9]{64}$")
+    case_token: str = Field(pattern=BLAKE3_PATTERN)
+    evidence_hash: str = Field(pattern=BLAKE3_PATTERN)
     option_id: str = Field(pattern=r"^[a-z][a-z0-9_-]{2,119}$")
-    option_hash: str = Field(pattern=r"^[a-f0-9]{64}$")
-    policy_hash: str = Field(pattern=r"^[a-f0-9]{64}$")
+    option_hash: str = Field(pattern=BLAKE3_PATTERN)
+    policy_hash: str = Field(pattern=BLAKE3_PATTERN)
     disposition: PolicyDisposition

@@ -45,6 +45,8 @@ from alphalattice.investment.alpha_research.targets.canonical import (
     CanonicalAlphaTargetRecipeBinding,
     seal_canonical_alpha_target_evidence,
 )
+from alphalattice.kernel.identity import is_blake3
+from tests._support.identity_fixtures import fixture_digest
 from tests._support.researcher_methodology_session_fixtures import (
     outcome_catalog_root as outcome_catalog_root,
 )
@@ -111,7 +113,7 @@ def test_host_publishes_the_canonical_target_and_its_scale(canonical_publication
     # And the implementation lineage terminates in facts, not another digest.
     implementation = published.dispersion.implementation
     assert implementation.implementation_owners
-    assert len(implementation.implementation_content_hash) == 64
+    assert is_blake3(implementation.implementation_content_hash)
     # The environment is provenance, never part of this binding (LAWS.md ID6).
     assert implementation.numerical_environment_hash is None
 
@@ -145,7 +147,7 @@ def test_forged_but_self_consistent_target_authority_is_refused(
         recipe=published.surface.recipe,
         target_catalog_hash=published.recipe_binding.target_catalog_hash,
         causal_outcome_snapshot_hash=published.recipe_binding.causal_outcome_snapshot_hash,
-        outcome_method_binding_hash="d" * 64,
+        outcome_method_binding_hash=fixture_digest("forged-outcome-method"),
         maturity_lag_sessions=published.recipe_binding.maturity_lag_sessions,
     )
     forged_evidence = seal_canonical_alpha_target_evidence(
@@ -161,7 +163,7 @@ def test_forged_but_self_consistent_target_authority_is_refused(
     unknown = CanonicalAlphaTargetRecipeBinding.create(
         recipe=published.surface.recipe,
         target_catalog_hash=published.recipe_binding.target_catalog_hash,
-        causal_outcome_snapshot_hash="e" * 64,
+        causal_outcome_snapshot_hash=fixture_digest("unknown-outcome-snapshot"),
         outcome_method_binding_hash=published.recipe_binding.outcome_method_binding_hash,
         maturity_lag_sessions=published.recipe_binding.maturity_lag_sessions,
     )
@@ -191,7 +193,7 @@ def test_host_refuses_a_legacy_snapshot_and_an_immature_axis(
     with pytest.raises((CanonicalDevelopmentError, ValueError, FileNotFoundError)):
         service.publish(
             CanonicalDevelopmentRequest(
-                causal_outcome_snapshot_hash="a" * 64,
+                causal_outcome_snapshot_hash=fixture_digest("unsealed-outcome-snapshot"),
                 sector_revision=revision,
                 holding_end_through=date(2026, 1, 5),
             )
@@ -227,7 +229,7 @@ class _StubBaseWorkspace:
 
 def _score_claim(published, candidate_id: str, **overrides):  # type: ignore[no-untyped-def]
     values = {
-        "alpha_score_surface_hash": "c" * 64,
+        "alpha_score_surface_hash": fixture_digest("matched-score-surface"),
         "candidate_id": candidate_id,
         "target_recipe_binding_hash": published.recipe_binding.binding_hash,
         "target_evidence_hash": published.evidence.evidence_hash,
@@ -252,9 +254,9 @@ def test_matched_handles_are_paired_by_lineage_not_by_hash_order(
     unrelated = _score_claim(
         published,
         "candidate-unrelated",
-        alpha_score_surface_hash="d" * 64,
-        target_recipe_binding_hash="0" * 64,
-        target_evidence_hash="1" * 64,
+        alpha_score_surface_hash=fixture_digest("unrelated-score-surface"),
+        target_recipe_binding_hash=fixture_digest("unrelated-target-recipe"),
+        target_evidence_hash=fixture_digest("unrelated-target-evidence"),
     )
     service.store.publish_canonical_score_binding(matching)
     service.store.publish_canonical_score_binding(unrelated)

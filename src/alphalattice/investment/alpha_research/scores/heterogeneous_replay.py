@@ -1,14 +1,14 @@
 """Fail-closed readback of the heterogeneous strategy's admitted evidence.
 
-Two roots, one discipline. The Gate I research package is historical value
-evidence; the sealed current closure is the product-readable materialisation
+Historical replay reads a sealed manifest and its four component score arrays.
+The current closure is the product-readable materialisation
 of the forty-eight admitted children, their per-vintage Feature surfaces and
 the raw momentum lane, derived once under a granted authority from the exact
 files the Gate M source readback names. Neither is installation authority by
 itself: the successor recipe in :mod:`heterogeneous_product` supplies the
 strategy, and each reader here proves a caller opened exactly the evidence its
 manifest names -- every file by hash, every payload by content identity, every
-pin against the installed constants -- before anything numerical is built.
+recipe against the installed strategy -- before anything numerical is built.
 Paths are explicit caller inputs. Nothing is discovered, copied or silently
 substituted from the absolute paths serialised by a research run.
 
@@ -21,15 +21,17 @@ other than the one the closure was sealed under.
 from __future__ import annotations
 
 import json
+import re
 from collections.abc import Mapping
 from dataclasses import dataclass, field
 from datetime import date
+from io import BytesIO
 from pathlib import Path, PurePosixPath, PureWindowsPath
-from typing import Any, Literal, Self, cast
+from typing import Annotated, Any, Final, Literal, Self, cast
 
 import numpy as np
 import numpy.typing as npt
-from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
+from pydantic import BaseModel, ConfigDict, Field, ValidationError, field_validator, model_validator
 
 from alphalattice.capabilities.alpha_modeling.adapters.lightgbm_dynamic_panel import (
     DynamicPanelLightGBMAdapter,
@@ -51,15 +53,7 @@ from alphalattice.capabilities.domain_contracts.identity import canonical_hash
 from alphalattice.investment.alpha_research.scores.heterogeneous_product import (
     COMPONENT_IDS,
     INSTALLED_HETEROGENEOUS_ALPHA_STRATEGY,
-    LIVE_COMPONENT_MODEL_SET_HASHES,
-    LIVE_MODEL_CLOSURE_MANIFEST_HASH,
     LIVE_MODEL_VINTAGES,
-    LIVE_SCORE_CLOSURE_RECEIPT_HASH,
-    LIVE_SOURCE_READBACK_SHA256,
-    SUCCESSOR_PACKAGE_HASH,
-    SUCCESSOR_REPLAY_RESULT_HASH,
-    SUCCESSOR_REPORT_CONTRACT_HASH,
-    SUCCESSOR_VALIDATION_CONTRACT_HASH,
     ComponentId,
     HeterogeneousLaneValueBinding,
     HeterogeneousModelSetAuthority,
@@ -76,30 +70,18 @@ from alphalattice.investment.alpha_research.scores.product_replay import (
     HeterogeneousVintageFeatureSurface,
     live_vintages,
 )
-from alphalattice.kernel.identity import integrity_sha256
+from alphalattice.kernel.identity import (
+    BLAKE3_PATTERN,
+    FileDigestTrust,
+    integrity_blake3,
+    tagged_blake3,
+)
 
 type FloatArray = npt.NDArray[np.float64]
-
-_PACKAGE_FILE_SHA256 = "4c43e0d46df636e5ef8f8ba8a1f1642874f630e52264fb028ed77b2b477f7a19"
-_WEIGHTS_SHA256 = "2d2828ab2d709d2974aec57eb345dcc1884bfe4128166bb236eddea409d21400"
-_LEDGER_SHA256 = "3a625328342da27ed5ade9df1f9398b702adcb75d07244c725244977033bbacb"
-_REPORT_FILE_SHA256 = "ed5e292917f7e865cc0e7f3bc7362e29b077ea929054ed6fc877129dc6e67f99"
-_VALIDATION_FILE_SHA256 = "ecfacc31d9cac0ed45e821401133d12ae80f7157b2b94dbceec287ae3ce3753c"
-_REPLAY_FILE_SHA256 = "e1195d370d8a10e1937d83e650e20adaeac7b20b12a71ffe71c2a9488efea32c"
 
 
 class HeterogeneousReplayError(ValueError):
     """Stable refusal for package, array, axis or readback drift."""
-
-
-def _sha256(path: Path) -> str:
-    if not path.is_file():
-        raise HeterogeneousReplayError("alpha_research.heterogeneous_evidence_absent")
-    digest = integrity_sha256()
-    with path.open("rb") as handle:
-        for block in iter(lambda: handle.read(1 << 20), b""):
-            digest.update(block)
-    return digest.hexdigest()
 
 
 def _json(path: Path) -> dict[str, Any]:
@@ -112,48 +94,91 @@ def _json(path: Path) -> dict[str, Any]:
     return cast(dict[str, Any], value)
 
 
-def _sealed(payload: Mapping[str, Any], field: str, expected: str) -> None:
-    measured = canonical_hash({key: value for key, value in payload.items() if key != field})
-    if payload.get(field) != expected or measured != expected:
-        raise HeterogeneousReplayError("alpha_research.heterogeneous_evidence_identity_invalid")
+class _Contract(BaseModel):  # type: ignore[misc]
+    model_config = ConfigDict(extra="forbid", frozen=True)
 
 
-def _immutable_memmap(path: Path, *, shape: tuple[int, ...], sha256: str) -> FloatArray:
-    if _sha256(path) != sha256:
+class HeterogeneousHistoricalScoreEvidence(_Contract):
+    """Name the installed strategy, support axes and exact bytes of each replay surface."""
+
+    kind: Literal["HeterogeneousHistoricalScoreEvidence"] = "HeterogeneousHistoricalScoreEvidence"
+    strategy_hash: str = Field(pattern=BLAKE3_PATTERN)
+    session_axis_hash: str = Field(pattern=BLAKE3_PATTERN)
+    listing_axis_hash: str = Field(pattern=BLAKE3_PATTERN)
+    component_digests: dict[ComponentId, Annotated[str, Field(pattern=BLAKE3_PATTERN)]]
+    package_hash: str = Field(pattern=BLAKE3_PATTERN)
+
+    @model_validator(mode="after")
+    def validate_evidence(self) -> Self:
+        if set(self.component_digests) != set(COMPONENT_IDS):
+            raise HeterogeneousReplayError("alpha_research.heterogeneous_component_set_invalid")
+        if self.strategy_hash != INSTALLED_HETEROGENEOUS_ALPHA_STRATEGY.strategy_hash:
+            raise HeterogeneousReplayError("alpha_research.heterogeneous_strategy_contract_invalid")
+        if (
+            canonical_hash(self.model_dump(mode="json", exclude={"package_hash"}))
+            != self.package_hash
+        ):
+            raise HeterogeneousReplayError("alpha_research.heterogeneous_evidence_identity_invalid")
+        return self
+
+
+def read_successor_evidence(root: Path) -> HeterogeneousHistoricalScoreEvidence:
+    """Admit the replay manifest before reading any array named by the installation."""
+    payload = _json(root / "frozen-strategy-package.json")
+    seal = payload.get("package_hash")
+    if isinstance(seal, str) and re.fullmatch(r"[0-9a-f]{64}", seal):
+        raise HeterogeneousReplayError("alpha_research.heterogeneous_evidence_before_blake3")
+    try:
+        return HeterogeneousHistoricalScoreEvidence.model_validate(payload)
+    except ValidationError as error:
+        cause = next(
+            (
+                entry.get("ctx", {}).get("error")
+                for entry in error.errors()
+                if isinstance(entry.get("ctx", {}).get("error"), HeterogeneousReplayError)
+            ),
+            None,
+        )
+        if isinstance(cause, HeterogeneousReplayError):
+            raise cause from error
+        raise HeterogeneousReplayError(
+            "alpha_research.heterogeneous_evidence_identity_invalid"
+        ) from error
+
+
+def _immutable_scores(path: Path, *, shape: tuple[int, ...], expected: str) -> FloatArray:
+    try:
+        payload = path.read_bytes()
+    except OSError as error:
+        raise HeterogeneousReplayError("alpha_research.heterogeneous_evidence_absent") from error
+    if tagged_blake3(integrity_blake3(payload)) != expected:
         raise HeterogeneousReplayError("alpha_research.heterogeneous_array_hash_invalid")
-    value = np.load(path, mmap_mode="r", allow_pickle=False)
-    if value.shape != shape or value.dtype != np.dtype("float64") or value.flags.writeable:
+    try:
+        value = np.load(BytesIO(payload), allow_pickle=False)
+    except (OSError, ValueError) as error:
+        raise HeterogeneousReplayError(
+            "alpha_research.heterogeneous_array_contract_invalid"
+        ) from error
+    if (
+        not isinstance(value, np.ndarray)
+        or value.shape != shape
+        or value.dtype != np.dtype("float64")
+    ):
+        if isinstance(value, np.lib.npyio.NpzFile):
+            value.close()
         raise HeterogeneousReplayError("alpha_research.heterogeneous_array_contract_invalid")
+    value.setflags(write=False)
     return np.asarray(value, dtype=np.float64)
 
 
 @dataclass(frozen=True, slots=True)
 class AdmittedSuccessorEvidence:
-    """Exact historical component scores owned by Gate I, over one proven axis.
+    """The historical component scores over the support the installed book asked to read."""
 
-    The package's merged weights and ledger are still hash-verified on the way
-    in -- they are part of the package identity -- but they are not loaded: the
-    product forms its own books from the component scores, and the Gate K
-    parity runner that read the sealed weights is retired.
-    """
-
-    root: Path
-    formation_sessions: tuple[date, ...]
-    ordered_listing_ids: tuple[str, ...]
     component_scores: Mapping[ComponentId, FloatArray]
 
     def component(self, component_id: ComponentId) -> FloatArray:
-        """Read one component score vector from admitted replay evidence.
-
-        Args:
-            component_id: Component identifier selecting the retained score vector.
-
-        Returns:
-            Retained component score array.
-
-        Raises:
-            HeterogeneousReplayError: The component score is absent from this evidence.
-        """
+        """Read a component's immutable score array."""
         try:
             return self.component_scores[component_id]
         except KeyError as error:
@@ -163,118 +188,48 @@ class AdmittedSuccessorEvidence:
 
 
 def admit_successor_evidence(
-    root: Path,
+    evidence: HeterogeneousHistoricalScoreEvidence,
     *,
     formation_sessions: tuple[date, ...],
     ordered_listing_ids: tuple[str, ...],
     component_score_paths: Mapping[ComponentId, Path],
 ) -> AdmittedSuccessorEvidence:
-    """Open one exact package and its four explicitly supplied score surfaces."""
-    resolved = root.resolve()
-    files = {
-        "package": resolved / "frozen-strategy-package.json",
-        "weights": resolved / "frozen-strategy-weights.npy",
-        "ledger": resolved / "frozen-strategy-ledger.parquet",
-        "report": resolved / "report-projection-contract.json",
-        "validation": resolved / "validation-admission-contract.json",
-        "replay": resolved / "gate-i-replay-result.json",
-    }
-    expected_file_hashes = {
-        "package": _PACKAGE_FILE_SHA256,
-        "weights": _WEIGHTS_SHA256,
-        "ledger": _LEDGER_SHA256,
-        "report": _REPORT_FILE_SHA256,
-        "validation": _VALIDATION_FILE_SHA256,
-        "replay": _REPLAY_FILE_SHA256,
-    }
-    for key, expected in expected_file_hashes.items():
-        if _sha256(files[key]) != expected:
-            raise HeterogeneousReplayError("alpha_research.heterogeneous_package_file_hash_invalid")
-
-    package = _json(files["package"])
-    _sealed(package, "package_hash", SUCCESSOR_PACKAGE_HASH)
-    report = _json(files["report"])
-    _sealed(report, "contract_hash", SUCCESSOR_REPORT_CONTRACT_HASH)
-    validation = _json(files["validation"])
-    _sealed(validation, "contract_hash", SUCCESSOR_VALIDATION_CONTRACT_HASH)
-    replay = _json(files["replay"])
-    _sealed(replay, "result_hash", SUCCESSOR_REPLAY_RESULT_HASH)
-
-    strategy = cast(Mapping[str, Any], package.get("strategy_spec", {}))
+    """Verify the held manifest's support and read its four explicitly supplied score arrays."""
     if (
-        strategy.get("strategy_id") != INSTALLED_HETEROGENEOUS_ALPHA_STRATEGY.strategy_id
-        or strategy.get("weighting_rule") != "ew"
-        or strategy.get("hazard_overlay") != "NONE"
-        or strategy.get("merge_semantics") != "POST_TRADE_LISTING_WEIGHTS_THEN_RECOMPUTE_ECONOMICS"
-    ):
-        raise HeterogeneousReplayError("alpha_research.heterogeneous_strategy_contract_invalid")
-    allocations = cast(Mapping[str, Any], strategy.get("components", {}))
-    if tuple(allocations) != COMPONENT_IDS or any(
-        float(allocations[value]) != 0.25 for value in COMPONENT_IDS
-    ):
-        raise HeterogeneousReplayError("alpha_research.heterogeneous_component_set_invalid")
-
-    axis = cast(Mapping[str, Any], package.get("axis", {}))
-    expected_shape = (len(formation_sessions), len(ordered_listing_ids))
-    if expected_shape != (1751, 466):
-        raise HeterogeneousReplayError("alpha_research.heterogeneous_axis_shape_invalid")
-    if (
-        axis.get("session_count") != expected_shape[0]
-        or axis.get("listing_count") != expected_shape[1]
-        or axis.get("session_axis_hash")
-        != canonical_hash(tuple(value.isoformat() for value in formation_sessions))
-        or axis.get("listing_axis_hash") != canonical_hash(ordered_listing_ids)
+        canonical_hash(tuple(value.isoformat() for value in formation_sessions))
+        != evidence.session_axis_hash
+        or canonical_hash(ordered_listing_ids) != evidence.listing_axis_hash
     ):
         raise HeterogeneousReplayError("alpha_research.heterogeneous_axis_identity_invalid")
-
-    declared_components = cast(Mapping[str, Any], package.get("components", {}))
-    if tuple(component_score_paths) != COMPONENT_IDS or tuple(declared_components) != COMPONENT_IDS:
+    if set(component_score_paths) != set(COMPONENT_IDS):
         raise HeterogeneousReplayError("alpha_research.heterogeneous_component_set_invalid")
-    loaded: dict[ComponentId, FloatArray] = {}
-    for component_id in COMPONENT_IDS:
-        declaration = cast(Mapping[str, Any], declared_components[component_id])
-        artifact = cast(Mapping[str, Any], declaration.get("score_artifact", {}))
-        recipe = INSTALLED_HETEROGENEOUS_ALPHA_STRATEGY.component(component_id)
-        if (
-            artifact.get("sha256") != recipe.evidence_daily_parquet_sha256
-            or artifact.get("shape") != [1751, 466]
-            or artifact.get("dtype") != "float64"
-        ):
-            raise HeterogeneousReplayError(
-                "alpha_research.heterogeneous_component_declaration_invalid"
-            )
-        loaded[component_id] = _immutable_memmap(
-            component_score_paths[component_id],
-            shape=expected_shape,
-            sha256=recipe.evidence_daily_parquet_sha256,
-        )
-
+    shape = (len(formation_sessions), len(ordered_listing_ids))
     return AdmittedSuccessorEvidence(
-        root=resolved,
-        formation_sessions=formation_sessions,
-        ordered_listing_ids=ordered_listing_ids,
-        component_scores=loaded,
+        component_scores={
+            component: _immutable_scores(
+                component_score_paths[component],
+                shape=shape,
+                expected=evidence.component_digests[component],
+            )
+            for component in COMPONENT_IDS
+        }
     )
 
 
 # ------------------------------------------------------- the current closure
 
 
-class _Contract(BaseModel):  # type: ignore[misc]
-    model_config = ConfigDict(extra="forbid", frozen=True)
-
-
-_HEX64 = r"^[0-9a-f]{64}$"
+_HEX64 = BLAKE3_PATTERN
 
 
 class HeterogeneousClosureFile(_Contract):
     """One artifact under the closure root, by relative path, bytes and digest."""
 
     relative_path: str = Field(min_length=1)
-    sha256: str = Field(pattern=_HEX64)
+    digest: str = Field(pattern=_HEX64)
     byte_count: int = Field(ge=1)
 
-    @field_validator("relative_path")  # type: ignore[untyped-decorator]
+    @field_validator("relative_path")
     @classmethod
     def validate_relative_path(cls, value: str) -> str:
         """Keep a closure file canonical and relative on every supported host."""
@@ -323,7 +278,7 @@ class HeterogeneousClosureSurface(_Contract):
 
     vintage: str = Field(pattern=r"^\d{4}-\d{2}$")
     source_binding_hash: str = Field(pattern=_HEX64)
-    feature_values_hashes: tuple[str, ...] = Field(min_length=1)
+    feature_values_hashes: tuple[Annotated[str, Field(pattern=_HEX64)], ...] = Field(min_length=1)
     """One per closure formation, in formation order, as the live surface hashes them."""
 
     file: HeterogeneousClosureFile
@@ -347,7 +302,7 @@ class HeterogeneousClosureMomentum(_Contract):
 
     factor_id: str = Field(min_length=1)
     source_identity_hash: str = Field(pattern=_HEX64)
-    value_hashes: tuple[str, ...] = Field(min_length=1)
+    value_hashes: tuple[Annotated[str, Field(pattern=_HEX64)], ...] = Field(min_length=1)
     file: HeterogeneousClosureFile
     """An `.npy` of `(formations, listings)` float64."""
 
@@ -365,10 +320,10 @@ class HeterogeneousCurrentClosureManifest(_Contract):
     """
 
     kind: Literal["HeterogeneousCurrentClosureManifest"] = "HeterogeneousCurrentClosureManifest"
-    schema_version: Literal[1] = 1
+    schema_version: Literal[2] = 2
     strategy_hash: str = Field(pattern=_HEX64)
     gate_m_receipt_hash: str = Field(pattern=_HEX64)
-    gate_m_source_readback_sha256: str = Field(pattern=_HEX64)
+    gate_m_source_readback_digest: str = Field(pattern=_HEX64)
     gate_l_manifest_hash: str = Field(pattern=_HEX64)
     live_vintages: tuple[str, ...]
     formation_sessions: tuple[date, ...] = Field(min_length=1)
@@ -403,7 +358,7 @@ class HeterogeneousCurrentClosureManifest(_Contract):
         )
         return cls(**identity, manifest_hash=canonical_hash(identity))
 
-    @model_validator(mode="after")  # type: ignore[untyped-decorator]
+    @model_validator(mode="after")
     def validate_identity(self) -> Self:
         """Require exact session/listing/vintage axes and complete component replay closure.
 
@@ -453,6 +408,8 @@ class HeterogeneousCurrentClosureManifest(_Contract):
 
 
 CLOSURE_MANIFEST_FILE_NAME = "closure-manifest.json"
+ADMITTED_CURRENT_CLOSURE_HASH: Final[str | None] = None
+"""An independently admitted closure manifest. No BLAKE3 closure has been admitted."""
 
 
 class AlphaRuntimeHeterogeneousPredictionOwner:
@@ -723,7 +680,7 @@ def _verified_file(root: Path, declared: HeterogeneousClosureFile) -> Path:
     path = declared.resolve_under(root)
     if not path.is_file() or path.stat().st_size != declared.byte_count:
         raise HeterogeneousReplayError("alpha_research.heterogeneous_closure_file_absent")
-    if _sha256(path) != declared.sha256:
+    if FileDigestTrust.fresh_digest(path) != declared.digest:
         raise HeterogeneousReplayError("alpha_research.heterogeneous_closure_file_hash_invalid")
     return path
 
@@ -775,8 +732,14 @@ def admit_heterogeneous_current_closure(root: Path) -> AdmittedHeterogeneousCurr
     path = resolved / CLOSURE_MANIFEST_FILE_NAME
     if not path.is_file():
         raise HeterogeneousReplayError("alpha_research.heterogeneous_closure_manifest_absent")
+    payload = _json(path)
+    if payload.get("schema_version") == 1:
+        raise HeterogeneousReplayError(
+            "alpha_research.heterogeneous_closure_manifest_invalid: "
+            "closure was made before BLAKE3; start a fresh data root"
+        )
     try:
-        manifest = HeterogeneousCurrentClosureManifest.model_validate(_json(path))
+        manifest = HeterogeneousCurrentClosureManifest.model_validate(payload)
     except ValueError as error:
         raise HeterogeneousReplayError(
             "alpha_research.heterogeneous_closure_manifest_invalid"
@@ -787,9 +750,7 @@ def admit_heterogeneous_current_closure(root: Path) -> AdmittedHeterogeneousCurr
         # role still names the installed one (NM1): the heterogeneous closure is a
         # sealed root the tree keeps reading.
         not strategy_recipe_is_current(manifest.strategy_hash, strategy.strategy_hash)
-        or manifest.gate_m_receipt_hash != LIVE_SCORE_CLOSURE_RECEIPT_HASH
-        or manifest.gate_m_source_readback_sha256 != LIVE_SOURCE_READBACK_SHA256
-        or manifest.gate_l_manifest_hash != LIVE_MODEL_CLOSURE_MANIFEST_HASH
+        or manifest.manifest_hash != ADMITTED_CURRENT_CLOSURE_HASH
         or manifest.live_vintages != LIVE_MODEL_VINTAGES
         or manifest.maximum_raw_prediction_gap != 0.0
     ):
@@ -802,7 +763,6 @@ def admit_heterogeneous_current_closure(root: Path) -> AdmittedHeterogeneousCurr
             )
             or component.feature_axis_hash != recipe.feature_axis_hash
             or component.feature_count != recipe.feature_count
-            or component.model_set_hash != LIVE_COMPONENT_MODEL_SET_HASHES[component.component_id]
         ):
             raise HeterogeneousReplayError("alpha_research.heterogeneous_closure_pins_invalid")
     for component in manifest.components:
@@ -880,4 +840,5 @@ __all__ = [
     "HeterogeneousReplayError",
     "admit_heterogeneous_current_closure",
     "admit_successor_evidence",
+    "read_successor_evidence",
 ]

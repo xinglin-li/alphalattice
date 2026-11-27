@@ -34,6 +34,8 @@ locally and is open source.
 - **Results you can trust.** Each Daily reports five market-data checks, and files are checked again when they change or during idle verification.
 - **For integrators.** Operations share a registered interface, caches and outbound requests have bounds, and seven packages have new import paths.
 
+In 0.2.10, request fields for internal digests require the `blake3:` prefix. Earlier digests are refused.
+
 See the [0.2.9 release notes](docs/public-source/release-notes.md#029) for each change. The versioned notes keep each measured workload and its limits.
 
 ## Two ways to use AlphaLattice
@@ -130,7 +132,12 @@ See [Getting started](docs/public-source/getting-started.md) and the
 [setup procedure](.agents/skills/alphalattice-research/references/operating.md)
 for installation, downloads and the permissions each step needs.
 
-Already using AlphaLattice? Follow [Upgrading](docs/public-source/upgrading.md)
+Starting with 0.2.10, use a fresh data root and research workspace. This release
+uses BLAKE3 for internal identities and opens only data created in the new format.
+Earlier data roots, workspaces, and backups can still be opened with their original
+release.
+
+Upgrading to 0.2.9? Follow [Upgrading](docs/public-source/upgrading.md)
 when moving from 0.2.0 to a later 0.2.x patch in your existing workspace.
 Back up the agent project's `.alphalattice/user/`, note the workspace's absolute
 path, and stop its Host with `alphalattice host stop`, waiting for it to release

@@ -46,9 +46,6 @@ RETIRED_SPELLINGS: Final[Mapping[str, str]] = MappingProxyType(
             "WholeBookHysteresisInverseVolatilityRecipe"
         ),
         "C6WholeBookHysteresisCausalRankMuRecipe": "WholeBookHysteresisCausalRankMuRecipe",
-        "GATE_I_FROZEN_RESEARCH_PACKAGE_ADMITTED_AS_SUCCESSOR": (
-            "FROZEN_RESEARCH_PACKAGE_ADMITTED_AS_SUCCESSOR"
-        ),
         "IW184_EVIDENCE_ROOT": "BROAD_ENSEMBLE_EVIDENCE_ROOT",
         "HETEROGENEOUS_GATE_I_PACKAGE_ROOT": "HETEROGENEOUS_PACKAGE_ROOT",
         "HETEROGENEOUS_GATE_I_SCORE:": "HETEROGENEOUS_COMPONENT_SCORE:",

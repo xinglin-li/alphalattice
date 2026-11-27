@@ -28,6 +28,7 @@ from typing import Any, Literal, Self
 from pydantic import BaseModel, ConfigDict, Field, ValidationError, model_validator
 
 from alphalattice.capabilities.domain_contracts.identity import canonical_hash
+from alphalattice.kernel.identity import BLAKE3_PATTERN
 
 ANSWER_CORRECTION_BOUND: int = 2
 """Corrections allowed after the first answer (the first trial needed one)."""
@@ -103,7 +104,7 @@ class AgentAnswerRecord(BaseModel):  # type: ignore[misc]
     model_config = ConfigDict(extra="forbid", frozen=True)
 
     kind: Literal["AgentAnswerRecord"] = "AgentAnswerRecord"
-    bundle_key: str = Field(pattern=r"^[0-9a-f]{64}$")
+    bundle_key: str = Field(pattern=BLAKE3_PATTERN)
     """The binding the answer answers: the prepared packet or dossier and the
     policies it was prepared under, as the Host keys them."""
     number: int = Field(ge=1)
@@ -112,7 +113,7 @@ class AgentAnswerRecord(BaseModel):  # type: ignore[misc]
     """Corrections returned for the bundle, this answer's included."""
     problems: tuple[AnswerProblem, ...] = Field(max_length=256)
     accepted_items: tuple[int, ...] = Field(max_length=256)
-    answer_digest: str = Field(pattern=r"^[0-9a-f]{64}$")
+    answer_digest: str = Field(pattern=BLAKE3_PATTERN)
     """The canonical digest of the answer as written."""
     read_files: tuple[str, ...] | None = Field(default=None, max_length=256)
     """The bundle files the answer named as read whole, as it named them: provenance, never a
@@ -120,7 +121,7 @@ class AgentAnswerRecord(BaseModel):  # type: ignore[misc]
     agent_run: AgentRun | None = None
     """Who made the answer (AU3): absent when the request named no agent session, and on a
     record written before it was kept."""
-    record_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
+    record_hash: str = Field(pattern=BLAKE3_PATTERN)
     accepted_text: str | None = Field(
         default=None, min_length=1, max_length=SPECIALIST_TEXT_CHARACTERS
     )

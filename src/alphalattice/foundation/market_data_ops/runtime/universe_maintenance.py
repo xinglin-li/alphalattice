@@ -77,7 +77,7 @@ from alphalattice.foundation.market_data_ops.storage.rebase import (
 )
 from alphalattice.kernel.clock import observation_time
 from alphalattice.kernel.execution import execution_port
-from alphalattice.kernel.identity import identity_sha256
+from alphalattice.kernel.identity import identity_blake3, tagged_blake3
 from alphalattice.kernel.resources import worker_width
 
 if TYPE_CHECKING:
@@ -142,7 +142,7 @@ def current_universe_maintenance_id(
             ",".join(sorted(set(authorized_full_history_listing_ids))),
         )
     )
-    return identity_sha256(payload.encode("utf-8")).hexdigest()
+    return tagged_blake3(identity_blake3(payload.encode("utf-8")))
 
 
 _Chunk = list[CurrentUniverseMaintenanceListing]

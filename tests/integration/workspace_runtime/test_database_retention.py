@@ -50,10 +50,11 @@ from alphalattice.control.workspace_runtime.database import (
     table_columns,
 )
 from alphalattice.control.workspace_runtime.reader_threads import apply_reader_threads
-from alphalattice.control.workspace_runtime.verified_facts import file_sha256
+from alphalattice.control.workspace_runtime.verified_facts import verified_file_digest
 from alphalattice.foundation.data_layer import history_runtime
 from alphalattice.foundation.data_layer import log as host_log
 from alphalattice.kernel import storage
+from alphalattice.kernel.identity import is_blake3
 
 
 def _prepared(tmp_path: Path) -> WorkspaceDatabase:
@@ -649,7 +650,7 @@ def _kept_for_the_session(
             with database.transaction() as connection:
                 connection.execute("INSERT INTO unit VALUES (2, 'written')")
             with database.retain(read_only=True):  # the score inputs' read with its byte proof
-                seen = (len(file_sha256(database.path)), _rows(database))
+                seen = (is_blake3(verified_file_digest(database.path)), _rows(database))
         elif case == "session-a-read-unit-of-other-files-between-writes":
             seen = []
             for note in ("written", "again"):
@@ -662,7 +663,7 @@ def _kept_for_the_session(
             with database.transaction() as connection:
                 connection.execute("INSERT INTO unit VALUES (2, 'written')")
             # the strategy score inputs' digest of the market store, through the trust record
-            seen = (len(file_sha256(database.path)), _rows(database))
+            seen = (is_blake3(verified_file_digest(database.path)), _rows(database))
         elif case == "session-a-replaced-file":
             seen = _session_replaced(database)
         elif case == "session-a-replacement-meets-live-connections":
@@ -864,7 +865,7 @@ SESSION_CASES = {
     # file read-only (`_WRITABLE_SHARES_READS`) and proves its bytes under its own connection.
     "session-a-read-unit-proves-a-written-file": (
         {"first": WRITE_THEN_READ, "second": 0},
-        (64, [(1, "seed"), (2, "written")]),
+        (True, [(1, "seed"), (2, "written")]),
     ),
     # a read unit whose proofs read other files attaches to the writer's instance: the writer after
     # it opens nothing, on every platform
@@ -921,7 +922,7 @@ SESSION_CASES = {
     # Windows refuses another handle's read of a file a writable instance holds: let go there
     "session-a-digest-of-a-written-file": (
         {"first": 2 if os.name == "nt" else 1, "second": 0},
-        (64, [(1, "seed"), (2, "written")]),
+        (True, [(1, "seed"), (2, "written")]),
     ),
     "session-a-replaced-file": ({"first": 2, "second": 0}, [(9, "replaced")]),
     "session-a-replacement-meets-live-connections": (

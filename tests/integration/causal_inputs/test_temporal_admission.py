@@ -63,6 +63,7 @@ from alphalattice.investment.risk_research.experiments.temporal import (
     resolve_risk_readiness_policy,
     risk_covariance_authority,
 )
+from tests._support.identity_fixtures import fixture_digest
 
 NEXT_OPEN = "NEXT_OPEN_AFTER_OFFICIAL_CLOSE"
 _OPEN_HOUR, _CLOSE_HOUR = 13, 20
@@ -107,9 +108,9 @@ def _authority(**overrides: object) -> CausalInputAuthority:
         "input_id": "feature_panel",
         "input_kind": "BASE_FEATURE_PANEL",
         "temporal_usage": "DECISION_INPUT",
-        "surface_hash": "a" * 64,
+        "surface_hash": fixture_digest("surface"),
         "owner_authority_id": "feature_engine.catalog:daily-provider-session-close",
-        "owner_identity_hash": "b" * 64,
+        "owner_identity_hash": fixture_digest("owner"),
         "observed_through": _fact(0, "OFFICIAL_CLOSE"),
         "source_available": _fact(0, "OFFICIAL_CLOSE"),
         "observation_semantics": "Feature values for session T at its official close.",
@@ -456,7 +457,9 @@ def test_a_substituted_surface_hash_needs_the_producer_owner_to_refuse_it() -> N
     """A substituted surface hash needs the producer owner to refuse it."""
 
     honest = _authority(input_id="score", input_kind="RAW_SCORE")
-    swapped = _authority(input_id="score", input_kind="RAW_SCORE", surface_hash="c" * 64)
+    swapped = _authority(
+        input_id="score", input_kind="RAW_SCORE", surface_hash=fixture_digest("swapped-surface")
+    )
     assert _admit(honest).disposition == _admit(swapped).disposition == "ADMITTED"
     assert honest.authority_hash != swapped.authority_hash
     # Same owner handle, different surface: the substitution is visible to a

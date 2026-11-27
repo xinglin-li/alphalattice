@@ -32,6 +32,7 @@ from alphalattice.control.data_platform.data_decision_rule import (
     RULED_RUNS,
     DataDecisionRule,
     held_decisions,
+    rule_actor_id,
 )
 from alphalattice.control.data_platform.data_decision_rule import attach as attach_rule
 from alphalattice.control.product_host.composition.first_use_road import (
@@ -99,6 +100,7 @@ from alphalattice.interface.local_application.portfolio_research import (
     validate_request_document,
 )
 from alphalattice.kernel.execution import EVENTS, EventDeadline
+from alphalattice.kernel.identity import is_blake3
 from alphalattice.protocols.actor_execution import ActorKind
 from alphalattice.protocols.actor_execution.bundles import (
     bundle_directory_key,
@@ -876,12 +878,11 @@ class GoalApplication:
     ) -> bool:
         """A saved choice names either its exact rule actor or its actual agent session."""
         if actor.actor_kind is ActorKind.HOST_FALLBACK:
-            if (entry.get("decided_by"), entry.get("rule_hash"), actor.actor_id) == (
-                "RULE",
-                rule,
-                f"host-rule:{rule[:16]}",
-            ):
-                return True
+            return is_blake3(rule) and (
+                entry.get("decided_by"),
+                entry.get("rule_hash"),
+                actor.actor_id,
+            ) == ("RULE", rule, rule_actor_id(rule))
         elif (
             entry.get("status") == "CONFIRMED_PENDING_REVALIDATION"
             and isinstance(vendor := entry.get("agent_vendor"), str)

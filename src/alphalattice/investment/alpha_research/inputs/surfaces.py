@@ -22,6 +22,7 @@ from alphalattice.foundation.factor_research.inputs.execution_target import (
     compile_factor_target_surface,
 )
 from alphalattice.foundation.feature_engine.panels.reader import FeaturePanelReadRequest
+from alphalattice.kernel.identity import BLAKE3_PATTERN, is_blake3
 
 from ..targets.execution_outcome import AlphaTargetPolicy, compile_alpha_target_surface
 from .folds import (
@@ -43,6 +44,9 @@ type BoolArray = npt.NDArray[np.bool_]
 type IntArray = npt.NDArray[np.intp]
 type OrdinalArray = npt.NDArray[np.int32]
 type HashArray = npt.NDArray[np.bytes_]
+
+# The tag and all sixty-four hex digits travel with each row.
+_TAGGED_ROW_DIGEST = np.dtype("S71")
 
 _MIB = 1024 * 1024
 _GIB = 1024 * _MIB
@@ -69,7 +73,7 @@ def _training_binding_source_hashes(
         )
     except AttributeError:
         return None
-    if any(not isinstance(value, str) or len(value) != 64 for value in values):
+    if any(not isinstance(value, str) or not is_blake3(value) for value in values):
         return None
     return values
 
@@ -179,7 +183,11 @@ class AlphaArraySurfaceBudget:
         row_count = session_count * listing_count
         return max(
             1,
-            int(row_count * (factor_count * 8 + 8 + 2 + 4 + 128 + 8) * 1.25),
+            int(
+                row_count
+                * (factor_count * 8 + 8 + 2 + 4 + 2 * _TAGGED_ROW_DIGEST.itemsize + 8)
+                * 1.25
+            ),
         )
 
     def assert_live_surface_admitted(
@@ -253,7 +261,7 @@ class AlphaArraySurfaceBudget:
             raise AlphaArrayBoundaryError("alpha_research.array_surface_budget_invalid")
         # Feature values, fit target, economic return, two masks, and
         # conservative Python/hash overhead.
-        return int(row_count * (factor_count * 8 + 16 + 2 + 128) * 1.25)
+        return int(row_count * (factor_count * 8 + 16 + 2 + 2 * _TAGGED_ROW_DIGEST.itemsize) * 1.25)
 
     @classmethod
     def derive(
@@ -294,7 +302,7 @@ class AlphaArraySurfaceBudget:
         cap = cache_cap_bytes or min(max(int(total * 0.08), 512 * _MIB), 2 * _GIB)
         peak_limit = min(max(int(total * 0.25), 4 * _GIB), 6 * _GIB)
         # Dense float64 feature/target values, validity masks, causal ordinal,
-        # two fixed-width SHA-256 row hashes, indices, and 25% structural room.
+        # two fixed-width tagged BLAKE3 row digests, indices, and 25% structural room.
         estimated = cls.estimate_surface_bytes(
             session_count=session_count,
             listing_count=listing_count,
@@ -415,24 +423,19 @@ def _grid_positions(session_positions: IntArray, listing_count: int) -> IntArray
 
 
 def _encoded_hashes(column: pa.Array | pa.ChunkedArray) -> HashArray:
-    """Every row hash as its ASCII bytes in a fixed-width array.
+    """Keep the full tagged BLAKE3 digest in each fixed-width row.
 
-    A hash that is not one to sixty-four ASCII bytes is refused, as it was
-    when each value was encoded on its own; a null is spelled ``None`` as
-    ``str`` spelled it.
+    A null source value retains the established None spelling. Supplied non-null
+    digests must match the identity owner's tagged format before NumPy stores them.
     """
-
     array = column.combine_chunks() if isinstance(column, pa.ChunkedArray) else column
-    if array.null_count:
-        values = ["None" if value is None else str(value) for value in array.to_pylist()]
-        array = pa.array(values, pa.string())
-    lengths = pc.binary_length(pc.cast(array, pa.string()))
-    if len(array) and (pc.min(lengths).as_py() < 1 or pc.max(lengths).as_py() > 64):
+    array = pc.cast(array, pa.string())
+    valid = pc.match_substring_regex(array, BLAKE3_PATTERN)
+    if not pc.all(valid, min_count=0).as_py():
         raise AlphaArrayBoundaryError("alpha_research.array_surface_axis_mismatch")
-    try:
-        return np.asarray(array.to_numpy(zero_copy_only=False), dtype="S64")
-    except UnicodeEncodeError as error:
-        raise AlphaArrayBoundaryError("alpha_research.array_surface_axis_mismatch") from error
+    return np.asarray(
+        pc.fill_null(array, "None").to_numpy(zero_copy_only=False), dtype=_TAGGED_ROW_DIGEST
+    )
 
 
 def _decode_hashes(
@@ -535,7 +538,7 @@ def _load_feature_surface(
     values: FloatArray = np.empty((maximum_row_count, len(plan.base_feature_ids)), dtype=np.float64)
     values.fill(np.nan)
     present: BoolArray = np.zeros(maximum_row_count, dtype=np.bool_)
-    hashes: HashArray = np.zeros(maximum_row_count, dtype="S64")
+    hashes: HashArray = np.zeros(maximum_row_count, dtype=_TAGGED_ROW_DIGEST)
     request = FeaturePanelReadRequest(
         manifest_ref=plan.feature_panel_manifest_ref,
         start_session=sessions[0],
@@ -685,7 +688,7 @@ def _load_outcome_surface(
     economic_values: FloatArray = np.full(row_count, np.nan, dtype=np.float64)
     present: BoolArray = np.zeros(row_count, dtype=np.bool_)
     holding_end_ordinals: OrdinalArray = np.zeros(row_count, dtype=np.int32)
-    hashes: HashArray = np.zeros(row_count, dtype="S64")
+    hashes: HashArray = np.zeros(row_count, dtype=_TAGGED_ROW_DIGEST)
     if target_table is None:
         values[positions] = _float_values(table["simple_return"])
         economic_values[positions] = _float_values(table["simple_return"])

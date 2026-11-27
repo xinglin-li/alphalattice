@@ -20,6 +20,8 @@ from threading import Lock
 
 from pydantic import BaseModel
 
+from alphalattice.kernel.identity import blake3_filename, blake3_from_filename
+
 PREVIEW_CAPACITY = 8
 """Unadmitted plans one owner keeps in memory at a time, per workspace session."""
 
@@ -153,9 +155,9 @@ class PreviewRegistry[P: BaseModel]:
     def _seal(self, entry: RetainedPreview[P], now: datetime) -> None:
         assert self._root is not None
         self._root.mkdir(parents=True, exist_ok=True)
-        key = self._hash(entry.plan)
+        stem = blake3_filename(self._hash(entry.plan))
         for path in self._root.glob("*.json"):
-            if self._single and path.stem != key:
+            if self._single and path.stem != stem:
                 path.unlink(missing_ok=True)
                 continue
             try:
@@ -166,7 +168,7 @@ class PreviewRegistry[P: BaseModel]:
                 expires_at = now
             if now >= expires_at:
                 path.unlink(missing_ok=True)
-        path = self._root / f"{key}.json"
+        path = self._root / f"{stem}.json"
         staged = path.with_name(f"{path.name}.partial")
         staged.write_text(
             json.dumps(
@@ -186,7 +188,8 @@ class PreviewRegistry[P: BaseModel]:
         """A sealed plan, or none where it is absent or does not read as sealed."""
         assert self._root is not None
         try:
-            document = json.loads((self._root / f"{plan_hash}.json").read_text(encoding="utf-8"))
+            path = self._root / f"{blake3_filename(plan_hash)}.json"
+            document = json.loads(path.read_text(encoding="utf-8"))
             plan = self._model.model_validate(document["plan"])
             if self._hash(plan) != plan_hash:
                 return None
@@ -220,9 +223,10 @@ class PreviewRegistry[P: BaseModel]:
             held = dict(self._entries)
         if self._root is not None:
             for path in self._root.glob("*.json"):
-                sealed = self._sealed(path.stem)
-                if sealed is not None:
-                    held.setdefault(self._hash(sealed.plan), sealed)
+                if (key := blake3_from_filename(path.stem)) is not None and (
+                    sealed := self._sealed(key)
+                ) is not None:
+                    held.setdefault(key, sealed)
         now = self._clock()
         return tuple(
             sorted(

@@ -8,6 +8,7 @@ from pydantic import ConfigDict, Field
 from alphalattice.evidence.alternative_evidence.analysis.contracts import (
     AlternativeEvidenceAnalystAnswer,
 )
+from alphalattice.kernel.identity import BLAKE3_PATTERN
 from alphalattice.oversight.chief_risk_officer.decision.portfolio_review import (
     PortfolioReviewAnswer,
 )
@@ -23,10 +24,10 @@ class RequestFields(RequestFieldModel):
     portfolio_session: str | None = None
     """The session a dated view reads, as YYYY-MM-DD; for a book, names the book with the other
     book fields, as a book's offered requests fill them."""
-    result_hash: str | None = Field(default=None, pattern=r"^[0-9a-f]{64}$")
+    result_hash: str | None = Field(default=None, pattern=BLAKE3_PATTERN)
     """A Portfolio result, by its hash; for a book, names the book with the other book fields, as
     a book's offered requests fill them."""
-    handoff_hash: str | None = Field(default=None, pattern=r"^[0-9a-f]{64}$")
+    handoff_hash: str | None = Field(default=None, pattern=BLAKE3_PATTERN)
     """The research handoff a book comes from. Names the book with the other book fields, as a
     book's offered requests fill them."""
     update_task_id: UUID | None = None
@@ -38,21 +39,21 @@ class RequestFields(RequestFieldModel):
     experiment_receipt_hash: str | None = None
     """The Portfolio study's result, by its receipt hash. Names the book with the other book
     fields, as a book's offered requests fill them."""
-    update_publication_hash: str | None = Field(default=None, pattern=r"^[0-9a-f]{64}$")
+    update_publication_hash: str | None = Field(default=None, pattern=BLAKE3_PATTERN)
     """The Portfolio update's publication a book comes from. Names the book with the other book
     fields, as a book's offered requests fill them."""
     position_basis: str | None = None
     """The positions a book's update published them on. Names the book with the other book
     fields, as a book's offered requests fill them."""
-    review_publication_hash: str | None = Field(default=None, pattern=r"^[0-9a-f]{64}$")
+    review_publication_hash: str | None = Field(default=None, pattern=BLAKE3_PATTERN)
     """A published CRO review, by its hash."""
-    analysis_publication_hash: str | None = Field(default=None, pattern=r"^[0-9a-f]{64}$")
+    analysis_publication_hash: str | None = Field(default=None, pattern=BLAKE3_PATTERN)
     """A published Evidence analysis, by its hash."""
-    review_dossier_hash: str | None = Field(default=None, pattern=r"^[0-9a-f]{64}$")
+    review_dossier_hash: str | None = Field(default=None, pattern=BLAKE3_PATTERN)
     """The CRO dossier a review answers, by its hash."""
-    review_policy_hash: str | None = Field(default=None, pattern=r"^[0-9a-f]{64}$")
+    review_policy_hash: str | None = Field(default=None, pattern=BLAKE3_PATTERN)
     """The review policy the CRO answers under, as the dossier named it."""
-    review_schema_hash: str | None = Field(default=None, pattern=r"^[0-9a-f]{64}$")
+    review_schema_hash: str | None = Field(default=None, pattern=BLAKE3_PATTERN)
     """The review answer's schema, as the dossier named it."""
     review_read_at: str | None = Field(default=None, min_length=1, max_length=64)
     """When the review's dossier was read, as its bundle or first part sealed it."""
@@ -60,13 +61,13 @@ class RequestFields(RequestFieldModel):
     """The schema is the answer's, so capabilities describe it; an answer the
     schema would refuse is still carried, as written, for the Host to name
     each problem by item."""
-    analysis_context_hash: str | None = Field(default=None, pattern=r"^[0-9a-f]{64}$")
+    analysis_context_hash: str | None = Field(default=None, pattern=BLAKE3_PATTERN)
     """The Evidence packet's context an analysis answers, by its hash."""
     analysis_answer: AlternativeEvidenceAnalystAnswer | dict[str, Any] | None = None
     """The Analyst's answer to an Evidence packet."""
     evidence_as_of: str | None = Field(default=None, min_length=1, max_length=64)
     """The time Evidence is prepared as of, in ISO 8601."""
-    preparation_binding_hash: str | None = Field(default=None, pattern=r"^[0-9a-f]{64}$")
+    preparation_binding_hash: str | None = Field(default=None, pattern=BLAKE3_PATTERN)
     """The Evidence preparation's binding, by its hash."""
     evidence_unit_id: str | None = Field(default=None, pattern=r"^u[0-9]{2,3}$")
     """One Evidence unit, by its id (u01, u02 ...)."""
@@ -101,9 +102,9 @@ class RequestFields(RequestFieldModel):
     """The Evidence unit the citation belongs to."""
     citation_page: int | None = Field(default=None, ge=1, le=100_000, strict=True)
     """Which page of the cited source to read, from 1."""
-    continuation_of: str | None = Field(default=None, pattern=r"^[0-9a-f]{64}$")
+    continuation_of: str | None = Field(default=None, pattern=BLAKE3_PATTERN)
     """The prepared packet a continuation reads on from, by the receipt it sealed."""
-    continuation_spans: str | None = Field(default=None, pattern=r"^[0-9a-f]{64}$")
+    continuation_spans: str | None = Field(default=None, pattern=BLAKE3_PATTERN)
     """The packet's sealed span set, by its hash."""
     session_limit: int | None = Field(default=None, ge=1, le=99, strict=True)
     """The most reading sessions the continued chain may hold."""
@@ -111,7 +112,7 @@ class RequestFields(RequestFieldModel):
     """The most windows the continued chain may read."""
     finding_handle: str | None = Field(default=None, pattern=r"^FIND-[A-Z0-9-]{1,80}$")
     """A CRO finding, by its handle (FIND-...)."""
-    prior_review_publication_hash: str | None = Field(default=None, pattern=r"^[0-9a-f]{64}$")
+    prior_review_publication_hash: str | None = Field(default=None, pattern=BLAKE3_PATTERN)
     """An earlier CRO review the export compares with."""
     evidence_documents_per_issuer: int | None = Field(default=None, strict=True)
     """The SEC filings official acquisition may take per issuer; the default budget is three."""

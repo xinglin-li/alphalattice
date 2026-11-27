@@ -351,7 +351,7 @@ def test_the_kernel_import_law_exposes_only_downward_ports(tmp_path) -> None:
             caller: (
                 f"from {identity} import file_stamp as stamp\n"
                 f"from {identity}.file_facts import handle_stamp\n"
-                f"from {identity} import integrity_sha256_path\n"
+                f"from {identity} import integrity_blake3_path\n"
                 f"import {identity} as facts\n"
                 "facts.file_stamp(path)\n"
                 f"from {identity} import canonical_hash\n"
@@ -362,7 +362,7 @@ def test_the_kernel_import_law_exposes_only_downward_ports(tmp_path) -> None:
     ) == (
         f"{caller}:1: file-verification-owner-required {identity}.file_stamp",
         f"{caller}:2: file-verification-owner-required {identity}.file_facts.handle_stamp",
-        f"{caller}:3: file-verification-owner-required {identity}.integrity_sha256_path",
+        f"{caller}:3: file-verification-owner-required {identity}.integrity_blake3_path",
         f"{caller}:5: file-verification-owner-required {identity}.file_stamp",
     )
     modules = tuple(sorted(src.rglob("*.py")))

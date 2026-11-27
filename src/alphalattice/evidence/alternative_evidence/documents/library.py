@@ -14,10 +14,10 @@ from datetime import datetime
 from typing import Any
 from uuid import UUID
 
-from alphalattice.capabilities.domain_contracts.domain.serialization import sha256_hex
 from alphalattice.capabilities.domain_contracts.identity import canonical_hash
 from alphalattice.foundation.data_layer.knowledge import KnowledgeStore, SourceOrigin
 from alphalattice.foundation.data_layer.log import HostLog
+from alphalattice.kernel.identity import blake3_digest
 
 
 class EvidenceDocumentUnverifiable(ValueError):
@@ -43,7 +43,7 @@ class EvidenceRevision:
 
     document: EvidenceDocument
     revision: int
-    content_sha256: str
+    content_digest: str
     metadata: dict[str, Any]
 
 
@@ -60,7 +60,7 @@ def _revision(metadata: dict[str, Any]) -> EvidenceRevision:
     return EvidenceRevision(
         EvidenceDocument(str(metadata["document"]["document_id"])),
         int(metadata["revision"]),
-        str(metadata["content_sha256"]),
+        str(metadata["content_digest"]),
         metadata,
     )
 
@@ -80,7 +80,7 @@ class EvidenceLibrary:
             "document": {"document_id": document_id, "title": title},
             "revision": 1,
             "source": source,
-            "content_sha256": sha256_hex(content.encode()),
+            "content_digest": blake3_digest(content.encode()),
         }
         known_us = round(datetime.fromisoformat(str(source["available_at"])).timestamp() * 1e6)
         self.store.publish_revision(
@@ -117,6 +117,6 @@ class EvidenceLibrary:
         published = self.store.read_revision(self.workspace_id, document_id, revision)
         content = (published.content or "").encode()
         held = _revision(published.metadata)
-        if published.content is None or sha256_hex(content) != held.content_sha256:
+        if published.content is None or blake3_digest(content) != held.content_digest:
             raise EvidenceDocumentUnverifiable
         return held, content

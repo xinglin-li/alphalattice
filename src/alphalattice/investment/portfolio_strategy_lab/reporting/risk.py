@@ -17,6 +17,7 @@ from alphalattice.capabilities.domain_contracts.identity import canonical_hash
 from alphalattice.investment.risk_research.surfaces.decomposition import (
     RiskAttributionProjection,
 )
+from alphalattice.kernel.identity import BLAKE3_PATTERN
 
 
 class PortfolioRiskReportError(ValueError):
@@ -30,8 +31,8 @@ class PortfolioRiskAttributionFacts(BaseModel):  # type: ignore[misc]
 
     kind: str = "PortfolioRiskAttributionFacts"
     formation_session: date
-    surface_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
-    risk_projection_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
+    surface_hash: str = Field(pattern=BLAKE3_PATTERN)
+    risk_projection_hash: str = Field(pattern=BLAKE3_PATTERN)
     ordered_factor_ids: tuple[str, ...]
     industry_exposure: tuple[float, ...]
     factor_variance_contribution: tuple[float, ...]
@@ -39,7 +40,7 @@ class PortfolioRiskAttributionFacts(BaseModel):  # type: ignore[misc]
     idiosyncratic_variance: float = Field(ge=0.0)
     total_predicted_volatility: float = Field(ge=0.0)
     classification_authority: str = Field(min_length=1)
-    facts_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
+    facts_hash: str = Field(pattern=BLAKE3_PATTERN)
 
     @classmethod
     def create(

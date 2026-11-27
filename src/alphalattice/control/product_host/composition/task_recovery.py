@@ -85,6 +85,7 @@ from alphalattice.interface.local_application.failure_codes import (
 from alphalattice.interface.local_application.portfolio_research import (
     PortfolioResearchOperationRequest,
 )
+from alphalattice.kernel.identity import BLAKE3_PATTERN
 
 STALE_HEARTBEAT_SECONDS = 30.0
 """The runner's own stale-execution threshold (`TaskControlRunner.stale_active_tasks`), reused,
@@ -234,7 +235,7 @@ class TaskAttentionFact(_Contract):
         "NOT_STOPPED", "STOPPED", "SUCCESSOR_SUCCEEDED", "INCIDENT_RESOLVED", "UNRECOVERABLE"
     ] = Field(description="Which current owner fact resolves or still holds this attention.")
     task_record_hash: str = Field(
-        pattern=r"^[0-9a-f]{64}$",
+        pattern=BLAKE3_PATTERN,
         description="The canonical Task record version this attention describes.",
     )
     successor_task_id: str | None = Field(
@@ -243,7 +244,7 @@ class TaskAttentionFact(_Contract):
     )
     successor_task_hash: str | None = Field(
         default=None,
-        pattern=r"^[0-9a-f]{64}$",
+        pattern=BLAKE3_PATTERN,
         description="The canonical linked successor record hash, when it was readable.",
     )
     successor_lifecycle: str | None = Field(
@@ -252,7 +253,7 @@ class TaskAttentionFact(_Contract):
     )
     incident_key: str | None = Field(
         default=None,
-        pattern=r"^[0-9a-f]{64}$",
+        pattern=BLAKE3_PATTERN,
         description="The matching Guanyin incident that held or resolved this attention.",
     )
 
@@ -297,7 +298,7 @@ class TaskRecoveryView(_Contract):
     owner's typed refusal, or Task Control's when the compatibility moved against the latest
     execution. Asked before any resume; None when it would resume or nothing waits."""
     liveness: LivenessFact
-    execution_binding_hash: str | None = Field(default=None, pattern=r"^[0-9a-f]{64}$")
+    execution_binding_hash: str | None = Field(default=None, pattern=BLAKE3_PATTERN)
     """The compatibility binding of the latest execution; absent until a Task has started."""
     verified_stage_count: int = Field(ge=0)
     total_stage_count: int = Field(ge=1)
@@ -318,7 +319,7 @@ class TaskRecoveryView(_Contract):
     guardian: RuntimeGuardianProjection | None = None
     guardian_availability: Literal["PUBLISHED", "NOT_PUBLISHED"]
     """A domain Guanyin projection for this Task, when one is published by its owner."""
-    task_record_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
+    task_record_hash: str = Field(pattern=BLAKE3_PATTERN)
     """The exact Task version every Task Control fact above describes; a confirmation carries
     it back and the owner refuses to act on any other version."""
     observed_at: datetime
@@ -326,7 +327,7 @@ class TaskRecoveryView(_Contract):
         default=None,
         description="Current recovery attention bound to task_record_hash, when requested.",
     )
-    view_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
+    view_hash: str = Field(pattern=BLAKE3_PATTERN)
 
     @model_serializer(mode="wrap")  # type: ignore[untyped-decorator]
     def omit_absent_attention(self, handler):  # type: ignore[no-untyped-def]

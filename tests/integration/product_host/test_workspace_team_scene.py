@@ -11,6 +11,7 @@ from datetime import UTC, datetime
 from hashlib import sha256
 from pathlib import Path
 from typing import Any
+from urllib.parse import urlencode
 
 import pytest
 
@@ -135,7 +136,7 @@ def test_team_scene_reads_declared_work_and_owner_facts_from_the_real_feed(
     cursor = start["cursor"]
     lead, analyst, cro = SESSION, "child-analyst-7", "child-cro-9"
     # Establish this fixture session's Goal through its existing real refusal before events.
-    bogus_plan = "b" * 64
+    bogus_plan = "blake3:" + "b" * 64
     code, refused = _cli(live, "study", "run", "--plan", bogus_plan)
     assert code == 2 and refused["data"]["failure_code"] == "research_experiment.preview_required"
 
@@ -286,7 +287,7 @@ def test_team_scene_reads_declared_work_and_owner_facts_from_the_real_feed(
         if i["payload"]["subject"].get("message_kind") == "session_bound"
     )
     assert sorted(session["references"]) == sorted(
-        [bogus_plan, task_id, bound_ref, bound_ref.split(":")[1]]
+        [bogus_plan, task_id, bound_ref, bound_ref.removeprefix("case:")]
     )
     kinds = [(e["kind"], e["messageKind"], e["replayOf"]) for e in session["entries"]]
     assert kinds == [
@@ -422,7 +423,8 @@ def test_team_scene_reads_declared_work_and_owner_facts_from_the_real_feed(
     (artifact,) = [f for f in session["facts"] if f["artifact"] == "PortfolioResearchResult"]
     (artifact_item,) = [i for i in page["items"] if i["observation_id"] == artifact["observation"]]
     result_hash = artifact_item["payload"]["artifact_hash"]
-    report = _json(live, f"/api/report?result_hash={result_hash}")
+    report_path = "/api/report?" + urlencode({"result_hash": result_hash})
+    report = _json(live, report_path)
     assert report["result_hash"] == result_hash and report["originating_task_id"] == task_id
     results = _json(live, "/api/results")
     assert [r["task_id"] for r in results["results"] if r["result_hash"] == result_hash] == [
@@ -443,7 +445,7 @@ def test_team_scene_reads_declared_work_and_owner_facts_from_the_real_feed(
             "tasks": [_json(live, f"/api/status?task_id={task_id}")],
             "reads": {
                 "/api/results": results,
-                f"/api/report?result_hash={result_hash}": report,
+                report_path: report,
                 "/api/workbench/portfolio": {"__refused": "research_experiment.task_kind_mismatch"},
             },
             "resolve": [task_id],
@@ -460,7 +462,7 @@ def test_team_scene_reads_declared_work_and_owner_facts_from_the_real_feed(
     }
     assert verified["open"] == ["history-open", f"result:{result_hash}"]
     assert verified["failure"] is None and verified["limit"] is None
-    assert asked["requested"] == ["/api/results", f"/api/report?result_hash={result_hash}"]
+    assert asked["requested"] == ["/api/results", report_path]
     # The answer that declared the Task reads back with the owner's verification and the reader
     # History offers; no experiment entry is invented for an installed Task anywhere on the page.
     verified_reader = asked["readers"][session["entries"][7]["observation"]]

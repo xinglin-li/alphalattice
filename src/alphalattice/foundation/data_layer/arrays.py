@@ -1,6 +1,6 @@
 """The array door: an array with no coordinates, kept once per machine through StorePort.
 
-A lane is named by the digest sealed documents cite (`content_digest`): SHA-256 over its columns'
+A lane is named by the digest sealed documents cite (`content_digest`): BLAKE3 over its columns'
 C-order bytes, in order, as ContentAddressedStore named it. Its body is one Parquet table under
 blobs/<artifact_id>, each column flat and plain-encoded (never a dictionary, so every value's bits
 stay, NaN payloads and signed zeros included), the shape in its metadata: the form the old store
@@ -52,15 +52,18 @@ from alphalattice.capabilities.data.errors import DataError
 from alphalattice.foundation.data_layer.chain import canonical
 from alphalattice.foundation.data_layer.log import HostLog
 from alphalattice.kernel.identity import (
+    blake3_filename,
+    blake3_from_filename,
+    blake3_hex,
     identity_blake3,
     integrity_blake3,
-    integrity_sha256,
     record_sealed,
+    tagged_blake3,
 )
 
 TYPE: Final = "array"
 """The artifact type of every array the door keeps."""
-FORM: Final = b"alphalattice.array/1\x00"
+FORM: Final = b"alphalattice.array/2\x00"
 """The versioned start of what an artifact_id hashes: then the profile, the cited digest and the
 bytes' BLAKE3."""
 PACKED: Final = "packed"
@@ -85,23 +88,23 @@ staged until its profile commits."""
 
 
 def digest(columns: Mapping[str, npt.NDArray[Any]]) -> str:
-    """The digest a lane is cited by: SHA-256 over its columns' C-order bytes, in order."""
+    """Name the lane by BLAKE3 over its columns' C-order bytes, in order."""
     return _cited(
         [memoryview(np.ascontiguousarray(values)).cast("B") for values in columns.values()]
     )
 
 
 def packed_digest(payload: bytes) -> str:
-    """The unchanged lane identity over packed bytes, without constructing an array."""
+    """Name packed bytes without constructing an array."""
     return _cited([memoryview(payload)])
 
 
 def _cited(buffers: list[memoryview]) -> str:
-    """The one SHA-256 the door computes: the digest documents cite, over the bytes in order."""
-    found = integrity_sha256()
+    """Hash the ordered bytes for the digest documents cite."""
+    found = integrity_blake3()
     for buffer in buffers:
         found.update(buffer)
-    return found.hexdigest()
+    return tagged_blake3(found)
 
 
 def keep(
@@ -131,8 +134,7 @@ def keep_packed(
     durable: bool = True,
     capacity: Callable[[int], None] | None = None,
 ) -> str:
-    """Keep a legacy lane known only by its packed bytes (its dtype and shape were never written);
-    returns the digest, the SHA-256 of `payload`."""
+    """Keep a lane's packed bytes and return their BLAKE3 digest."""
     return _keep(root, log, describe_packed(payload), workspace, durable, capacity)
 
 
@@ -167,7 +169,7 @@ def describe(columns: Mapping[str, npt.NDArray[Any]]) -> Described:
 
 
 def describe_packed(payload: bytes) -> Described:
-    """A legacy lane known only by its packed bytes, as `describe` names an array."""
+    """A lane known by its packed bytes, as `describe` names an array."""
     described = {"kind": PACKED, "shape": [len(payload)], "columns": [[PACKED, "bytes"]]}
     return _described(described, [memoryview(payload)], lambda: _packed_body(payload))
 
@@ -246,10 +248,16 @@ def settle(root: Path, read: Read, collect: Callable[[str], bool]) -> dict[str, 
         for staged in (p for p in staging if p not in waiting):
             name = staged.name.removeprefix(".").removesuffix(STAGED).rsplit(".", 1)[0]
             target = blobs / name
-            rows = read("SELECT body_state FROM artifact WHERE artifact_id = ?", (name,))
+            rows = read(
+                "SELECT a.body_state, a.content_digest, d.name FROM artifact a"
+                " JOIN definition d ON d.definition_id = a.type_id WHERE a.artifact_id = ?",
+                (name,),
+            )
             if rows and rows[0][0] == "present" and not target.is_file():
+                _, content_digest, kind = rows[0]
+                seal = _artifact_seal(name) if kind == TYPE else content_digest
                 os.replace(staged, target)
-                _sealed(target)
+                record_sealed(target, seal)
                 report["placed"].append(f"blobs/{name}")
             else:
                 handle = f"blobs/{staged.name}"
@@ -260,27 +268,33 @@ def settle(root: Path, read: Read, collect: Callable[[str], bool]) -> dict[str, 
 def keep_file(
     root: Path, log: HostLog, path: Path, *, workspace: str | None, durable: bool = True
 ) -> str:
-    """Keep a lane file in the old store's form (`<digest>.parquet`, or legacy packed
-    `<digest>.bin`) through the door; its digest must be its name, or it is refused by name."""
+    """Keep a carried lane after proving the digest named by its file."""
+    expected = _carried_digest(path)
     found = _decoded(path)
-    if isinstance(found, bytes):
-        kept = keep_packed(root, log, found, workspace=workspace, durable=durable)
-    else:
-        kept = keep(root, log, found, workspace=workspace, durable=durable)
-    if kept != path.stem:
-        raise _tampered(path.stem)
-    return kept
+    array = describe_packed(found) if isinstance(found, bytes) else describe(found)
+    if array.content_digest != expected:
+        raise _tampered(expected)
+    return _keep(root, log, array, workspace, durable)
 
 
 def read_file(path: Path) -> dict[str, npt.NDArray[Any]] | bytes:
-    """A lane file in the old store's form, read in place and proved: a Parquet table's columns in
-    their shape, or a legacy packed lane's bytes, whose digest is the file's name. A file that
-    does not decode or does not prove its name is refused by name."""
+    """Prove a carried Parquet table or packed lane against its filename."""
+    expected = _carried_digest(path)
     found = _decoded(path)
     cited = _cited([memoryview(found)]) if isinstance(found, bytes) else digest(found)
-    if cited != path.stem:
-        raise _tampered(path.stem)
+    if cited != expected:
+        raise _tampered(expected)
     return found
+
+
+def _carried_digest(path: Path) -> str:
+    digest = blake3_from_filename(path.stem)
+    if digest is None:
+        raise DataError(
+            f"{path} does not name a BLAKE3 lane. To use this version, start a fresh data root.",
+            code="data_layer.schema_mismatch",
+        )
+    return digest
 
 
 def _decoded(path: Path) -> dict[str, npt.NDArray[Any]] | bytes:
@@ -298,7 +312,7 @@ def _decoded(path: Path) -> dict[str, npt.NDArray[Any]] | bytes:
 
 
 def carry(read: Read, root: Path, workspace: str, copy: Path) -> int:
-    """Write each array `workspace` holds into the workspace copy `copy` in the old store's form,
+    """Write each array `workspace` holds into the workspace copy `copy`,
     under CARRIED: a Parquet body as it is, a packed one as its bytes. A file the copy has is kept:
     each is written whole under another name. Returns the arrays the copy now carries.
 
@@ -315,7 +329,7 @@ def carry(read: Read, root: Path, workspace: str, copy: Path) -> int:
     folder = copy / CARRIED
     for artifact, content_digest, shape in rows:
         packed = json.loads(shape)["kind"] == PACKED
-        target = folder / f"{content_digest}{'.bin' if packed else '.parquet'}"
+        target = folder / f"{blake3_filename(content_digest)}{'.bin' if packed else '.parquet'}"
         if target.is_file():
             continue
         payload = read_packed(root, read, content_digest) if packed else _read(root, artifact)
@@ -335,7 +349,7 @@ def import_carried(root: Path, log: HostLog, folder: Path, *, workspace: str) ->
     for path in sorted(carried.iterdir()):
         if path.suffix not in {".parquet", ".bin"} or path.name.startswith("."):
             continue
-        known = profile(log.read, path.stem)
+        known = profile(log.read, _carried_digest(path))
         if known is not None and log.read(
             "SELECT 1 FROM live_ref WHERE artifact_id = ? AND root_kind = 'workspace'"
             " AND root_id = ?",
@@ -376,7 +390,7 @@ def _keep(
                 if capacity is not None:
                     capacity(len(payload))
                 _place(target, payload)  # its committed profile's body a crash left staged
-                _sealed(target)
+                record_sealed(target, _artifact_seal(artifact))
             _hold(log, artifact, workspace)
         else:
             payload = body()
@@ -407,7 +421,9 @@ def _keep(
                     ("artifact", artifact),
                     attrs,
                     workspace=workspace,
-                    committed=lambda done: _settled(target, staged, committed=done),
+                    committed=lambda done: _settled(
+                        target, staged, seal=_artifact_seal(artifact), committed=done
+                    ),
                 )
             except BaseException:
                 del _unplaced[target]  # refused: its staged body goes at the next start
@@ -430,22 +446,21 @@ def _staged(target: Path) -> Path:
     return target.with_name(f".{target.name}.{os.getpid()}{STAGED}")
 
 
-def _settled(target: Path, staged: Path, *, committed: bool) -> None:
+def _settled(target: Path, staged: Path, *, seal: str, committed: bool) -> None:
     """A body into place once its profile has committed. A body whose event rolled back, or whose
     rename failed, is this process's no longer: it stays staged for start's `settle`, which
     collects it without a profile and places it with one, and a later keep places it too."""
     try:
         if committed:
             os.replace(staged, target)
-            _sealed(target)
+            record_sealed(target, seal)
     finally:
         del _unplaced[target]
 
 
-def _sealed(target: Path) -> None:
-    """Record, as the writer that just placed a body under blobs/, the BLAKE3 identity it computed
-    for it (its name), so a read in any process trusts it until the file changes: no hash."""
-    record_sealed(target, f"blake3:{target.name}")
+def _artifact_seal(artifact_id: str) -> str:
+    """The array's physical BLAKE3 identity, whose hex is stored as its filename."""
+    return f"blake3:{artifact_id}"
 
 
 def _read(root: Path, artifact: str) -> bytes:
@@ -534,7 +549,7 @@ def _named(described: Mapping[str, Any], cited: str, buffers: list[memoryview]) 
         body.update(buffer)
     named = identity_blake3(FORM)
     named.update(canonical({key: described[key] for key in ("kind", "shape", "columns")}))
-    named.update(bytes.fromhex(cited))
+    named.update(bytes.fromhex(blake3_hex(cited)))
     named.update(body.digest())
     return named
 

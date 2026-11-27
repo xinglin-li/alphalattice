@@ -39,6 +39,7 @@ from alphalattice.investment.risk_research.surfaces.returns import (
     CausalRiskReturnReader,
     RiskReturnArtifactStore,
 )
+from alphalattice.kernel.identity import blake3_filename
 from alphalattice.protocols.research_authoring.contracts import (
     AuthoringError,
     ResearchExecutionEvidence,
@@ -47,6 +48,7 @@ from alphalattice.protocols.research_authoring.contracts import (
     ResolvedResearchAuthority,
     SealedResearchProgram,
 )
+from tests._support.identity_fixtures import fixture_digest
 
 
 def _authority():
@@ -54,12 +56,12 @@ def _authority():
     authority = ResolvedResearchAuthority.create(
         data_snapshot_handle="fixture",
         universe_handle="fixture",
-        panel_snapshot_hash="a" * 64,
+        panel_snapshot_hash=fixture_digest("a"),
         panel_manifest_ref="playpen://fixture/panel",
-        universe_revision_sha256="b" * 64,
+        universe_revision_sha256=fixture_digest("b"),
         ordered_listing_ids=("A", "B", "C"),
         sessions=days[314:317],
-        source_watermark_hash="c" * 64,
+        source_watermark_hash=fixture_digest("c"),
     )
     return days, authority
 
@@ -120,7 +122,7 @@ def test_risk_series_computes_each_scope_once_and_verifies_every_child(tmp_path,
                     open_total_return_log=float(values[i, j]),
                     entry_source_row_hash=canonical_hash((i, listing, "entry")),
                     exit_source_row_hash=canonical_hash((i, listing, "exit")),
-                    action_set_hash="0" * 64,
+                    action_set_hash=fixture_digest("0"),
                 )
                 rows.append({**row, "row_hash": canonical_hash(row)})
         chunk = input_store.publish_chunk(pa.Table.from_pylist(rows))
@@ -139,7 +141,7 @@ def test_risk_series_computes_each_scope_once_and_verifies_every_child(tmp_path,
             first_formation_session=days[0],
             last_formation_session=days[-1],
             formation_count=len(days),
-            source_watermark_hash="d" * 64,
+            source_watermark_hash=fixture_digest("d"),
             chunks=(chunk,),
             limitations=("SYNTHETIC_QA",),
         )
@@ -187,7 +189,7 @@ def test_risk_series_computes_each_scope_once_and_verifies_every_child(tmp_path,
     )
 
     def freshness(**_):
-        return "d" * 64
+        return fixture_digest("d")
 
     executor = RiskExperimentExecutor(
         surface_provider=SimpleNamespace(published_surfaces=lambda: tuple(surfaces.values())),
@@ -301,7 +303,7 @@ def test_risk_series_computes_each_scope_once_and_verifies_every_child(tmp_path,
     with pytest.raises(AuthoringError, match="series_scope_mismatch"):
         verify(wrong)
     chunk = projected["risk_surface"]["scope_surfaces"][1]["chunks"][0]
-    path = store.root / "covariance/chunks" / f"{chunk['content_hash']}.bin"
+    path = store.root / "covariance/chunks" / f"{blake3_filename(chunk['content_hash'])}.bin"
     original = path.read_bytes()
     try:
         path.unlink()
@@ -330,7 +332,7 @@ def _synthetic_run(root, days, authority, values, *, missing=(), captured=None):
                 open_total_return_log=float(values[i, j]),
                 entry_source_row_hash=canonical_hash((i, listing, "entry")),
                 exit_source_row_hash=canonical_hash((i, listing, "exit")),
-                action_set_hash="0" * 64,
+                action_set_hash=fixture_digest("0"),
             )
             rows.append({**row, "row_hash": canonical_hash(row)})
     chunk = input_store.publish_chunk(pa.Table.from_pylist(rows))
@@ -349,7 +351,7 @@ def _synthetic_run(root, days, authority, values, *, missing=(), captured=None):
         first_formation_session=days[0],
         last_formation_session=days[-1],
         formation_count=len(days),
-        source_watermark_hash="d" * 64,
+        source_watermark_hash=fixture_digest("d"),
         chunks=(chunk,),
         limitations=("SYNTHETIC_QA",),
         **(
@@ -417,7 +419,7 @@ def _synthetic_run(root, days, authority, values, *, missing=(), captured=None):
     )
 
     def freshness(**_):
-        return "d" * 64
+        return fixture_digest("d")
 
     executor = RiskExperimentExecutor(
         surface_provider=SimpleNamespace(published_surfaces=lambda: (surface,)),
@@ -516,25 +518,32 @@ def test_risk_report_links_disclose_subset_scopes_without_changing_legacy_shape(
     document = {"experiment": {"sessions": {"as_of": {"session": "2026-08-05"}}}}
     portfolio = {
         "task_id": str(UUID(int=1)),
-        "receipt": {"receipt_hash": "1" * 64},
+        "receipt": {"receipt_hash": fixture_digest("1")},
         "document": document,
         "portfolio_source": {
-            "input_binding_hash": "2" * 64,
-            "panel_snapshot_hash": "3" * 64,
-            "universe_revision": "4" * 64,
+            "input_binding_hash": fixture_digest("2"),
+            "panel_snapshot_hash": fixture_digest("3"),
+            "universe_revision": fixture_digest("4"),
             "ordered_listing_ids": ids,
             "formation_sessions": days,
         },
     }
-    surface = {"surface_hash": "5" * 64, "ordered_listing_ids": ids, "formation_sessions": days}
+    surface = {
+        "surface_hash": fixture_digest("5"),
+        "ordered_listing_ids": ids,
+        "formation_sessions": days,
+    }
     risk = {
         "status": "EXPERIMENT_PUBLISHED",
         "task_id": str(UUID(int=2)),
-        "input_binding_hash": "2" * 64,
+        "input_binding_hash": fixture_digest("2"),
         "document": document,
         "risk_surface": surface,
-        "risk_input": {"panel_snapshot_hash": "3" * 64, "universe_revision_sha256": "4" * 64},
-        "result": {"diagnostics_hash": "6" * 64},
+        "risk_input": {
+            "panel_snapshot_hash": fixture_digest("3"),
+            "universe_revision_sha256": fixture_digest("4"),
+        },
+        "result": {"diagnostics_hash": fixture_digest("6")},
     }
     legacy = RiskReportLinks._link(portfolio, risk, "HUMAN").model_dump(mode="json")
     assert "assessed_listing_scopes" not in legacy
@@ -594,7 +603,7 @@ def test_risk_report_link_listing_refuses_bad_siblings_and_keeps_valid_link(tmp_
     portfolio = {
         "status": "EXPERIMENT_PUBLISHED",
         "task_id": str(portfolio_task_id),
-        "receipt": {"receipt_hash": "1" * 64},
+        "receipt": {"receipt_hash": fixture_digest("1")},
         "document": {"experiment": {"output_workspace": "portfolio"}},
         "portfolio_source": {"fixture": True},
     }
@@ -606,9 +615,9 @@ def test_risk_report_link_listing_refuses_bad_siblings_and_keeps_valid_link(tmp_
             portfolio_task_id=portfolio_task_id,
             portfolio_receipt_hash=receipt_hash,
             risk_task_id=UUID(int=risk_task_id),
-            risk_surface_hash="2" * 64,
-            risk_diagnostics_hash="3" * 64,
-            input_binding_hash="4" * 64,
+            risk_surface_hash=fixture_digest("2"),
+            risk_diagnostics_hash=fixture_digest("3"),
+            input_binding_hash=fixture_digest("4"),
             risk_start=date(2026, 8, 3),
             risk_end=date(2026, 8, 3),
             risk_formation_count=1,
@@ -617,12 +626,12 @@ def test_risk_report_link_listing_refuses_bad_siblings_and_keeps_valid_link(tmp_
         )
 
     healthy = make_link(receipt_hash=portfolio["receipt"]["receipt_hash"], risk_task_id=201)
-    mismatched = make_link(receipt_hash="5" * 64, risk_task_id=202)
+    mismatched = make_link(receipt_hash=fixture_digest("5"), risk_task_id=202)
     for link in (healthy, mismatched):
         store.publish(category=CATEGORY, value=link, identity_field="link_hash")
 
-    corrupt_hash = "a" * 64
-    corrupt_path = store.root / CATEGORY / f"{corrupt_hash}.json"
+    corrupt_hash = fixture_digest("a")
+    corrupt_path = store.root / CATEGORY / f"{blake3_filename(corrupt_hash)}.json"
     corrupt_path.write_text("{not json", encoding="utf-8")
 
     answer = links.listing(portfolio_task_id)
@@ -679,8 +688,8 @@ def test_an_installed_book_names_the_admitted_risk_report_subject_before_the_act
             )
             plan = ResearchPlan.create(
                 goal_hash=goal.goal_hash,
-                workflow_definition_hash="1" * 64,
-                verifier_catalog_hash="2" * 64,
+                workflow_definition_hash=fixture_digest("1"),
+                verifier_catalog_hash=fixture_digest("2"),
                 work_items=(
                     WorkItemDefinition.create(
                         stage_id="prepare", dependency_ids=(), verifier_id="synthetic.verify"
@@ -725,7 +734,7 @@ def test_an_installed_book_names_the_admitted_risk_report_subject_before_the_act
                         "POST_OBSERVED_PORTFOLIO_WINDOW",
                     ),
                     ("list",),
-                    ("export", "--risk-report", "f" * 64),
+                    ("export", "--risk-report", fixture_digest("f")),
                 )
             ):
                 saved = tmp_path / f"refusal-{index}.json"

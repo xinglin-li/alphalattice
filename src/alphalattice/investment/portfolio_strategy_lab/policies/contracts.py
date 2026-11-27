@@ -35,6 +35,7 @@ from alphalattice.capabilities.portfolio_backtesting.contracts import (
     FloatArray,
     PortfolioTargetDecision,
 )
+from alphalattice.kernel.identity import BLAKE3_PATTERN
 
 if TYPE_CHECKING:
     # Type-level only, and deliberately so. Both names below are used purely as
@@ -134,7 +135,7 @@ class PortfolioSelectionAllocationSemantics(BaseModel):  # type: ignore[misc]
         "OPTIMIZER_DOES_NOT_SELECT_GLOBAL_TOP_K",
         "NO_OPTIMIZER_SELECTS_OR_ALLOCATES_THE_BOOK",
     ] = "OPTIMIZER_DOES_NOT_SELECT_GLOBAL_TOP_K"
-    semantics_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
+    semantics_hash: str = Field(pattern=BLAKE3_PATTERN)
 
     @classmethod
     def create(
@@ -286,7 +287,7 @@ class PortfolioPolicyAdapterBinding(BaseModel):  # type: ignore[misc]
 
     kind: Literal["PortfolioPolicyAdapterBinding"] = "PortfolioPolicyAdapterBinding"
     policy_id: str = Field(min_length=1, max_length=128)
-    adapter_implementation_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
+    adapter_implementation_hash: str = Field(pattern=BLAKE3_PATTERN)
     recipe_schema_id: str = Field(min_length=1, max_length=128)
     """Which recipe shape this adapter decodes, declared rather than inferred."""
 
@@ -309,7 +310,7 @@ class PortfolioPolicyAdapterBinding(BaseModel):  # type: ignore[misc]
     this explicitly so a closed-form policy cannot be treated as a failed
     optimizer path merely because it has no covariance forecast.
     """
-    binding_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
+    binding_hash: str = Field(pattern=BLAKE3_PATTERN)
 
     @classmethod
     def create(

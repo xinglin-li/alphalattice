@@ -4,7 +4,6 @@ from __future__ import annotations
 
 import json
 import os
-import re
 from collections.abc import Callable, Mapping
 from dataclasses import dataclass
 from pathlib import Path
@@ -80,6 +79,7 @@ from alphalattice.investment.risk_research.calibration.diagnostic_contracts impo
 from alphalattice.investment.risk_research.contracts import HistoricalCovarianceSurface
 from alphalattice.investment.risk_research.surfaces.artifacts import RiskArtifactStore
 from alphalattice.investment.risk_research.surfaces.returns import RiskReturnArtifactStore
+from alphalattice.kernel.identity import blake3_filename, blake3_from_filename, is_blake3
 
 LAB: Final = "portfolio-strategy-lab"
 _NOT_LANES: Final = frozenset({"public", "pending-finalization", "carried", "current"})
@@ -87,7 +87,6 @@ _NOT_LANES: Final = frozenset({"public", "pending-finalization", "carried", "cur
 namespaces, the lanes a copy carries (moved at first use, `history.carry_arrays`) and pointers."""
 _DOCUMENTS: Final = Path("development", "paired-alpha-portfolio", "objective-audits")
 """The one category whose legacy `.bin` files are documents, not packed lanes."""
-_DIGEST: Final = re.compile(r"[0-9a-f]{64}")
 
 
 class PortfolioPublicationError(ValueError):
@@ -118,7 +117,13 @@ def _files(root: Path) -> Path | None:
 
 def _unmoved(workspace: Path) -> bool:
     """Whether the workspace holds lane files the door lacks."""
-    return bool(history.arrays_lacking(path.stem for path in lane_files(workspace)))
+    return bool(
+        history.arrays_lacking(
+            digest
+            for path in lane_files(workspace)
+            if (digest := blake3_from_filename(path.stem)) is not None
+        )
+    )
 
 
 def _door_refusal(error: DataError) -> str:
@@ -226,7 +231,7 @@ class PortfolioResearchArtifactStore:
 
     @staticmethod
     def _require_hash(value: str) -> None:
-        if len(value) != 64 or any(char not in "0123456789abcdef" for char in value):
+        if not is_blake3(value):
             raise PortfolioPublicationError("portfolio_strategy_lab.artifact_identity_invalid")
 
     @staticmethod
@@ -338,7 +343,9 @@ class PortfolioResearchArtifactStore:
         self._content.require_hash(content_hash)
         if (workspace := _files(self.root)) is not None:
             held = self._content.holds_columns(category=category, content_hash=content_hash)
-            return held or (workspace / CARRIED / f"{content_hash}.parquet").is_file()
+            return (
+                held or (workspace / CARRIED / f"{blake3_filename(content_hash)}.parquet").is_file()
+            )
         found = history.array_profile(content_hash)
         return found is not None and found["body_state"] == "present" and found["kind"] != "packed"
 
@@ -366,8 +373,9 @@ class PortfolioResearchArtifactStore:
     def _file_lane(self, workspace: Path, category: str, content_hash: str, *, packed: bool) -> Any:
         """A lane from the workspace's own files: where this store wrote it, else among the lanes
         a copy carries (`history.carry_arrays`), read in place."""
-
-        carried = [workspace / CARRIED / f"{content_hash}{s}" for s in (".parquet", ".bin")]
+        self._require_hash(content_hash)
+        stem = blake3_filename(content_hash)
+        carried = [workspace / CARRIED / f"{stem}{s}" for s in (".parquet", ".bin")]
         found = next((path for path in carried if path.is_file()), None)
         written = self._content.holds_columns(category=category, content_hash=content_hash)
         if found is None or written:
@@ -465,7 +473,9 @@ class PortfolioResearchArtifactStore:
             PortfolioPublicationError: Index binding/shape or referenced artifact is invalid.
         """
         self._require_hash(program_hash)
-        index = self.root / "baseline-slates" / "by-program" / f"{program_hash}.json"
+        index = (
+            self.root / "baseline-slates" / "by-program" / f"{blake3_filename(program_hash)}.json"
+        )
         if not index.is_file():
             return None
         try:
@@ -524,7 +534,7 @@ class PortfolioResearchArtifactStore:
             PortfolioPublicationError: Checkpoint shape/binding or referenced ledger differs.
         """
         self._require_hash(program_hash)
-        target = self.root / "checkpoints" / f"{program_hash}-{phase}.json"
+        target = self.root / "checkpoints" / f"{blake3_filename(program_hash)}-{phase}.json"
         if not target.is_file():
             return None
         try:
@@ -572,7 +582,7 @@ class PortfolioResearchArtifactStore:
                 differs.
         """
         self._require_hash(program_hash)
-        target = self.root / "checkpoints" / f"{program_hash}-review.json"
+        target = self.root / "checkpoints" / f"{blake3_filename(program_hash)}-review.json"
         if not target.is_file():
             return None
         try:
@@ -750,7 +760,7 @@ class PortfolioResearchArtifactStore:
                 self.root
                 / "regularization"
                 / "risk-calibration-current-markers"
-                / f"{pointer.marker_hash}.json"
+                / f"{blake3_filename(pointer.marker_hash)}.json"
             )
             if risk_calibration_marker_path.is_file():
                 return self._read_risk_calibration_current(pointer)
@@ -758,7 +768,7 @@ class PortfolioResearchArtifactStore:
                 self.root
                 / "regularization"
                 / "attribution-current-markers"
-                / f"{pointer.marker_hash}.json"
+                / f"{blake3_filename(pointer.marker_hash)}.json"
             )
             if attribution_marker_path.is_file():
                 return self._read_attribution_current(pointer)
@@ -766,7 +776,7 @@ class PortfolioResearchArtifactStore:
                 self.root
                 / "regularization"
                 / "recovery-current-markers"
-                / f"{pointer.marker_hash}.json"
+                / f"{blake3_filename(pointer.marker_hash)}.json"
             )
             if recovery_marker_path.is_file():
                 return self._read_recovery_current(pointer)
@@ -1391,7 +1401,9 @@ def lane_files(workspace: Path) -> list[Path]:
                 continue
             for folder, _folders, names in os.walk(child, onerror=refuse):
                 for path in (Path(folder, name) for name in names):
-                    if path.suffix not in {".parquet", ".bin"} or not _DIGEST.fullmatch(path.stem):
+                    if path.suffix not in {".parquet", ".bin"} or (
+                        blake3_from_filename(path.stem) is None
+                    ):
                         continue
                     if path.suffix == ".bin" and path.parent.relative_to(lab) == _DOCUMENTS:
                         continue
@@ -1418,7 +1430,11 @@ def lane_upgrade_family(holder: Callable[[Path], str | None]) -> Family:
                 old = arrays.read_file(path)
                 if not isinstance(old, bytes):
                     old = b"".join(values.tobytes() for values in old.values())
-                if arrays.read_packed(runner.root, runner.log.read, path.stem) != old:
+                digest = blake3_from_filename(path.stem)
+                if (
+                    digest is None
+                    or arrays.read_packed(runner.root, runner.log.read, digest) != old
+                ):
                     return False
         return True
 

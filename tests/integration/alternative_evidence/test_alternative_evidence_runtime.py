@@ -36,6 +36,7 @@ from alphalattice.evidence.alternative_evidence.sources.sec_edgar import (
     SecEdgarSource,
     SecOfficialResponse,
 )
+from tests._support.identity_fixtures import fixture_digest
 from tests.alternative_evidence_desk.document_intelligence_support import live_admission
 from tests.alternative_evidence_desk.sec_fixture_transport import NOW, SecFixtureTransport
 
@@ -71,7 +72,7 @@ def _registry() -> SecIssuerRegistrySnapshot:
                 entity_id="MSFT", ticker="MSFT", cik="0000789019", legal_name="Microsoft"
             ),
         ),
-        source_content_hash="1" * 64,
+        source_content_hash=fixture_digest("SEC registry bytes"),
     )
 
 
@@ -150,7 +151,7 @@ def test_recorded_material_beyond_an_issuers_capacity_is_deferred_and_named(
             )
             for index in range(8)
         ),
-        source_content_hash="1" * 64,
+        source_content_hash=fixture_digest("SEC registry bytes"),
     )
     snapshot, documents = service.build_recorded_evidence(
         request=request, registry=registry, documents=library, published_at=NOW
@@ -422,7 +423,7 @@ def test_mutable_companyfacts_requires_prior_as_of_snapshot() -> None:
                 accession="0000320193-26-000001",
             ),
         ),
-        source_content_hash="a" * 64,
+        source_content_hash=fixture_digest("SEC company facts bytes"),
     )
     with pytest.raises(ValueError, match="mutable_companyfacts_historical_rejected"):
         SecEdgarSource.companyfacts_citation(

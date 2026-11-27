@@ -89,6 +89,7 @@ from alphalattice.investment.portfolio_strategy_lab.application.strategy_package
 from alphalattice.investment.portfolio_strategy_lab.publication.artifacts import (
     PortfolioResearchArtifactStore,
 )
+from alphalattice.kernel.identity import blake3_from_filename
 
 PLAN_FIELDS = ("calibration_inputs",)
 """The manifest fields a plan reads: the calibration inputs it prepares. A plan binds them, never
@@ -493,7 +494,7 @@ class StrategyCalibrationApplication:
 
     def _published(self, plan: CalibrationPlan) -> PreparedPortfolioComponentInput | None:
         found = [
-            self._load(path.stem)
+            self._load(blake3_from_filename(path.stem) or "")
             for path in sorted((self.store.root / RESULT_CATEGORY).glob("*.json"))
         ]
         found = [value for value in found if value.request_hash == plan.plan_hash]

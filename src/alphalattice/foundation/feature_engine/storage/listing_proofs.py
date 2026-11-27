@@ -17,7 +17,7 @@ import duckdb
 import numpy as np
 
 from alphalattice.capabilities.domain_contracts.identity import canonical_hash
-from alphalattice.kernel.identity import integrity_sha256
+from alphalattice.kernel.identity import integrity_blake3, tagged_blake3
 
 if TYPE_CHECKING:
     from alphalattice.foundation.feature_engine.storage.repositories import (
@@ -93,10 +93,10 @@ def feature_source_listing_proofs(
     stops: list[int] = np.asarray(np.searchsorted(ids, keys, side="right"), np.int64).tolist()
 
     def digest(first: int, last: int) -> str:
-        rows_hash = integrity_sha256(days[first:last].astype(np.int64).tobytes())
+        rows_hash = integrity_blake3(days[first:last].astype(np.int64).tobytes())
         for column in values:
             rows_hash.update(column[first:last].tobytes())
-        return rows_hash.hexdigest()
+        return tagged_blake3(rows_hash)
 
     def split(year: int) -> list[int]:
         first_day = np.datetime64(date(year, 1, 1), "D")

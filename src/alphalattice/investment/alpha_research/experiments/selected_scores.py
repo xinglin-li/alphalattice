@@ -34,11 +34,11 @@ from pydantic import BaseModel, ConfigDict, Field, model_validator
 from alphalattice.capabilities.domain_contracts.domain.errors import AlphaLatticeError
 from alphalattice.capabilities.domain_contracts.identity import canonical_hash
 from alphalattice.foundation.data_layer import history
-from alphalattice.kernel.identity import identity_sha256
+from alphalattice.kernel.identity import BLAKE3_PATTERN, identity_blake3, tagged_blake3
 
 type FloatArray = npt.NDArray[np.float64]
 
-_HASH = r"^[0-9a-f]{64}$"
+_HASH = BLAKE3_PATTERN
 
 ALPHA_SELECTED_SCORE_SEMANTICS = "PREDICTED_RESIDUAL_Z_CANONICAL_TARGET"
 """What the values are. Named so a consumer cannot mistake them for a return."""
@@ -160,7 +160,7 @@ def predicted_z_values_hash(values: FloatArray) -> str:
     """Byte identity of the predicted-Z matrix, NaNs included."""
 
     contiguous = np.ascontiguousarray(values, dtype=np.float64)
-    return identity_sha256(contiguous.tobytes()).hexdigest()
+    return tagged_blake3(identity_blake3(contiguous.tobytes()))
 
 
 def _resolve_selected_folds(

@@ -50,6 +50,8 @@ from alphalattice.foundation.feature_engine.producers.preprocessing.robust_cross
 from alphalattice.foundation.market_data_ops.returns.sector_revision_identity import (
     sector_revision_hash,
 )
+from alphalattice.kernel.identity import blake3_filename
+from tests._support.identity_fixtures import fixture_digest
 
 
 def test_key_and_value_identity_preserve_order_bits_and_validity() -> None:
@@ -117,17 +119,18 @@ def test_sector_revision_identity_is_order_stable_and_semantically_sensitive() -
 
 
 def test_base_manifest_preserves_nonlexical_factor_order() -> None:
+    key_hash = fixture_digest("base-key")
     artifact = ClosureArtifactRef(
         kind="fixture",
-        content_hash="2" * 64,
-        physical_sha256="3" * 64,
+        content_hash=fixture_digest("base-content"),
+        physical_digest=fixture_digest("base-physical"),
         byte_count=1,
         row_count=1,
         uri="artifact://fixture",
     )
     key_chunk = PanelBaseKeyChunk(
         year=2026,
-        key_hash="4" * 64,
+        key_hash=key_hash,
         first_session=date(2026, 1, 2),
         last_session=date(2026, 1, 2),
         listing_count=1,
@@ -138,15 +141,15 @@ def test_base_manifest_preserves_nonlexical_factor_order() -> None:
         PanelBaseValueChunk(
             year=2026,
             factor_id=factor_id,
-            key_hash="4" * 64,
-            value_hash=value_hash * 64,
+            key_hash=key_hash,
+            value_hash=fixture_digest(factor_id),
             null_count=0,
             artifact=artifact,
         )
-        for factor_id, value_hash in (("z_factor", "5"), ("a_factor", "6"))
+        for factor_id in ("z_factor", "a_factor")
     )
     values = {
-        "catalog_hash": "1" * 64,
+        "catalog_hash": fixture_digest("base-catalog"),
         "history_start": date(2026, 1, 1),
         "as_of_session": date(2026, 1, 2),
         "factor_ids": ("z_factor", "a_factor"),
@@ -276,7 +279,9 @@ def test_base_probe_judges_partial_groups_by_retained_cells_and_proven_scope(
         )
 
     def publish_record(record: PanelClipObservationRecord) -> None:
-        target = resolver.root / "feature-panel" / "clip-observations" / f"{receipt}.json"
+        target = (
+            resolver.root / "feature-panel/clip-observations" / f"{blake3_filename(receipt)}.json"
+        )
         target.unlink(missing_ok=True)
         resolver.publish_panel_clip_observation(
             payload=record.model_dump(mode="json"), receipt_hash=receipt
@@ -346,7 +351,7 @@ def test_legacy_partial_receipt_recovers_the_original_epoch_layout(tmp_path, mon
         record = PanelClipObservationRecord.seal(
             {
                 **{key: value for key, value in payload.items() if key != "record_hash"},
-                "ordered_listing_ids_hash": "f" * 64,
+                "ordered_listing_ids_hash": fixture_digest("wrong-listing-axis"),
             }
         )
         return record.model_dump(mode="json")
@@ -390,7 +395,7 @@ def test_a_recipe_published_before_partition_reuse_republishes_its_exact_bytes(
     legacy_bytes = json.dumps(
         legacy, ensure_ascii=False, sort_keys=True, separators=(",", ":"), default=str
     ).encode("utf-8")
-    target = store.root / "recipes" / f"{recipe.recipe_hash}.json"
+    target = store.root / "recipes" / f"{blake3_filename(recipe.recipe_hash)}.json"
     target.write_bytes(legacy_bytes)
 
     republished = PanelClosurePublisher(resolver=resolver, source=source, store=store).publish()
@@ -409,8 +414,8 @@ def test_closure_source_scope_skips_unavailable_historical_manifests(
     tmp_path: Path,
 ) -> None:
     resolver, database, snapshot_hash = _fixture_workspace(tmp_path)
-    unavailable_hash = "f" * 64
-    unavailable = resolver.root / "feature-panel" / "manifests" / f"{unavailable_hash}.json"
+    unavailable_stem = blake3_filename("blake3:" + "f" * 64)
+    unavailable = resolver.root / "feature-panel" / "manifests" / f"{unavailable_stem}.json"
     unavailable.write_text("not-readable-legacy-evidence", encoding="utf-8")
 
     source = PanelClosureSourceRepository(
@@ -432,7 +437,9 @@ def test_closure_source_scope_skips_unavailable_historical_manifests(
 
     inventory = source.inventory_snapshots()
 
-    assert tuple(item.snapshot_hash for item in inventory) == (snapshot_hash,)
+    assert tuple((item.snapshot_hash, item.lifecycle) for item in inventory) == (
+        (snapshot_hash, "ACTIVE"),
+    )
 
 
 def _fixture_workspace(
@@ -447,10 +454,10 @@ def _fixture_workspace(
         listing: "A" if index < listing_count // 2 else "B"
         for index, listing in enumerate(listings)
     }
-    manifest_revision = "1" * 64
-    catalog_hash = "2" * 64
-    policy_hash = "3" * 64
-    spy_revision = "4" * 64
+    manifest_revision = fixture_digest("manifest")
+    catalog_hash = fixture_digest("catalog")
+    policy_hash = fixture_digest("policy")
+    spy_revision = fixture_digest("spy")
     entries = tuple(
         {
             "listing_id": listing,
@@ -587,9 +594,9 @@ def _fixture_workspace(
         "history_start": session.isoformat(),
         "as_of_session": session.isoformat(),
         "knowledge_cutoff_at": "2026-01-03T00:00:00+00:00",
-        "temporal_identity_hash": "5" * 64,
+        "temporal_identity_hash": fixture_digest("temporal-identity"),
         "active_listing_count": len(listings),
-        "listing_set_hash": "6" * 64,
+        "listing_set_hash": fixture_digest("listing-set"),
         "schema_hash": schema_hash,
         "chunks": [
             {
@@ -773,7 +780,7 @@ def _populate_database(
                 item["residual_mad"],
                 item["status"],
                 item["reason"],
-                "7" * 64,
+                fixture_digest("availability-input"),
                 panel_binding_hash,
                 item["small_sector_warning"],
                 json.dumps(item["small_sector_names"]),
@@ -837,15 +844,15 @@ def test_installed_preprocessing_catalog_and_clipping_evidence_round_trip(tmp_pa
     resolver = ArtifactResolver(tmp_path)
     payload = {
         "kind": "PanelClippingEvidence",
-        "preprocessing_binding_hash": "a" * 64,
+        "preprocessing_binding_hash": fixture_digest("preprocessing-binding"),
         "recipe_id": ROBUST_SECTOR_NEUTRAL_Z,
         "recipe_hash": recipe.recipe_hash,
-        "panel_binding_hash": "b" * 64,
-        "ordered_sessions_hash": "c" * 64,
-        "ordered_listing_ids_hash": "d" * 64,
+        "panel_binding_hash": fixture_digest("panel-binding"),
+        "ordered_sessions_hash": fixture_digest("session-axis"),
+        "ordered_listing_ids_hash": fixture_digest("listing-axis"),
         "ordered_factor_ids": ["alpha_factor"],
-        "raw_input_identity": "e" * 64,
-        "transformed_identity": "f" * 64,
+        "raw_input_identity": fixture_digest("raw-input"),
+        "transformed_identity": fixture_digest("transformed"),
         "factor_records": [],
         "total_clipped_count": 0,
     }
@@ -859,7 +866,7 @@ def test_installed_preprocessing_catalog_and_clipping_evidence_round_trip(tmp_pa
         ROBUST_SECTOR_NEUTRAL_Z
     )
 
-    target = tmp_path / "feature-panel" / "clipping-evidence" / f"{evidence_hash}.json"
+    target = tmp_path / "feature-panel/clipping-evidence" / f"{blake3_filename(evidence_hash)}.json"
     tampered = json.loads(target.read_text(encoding="utf-8"))
     tampered["total_clipped_count"] = 99
     target.write_text(json.dumps(tampered, sort_keys=True), encoding="utf-8")
@@ -868,31 +875,31 @@ def test_installed_preprocessing_catalog_and_clipping_evidence_round_trip(tmp_pa
 
     column = DevelopmentFeatureOverlayColumn(
         factor_id="alpha_factor",
-        formula_specification_hash="1" * 64,
-        implementation_hash="2" * 64,
-        admission_receipt_hash="3" * 64,
+        formula_specification_hash=fixture_digest("formula"),
+        implementation_hash=fixture_digest("implementation"),
+        admission_receipt_hash=fixture_digest("admission"),
         preprocessing_recipe_id=ROBUST_SECTOR_NEUTRAL_Z,
         preprocessing_recipe_hash=recipe.recipe_hash,
-        preprocessing_implementation_hash="4" * 64,
-        raw_child_identity="5" * 64,
-        preprocessing_child_identity="6" * 64,
+        preprocessing_implementation_hash=fixture_digest("preprocessing-implementation"),
+        raw_child_identity=fixture_digest("raw-child"),
+        preprocessing_child_identity=fixture_digest("preprocessing-child"),
     )
     manifest_values = {
         "kind": "DevelopmentFeatureOverlayManifest",
         "scope": "DEVELOPMENT_ONLY",
-        "base_panel_snapshot_hash": "7" * 64,
-        "base_panel_binding_hash": "8" * 64,
-        "source_identity": "9" * 64,
-        "installed_kernel_capability_hash": "a" * 64,
-        "factor_catalog_revision_hash": "b" * 64,
+        "base_panel_snapshot_hash": fixture_digest("base-snapshot"),
+        "base_panel_binding_hash": fixture_digest("base-binding"),
+        "source_identity": fixture_digest("source"),
+        "installed_kernel_capability_hash": fixture_digest("kernel"),
+        "factor_catalog_revision_hash": fixture_digest("factor-catalog"),
         "preprocessing_catalog_hash": catalog.catalog_hash,
         "ordered_session_axis": ["2026-01-02"],
         "ordered_listing_axis": ["L00"],
         "ordered_candidate_axis": ["alpha_factor"],
         "columns": [column.model_dump(mode="json", exclude_none=True)],
-        "parquet_sha256": "c" * 64,
+        "parquet_digest": fixture_digest("parquet"),
         "parquet_relative_path": "values.parquet",
-        "raw_parquet_sha256": "d" * 64,
+        "raw_parquet_digest": fixture_digest("raw-parquet"),
         "raw_parquet_relative_path": "raw_values.parquet",
         "row_count": 1,
     }
@@ -902,6 +909,11 @@ def test_installed_preprocessing_catalog_and_clipping_evidence_round_trip(tmp_pa
         ).raw_parquet_relative_path
         == "raw_values.parquet"
     )
+
+
+_CLIP_PANEL_BINDING = fixture_digest("clip-panel-binding")
+_ORIGINAL_CLIP_RECEIPT = fixture_digest("original-clip-receipt")
+_REPLACEMENT_CLIP_RECEIPT = fixture_digest("replacement-clip-receipt")
 
 
 def _clip_record(
@@ -915,7 +927,7 @@ def _clip_record(
     return PanelClipObservationRecord.seal(
         {
             "receipt_hash": receipt,
-            "panel_binding_hash": "b" * 64,
+            "panel_binding_hash": _CLIP_PANEL_BINDING,
             "sessions": sessions,
             "ordered_sessions_hash": canonical_hash(list(sessions)),
             "ordered_listing_ids_hash": canonical_hash(["L00", "L01"]),
@@ -950,8 +962,8 @@ def test_clipping_evidence_joins_cells_by_session_and_keeps_calendar_order(monke
     from alphalattice.foundation.feature_engine.producers.preprocessing import contracts
 
     materializer = SectorNeutralPanelMaterializer(FeatureCatalog.load())
-    original = _clip_record("1" * 64, (_D1, _D2, _D3), (1, 2, 3))
-    replacement = _clip_record("2" * 64, (_D2,), (9,), finite=20)
+    original = _clip_record(_ORIGINAL_CLIP_RECEIPT, (_D1, _D2, _D3), (1, 2, 3))
+    replacement = _clip_record(_REPLACEMENT_CLIP_RECEIPT, (_D2,), (9,), finite=20)
 
     hashes = []
 
@@ -965,8 +977,8 @@ def test_clipping_evidence_joins_cells_by_session_and_keeps_calendar_order(monke
         probe.setattr(contracts, "canonical_hash", count)
         whole = materializer.clipping_evidence_from_records(
             (original,),
-            panel_binding_hash="b" * 64,
-            owned={("1" * 64, "factor_a"): frozenset((_D1, _D2, _D3))},
+            panel_binding_hash=_CLIP_PANEL_BINDING,
+            owned={(_ORIGINAL_CLIP_RECEIPT, "factor_a"): frozenset((_D1, _D2, _D3))},
             sessions=(_D1, _D2, _D3),
         )
         assert hashes == [1]
@@ -979,10 +991,10 @@ def test_clipping_evidence_joins_cells_by_session_and_keeps_calendar_order(monke
     folded = materializer.clipping_evidence_from_records(
         # Record order is not evidence order: the replacement comes first here.
         (replacement, original),
-        panel_binding_hash="b" * 64,
+        panel_binding_hash=_CLIP_PANEL_BINDING,
         owned={
-            ("1" * 64, "factor_a"): frozenset((_D1, _D3)),
-            ("2" * 64, "factor_a"): frozenset((_D2,)),
+            (_ORIGINAL_CLIP_RECEIPT, "factor_a"): frozenset((_D1, _D3)),
+            (_REPLACEMENT_CLIP_RECEIPT, "factor_a"): frozenset((_D2,)),
         },
         sessions=(_D1, _D2, _D3),
     )
@@ -1005,28 +1017,28 @@ def test_clipping_evidence_joins_cells_by_session_and_keeps_calendar_order(monke
     ("owned", "sessions", "code"),
     [
         pytest.param(
-            {("1" * 64, "factor_a"): frozenset((_D1, _D2, _D3, _D4))},
+            {(_ORIGINAL_CLIP_RECEIPT, "factor_a"): frozenset((_D1, _D2, _D3, _D4))},
             (_D1, _D2, _D3, _D4),
             "CELL_NOT_OBSERVED",
             id="ownership-names-a-session-the-record-never-measured",
         ),
         pytest.param(
             {
-                ("1" * 64, "factor_a"): frozenset((_D1, _D2, _D3)),
-                ("2" * 64, "factor_a"): frozenset((_D2,)),
+                (_ORIGINAL_CLIP_RECEIPT, "factor_a"): frozenset((_D1, _D2, _D3)),
+                (_REPLACEMENT_CLIP_RECEIPT, "factor_a"): frozenset((_D2,)),
             },
             (_D1, _D2, _D3),
             "CELL_OWNED_TWICE",
             id="one-cell-attributed-to-two-batches",
         ),
         pytest.param(
-            {("1" * 64, "factor_a"): frozenset((_D1, _D3))},
+            {(_ORIGINAL_CLIP_RECEIPT, "factor_a"): frozenset((_D1, _D3))},
             (_D1, _D2, _D3),
             "CELL_UNOWNED",
             id="a-cell-of-the-panel-no-batch-owns",
         ),
         pytest.param(
-            {("1" * 64, "factor_a"): frozenset((_D1, _D2, _D3))},
+            {(_ORIGINAL_CLIP_RECEIPT, "factor_a"): frozenset((_D1, _D2, _D3))},
             (_D1, _D2),
             "CELL_OUTSIDE_AXIS",
             id="ownership-outside-the-panel-calendar",
@@ -1048,12 +1060,12 @@ def test_clipping_evidence_refuses_ownership_the_records_do_not_substantiate(
 
     materializer = SectorNeutralPanelMaterializer(FeatureCatalog.load())
     records = (
-        _clip_record("1" * 64, (_D1, _D2, _D3), (1, 2, 3)),
-        _clip_record("2" * 64, (_D2,), (9,)),
+        _clip_record(_ORIGINAL_CLIP_RECEIPT, (_D1, _D2, _D3), (1, 2, 3)),
+        _clip_record(_REPLACEMENT_CLIP_RECEIPT, (_D2,), (9,)),
     )
     with pytest.raises(PanelPreprocessingError, match=code):
         materializer.clipping_evidence_from_records(
-            records, panel_binding_hash="b" * 64, owned=owned, sessions=sessions
+            records, panel_binding_hash=_CLIP_PANEL_BINDING, owned=owned, sessions=sessions
         )
 
 
@@ -1115,11 +1127,11 @@ def test_development_overlay_reuses_base_and_feeds_exact_dynamic_view(
     source = pd.DataFrame(rows)
     base_rows = source.loc[:, ["session_date", "listing_id"]].assign(mom_21=1.0)
     binding = FeaturePanelBinding.create(
-        manifest_revision="1" * 64,
-        sector_revision="2" * 64,
-        catalog_hash="3" * 64,
-        spy_revision="4" * 64,
-        policy_hash="5" * 64,
+        manifest_revision=("blake3:" + "1" * 64),
+        sector_revision=("blake3:" + "2" * 64),
+        catalog_hash=("blake3:" + "3" * 64),
+        spy_revision=("blake3:" + "4" * 64),
+        policy_hash=("blake3:" + "5" * 64),
     )
     receipts = tuple(
         value
@@ -1134,8 +1146,8 @@ def test_development_overlay_reuses_base_and_feeds_exact_dynamic_view(
     first = service.materialize(
         source_rows=source,
         base_panel_rows=base_rows,
-        base_panel_snapshot_hash="6" * 64,
-        source_identity="7" * 64,
+        base_panel_snapshot_hash=("blake3:" + "6" * 64),
+        source_identity=("blake3:" + "7" * 64),
         panel_binding=binding,
         active_listing_ids=listings,
         sector_by_listing_id={
@@ -1147,8 +1159,8 @@ def test_development_overlay_reuses_base_and_feeds_exact_dynamic_view(
     assert first.kind == "DevelopmentFeatureOverlayManifest"
     reusable = service.find_exact(
         output_root=tmp_path,
-        base_panel_snapshot_hash="6" * 64,
-        source_identity="7" * 64,
+        base_panel_snapshot_hash=("blake3:" + "6" * 64),
+        source_identity=("blake3:" + "7" * 64),
         panel_binding=binding,
         admission_receipts=gap_receipt,
     )
@@ -1164,8 +1176,8 @@ def test_development_overlay_reuses_base_and_feeds_exact_dynamic_view(
     final = service.materialize(
         source_rows=source,
         base_panel_rows=base_rows,
-        base_panel_snapshot_hash="6" * 64,
-        source_identity="7" * 64,
+        base_panel_snapshot_hash=("blake3:" + "6" * 64),
+        source_identity=("blake3:" + "7" * 64),
         panel_binding=binding,
         active_listing_ids=listings,
         sector_by_listing_id={
@@ -1177,7 +1189,9 @@ def test_development_overlay_reuses_base_and_feeds_exact_dynamic_view(
     )
     assert final.kind == "DevelopmentFeatureOverlayManifest"
     assert final.overlay_hash != first.overlay_hash
-    assert final.base_panel_snapshot_hash == first.base_panel_snapshot_hash == "6" * 64
+    assert (
+        final.base_panel_snapshot_hash == first.base_panel_snapshot_hash == ("blake3:" + "6" * 64)
+    )
     assert final.base_panel_binding_hash == first.base_panel_binding_hash
     assert final.ordered_candidate_axis == tuple(
         sorted(SPARSE_SESSION_AMPLITUDE_REQUIRED_FORMULA_IDS)
@@ -1187,8 +1201,8 @@ def test_development_overlay_reuses_base_and_feeds_exact_dynamic_view(
     assert set(called) == set(SPARSE_SESSION_AMPLITUDE_REQUIRED_FORMULA_IDS) - {"gap"}
     exact = service.find_exact(
         output_root=tmp_path,
-        base_panel_snapshot_hash="6" * 64,
-        source_identity="7" * 64,
+        base_panel_snapshot_hash=("blake3:" + "6" * 64),
+        source_identity=("blake3:" + "7" * 64),
         panel_binding=binding,
         admission_receipts=receipts,
     )
@@ -1196,8 +1210,8 @@ def test_development_overlay_reuses_base_and_feeds_exact_dynamic_view(
     assert (
         service.find_exact(
             output_root=tmp_path,
-            base_panel_snapshot_hash="6" * 64,
-            source_identity="8" * 64,
+            base_panel_snapshot_hash=("blake3:" + "6" * 64),
+            source_identity=("blake3:" + "8" * 64),
             panel_binding=binding,
             admission_receipts=receipts,
         )
@@ -1212,17 +1226,17 @@ def test_development_overlay_reuses_base_and_feeds_exact_dynamic_view(
     ].to_numpy(dtype=float)
     np.testing.assert_array_equal(dollar_volume, expected_dollar_volume)
     authority = SimpleNamespace(
-        panel_snapshot_hash="6" * 64,
-        source_watermark_hash="7" * 64,
+        panel_snapshot_hash=("blake3:" + "6" * 64),
+        source_watermark_hash=("blake3:" + "7" * 64),
         ordered_listing_ids=listings,
         sessions=sessions,
     )
     recipe = SimpleNamespace(
-        manifest_revision="1" * 64,
-        sector_revision="2" * 64,
-        catalog_hash="3" * 64,
-        spy_revision="4" * 64,
-        policy_hash="5" * 64,
+        manifest_revision=("blake3:" + "1" * 64),
+        sector_revision=("blake3:" + "2" * 64),
+        catalog_hash=("blake3:" + "3" * 64),
+        spy_revision=("blake3:" + "4" * 64),
+        policy_hash=("blake3:" + "5" * 64),
         panel_binding_hash=binding.panel_binding_hash,
     )
     combined, resolved_overlay_hash = _development_overlay_raw_values(
@@ -1236,7 +1250,9 @@ def test_development_overlay_reuses_base_and_feeds_exact_dynamic_view(
     with pytest.raises(AuthoringError, match="panel_development_overlay_unresolved"):
         _development_overlay_raw_values(
             roots=SimpleNamespace(development_overlay_artifact_root=tmp_path),
-            authority=SimpleNamespace(**{**vars(authority), "source_watermark_hash": "8" * 64}),
+            authority=SimpleNamespace(
+                **{**vars(authority), "source_watermark_hash": ("blake3:" + "8" * 64)}
+            ),
             recipe=recipe,
             base_rows=base_rows,
             development_overlay_method_id="SESSION_OBSERVATION_FORMULA_OVERLAY",
@@ -1285,7 +1301,7 @@ def test_development_overlay_reuses_base_and_feeds_exact_dynamic_view(
             sector_context_values=sector_context,
             market_context_values=market_context,
             source_identity_hashes=MappingProxyType(
-                {"base_panel": "6" * 64, "development_overlay": final.overlay_hash}
+                {"base_panel": ("blake3:" + "6" * 64), "development_overlay": final.overlay_hash}
             ),
         ),
         selected_method_ids=(
@@ -1334,7 +1350,7 @@ def test_development_overlay_reuses_base_and_feeds_exact_dynamic_view(
     baseline_projection = materialize_panel_feature_projection(
         plan=plan,
         method_id="SPARSE_SESSION_AMPLITUDE",
-        program_hash="7" * 64,
+        program_hash=("blake3:" + "7" * 64),
         fold_index=0,
         boundary_id="OUTER",
         training_sessions=sessions[252:280],
@@ -1579,7 +1595,7 @@ def test_panel_snapshot_identity_binds_the_preprocessing_method(tmp_path) -> Non
 
     catalog = build_installed_panel_preprocessing_catalog()
     recipe, adapter = catalog.resolve_executable(ROBUST_SECTOR_NEUTRAL_Z)
-    panel_binding_hash = "a" * 64
+    panel_binding_hash = fixture_digest("panel-binding")
 
     binding_values = {
         "kind": "PanelPreprocessingBinding",
@@ -1593,7 +1609,7 @@ def test_panel_snapshot_identity_binds_the_preprocessing_method(tmp_path) -> Non
             mode="json"
         ),
         "catalog_hash": catalog.catalog_hash,
-        "policy_hash": "b" * 64,
+        "policy_hash": fixture_digest("preprocessing-policy"),
         "panel_binding_hash": panel_binding_hash,
     }
     binding = PanelPreprocessingBinding(
@@ -1611,7 +1627,7 @@ def test_panel_snapshot_identity_binds_the_preprocessing_method(tmp_path) -> Non
         "clipped_fraction": 0.1,
         "per_session_clipped_counts": (1,),
         "per_session_clipped_fractions": (0.1,),
-        "boundary_identity": "c" * 64,
+        "boundary_identity": fixture_digest("clip-boundary"),
     }
     record = PanelFactorClippingRecord(**record_values, record_hash=canonical_hash(record_values))
     evidence_values = {
@@ -1620,11 +1636,11 @@ def test_panel_snapshot_identity_binds_the_preprocessing_method(tmp_path) -> Non
         "recipe_id": recipe.recipe_id,
         "recipe_hash": recipe.recipe_hash,
         "panel_binding_hash": panel_binding_hash,
-        "ordered_sessions_hash": "d" * 64,
-        "ordered_listing_ids_hash": "e" * 64,
+        "ordered_sessions_hash": fixture_digest("session-axis"),
+        "ordered_listing_ids_hash": fixture_digest("listing-axis"),
         "ordered_factor_ids": ("alpha_factor",),
-        "raw_input_identity": "0" * 64,
-        "transformed_identity": "1" * 64,
+        "raw_input_identity": fixture_digest("raw-input"),
+        "transformed_identity": fixture_digest("transformed"),
         "factor_records": tuple(value.model_dump(mode="json") for value in (record,)),
         "total_clipped_count": 1,
     }
@@ -1632,7 +1648,7 @@ def test_panel_snapshot_identity_binds_the_preprocessing_method(tmp_path) -> Non
         **{**evidence_values, "factor_records": (record,)},
         evidence_hash=canonical_hash(evidence_values),
     )
-    panel_content_hash = "9" * 64
+    panel_content_hash = fixture_digest("panel-content")
     marker = build_panel_preprocessing_seal_marker(
         binding=binding, evidence=evidence, panel_content_hash=panel_content_hash
     )
@@ -1661,11 +1677,11 @@ def test_panel_snapshot_identity_binds_the_preprocessing_method(tmp_path) -> Non
     assert lineage["implementation_id"] == adapter.implementation_id
     assert lineage["clipping_evidence_hash"] == evidence.evidence_hash
     assert lineage["preprocessing_binding_hash"] == binding.binding_hash
-    assert lineage["policy_hash"] == "b" * 64
+    assert lineage["policy_hash"] == fixture_digest("preprocessing-policy")
 
     # A binding that exists but describes a different Panel is refused too: the
     # edge is checked, not merely present.
-    foreign_values = {**binding_values, "panel_binding_hash": "8" * 64}
+    foreign_values = {**binding_values, "panel_binding_hash": fixture_digest("foreign-binding")}
     foreign = PanelPreprocessingBinding(
         **{
             **foreign_values,
@@ -1677,7 +1693,8 @@ def test_panel_snapshot_identity_binds_the_preprocessing_method(tmp_path) -> Non
         key: value for key, value in marker.model_dump(mode="json").items() if key != "marker_hash"
     }
     foreign_marker_values["preprocessing_binding_hash"] = foreign.binding_hash
-    foreign_marker_values["panel_content_hash"] = "3" * 64
+    foreign_content_hash = fixture_digest("foreign-content")
+    foreign_marker_values["panel_content_hash"] = foreign_content_hash
     resolver.publish_panel_preprocessing_binding(
         payload=foreign.model_dump(mode="json"), binding_hash=foreign.binding_hash
     )
@@ -1686,10 +1703,10 @@ def test_panel_snapshot_identity_binds_the_preprocessing_method(tmp_path) -> Non
             **foreign_marker_values,
             "marker_hash": canonical_hash(foreign_marker_values),
         },
-        panel_content_hash="3" * 64,
+        panel_content_hash=foreign_content_hash,
     )
     with pytest.raises(ValueError, match="contradicts the marker"):
-        resolve_panel_preprocessing_lineage(resolver, panel_content_hash="3" * 64)
+        resolve_panel_preprocessing_lineage(resolver, panel_content_hash=foreign_content_hash)
 
     # A second build of the same content may carry a different clipping receipt,
     # but it may not claim a different method: that is the one disagreement the
@@ -1706,7 +1723,12 @@ def test_panel_snapshot_identity_binds_the_preprocessing_method(tmp_path) -> Non
 
     # A Panel built before the seam existed carries no preprocessing identity and
     # does not acquire one by being read.
-    assert resolve_panel_preprocessing_lineage(resolver, panel_content_hash="f" * 64) is None
+    assert (
+        resolve_panel_preprocessing_lineage(
+            resolver, panel_content_hash=fixture_digest("legacy-panel-content")
+        )
+        is None
+    )
 
 
 def test_preprocessing_lineage_terminates_in_resolvable_implementation_facts() -> None:
@@ -1732,8 +1754,8 @@ def test_preprocessing_lineage_terminates_in_resolvable_implementation_facts() -
         "implementation_binding_hash": installed.implementation_binding_hash,
         "implementation": installed.model_dump(mode="json"),
         "catalog_hash": catalog.catalog_hash,
-        "policy_hash": "b" * 64,
-        "panel_binding_hash": "a" * 64,
+        "policy_hash": fixture_digest("preprocessing-policy"),
+        "panel_binding_hash": fixture_digest("panel-binding"),
     }
     binding = PanelPreprocessingBinding(
         **{**values, "implementation": installed}, binding_hash=canonical_hash(values)
@@ -1751,7 +1773,7 @@ def test_preprocessing_lineage_terminates_in_resolvable_implementation_facts() -
     substituted = PanelPreprocessingImplementationBinding.create(
         implementation_id=installed.implementation_id,
         implementation_owners=installed.implementation_owners,
-        implementation_content_hash="7" * 64,
+        implementation_content_hash=fixture_digest("substituted-implementation"),
     )
     swapped = {**values, "implementation": substituted.model_dump(mode="json")}
     # Raised inside a model validator, so pydantic wraps it; the code is what

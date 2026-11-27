@@ -11,6 +11,7 @@ from pydantic import BaseModel, ConfigDict, Field, model_validator
 from alphalattice.capabilities.domain_contracts.identity import canonical_hash
 from alphalattice.capabilities.domain_contracts.sealing import scoped_model_digest
 from alphalattice.foundation.feature_engine.panels.closure_contracts import ClosureArtifactRef
+from alphalattice.kernel.identity import BLAKE3_PATTERN
 
 Hash = str
 
@@ -23,17 +24,17 @@ class FeatureBaseClosureCatalogRoot(_Contract):
     """Bind a catalog to its admitted Panel and base Feature closure."""
 
     kind: Literal["FeatureBaseClosureCatalogRoot"] = "FeatureBaseClosureCatalogRoot"
-    catalog_hash: Hash = Field(pattern=r"^[0-9a-f]{64}$")
-    active_panel_snapshot_hash: Hash = Field(pattern=r"^[0-9a-f]{64}$")
-    phase_one_failure_receipt_hash: Hash = Field(pattern=r"^[0-9a-f]{64}$")
-    retention_assessment_hash: Hash = Field(pattern=r"^[0-9a-f]{64}$")
-    derivation_recipe_hash: Hash = Field(pattern=r"^[0-9a-f]{64}$")
-    base_closure_manifest_hash: Hash = Field(pattern=r"^[0-9a-f]{64}$")
+    catalog_hash: Hash = Field(pattern=BLAKE3_PATTERN)
+    active_panel_snapshot_hash: Hash = Field(pattern=BLAKE3_PATTERN)
+    phase_one_failure_receipt_hash: Hash = Field(pattern=BLAKE3_PATTERN)
+    retention_assessment_hash: Hash = Field(pattern=BLAKE3_PATTERN)
+    derivation_recipe_hash: Hash = Field(pattern=BLAKE3_PATTERN)
+    base_closure_manifest_hash: Hash = Field(pattern=BLAKE3_PATTERN)
     listing_ids: tuple[str, ...]
     sessions: tuple[date, ...]
     factor_ids: tuple[str, ...]
-    feature_row_hash_digest: Hash = Field(pattern=r"^[0-9a-f]{64}$")
-    root_hash: Hash = Field(pattern=r"^[0-9a-f]{64}$")
+    feature_row_hash_digest: Hash = Field(pattern=BLAKE3_PATTERN)
+    root_hash: Hash = Field(pattern=BLAKE3_PATTERN)
 
     @model_validator(mode="after")  # type: ignore[untyped-decorator]
     def validate_root(self) -> FeatureBaseClosureCatalogRoot:
@@ -62,12 +63,12 @@ class FeatureBaseClosureGenesisRoot(_Contract):
         "alphalattice.feature-closure.genesis-root.v1"
     )
     origin: Literal["GENESIS_PANEL_PUBLICATION"] = "GENESIS_PANEL_PUBLICATION"
-    catalog_hash: Hash = Field(pattern=r"^[0-9a-f]{64}$")
-    manifest_revision: Hash = Field(pattern=r"^[0-9a-f]{64}$")
+    catalog_hash: Hash = Field(pattern=BLAKE3_PATTERN)
+    manifest_revision: Hash = Field(pattern=BLAKE3_PATTERN)
     listing_ids: tuple[str, ...]
     factor_ids: tuple[str, ...]
-    feature_row_hash_digest: Hash = Field(pattern=r"^[0-9a-f]{64}$")
-    root_hash: Hash = Field(pattern=r"^[0-9a-f]{64}$")
+    feature_row_hash_digest: Hash = Field(pattern=BLAKE3_PATTERN)
+    root_hash: Hash = Field(pattern=BLAKE3_PATTERN)
 
     @model_validator(mode="after")  # type: ignore[untyped-decorator]
     def validate_genesis_root(self) -> FeatureBaseClosureGenesisRoot:
@@ -84,13 +85,13 @@ class FeatureBaseClosureHead(_Contract):
     """Identify the current catalog closure root and transition cursor."""
 
     kind: Literal["FeatureBaseClosureHead"] = "FeatureBaseClosureHead"
-    catalog_hash: Hash = Field(pattern=r"^[0-9a-f]{64}$")
-    root_hash: Hash = Field(pattern=r"^[0-9a-f]{64}$")
-    predecessor_head_hash: Hash | None = Field(default=None, pattern=r"^[0-9a-f]{64}$")
-    last_transition_hash: Hash | None = Field(default=None, pattern=r"^[0-9a-f]{64}$")
+    catalog_hash: Hash = Field(pattern=BLAKE3_PATTERN)
+    root_hash: Hash = Field(pattern=BLAKE3_PATTERN)
+    predecessor_head_hash: Hash | None = Field(default=None, pattern=BLAKE3_PATTERN)
+    last_transition_hash: Hash | None = Field(default=None, pattern=BLAKE3_PATTERN)
     transition_cursor: int = Field(ge=0)
-    feature_row_hash_digest: Hash = Field(pattern=r"^[0-9a-f]{64}$")
-    head_hash: Hash = Field(pattern=r"^[0-9a-f]{64}$")
+    feature_row_hash_digest: Hash = Field(pattern=BLAKE3_PATTERN)
+    head_hash: Hash = Field(pattern=BLAKE3_PATTERN)
 
     @model_validator(mode="after")  # type: ignore[untyped-decorator]
     def validate_head(self) -> FeatureBaseClosureHead:
@@ -103,8 +104,8 @@ class FeatureBaseClosurePatch(_Contract):
     """Describe a row patch against one catalog closure head."""
 
     kind: Literal["FeatureBaseClosurePatch"] = "FeatureBaseClosurePatch"
-    catalog_hash: Hash = Field(pattern=r"^[0-9a-f]{64}$")
-    base_head_hash: Hash = Field(pattern=r"^[0-9a-f]{64}$")
+    catalog_hash: Hash = Field(pattern=BLAKE3_PATTERN)
+    base_head_hash: Hash = Field(pattern=BLAKE3_PATTERN)
     idempotency_key: str = Field(min_length=1)
     factor_ids: tuple[str, ...]
     row_count: int = Field(gt=0)
@@ -112,7 +113,7 @@ class FeatureBaseClosurePatch(_Contract):
     last_session: date
     listing_ids: tuple[str, ...]
     artifact: ClosureArtifactRef
-    patch_hash: Hash = Field(pattern=r"^[0-9a-f]{64}$")
+    patch_hash: Hash = Field(pattern=BLAKE3_PATTERN)
 
     @model_validator(mode="after")  # type: ignore[untyped-decorator]
     def validate_patch(self) -> FeatureBaseClosurePatch:
@@ -131,15 +132,15 @@ class PreparedFeatureBaseClosureTransition(_Contract):
     """Record the expected row and Store receipts before closure changes."""
 
     kind: Literal["PreparedFeatureBaseClosureTransition"] = "PreparedFeatureBaseClosureTransition"
-    catalog_hash: Hash = Field(pattern=r"^[0-9a-f]{64}$")
-    base_head_hash: Hash = Field(pattern=r"^[0-9a-f]{64}$")
-    patch_hash: Hash = Field(pattern=r"^[0-9a-f]{64}$")
+    catalog_hash: Hash = Field(pattern=BLAKE3_PATTERN)
+    base_head_hash: Hash = Field(pattern=BLAKE3_PATTERN)
+    patch_hash: Hash = Field(pattern=BLAKE3_PATTERN)
     idempotency_key: str = Field(min_length=1)
     prior_row_hashes: tuple[tuple[str, str, Hash | None], ...]
     next_row_hashes: tuple[tuple[str, str, Hash], ...]
     expected_receipt_hashes: tuple[Hash, ...]
     prepared_at: datetime
-    transition_hash: Hash = Field(pattern=r"^[0-9a-f]{64}$")
+    transition_hash: Hash = Field(pattern=BLAKE3_PATTERN)
 
     @model_validator(mode="after")  # type: ignore[untyped-decorator]
     def validate_transition(self) -> PreparedFeatureBaseClosureTransition:
@@ -161,13 +162,13 @@ class FeatureBaseClosureTransitionReceipt(_Contract):
     """Record Store readback and revision identities for a transition."""
 
     kind: Literal["FeatureBaseClosureTransitionReceipt"] = "FeatureBaseClosureTransitionReceipt"
-    transition_hash: Hash = Field(pattern=r"^[0-9a-f]{64}$")
-    patch_hash: Hash = Field(pattern=r"^[0-9a-f]{64}$")
+    transition_hash: Hash = Field(pattern=BLAKE3_PATTERN)
+    patch_hash: Hash = Field(pattern=BLAKE3_PATTERN)
     store_receipt_hashes: tuple[Hash, ...]
     revision_ids: tuple[Hash, ...]
     readback_disposition: Literal["NEXT_STATE_VERIFIED", "PRIOR_STATE_SAFE_TO_RETRY"]
     observed_at: datetime
-    receipt_hash: Hash = Field(pattern=r"^[0-9a-f]{64}$")
+    receipt_hash: Hash = Field(pattern=BLAKE3_PATTERN)
 
     @model_validator(mode="after")  # type: ignore[untyped-decorator]
     def validate_receipt(self) -> FeatureBaseClosureTransitionReceipt:
@@ -182,10 +183,10 @@ class FeatureBaseClosureTransitionMarker(_Contract):
     """Commit a verified transition to its next closure head."""
 
     kind: Literal["FeatureBaseClosureTransitionMarker"] = "FeatureBaseClosureTransitionMarker"
-    transition_hash: Hash = Field(pattern=r"^[0-9a-f]{64}$")
-    receipt_hash: Hash = Field(pattern=r"^[0-9a-f]{64}$")
-    next_head_hash: Hash = Field(pattern=r"^[0-9a-f]{64}$")
-    marker_hash: Hash = Field(pattern=r"^[0-9a-f]{64}$")
+    transition_hash: Hash = Field(pattern=BLAKE3_PATTERN)
+    receipt_hash: Hash = Field(pattern=BLAKE3_PATTERN)
+    next_head_hash: Hash = Field(pattern=BLAKE3_PATTERN)
+    marker_hash: Hash = Field(pattern=BLAKE3_PATTERN)
 
     @model_validator(mode="after")  # type: ignore[untyped-decorator]
     def validate_marker(self) -> FeatureBaseClosureTransitionMarker:
@@ -197,8 +198,8 @@ class FeatureBaseClosureTransitionMarker(_Contract):
 class PanelColumnClosureHead(_Contract):
     """The closure head of one column catalog a layered Panel's rows were composed from."""
 
-    catalog_hash: Hash = Field(pattern=r"^[0-9a-f]{64}$")
-    closure_head_hash: Hash = Field(pattern=r"^[0-9a-f]{64}$")
+    catalog_hash: Hash = Field(pattern=BLAKE3_PATTERN)
+    closure_head_hash: Hash = Field(pattern=BLAKE3_PATTERN)
     closure_transition_cursor: int = Field(ge=0)
 
 
@@ -210,21 +211,21 @@ class PanelRecoveryClosureBinding(_Contract):
     """
 
     kind: Literal["PanelRecoveryClosureBinding"] = "PanelRecoveryClosureBinding"
-    snapshot_hash: Hash = Field(pattern=r"^[0-9a-f]{64}$")
-    panel_content_hash: Hash = Field(pattern=r"^[0-9a-f]{64}$")
-    panel_binding_hash: Hash = Field(pattern=r"^[0-9a-f]{64}$")
-    catalog_hash: Hash = Field(pattern=r"^[0-9a-f]{64}$")
-    closure_head_hash: Hash = Field(pattern=r"^[0-9a-f]{64}$")
+    snapshot_hash: Hash = Field(pattern=BLAKE3_PATTERN)
+    panel_content_hash: Hash = Field(pattern=BLAKE3_PATTERN)
+    panel_binding_hash: Hash = Field(pattern=BLAKE3_PATTERN)
+    catalog_hash: Hash = Field(pattern=BLAKE3_PATTERN)
+    closure_head_hash: Hash = Field(pattern=BLAKE3_PATTERN)
     closure_transition_cursor: int = Field(ge=0)
-    sector_map_hash: Hash = Field(pattern=r"^[0-9a-f]{64}$")
+    sector_map_hash: Hash = Field(pattern=BLAKE3_PATTERN)
     listing_ids: tuple[str, ...]
     sessions: tuple[date, ...]
     factor_ids: tuple[str, ...]
-    panel_source_state_hash: Hash = Field(pattern=r"^[0-9a-f]{64}$")
+    panel_source_state_hash: Hash = Field(pattern=BLAKE3_PATTERN)
     column_closures: tuple[PanelColumnClosureHead, ...] = Field(
         default=(), exclude_if=lambda value: not value
     )
-    binding_hash: Hash = Field(pattern=r"^[0-9a-f]{64}$")
+    binding_hash: Hash = Field(pattern=BLAKE3_PATTERN)
 
     @model_validator(mode="after")  # type: ignore[untyped-decorator]
     def validate_binding(self) -> PanelRecoveryClosureBinding:
@@ -238,15 +239,15 @@ class SectorRevisionMapActivationReceipt(_Contract):
     """Record activation of a sector revision map and its Store receipt."""
 
     kind: Literal["SectorRevisionMapActivationReceipt"] = "SectorRevisionMapActivationReceipt"
-    manifest_revision: Hash = Field(pattern=r"^[0-9a-f]{64}$")
-    sector_revision: Hash = Field(pattern=r"^[0-9a-f]{64}$")
-    sector_map_hash: Hash = Field(pattern=r"^[0-9a-f]{64}$")
-    store_receipt_hash: Hash = Field(pattern=r"^[0-9a-f]{64}$")
+    manifest_revision: Hash = Field(pattern=BLAKE3_PATTERN)
+    sector_revision: Hash = Field(pattern=BLAKE3_PATTERN)
+    sector_map_hash: Hash = Field(pattern=BLAKE3_PATTERN)
+    store_receipt_hash: Hash = Field(pattern=BLAKE3_PATTERN)
     changed: bool
     observed_at: datetime
     effective_session: date | None = Field(default=None, exclude_if=lambda value: value is None)
     """The session its reclassifications take effect from; absent before the rule."""
-    receipt_hash: Hash = Field(pattern=r"^[0-9a-f]{64}$")
+    receipt_hash: Hash = Field(pattern=BLAKE3_PATTERN)
 
     @model_validator(mode="after")  # type: ignore[untyped-decorator]
     def validate_receipt(self) -> SectorRevisionMapActivationReceipt:
@@ -272,11 +273,11 @@ class FeatureClosureFirstLoad(_Contract):
     """
 
     kind: Literal["FeatureClosureFirstLoad"] = "FeatureClosureFirstLoad"
-    catalog_hash: Hash = Field(pattern=r"^[0-9a-f]{64}$")
-    base_head_hash: Hash = Field(pattern=r"^[0-9a-f]{64}$")
+    catalog_hash: Hash = Field(pattern=BLAKE3_PATTERN)
+    base_head_hash: Hash = Field(pattern=BLAKE3_PATTERN)
     idempotency_key: str = Field(min_length=1)
     prepared_at: datetime
-    first_load_hash: Hash = Field(pattern=r"^[0-9a-f]{64}$")
+    first_load_hash: Hash = Field(pattern=BLAKE3_PATTERN)
 
     @model_validator(mode="after")  # type: ignore[untyped-decorator]
     def validate_first_load(self) -> FeatureClosureFirstLoad:

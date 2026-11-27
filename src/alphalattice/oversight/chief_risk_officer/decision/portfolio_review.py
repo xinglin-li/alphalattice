@@ -48,6 +48,7 @@ from alphalattice.evidence.alternative_evidence.contracts import (
     AlternativeEvidenceContract,
     seal_contract,
 )
+from alphalattice.kernel.identity import BLAKE3_PATTERN, blake3_hex
 from alphalattice.oversight.chief_risk_officer.portfolio_evidence.contracts import (
     BookAuthority,
     ExposureBand,
@@ -58,7 +59,7 @@ from alphalattice.oversight.chief_risk_officer.portfolio_evidence.contracts impo
 from alphalattice.protocols.actor_execution import ActorKind, ActorSubmissionBinding
 from alphalattice.protocols.actor_execution.answers import AnswerProblem
 
-_HASH = r"^[0-9a-f]{64}$"
+_HASH = BLAKE3_PATTERN
 
 PORTFOLIO_REVIEW_ROUTE_POLICY: str = "chief_risk_officer.portfolio-evidence-review"
 """Stable policy identity; the receipt's decision_policy_hash binds its implementation.
@@ -732,7 +733,7 @@ def raised_issue_handle(receipt_hash: str, issue_handle: str) -> str:
     refer to the same issue.
     """
     digest = str(canonical_hash({"receipt": receipt_hash, "issue": issue_handle}))
-    return "OPEN-" + digest[:12].upper()
+    return "OPEN-" + blake3_hex(digest)[:12].upper()
 
 
 def open_issue_aliases(dossier: PortfolioReviewDossier) -> dict[str, str]:
@@ -757,7 +758,7 @@ def finding_sources(dossier: PortfolioReviewDossier) -> dict[str, tuple[str, str
         }
     sources: dict[str, tuple[str, str, date]] = {}
     for child in dossier.evidence_children:
-        prefix = f"FIND-P{child.analysis_publication_hash[:8].upper()}-"
+        prefix = f"FIND-P{blake3_hex(child.analysis_publication_hash)[:8].upper()}-"
         found = (child.read_as_of or child.evidence_as_of).date()
         for value in dossier.findings:
             if value.finding_handle.startswith(prefix):

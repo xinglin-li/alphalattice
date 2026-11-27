@@ -25,7 +25,14 @@ from alphalattice.foundation.feature_engine.panels.closure_files import (
     FolderFiles,
     closure_files,
 )
-from alphalattice.kernel.identity import identity_sha256, integrity_sha256
+from alphalattice.kernel.identity import (
+    blake3_filename,
+    blake3_from_filename,
+    identity_blake3,
+    integrity_blake3,
+    is_blake3,
+    tagged_blake3,
+)
 
 _Model = TypeVar("_Model", bound=BaseModel)
 
@@ -54,10 +61,10 @@ def ordered_key_hash(session_dates: Iterable[object], listing_ids: Iterable[str]
         parts.append(session_bytes)
         parts.append(listing_bytes)
         count += 1
-    digest = identity_sha256(b"PanelBaseKeyAxis\0")
+    digest = identity_blake3(b"PanelBaseKeyAxis\0")
     digest.update(b"".join(parts))
     digest.update(struct.pack(">Q", count))
-    return digest.hexdigest()
+    return tagged_blake3(digest)
 
 
 def ordered_value_hash(
@@ -68,14 +75,14 @@ def ordered_value_hash(
     mask = np.asarray(valid, dtype=np.bool_)
     if floats.ndim != 1 or mask.ndim != 1 or len(floats) != len(mask):
         raise ValueError("Panel value closure arrays must be aligned one-dimensional arrays")
-    digest = identity_sha256(b"PanelBaseValueColumn\0")
+    digest = identity_blake3(b"PanelBaseValueColumn\0")
     digest.update(factor_id.encode("utf-8"))
     digest.update(b"\0")
     digest.update(key_hash.encode("ascii"))
     digest.update(struct.pack(">Q", len(floats)))
     digest.update(np.ascontiguousarray(mask.astype(np.uint8)).tobytes())
     digest.update(np.ascontiguousarray(floats.view("<u8")).tobytes())
-    return digest.hexdigest()
+    return tagged_blake3(digest)
 
 
 def arrow_table_logical_hash(table: pa.Table) -> str:
@@ -84,13 +91,13 @@ def arrow_table_logical_hash(table: pa.Table) -> str:
     normalized = table.replace_schema_metadata(None).combine_chunks()
     with ipc.new_stream(sink, normalized.schema) as writer:
         writer.write_table(normalized)
-    return identity_sha256(sink.getvalue().to_pybytes()).hexdigest()
+    return tagged_blake3(identity_blake3(sink.getvalue()))
 
 
 def _physical(data: bytes) -> str:
-    """A closure Parquet file's physical digest, as its reference records it: SHA-256 of its
+    """A closure Parquet file's physical digest, as its reference records it: BLAKE3 of its
     bytes, taken by the writer and checked again by a reader of the log's copy."""
-    return integrity_sha256(data).hexdigest()
+    return tagged_blake3(integrity_blake3(data))
 
 
 class PanelClosureArtifactStore:
@@ -163,9 +170,9 @@ class PanelClosureArtifactStore:
         found: list[_Model] = []
         for name in self.files.names(category):
             stem, _, suffix = name.rpartition(".")
-            if suffix != "json" or len(stem) != 64:
+            if suffix != "json" or (digest := blake3_from_filename(stem)) is None:
                 continue
-            candidate = self.load_model(category=category, content_hash=stem, model=model)
+            candidate = self.load_model(category=category, content_hash=digest, model=model)
             if matches(candidate):
                 found.append(candidate)
         return tuple(found)
@@ -201,7 +208,7 @@ class PanelClosureArtifactStore:
         return ClosureArtifactRef(
             kind=kind,
             content_hash=content_hash,
-            physical_sha256=physical,
+            physical_digest=physical,
             byte_count=len(data),
             row_count=table.num_rows,
             uri=self._uri(category, content_hash),
@@ -219,7 +226,7 @@ class PanelClosureArtifactStore:
             if not target.is_file():
                 raise FileNotFoundError("closure Parquet artifact is missing")
             self._validate_parquet(target, content_hash=reference.content_hash, kind=reference.kind)
-            if not sealed_file_holds(target, reference.physical_sha256):
+            if not sealed_file_holds(target, reference.physical_digest):
                 raise ValueError("closure Parquet physical hash does not match its reference")
             size = target.stat().st_size
             source: Path | pa.BufferReader = target
@@ -227,7 +234,7 @@ class PanelClosureArtifactStore:
             data = self.files.read(name)
             if data is None:
                 raise FileNotFoundError("closure Parquet artifact is missing")
-            if _physical(data) != reference.physical_sha256:
+            if _physical(data) != reference.physical_digest:
                 raise ValueError("closure Parquet physical hash does not match its reference")
             self._validate_parquet(data, content_hash=reference.content_hash, kind=reference.kind)
             size, source = len(data), pa.BufferReader(data)
@@ -260,8 +267,7 @@ class PanelClosureArtifactStore:
 
     def _name(self, category: str, content_hash: str, suffix: str) -> str:
         self._validate_category(category)
-        self._validate_hash(content_hash)
-        return f"{category}/{content_hash}{suffix}"
+        return f"{category}/{blake3_filename(content_hash)}{suffix}"
 
     def _uri(self, category: str, content_hash: str) -> str:
         self._validate_category(category)
@@ -277,7 +283,7 @@ class PanelClosureArtifactStore:
 
     @staticmethod
     def _validate_hash(value: str) -> None:
-        if len(value) != 64 or any(character not in "0123456789abcdef" for character in value):
+        if not is_blake3(value):
             raise ValueError("invalid closure artifact hash")
 
     @staticmethod

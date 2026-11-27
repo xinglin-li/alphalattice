@@ -37,6 +37,7 @@ from alphalattice.capabilities.domain_contracts.sector_treatment import (
     SECTOR_HISTORY_BACKFILLED,
     SectorHistoryTreatment,
 )
+from alphalattice.kernel.identity import BLAKE3_PATTERN
 
 from .canonical import (
     CANONICAL_ALPHA_TARGET_RECIPE_ID,
@@ -128,17 +129,17 @@ class AlphaTargetMethodBinding(BaseModel):  # type: ignore[misc]
 
     kind: Literal["AlphaTargetMethodBinding"] = "AlphaTargetMethodBinding"
     target_recipe_id: str = Field(min_length=1, max_length=96)
-    target_method_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
+    target_method_hash: str = Field(pattern=BLAKE3_PATTERN)
     standardization_id: str = Field(min_length=1, max_length=128)
-    sector_revision: str = Field(pattern=r"^[0-9a-f]{64}$")
+    sector_revision: str = Field(pattern=BLAKE3_PATTERN)
     execution_outcome_recipe_id: str = Field(min_length=1, max_length=96)
     """The two per-run facts a verifier needs to rebuild this method from the
     installed catalog. Without them it could only check the method hash against
     itself, which a re-sealed binding also passes."""
 
-    causal_outcome_snapshot_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
-    outcome_method_binding_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
-    binding_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
+    causal_outcome_snapshot_hash: str = Field(pattern=BLAKE3_PATTERN)
+    outcome_method_binding_hash: str = Field(pattern=BLAKE3_PATTERN)
+    binding_hash: str = Field(pattern=BLAKE3_PATTERN)
 
     @classmethod
     def create(
@@ -202,15 +203,15 @@ class WholeUniverseAlphaTargetMethodBinding(BaseModel):  # type: ignore[misc]
 
     kind: Literal["WholeUniverseAlphaTargetMethodBinding"] = "WholeUniverseAlphaTargetMethodBinding"
     target_recipe_id: Literal["CROSS_SECTIONAL_TOTAL_RETURN_STD_Z"]
-    target_method_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
+    target_method_hash: str = Field(pattern=BLAKE3_PATTERN)
     standardization_id: str = Field(min_length=1, max_length=128)
     cross_sectional_authority_id: Literal["WHOLE_ACTIVE_UNIVERSE"]
-    listing_set_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
+    listing_set_hash: str = Field(pattern=BLAKE3_PATTERN)
     execution_outcome_recipe_id: str = Field(min_length=1, max_length=96)
-    causal_outcome_snapshot_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
-    outcome_method_binding_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
+    causal_outcome_snapshot_hash: str = Field(pattern=BLAKE3_PATTERN)
+    outcome_method_binding_hash: str = Field(pattern=BLAKE3_PATTERN)
     maturity_lag_sessions: int = Field(ge=2)
-    binding_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
+    binding_hash: str = Field(pattern=BLAKE3_PATTERN)
 
     @classmethod
     def create(

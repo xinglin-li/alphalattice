@@ -1,6 +1,10 @@
 # Upgrading AlphaLattice
 Last checked: 2026-11-23 against 0.2.9
 
+For 0.2.10 and later, start with a fresh data root and research workspace.
+These releases open only data created in the new format. Earlier data roots,
+workspaces, and backups can still be opened with their original release.
+
 Use this guide to upgrade from 0.2.0 or later to 0.2.9. A workspace from before 0.2.8
 has its data moved once, at its first start on 0.2.8 or later
 ([the 0.2.8 data move](#the-028-data-move)). A workspace last opened by a release before

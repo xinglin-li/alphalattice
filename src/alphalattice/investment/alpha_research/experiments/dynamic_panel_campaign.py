@@ -22,6 +22,7 @@ from alphalattice.capabilities.domain_contracts.identity import canonical_hash
 from alphalattice.investment.alpha_research.inputs.dynamic_panel import (
     DynamicPanelViewId,
 )
+from alphalattice.kernel.identity import BLAKE3_PATTERN
 
 type DynamicPanelModelMethodId = Literal[
     "BEST_SINGLE_FACTOR_CONTROL",
@@ -36,7 +37,7 @@ type DynamicPanelTargetLane = Literal[
     "RESIDUAL_TARGET_Z",
 ]
 
-_HASH = r"^[0-9a-f]{64}$"
+_HASH = BLAKE3_PATTERN
 _COST_STRESS_BPS: Final = (2, 5, 10, 20)
 
 

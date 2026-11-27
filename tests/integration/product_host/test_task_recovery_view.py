@@ -60,6 +60,7 @@ from alphalattice.investment.portfolio_strategy_lab.application.task import (
 from alphalattice.investment.portfolio_strategy_lab.application.tranche_book_execution import (
     EligiblePoolShort,
 )
+from tests._support.identity_fixtures import fixture_digest
 from tests.portfolio_strategy_lab.host_requests import _json, _request
 from tests.portfolio_strategy_lab.local_web_support import (
     TEST_PACKAGE,
@@ -239,7 +240,7 @@ def test_interrupted_run_is_explained_preserved_and_resumed_as_the_same_task(
             live,
             "/api/recover",
             method="POST",
-            payload={"task_id": task_id, "expected_task_hash": "0" * 64},
+            payload={"task_id": task_id, "expected_task_hash": fixture_digest("stale task")},
         )
         assert stale["status"] == "REFUSED"
         assert stale["failure_code"] == "local_application.confirmation_stale"
@@ -1086,7 +1087,7 @@ def test_a_cancelled_verification_sweep_offers_and_runs_its_replan(
             method="POST",
             payload={
                 "recovery_task_id": task_id,
-                "recovery_task_hash": "0" * 64,
+                "recovery_task_hash": fixture_digest("stale recovery task"),
             },
         )
         assert stale["failure_code"] == "local_application.confirmation_stale"

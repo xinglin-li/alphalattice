@@ -55,11 +55,11 @@ def _rows(axis: tuple[str, ...], sessions: tuple[date, ...], *, seed: int = 7) -
 
 def _binding(*, current: bool = False) -> FeaturePanelBinding:
     return FeaturePanelBinding.create(
-        manifest_revision="1" * 64,
-        sector_revision="2" * 64,
-        catalog_hash="3" * 64,
-        spy_revision="4" * 64,
-        policy_hash=cross_section_policy_hash() if current else "5" * 64,
+        manifest_revision="blake3:" + "1" * 64,
+        sector_revision="blake3:" + "2" * 64,
+        catalog_hash="blake3:" + "3" * 64,
+        spy_revision="blake3:" + "4" * 64,
+        policy_hash=cross_section_policy_hash() if current else "blake3:" + "5" * 64,
     )
 
 
@@ -122,14 +122,16 @@ def test_legacy_replay_keeps_single_row_epochs_when_the_retained_slice_merges_th
             )
             == published
         )
-        changed = {**payload, "transformed_identity": "0" * 64}
+        changed = {**payload, "transformed_identity": "blake3:" + "0" * 64}
         with pytest.raises(ValueError, match="panel clip observation identity is invalid"):
             resolver.publish_panel_clip_observation(
                 payload=changed, receipt_hash=record.receipt_hash
             )
     assert len(verified) == 2 and verified[0] == record.record_hash != verified[1]
     other = {key: value for key, value in payload.items() if key != "record_hash"}
-    other["transformed_identity"] = "0" * 64  # another transformation under the same receipt
+    other["transformed_identity"] = (
+        "blake3:" + "0" * 64
+    )  # another transformation under the same receipt
     other["record_hash"] = canonical_hash(other)
     with pytest.raises(ValueError, match="receipt was reused"):
         resolver.publish_panel_clip_observation(payload=other, receipt_hash=record.receipt_hash)
@@ -185,10 +187,10 @@ def test_dated_quality_exclusion_preserves_nominal_members_and_old_reference_bit
     prior = kernel.materialize(
         **inputs,
         binding=FeaturePanelBinding.create(
-            manifest_revision="1" * 64,
-            sector_revision="2" * 64,
-            catalog_hash="3" * 64,
-            spy_revision="4" * 64,
+            manifest_revision="blake3:" + "1" * 64,
+            sector_revision="blake3:" + "2" * 64,
+            catalog_hash="blake3:" + "3" * 64,
+            spy_revision="blake3:" + "4" * 64,
             policy_hash=SESSION_LOCAL_POLICY_HASH,
         ),
     )
@@ -207,7 +209,7 @@ def test_dated_quality_exclusion_preserves_nominal_members_and_old_reference_bit
                 excluded,
                 SESSIONS[4],
                 SESSIONS[5],
-                "a" * 64,
+                "blake3:" + "a" * 64,
                 ("SOURCE_QUALITY_UNAVAILABLE",),
             ),
         ),
@@ -263,7 +265,9 @@ def test_dated_quality_exclusion_preserves_nominal_members_and_old_reference_bit
     )
     relabelled = replace(
         qualified,
-        source_exclusions=(replace(qualified.source_exclusions[0], evidence_hash="b" * 64),),
+        source_exclusions=(
+            replace(qualified.source_exclusions[0], evidence_hash="blake3:" + "b" * 64),
+        ),
     )
     assert qualified.cross_sections(SESSIONS, sectors) == relabelled.cross_sections(
         SESSIONS, sectors

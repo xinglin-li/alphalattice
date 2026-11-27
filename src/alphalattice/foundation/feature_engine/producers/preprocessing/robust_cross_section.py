@@ -25,16 +25,13 @@ from alphalattice.foundation.feature_engine.contracts import (
     canonical_hash,
     listing_set_digest,
 )
-from alphalattice.kernel.identity import identity_sha256
+from alphalattice.kernel.identity import identity_blake3, tagged_blake3
 
 if TYPE_CHECKING:
     import pandas as pd
 
 SMALL_SECTOR_WARNING_BELOW = 10
 PANEL_SESSION_BATCH_SIZE = 126
-SESSION_LOCAL_POLICY_HASH = "d0379323f98f2d76d6e9ee90360c5db4601cee8a8f3a93a7dae8c3b5ea52f230"
-"""Durable numerical/coverage identity; replay must not follow a future policy default."""
-SOURCE_ELIGIBILITY_POLICY_HASH = "73adfa83c69789328c25427640e20686971881b108f778067cdeb358b3831373"
 
 
 def allows_missing_source_rows(policy_hash: str) -> bool:
@@ -49,7 +46,7 @@ def allows_missing_source_rows(policy_hash: str) -> bool:
     return policy_hash in {SESSION_LOCAL_POLICY_HASH, SOURCE_ELIGIBILITY_POLICY_HASH}
 
 
-def _array_digest(values: np.ndarray) -> str:
+def panel_array_digest(values: np.ndarray) -> str:
     """Content identity of one float matrix, NaN-stable and shape-bearing.
 
     ``tobytes`` alone would let two differently shaped arrays with the same
@@ -64,40 +61,45 @@ def _array_digest(values: np.ndarray) -> str:
                 "kind": "PanelArrayDigest",
                 "dtype": str(values.dtype),
                 "shape": list(values.shape),
-                "finite_mask": identity_sha256(np.ascontiguousarray(finite).tobytes()).hexdigest(),
-                "finite_values": identity_sha256(
-                    np.ascontiguousarray(np.where(finite, values, 0.0), dtype=np.float64).tobytes()
-                ).hexdigest(),
+                "finite_mask": tagged_blake3(
+                    identity_blake3(np.ascontiguousarray(finite).tobytes())
+                ),
+                "finite_values": tagged_blake3(
+                    identity_blake3(
+                        np.ascontiguousarray(
+                            np.where(finite, values, 0.0), dtype=np.float64
+                        ).tobytes()
+                    )
+                ),
             }
         ),
     )
+
+
+_SESSION_LOCAL_POLICY = {
+    "sequence": ["median_mad_winsor", "equal_sector_demean", "global_robust_zscore"],
+    "mad_scale": MAD_SCALE,
+    "winsor_multiplier": WINSOR_MULTIPLIER,
+    "minimum_coverage": MIN_COVERAGE,
+    "minimum_sector_sample": MIN_SECTOR_SAMPLE,
+    "small_sector_warning_below": SMALL_SECTOR_WARNING_BELOW,
+    "panel_row_hash": "duckdb_struct_json_blake3",
+    "partial_universe": "fail_closed",
+    "sector_reduction": "ordered_member_accumulation",
+    "missing_base_rows": "finite_factor_coverage",
+}
+SESSION_LOCAL_POLICY_HASH = str(canonical_hash(_SESSION_LOCAL_POLICY))
+SOURCE_ELIGIBILITY_POLICY_HASH = str(
+    canonical_hash(
+        _SESSION_LOCAL_POLICY
+        | {"source_eligibility": "dated_exclusions_nominal_coverage_reference_sector_groups"}
+    )
+)
 
 
 def cross_section_policy_hash() -> str:
-    """Hash the installed transformation, coverage, and row-identity policy.
-
-    Returns:
-        Canonical policy identity for ordered winsorization, equal-sector demeaning,
-        robust Z scaling, coverage and sector thresholds, source eligibility, and row hashing.
-    """
-    return cast(
-        str,
-        canonical_hash(
-            {
-                "sequence": ["median_mad_winsor", "equal_sector_demean", "global_robust_zscore"],
-                "mad_scale": MAD_SCALE,
-                "winsor_multiplier": WINSOR_MULTIPLIER,
-                "minimum_coverage": MIN_COVERAGE,
-                "minimum_sector_sample": MIN_SECTOR_SAMPLE,
-                "small_sector_warning_below": SMALL_SECTOR_WARNING_BELOW,
-                "panel_row_hash": "duckdb_struct_json_sha256",
-                "partial_universe": "fail_closed",
-                "sector_reduction": "ordered_member_accumulation",
-                "missing_base_rows": "finite_factor_coverage",
-                "source_eligibility": "dated_exclusions_nominal_coverage_reference_sector_groups",
-            }
-        ),
-    )
+    """The installed transformation, coverage, and row-identity policy."""
+    return SOURCE_ELIGIBILITY_POLICY_HASH
 
 
 @dataclass(frozen=True)
@@ -402,7 +404,7 @@ class PanelCrossSectionKernel:
                     ),
                 )
             )
-            raw_input_digests.append((factor_id, _array_digest(matrix)))
+            raw_input_digests.append((factor_id, panel_array_digest(matrix)))
             available = (
                 (present | session_local)
                 & (coverage >= MIN_COVERAGE)
@@ -458,7 +460,7 @@ class PanelCrossSectionKernel:
                         "panel_binding_hash": binding.panel_binding_hash,
                     }
                 )
-            transformed_digests.append((factor_id, _array_digest(score)))
+            transformed_digests.append((factor_id, panel_array_digest(score)))
             member_scores = score[member_mask]
             rows[factor_id] = pd.Series(member_scores).where(np.isfinite(member_scores), np.nan)
         latest_session = max(cast(str, item["session_date"]) for item in availability)

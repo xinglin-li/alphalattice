@@ -21,6 +21,7 @@ from alphalattice.foundation.data_layer.log import HostLog, uuid7
 from alphalattice.foundation.data_layer.root import (
     data_root,
 )
+from alphalattice.kernel.identity import is_blake3
 
 
 def _alpha_part_link(read: Callable[..., Any], content_hash: str, layout: str) -> Any:
@@ -305,10 +306,7 @@ def _import_alpha_parts(root: Path, log: HostLog, folder: Path, workspace: str) 
             if (
                 not isinstance(content, str)
                 or not isinstance(digest, str)
-                or any(
-                    len(v) != 64 or any(c not in "0123456789abcdef" for c in v)
-                    for v in (content, digest)
-                )
+                or any(not is_blake3(v) for v in (content, digest))
                 or not isinstance(layout, str)
                 or not layout
                 or (content, layout) in seen

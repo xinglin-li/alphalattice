@@ -16,6 +16,7 @@ from alphalattice.foundation.feature_engine.panels.logical_semantic_index import
     logical_calendar_hash,
 )
 from alphalattice.foundation.feature_engine.panels.reader import FeaturePanelReader
+from alphalattice.kernel.identity import BLAKE3_PATTERN
 
 SLICE_ALGORITHM_IDENTITY = "ordered-session-row-hash-digest"
 
@@ -27,7 +28,7 @@ class FeaturePanelSessionSemantic(BaseModel):
 
     session_date: date
     row_count: int = Field(ge=1)
-    ordered_row_hash_digest: str = Field(pattern=r"^[0-9a-f]{64}$")
+    ordered_row_hash_digest: str = Field(pattern=BLAKE3_PATTERN)
 
 
 class FeaturePanelSemanticIndex(BaseModel):
@@ -36,15 +37,15 @@ class FeaturePanelSemanticIndex(BaseModel):
     model_config = ConfigDict(extra="forbid", frozen=True)
 
     kind: str = "FeaturePanelSemanticIndex"
-    panel_snapshot_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
-    panel_content_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
-    catalog_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
-    listing_set_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
+    panel_snapshot_hash: str = Field(pattern=BLAKE3_PATTERN)
+    panel_content_hash: str = Field(pattern=BLAKE3_PATTERN)
+    catalog_hash: str = Field(pattern=BLAKE3_PATTERN)
+    listing_set_hash: str = Field(pattern=BLAKE3_PATTERN)
     active_listing_count: int = Field(ge=1)
-    calendar_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
+    calendar_hash: str = Field(pattern=BLAKE3_PATTERN)
     slice_algorithm_identity: str = SLICE_ALGORITHM_IDENTITY
     sessions: tuple[FeaturePanelSessionSemantic, ...] = Field(min_length=1)
-    index_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
+    index_hash: str = Field(pattern=BLAKE3_PATTERN)
 
     def slice_hash(self, sessions: tuple[date, ...]) -> str:
         """Hash the selected sessions under this Panel semantic index."""

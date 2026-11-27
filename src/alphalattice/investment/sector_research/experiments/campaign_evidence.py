@@ -39,6 +39,7 @@ from alphalattice.capabilities.domain_contracts.source_identity import (
 from alphalattice.foundation.causal_outcomes.execution.readers import (
     CausalExecutionOutcomeDevelopmentReader,
 )
+from alphalattice.kernel.identity import BLAKE3_PATTERN
 from alphalattice.protocols.actor_execution import (
     ActorKind,
     ActorSubmissionBinding,
@@ -104,11 +105,11 @@ class SectorCampaignDossier(_Contract):
     identity_class: Literal["DEVELOPMENT_EVIDENCE_ONLY_NEVER_PUBLISHED"] = (
         "DEVELOPMENT_EVIDENCE_ONLY_NEVER_PUBLISHED"
     )
-    request_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
-    causal_outcome_snapshot_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
-    sector_revision: str = Field(pattern=r"^[0-9a-f]{64}$")
-    catalog_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
-    target_evidence_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
+    request_hash: str = Field(pattern=BLAKE3_PATTERN)
+    causal_outcome_snapshot_hash: str = Field(pattern=BLAKE3_PATTERN)
+    sector_revision: str = Field(pattern=BLAKE3_PATTERN)
+    catalog_hash: str = Field(pattern=BLAKE3_PATTERN)
+    target_evidence_hash: str = Field(pattern=BLAKE3_PATTERN)
     training_start: date
     training_end: date
     forecast_start: date
@@ -116,7 +117,7 @@ class SectorCampaignDossier(_Contract):
     calibration_fold_count: int = Field(ge=2)
     ordered_experiment_hashes: tuple[str, ...] = Field(min_length=2)
     ordered_calibration_hashes: tuple[str, ...] = Field(min_length=2)
-    comparison_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
+    comparison_hash: str = Field(pattern=BLAKE3_PATTERN)
     conditional_dispositions: dict[str, Literal["NOT_TRIGGERED", "EVALUATED"]]
     forecast_call_count: int = Field(ge=1)
     """Adapter invocations the Host made. An estimator fit happens inside one of
@@ -129,7 +130,7 @@ class SectorCampaignDossier(_Contract):
     pointer_mutation_count: Literal[0] = 0
     limitations: tuple[str, ...] = Field(min_length=1)
     ordered_child_uris: tuple[str, ...] = Field(min_length=3)
-    dossier_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
+    dossier_hash: str = Field(pattern=BLAKE3_PATTERN)
 
     @model_validator(mode="after")  # type: ignore[untyped-decorator]
     def validate_identity(self) -> Self:
@@ -175,10 +176,10 @@ class SectorForecastSelectionSubmission(_Contract):
     """
 
     kind: Literal["SectorForecastSelectionSubmission"] = "SectorForecastSelectionSubmission"
-    dossier_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
+    dossier_hash: str = Field(pattern=BLAKE3_PATTERN)
     selected_method_id: str = Field(min_length=1, max_length=96)
     rationale: str = Field(min_length=1, max_length=2000)
-    submission_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
+    submission_hash: str = Field(pattern=BLAKE3_PATTERN)
 
     @classmethod
     def create(cls, **values: object) -> Self:
@@ -203,10 +204,10 @@ class SectorForecastSelectionReceipt(_Contract):
     kind: Literal["SectorForecastSelectionReceipt"] = "SectorForecastSelectionReceipt"
     submission: SectorForecastSelectionSubmission
     actor_binding: ActorSubmissionBinding
-    decision_policy_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
-    comparison_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
+    decision_policy_hash: str = Field(pattern=BLAKE3_PATTERN)
+    comparison_hash: str = Field(pattern=BLAKE3_PATTERN)
     selection: SectorForecastSelection
-    receipt_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
+    receipt_hash: str = Field(pattern=BLAKE3_PATTERN)
 
     @model_validator(mode="after")  # type: ignore[untyped-decorator]
     def validate_identity(self) -> Self:
@@ -235,8 +236,8 @@ class SectorCampaignReplayReceipt(_Contract):
     """A completed zero-call replay of one Campaign graph."""
 
     kind: Literal["SectorCampaignReplayReceipt"] = "SectorCampaignReplayReceipt"
-    dossier_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
-    decision_receipt_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
+    dossier_hash: str = Field(pattern=BLAKE3_PATTERN)
+    decision_receipt_hash: str = Field(pattern=BLAKE3_PATTERN)
     verified_child_count: int = Field(ge=1)
     disposition: Literal["REUSED_EXACT"] = "REUSED_EXACT"
     forecast_call_count: Literal[0] = 0
@@ -245,7 +246,7 @@ class SectorCampaignReplayReceipt(_Contract):
     provider_call_count: Literal[0] = 0
     holdout_access_count: Literal[0] = 0
     pointer_mutation_count: Literal[0] = 0
-    replay_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
+    replay_hash: str = Field(pattern=BLAKE3_PATTERN)
 
     @model_validator(mode="after")  # type: ignore[untyped-decorator]
     def validate_identity(self) -> Self:

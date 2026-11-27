@@ -5,6 +5,8 @@ from uuid import UUID
 
 from pydantic import ConfigDict, Field
 
+from alphalattice.kernel.identity import BLAKE3_PATTERN
+
 from .contracts import RequestFieldModel
 
 
@@ -23,7 +25,7 @@ class FactorCurationRequest(RequestFieldModel):
     """Actor intent and the report it answers, never caller-supplied authority."""
 
     model_config = ConfigDict(extra="forbid", frozen=True)
-    expected_receipt_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
+    expected_receipt_hash: str = Field(pattern=BLAKE3_PATTERN)
     choices: tuple[FactorCurationChoice, ...]
     limitations_acknowledged: tuple[str, ...]
 
@@ -90,13 +92,13 @@ class RequestFields(RequestFieldModel):
         default=None, max_length=16
     )
     """The researcher's comments a delivery carries, each on the part it names."""
-    research_input_plan_hash: str | None = Field(default=None, pattern=r"^[0-9a-f]{64}$")
+    research_input_plan_hash: str | None = Field(default=None, pattern=BLAKE3_PATTERN)
     """The research input plan to confirm, by the hash its PLAN answered."""
     origin_task_id: UUID | None = None
     """The study a new plan continues from, by its Task."""
     factor_task_id: UUID | None = None
     """The Factor study an Alpha or Foundation plan builds on, by its Task."""
-    input_binding_hash: str | None = Field(default=None, pattern=r"^[0-9a-f]{64}$")
+    input_binding_hash: str | None = Field(default=None, pattern=BLAKE3_PATTERN)
     """The research input's version, by its binding hash; with `research_input_id` it names the
     data a study reads."""
     research_input_id: str | None = None
@@ -104,7 +106,7 @@ class RequestFields(RequestFieldModel):
     experiment_document: dict[str, Any] | None = None
     """The study's declaration as a document, as `study controls` or `study draft`
     writes it."""
-    feature_preparation_hash: str | None = Field(default=None, pattern=r"^[0-9a-f]{64}$")
+    feature_preparation_hash: str | None = Field(default=None, pattern=BLAKE3_PATTERN)
     """The prepared Feature input whose controls a study reads, by its hash."""
     experiment_kind: str | None = None
     """The study kind whose controls to show, as `study controls` lists them; Factor when
@@ -115,16 +117,16 @@ class RequestFields(RequestFieldModel):
     """A Risk report, by its hash, to export or deliver."""
     experiment_yaml: str | None = None
     """The study's declaration as YAML text; send it or `experiment_document`, not both."""
-    experiment_plan_hash: str | None = Field(default=None, pattern=r"^[0-9a-f]{64}$")
+    experiment_plan_hash: str | None = Field(default=None, pattern=BLAKE3_PATTERN)
     """A saved plan, by the hash its PLAN answered."""
     risk_report_scope: Literal["POST_OBSERVED_PORTFOLIO_WINDOW"] | None = None
     """`POST_OBSERVED_PORTFOLIO_WINDOW` links the Risk report over the Portfolio's observed
     window."""
     experiment_curation: FactorCurationRequest | None = None
     """The Factor curation decision: which factors go on, and why."""
-    curation_receipt_hash: str | None = Field(default=None, pattern=r"^[0-9a-f]{64}$")
+    curation_receipt_hash: str | None = Field(default=None, pattern=BLAKE3_PATTERN)
     """The Factor curation decision, by its receipt hash."""
-    foundation_admission_hash: str | None = Field(default=None, pattern=r"^[0-9a-f]{64}$")
+    foundation_admission_hash: str | None = Field(default=None, pattern=BLAKE3_PATTERN)
     """The Foundation, by its admission hash."""
     candidate_id: str | None = Field(default=None, min_length=1)
     """The Alpha candidate a Portfolio draft is built from."""

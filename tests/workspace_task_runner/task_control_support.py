@@ -35,6 +35,7 @@ from alphalattice.control.task_control.upgrade import carry_tasks
 from alphalattice.control.workspace_runtime.mutation_gate import WorkspaceMutationGate
 from alphalattice.foundation.data_layer import history
 from alphalattice.interface.local_application.thin_cli import connection_path
+from alphalattice.kernel.identity import blake3_filename
 
 
 def set_tasks_waiting(workspace: Path, count: int, at: datetime) -> None:
@@ -192,7 +193,9 @@ def lose_the_log_keeping_frozen_requests(
     requests = registry.database_path.parent / REQUESTS_DIRECTORY
     requests.mkdir(parents=True, exist_ok=True)
     for (text,) in rows:
-        (requests / f"{canonical_hash(json.loads(text))}.json").write_text(text, encoding="utf-8")
+        (requests / f"{blake3_filename(canonical_hash(json.loads(text)))}.json").write_text(
+            text, encoding="utf-8"
+        )
     history.close_history()
     folder = registry.database_path.parent.parent
     record = connection_path(folder)

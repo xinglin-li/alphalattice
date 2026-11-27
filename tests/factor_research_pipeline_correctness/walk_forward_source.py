@@ -26,8 +26,8 @@ def _manifest(listing_ids: tuple[str, ...]) -> CausalExecutionOutcomeManifest:
         row_count=1,
         first_formation_session=date(2026, 1, 2),
         last_formation_session=date(2026, 12, 30),
-        content_hash="a" * 64,
-        metadata_hash="b" * 64,
+        content_hash="blake3:" + "a" * 64,
+        metadata_hash="blake3:" + "b" * 64,
         uri="playpen://outcomes/development.parquet",
     )
     holdout = CausalExecutionOutcomeChunk(
@@ -36,8 +36,8 @@ def _manifest(listing_ids: tuple[str, ...]) -> CausalExecutionOutcomeManifest:
         row_count=1,
         first_formation_session=date(2027, 1, 2),
         last_formation_session=date(2027, 12, 30),
-        content_hash="c" * 64,
-        metadata_hash="d" * 64,
+        content_hash="blake3:" + "c" * 64,
+        metadata_hash="blake3:" + "d" * 64,
         uri="playpen://outcomes/holdout.parquet",
     )
     values = CausalExecutionOutcomeManifest.model_construct(
@@ -45,9 +45,9 @@ def _manifest(listing_ids: tuple[str, ...]) -> CausalExecutionOutcomeManifest:
         market_as_of=date(2027, 12, 31),
         listing_ids=listing_ids,
         listing_set_hash=canonical_hash(listing_ids),
-        schedule_hash="e" * 64,
-        ordered_session_triples_hash="f" * 64,
-        source_rows_semantic_hash="1" * 64,
+        schedule_hash="blake3:" + "e" * 64,
+        ordered_session_triples_hash="blake3:" + "f" * 64,
+        source_rows_semantic_hash="blake3:" + "1" * 64,
         price_basis="open_split_adjusted",
         return_formula_identity=(
             "formation-close-next-common-open-following-common-open-simple-return"
@@ -59,7 +59,7 @@ def _manifest(listing_ids: tuple[str, ...]) -> CausalExecutionOutcomeManifest:
         development_formation_count=1,
         sealed_holdout_formation_count=1,
         limitations=("fixture",),
-        snapshot_hash="0" * 64,
+        snapshot_hash="blake3:" + "0" * 64,
     )
     return CausalExecutionOutcomeManifest(
         **values.model_dump(exclude={"snapshot_hash"}),

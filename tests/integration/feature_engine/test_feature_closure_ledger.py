@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import hashlib
 import json
 import os
 from dataclasses import replace
@@ -57,12 +56,10 @@ from alphalattice.foundation.market_data_ops.sources.manifest import (
     UniverseManifest,
 )
 from alphalattice.foundation.market_data_ops.storage.duckdb import MarketDataRepository
+from alphalattice.kernel.identity import blake3_filename, blake3_from_filename
+from tests._support.identity_fixtures import fixture_digest as _hash
 
 NOW = datetime(2026, 8, 7, 14, tzinfo=UTC)
-
-
-def _hash(value: str) -> str:
-    return hashlib.sha256(value.encode("utf-8")).hexdigest()
 
 
 def _manifest() -> UniverseManifest:
@@ -149,7 +146,7 @@ def _seed_verified_root(
     ref = ClosureArtifactRef(
         kind="fixture",
         content_hash=_hash("artifact-content"),
-        physical_sha256=_hash("artifact-physical"),
+        physical_digest=_hash("artifact-physical"),
         byte_count=1,
         row_count=1,
         uri="fixture://closure",
@@ -241,7 +238,7 @@ def _seed_verified_root(
                     row_count=1,
                     chunk_hash=_hash("chunk"),
                     metadata_hash=_hash("metadata"),
-                    physical_sha256=_hash("physical"),
+                    physical_digest=_hash("physical"),
                     byte_count=1,
                     uri="fixture://panel/chunk",
                 ),
@@ -432,7 +429,7 @@ def test_verified_feature_source_window_reuses_exact_inputs_and_invalidates_othe
             [next_receipt],
         ).fetchone()[0]
         forged = json.loads(encoded)
-        forged["source_window"]["stock_input_hash"] = "f" * 64
+        forged["source_window"]["stock_input_hash"] = _hash("wrong-stock-input")
         connection.execute(
             "UPDATE feature_materialization_receipt SET coverage_summary_json=? "
             "WHERE receipt_hash=?",
@@ -705,12 +702,11 @@ def test_panel_recovery_binding_requires_a_clean_head_and_exact_sector_map(tmp_p
 def test_blocked_phase_one_snapshot_cannot_be_admitted_as_catalog_root(tmp_path) -> None:
     catalog, _store, artifact_store, ledger, _coordinator = _fixture(tmp_path)
     blocked_snapshot = _hash("d117")
-    assessment_hash = next(
-        path.stem for path in (artifact_store.root / "retention-assessments").glob("*.json")
-    )
-    failure_hash = next(
-        path.stem for path in (artifact_store.root / "runs" / "failures").glob("*.json")
-    )
+    assessment = next((artifact_store.root / "retention-assessments").glob("*.json"))
+    failure = next((artifact_store.root / "runs" / "failures").glob("*.json"))
+    assessment_hash = blake3_from_filename(assessment.stem)
+    failure_hash = blake3_from_filename(failure.stem)
+    assert assessment_hash is not None and failure_hash is not None
     with pytest.raises(ValueError, match=r"feature_closure\.root_unavailable"):
         ledger.admit_catalog_root(
             catalog_hash=catalog.binding.catalog_hash,
@@ -757,17 +753,18 @@ def test_republishing_an_unchanged_sector_activation_leaves_its_pointer_alone(
     monkeypatch.setattr(os, "replace", counted_replace)
 
     ledger.publish_sector_activation(receipt(recipe.sector_map_hash))
-    pointer = [d for _s, d in replaced if d.endswith(f"{recipe.sector_revision}.json")]
+    pointer_name = f"{blake3_filename(recipe.sector_revision)}.json"
+    pointer = [d for _s, d in replaced if d.endswith(pointer_name)]
     assert len(pointer) == 1
     pointer_path = Path(pointer[0])
     before = pointer_path.read_bytes()
 
     ledger.publish_sector_activation(receipt(recipe.sector_map_hash))
-    assert [d for _s, d in replaced if d.endswith(f"{recipe.sector_revision}.json")] == pointer
+    assert [d for _s, d in replaced if d.endswith(pointer_name)] == pointer
     assert pointer_path.read_bytes() == before
 
     ledger.publish_sector_activation(receipt(_hash("another-map")))
-    assert len([d for _s, d in replaced if d.endswith(f"{recipe.sector_revision}.json")]) == 2
+    assert len([d for _s, d in replaced if d.endswith(pointer_name)]) == 2
     assert pointer_path.read_bytes() != before
 
 
@@ -848,9 +845,9 @@ def test_changed_pointer_outlives_a_transient_sharing_violation_and_refuses_a_la
 
     def forged(files: FolderFiles, name: str) -> bytes | None:
         data = real_read(files, name)
-        return (
-            b'{"sector_map_hash": "' + b"0" * 64 + b'"}' if name == pointer_name and data else data
-        )
+        if name == pointer_name and data:
+            return json.dumps({"sector_map_hash": _hash("wrong-map")}).encode("utf-8")
+        return data
 
     monkeypatch.setattr(FolderFiles, "read", forged)
     with pytest.raises(ValueError, match="readback"):

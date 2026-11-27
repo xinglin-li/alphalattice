@@ -35,6 +35,7 @@ from alphalattice.foundation.research_foundation.runtime.delta_service import (
     PRE_RESEARCH_DELTA_POLICY_HASHES,
     PreResearchDeltaService,
 )
+from alphalattice.kernel.identity import blake3_filename
 
 PLAYPEN_ROOT = Path(__file__).resolve().parents[3]
 
@@ -904,7 +905,12 @@ def test_tampered_marker_child_fails_closed(tmp_path) -> None:
         storage_evidence=_storage(),
         published_at=NOW,
     )
-    marker_path = tmp_path / "pre-research-revisions" / "markers" / f"{marker.marker_hash}.json"
+    marker_path = (
+        tmp_path
+        / "pre-research-revisions"
+        / "markers"
+        / f"{blake3_filename(marker.marker_hash)}.json"
+    )
     marker_path.write_text("{}", encoding="utf-8")
     with pytest.raises(ValueError):
         store.current_head()

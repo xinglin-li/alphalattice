@@ -17,8 +17,8 @@ def _sector_revision(workspace: RealRiskWorkspace) -> str:
     from alphalattice.foundation.feature_engine.panels.closure_contracts import SectorRevisionMap
 
     store = PanelClosureArtifactStore(ArtifactResolver(workspace.artifact_root))
-    paths = sorted((store.root / "sector-maps").glob("*.json"))
-    assert paths, "the shared workspace publishes a sector revision map"
-    return store.load_model(
-        category="sector-maps", content_hash=paths[0].stem, model=SectorRevisionMap
-    ).sector_revision
+    maps = store.find_models(
+        category="sector-maps", model=SectorRevisionMap, matches=lambda _: True
+    )
+    assert maps, "the shared workspace publishes a sector revision map"
+    return maps[0].sector_revision

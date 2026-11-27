@@ -192,6 +192,8 @@ def _runtime_ledgers_keep_their_readings_across_an_interrupted_switch(
                 owner.carry_tasks(tmp_path, copy)
         assert not owner._store(copy).exists()
         assert owner.carry_tasks(tmp_path, copy) == 1  # the next carry completes it
+        ((request, _),) = owner.read_frozen(owner._store(copy).parent)
+        assert request.task_id == task.task_id
         kept = copy / path.relative_to(tmp_path)
         assert [json.loads(line) for line in kept.read_text("utf-8").splitlines()] == list(expected)
         carried = copy / progress.relative_to(tmp_path)

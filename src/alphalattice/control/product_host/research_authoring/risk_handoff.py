@@ -65,6 +65,7 @@ from alphalattice.investment.risk_research.surfaces.returns import (
     CausalRiskReturnReader,
     CausalRiskReturnSurfacePublisher,
 )
+from alphalattice.kernel.identity import blake3_filename
 from alphalattice.protocols.research_authoring.contracts import (
     AuthoringError,
     ResearchExperimentEnvelope,
@@ -437,7 +438,9 @@ def risk_workflow(
         planned_numerical_calls=len(formations),
         adapter_bindings=tuple(v.describe_numerical_binding() for v in catalog.adapters),
     )
-    artifact_root = session.workspace / "artifacts/research-risk-inputs" / source_hash
+    artifact_root = (
+        session.workspace / "artifacts/research-risk-inputs" / blake3_filename(source_hash)
+    )
 
     def freshness(*, through: date) -> str:
         return str(

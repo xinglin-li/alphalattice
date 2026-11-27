@@ -8,6 +8,7 @@ from datetime import UTC, datetime
 import duckdb
 
 from alphalattice.control.workspace_runtime.database import WorkspaceRepository
+from alphalattice.kernel.identity import is_blake3
 
 
 def _utc_naive(value: datetime) -> datetime:
@@ -221,7 +222,7 @@ class ResearchFoundationStateRepository(WorkspaceRepository):
             foundation_hash,
             revision_marker_hash,
         )
-        if any(len(value) != 64 for value in values):
+        if any(not is_blake3(value) for value in values):
             raise ValueError("feature universe rebuild child identity is invalid")
         connection = self._connect()
         try:

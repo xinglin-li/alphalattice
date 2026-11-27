@@ -73,6 +73,7 @@ from alphalattice.interface.local_application.native_setup import (
 from alphalattice.interface.local_application.portfolio_research import (
     PortfolioResearchRequestDocument,
 )
+from alphalattice.kernel.identity import blake3_filename
 from alphalattice.oversight.chief_risk_officer.decision.book_evidence import (
     assessment_schema_hash,
 )
@@ -105,6 +106,7 @@ from alphalattice.protocols.actor_execution.bundles import (
     bundle_directory_key,
     bundle_slot,
 )
+from tests._support.identity_fixtures import fixture_digest
 from tests.portfolio_strategy_lab.host_requests import _json
 from tests.workspace_task_runner.task_control_support import task_contract
 
@@ -164,9 +166,9 @@ def answer_scene(live, tmp_path, monkeypatch):
         bundle_directory=directory,
         submission={
             "operation": "EVIDENCE_ANALYSIS_SUBMIT",
-            "result_hash": "d" * 64,
+            "result_hash": fixture_digest("analysis result"),
             "task_id": str(task.task_id),
-            "analysis_context_hash": "c" * 64,
+            "analysis_context_hash": fixture_digest("analysis context"),
         },
         files=("README.md",),
         record_hash=bundle_slot(directory),
@@ -213,8 +215,9 @@ def answer_scene(live, tmp_path, monkeypatch):
         model="synthetic-model",
         basis="HOOK",
     )
+    bundle_key = fixture_digest("accepted answer bundle")
     record = AgentAnswerRecord(
-        bundle_key="b" * 64,
+        bundle_key=bundle_key,
         number=1,
         verdict="ACCEPTED",
         corrections_used=0,
@@ -222,7 +225,7 @@ def answer_scene(live, tmp_path, monkeypatch):
         accepted_items=(1,),
         answer_digest=answer_digest(accepted),
         agent_run=run,
-        record_hash=answer_slot("b" * 64, 1),
+        record_hash=answer_slot(bundle_key, 1),
     )
     events = [
         (
@@ -810,7 +813,7 @@ def test_selected_product_return_rejects_malformed_owner_binding(product_answer_
         }[case]
         payload[key] = value
     elif case in {"answer_reference", "bundle_reference"}:
-        subject[case] = "e" * 64
+        subject[case] = fixture_digest("foreign answer or bundle reference")
     elif case == "old_missing_bundle":
         del subject["bundle_reference"]
     elif case == "role":
@@ -871,10 +874,14 @@ def test_selected_product_return_reopens_and_verifies_its_sealed_content(
     scene = product_answer_scene
     result, row = scene.submit()
     answer_path = (
-        scene.live.review.artifacts.root / ANSWER_CATEGORY / f"{result['answer_reference']}.json"
+        scene.live.review.artifacts.root
+        / ANSWER_CATEGORY
+        / f"{blake3_filename(result['answer_reference'])}.json"
     )
     bundle_path = (
-        scene.live.review.artifacts.root / BUNDLE_CATEGORY / f"{scene.bundle.record_hash}.json"
+        scene.live.review.artifacts.root
+        / BUNDLE_CATEGORY
+        / f"{blake3_filename(scene.bundle.record_hash)}.json"
     )
     if case == "missing_answer":
         answer_path.unlink()
@@ -884,11 +891,11 @@ def test_selected_product_return_reopens_and_verifies_its_sealed_content(
         path = bundle_path if case == "bundle_binding" else answer_path
         stored = json.loads(path.read_text(encoding="utf-8"))
         if case == "bundle_binding":
-            stored["submission"]["task_record_hash"] = "e" * 64
+            stored["submission"]["task_record_hash"] = fixture_digest("foreign task record")
         elif case == "text_tail":
             stored["accepted_text"] += " Unaccepted appended text."
         else:
-            stored["answer_digest"] = "e" * 64
+            stored["answer_digest"] = fixture_digest("different answer")
         path.write_text(json.dumps(stored), encoding="utf-8", newline="\n")
     detail = LocalResearchClient(scene.live.workspace).read_external(
         observation_id=row["observation_id"]
@@ -1077,9 +1084,13 @@ def test_selected_answer_refuses_missing_tampered_or_mismatched_seals(
     subject = dict(row["payload"]["subject"])
     page = _json(live, "/api/activity/external")
     answer_path = (
-        live.review.artifacts.root / ANSWER_CATEGORY / f"{result['answer_reference']}.json"
+        live.review.artifacts.root
+        / ANSWER_CATEGORY
+        / f"{blake3_filename(result['answer_reference'])}.json"
     )
-    bundle_path = live.review.artifacts.root / BUNDLE_CATEGORY / f"{bundle.record_hash}.json"
+    bundle_path = (
+        live.review.artifacts.root / BUNDLE_CATEGORY / f"{blake3_filename(bundle.record_hash)}.json"
+    )
     if case == "missing_answer":
         answer_path.unlink()
     elif case == "missing_bundle":
@@ -1093,7 +1104,7 @@ def test_selected_answer_refuses_missing_tampered_or_mismatched_seals(
         answer_path.write_text(json.dumps(stored), encoding="utf-8", newline="\n")
     elif case == "bundle_binding":
         stored = json.loads(bundle_path.read_text(encoding="utf-8"))
-        stored["submission"]["task_record_hash"] = "f" * 64
+        stored["submission"]["task_record_hash"] = fixture_digest("foreign task record")
         bundle_path.write_text(json.dumps(stored), encoding="utf-8", newline="\n")
     elif case == "task":
         envelope, goal, plan = task_contract(salt="foreign-selected-answer-task")
@@ -1156,9 +1167,9 @@ def test_selected_typed_answer_reads_the_whole_accepted_task_contribution(
         accepted = analyst.model_copy(update={"notes": text})
         submitted = SubmittedEvidenceAnalysis(
             prepared_task_id=prepared_id,
-            packet_hash="a" * 64,
-            analysis_policy_hash="b" * 64,
-            decision_policy_hash="c" * 64,
+            packet_hash=fixture_digest("analysis packet"),
+            analysis_policy_hash=fixture_digest("analysis policy"),
+            decision_policy_hash=fixture_digest("decision policy"),
             answer=accepted,
             actor_submission=seal_actor_submission(
                 actor_kind=ActorKind.EXTERNAL_AUTOMATION,
@@ -1200,14 +1211,14 @@ def test_selected_typed_answer_reads_the_whole_accepted_task_contribution(
             "request": request.model_dump(mode="json"),
             "admission": admission.model_dump(mode="json"),
             "obligation": obligation.model_dump(mode="json"),
-            "resource_binding_hash": "d" * 64,
+            "resource_binding_hash": fixture_digest("evidence resources"),
             "submitted_analysis": submitted.model_dump(mode="json"),
         }
         binding = {
             "role": "alternative_evidence.analyst",
             "task_id": str(prepared_id),
             "unit_id": None,
-            "analysis_context_hash": "c" * 64,
+            "analysis_context_hash": fixture_digest("analysis context"),
         }
 
         def analysis_context(task_id, *, now, unit_id=None):
@@ -1230,15 +1241,15 @@ def test_selected_typed_answer_reads_the_whole_accepted_task_contribution(
             PortfolioReviewDossier,
             "dossier_hash",
             book_authority=BookAuthority.DEVELOPMENT_RESULT,
-            report_hash="a" * 64,
-            result_hash="b" * 64,
-            issuer_scope_hash="c" * 64,
-            exposure_projection_hash="d" * 64,
-            registry_hash="e" * 64,
-            analysis_publication_hash="f" * 64,
-            analyst_brief_hash="a" * 64,
-            cro_package_hash="b" * 64,
-            obligation_hash="c" * 64,
+            report_hash=fixture_digest("portfolio report"),
+            result_hash=fixture_digest("portfolio result"),
+            issuer_scope_hash=fixture_digest("issuer scope"),
+            exposure_projection_hash=fixture_digest("exposure projection"),
+            registry_hash=fixture_digest("issuer registry"),
+            analysis_publication_hash=fixture_digest("analysis publication"),
+            analyst_brief_hash=fixture_digest("analyst brief"),
+            cro_package_hash=fixture_digest("CRO package"),
+            obligation_hash=fixture_digest("research obligation"),
             evidence_as_of=prepared.admitted_at,
             evidence_expires_at=prepared.admitted_at + timedelta(hours=1),
             issuers=(),
@@ -1261,7 +1272,7 @@ def test_selected_typed_answer_reads_the_whole_accepted_task_contribution(
         binding = {
             "role": "chief_risk_officer.reviewer",
             "dossier_hash": dossier.dossier_hash,
-            "policy_hash": "c" * 64,
+            "policy_hash": fixture_digest("review policy"),
             "schema_hash": assessment_schema_hash(dossier),
         }
         bundle = bundle.model_copy(
@@ -1541,9 +1552,9 @@ def test_direct_answer_doors_keep_unknown_author_accepted_without_child_credit(
     else:
         request = {
             "operation": operation,
-            "review_dossier_hash": "a" * 64,
-            "review_policy_hash": "b" * 64,
-            "review_schema_hash": "c" * 64,
+            "review_dossier_hash": fixture_digest("unregistered dossier"),
+            "review_policy_hash": fixture_digest("review policy"),
+            "review_schema_hash": fixture_digest("review schema"),
             "review_answer": {"risks": []},
         }
         monkeypatch.setattr(live.review, "submit_assessment", lambda **kwargs: body)
@@ -1662,7 +1673,7 @@ def test_cro_accepted_risk_and_publication_retry_keep_the_same_stored_author(ans
     finally:
         REQUEST_PROVENANCE.reset(token)
     assert live.review.accepted_answer_delivery(
-        record, accepted.model_dump(mode="json"), input_hash="f" * 64
+        record, accepted.model_dump(mode="json"), input_hash=fixture_digest("foreign task input")
     ) == {
         "status": "UNAVAILABLE",
         "reason": "native_bridge.accepted_answer_not_recorded",

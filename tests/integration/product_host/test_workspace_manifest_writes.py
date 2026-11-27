@@ -45,10 +45,14 @@ from alphalattice.control.product_host.composition.research_workspace import (
 from alphalattice.control.product_host.data_preparation import input_capture, research_strategy
 from alphalattice.control.workspace_runtime.mutation_gate import WorkspaceMutationGate
 from alphalattice.interface.local_application.cli_contract import refusal_words
+from alphalattice.kernel.identity import blake3_filename
+from tests._support.identity_fixtures import fixture_digest
 
 
 def _input(input_id: str, digit: str) -> ResearchWorkspaceExperimentInput:
-    return ResearchWorkspaceExperimentInput(input_id=input_id, binding_hash=digit * 64)
+    return ResearchWorkspaceExperimentInput(
+        input_id=input_id, binding_hash=fixture_digest(("experiment input binding", digit))
+    )
 
 
 def _adding(value: ResearchWorkspaceExperimentInput):  # type: ignore[no-untyped-def]
@@ -165,7 +169,7 @@ def _recorded_setup_source(root: Path) -> tuple[Path, str, Path]:
                 entity_id="ACME", ticker="ACME", cik="0000000001", legal_name="Synthetic Acme"
             ),
         ),
-        source_content_hash="1" * 64,
+        source_content_hash=fixture_digest("SEC registry source"),
     )
     request = seal_contract(
         AlternativeEvidenceRequest,
@@ -242,7 +246,9 @@ def test_evidence_setup_waits_for_the_manifest_owner_and_keeps_another_binding(
         artifact_root / "feature-panel" / "closure" / "sector-maps",
     ):
         directory.mkdir(parents=True)
-        (directory / ("b" * 64 + ".json")).write_text("{}\n", encoding="utf-8")
+        (directory / f"{blake3_filename(fixture_digest('source fixture'))}.json").write_text(
+            "{}\n", encoding="utf-8"
+        )
     monkeypatch.setattr(
         RiskReturnArtifactStore,
         "load_manifest",
@@ -260,7 +266,9 @@ def test_evidence_setup_waits_for_the_manifest_owner_and_keeps_another_binding(
     monkeypatch.setattr(
         evidence_authority_setup,
         "store_capability",
-        lambda *_: SimpleNamespace(status="READY", logical_hash="c" * 64),
+        lambda *_: SimpleNamespace(
+            status="READY", logical_hash=fixture_digest("semantic capability")
+        ),
     )
     entered, parent_thread = Event(), get_ident()
 
@@ -367,10 +375,10 @@ def test_a_plan_binds_only_the_fields_it_reads() -> None:
         model_training_inputs=(
             ResearchWorkspaceModelTrainingInput(
                 component_id="G2_RETURN",
-                input_binding_hash="a" * 64,
-                source_identity_hash="b" * 64,
+                input_binding_hash=fixture_digest(("experiment input binding", "a")),
+                source_identity_hash=fixture_digest("training source identity"),
                 authority_relative_path="artifacts/model-training/authority.json",
-                authority_hash="c" * 64,
+                authority_hash=fixture_digest("training authority"),
             ),
         )
     )
@@ -382,6 +390,30 @@ def test_a_plan_binds_only_the_fields_it_reads() -> None:
         ResearchWorkspaceError, match=re.escape("research_workspace.manifest_field_unknown")
     ):
         manifest_fields_hash(before, ("no_such_field",))
+
+
+@pytest.mark.proves("product_host.pre_blake3_workspace_is_refused")
+def test_a_workspace_manifest_from_the_sha256_format_is_refused_at_open(tmp_path: Path) -> None:
+    current = ResearchWorkspaceManifest.research_only("workspace")
+    payload = current.model_dump(mode="json")
+    manifest = tmp_path / RESEARCH_WORKSPACE_MANIFEST_NAME
+    manifest.write_text(
+        json.dumps(
+            payload | {"manifest_schema": "research-workspace-manifest", "manifest_hash": "0" * 64}
+        ),
+        encoding="utf-8",
+    )
+    earlier = manifest.read_bytes()
+    with pytest.raises(
+        ResearchWorkspaceError, match=r"^research_workspace\.manifest_before_blake3$"
+    ):
+        read_research_workspace_manifest(tmp_path)
+    assert manifest.read_bytes() == earlier
+    wording = refusal_words("research_workspace.manifest_before_blake3")
+    assert "fresh data root" in wording["detail"]
+
+    manifest.write_text(current.model_dump_json(), encoding="utf-8")
+    assert read_research_workspace_manifest(tmp_path) == current
 
 
 def test_a_portfolio_research_plan_binds_the_strategy_it_serves() -> None:
@@ -422,8 +454,8 @@ def test_a_research_installation_holds_a_persons_activation() -> None:
         decision_updates=(
             ResearchWorkspaceDecisionUpdate(
                 strategy_package_id="RETURN_G6_MU_ONLY",
-                strategy_package_hash="1" * 64,
-                checkpoint_hash="2" * 64,
+                strategy_package_hash=fixture_digest("decision strategy package"),
+                checkpoint_hash=fixture_digest("decision checkpoint"),
             ),
         )
     )

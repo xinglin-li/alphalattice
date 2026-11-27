@@ -1,4 +1,1402 @@
 {
+  "digest_transitions": {
+    "request:Request.analysis_context_hash": {
+      "new_schema": {
+        "required": false,
+        "schema": {
+          "anyOf": [
+            {
+              "pattern": "^blake3:[0-9a-f]{64}$",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        }
+      },
+      "old_schema": {
+        "required": false,
+        "schema": {
+          "anyOf": [
+            {
+              "pattern": "^[0-9a-f]{64}$",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        }
+      },
+      "reason": "Request fields carrying internal digests require tagged BLAKE3.",
+      "release": "0.2.10"
+    },
+    "request:Request.analysis_publication_hash": {
+      "new_schema": {
+        "required": false,
+        "schema": {
+          "anyOf": [
+            {
+              "pattern": "^blake3:[0-9a-f]{64}$",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        }
+      },
+      "old_schema": {
+        "required": false,
+        "schema": {
+          "anyOf": [
+            {
+              "pattern": "^[0-9a-f]{64}$",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        }
+      },
+      "reason": "Request fields carrying internal digests require tagged BLAKE3.",
+      "release": "0.2.10"
+    },
+    "request:Request.calibration_plan_hash": {
+      "new_schema": {
+        "required": false,
+        "schema": {
+          "anyOf": [
+            {
+              "pattern": "^blake3:[0-9a-f]{64}$",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        }
+      },
+      "old_schema": {
+        "required": false,
+        "schema": {
+          "anyOf": [
+            {
+              "pattern": "^[0-9a-f]{64}$",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        }
+      },
+      "reason": "Request fields carrying internal digests require tagged BLAKE3.",
+      "release": "0.2.10"
+    },
+    "request:Request.candidate_hash": {
+      "new_schema": {
+        "required": false,
+        "schema": {
+          "anyOf": [
+            {
+              "pattern": "^blake3:[0-9a-f]{64}$",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        }
+      },
+      "old_schema": {
+        "required": false,
+        "schema": {
+          "anyOf": [
+            {
+              "pattern": "^[0-9a-f]{64}$",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        }
+      },
+      "reason": "Request fields carrying internal digests require tagged BLAKE3.",
+      "release": "0.2.10"
+    },
+    "request:Request.continuation_of": {
+      "new_schema": {
+        "required": false,
+        "schema": {
+          "anyOf": [
+            {
+              "pattern": "^blake3:[0-9a-f]{64}$",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        }
+      },
+      "old_schema": {
+        "required": false,
+        "schema": {
+          "anyOf": [
+            {
+              "pattern": "^[0-9a-f]{64}$",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        }
+      },
+      "reason": "Request fields carrying internal digests require tagged BLAKE3.",
+      "release": "0.2.10"
+    },
+    "request:Request.continuation_spans": {
+      "new_schema": {
+        "required": false,
+        "schema": {
+          "anyOf": [
+            {
+              "pattern": "^blake3:[0-9a-f]{64}$",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        }
+      },
+      "old_schema": {
+        "required": false,
+        "schema": {
+          "anyOf": [
+            {
+              "pattern": "^[0-9a-f]{64}$",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        }
+      },
+      "reason": "Request fields carrying internal digests require tagged BLAKE3.",
+      "release": "0.2.10"
+    },
+    "request:Request.curation_receipt_hash": {
+      "new_schema": {
+        "required": false,
+        "schema": {
+          "anyOf": [
+            {
+              "pattern": "^blake3:[0-9a-f]{64}$",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        }
+      },
+      "old_schema": {
+        "required": false,
+        "schema": {
+          "anyOf": [
+            {
+              "pattern": "^[0-9a-f]{64}$",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        }
+      },
+      "reason": "Request fields carrying internal digests require tagged BLAKE3.",
+      "release": "0.2.10"
+    },
+    "request:Request.data_issue_case_token": {
+      "new_schema": {
+        "required": false,
+        "schema": {
+          "anyOf": [
+            {
+              "pattern": "^blake3:[0-9a-f]{64}$",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        }
+      },
+      "old_schema": {
+        "required": false,
+        "schema": {
+          "anyOf": [
+            {
+              "pattern": "^[0-9a-f]{64}$",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        }
+      },
+      "reason": "Request fields carrying internal digests require tagged BLAKE3.",
+      "release": "0.2.10"
+    },
+    "request:Request.data_issue_evidence_hash": {
+      "new_schema": {
+        "required": false,
+        "schema": {
+          "anyOf": [
+            {
+              "pattern": "^blake3:[0-9a-f]{64}$",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        }
+      },
+      "old_schema": {
+        "required": false,
+        "schema": {
+          "anyOf": [
+            {
+              "pattern": "^[0-9a-f]{64}$",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        }
+      },
+      "reason": "Request fields carrying internal digests require tagged BLAKE3.",
+      "release": "0.2.10"
+    },
+    "request:Request.data_issue_grant_hash": {
+      "new_schema": {
+        "required": false,
+        "schema": {
+          "anyOf": [
+            {
+              "pattern": "^blake3:[0-9a-f]{64}$",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        }
+      },
+      "old_schema": {
+        "required": false,
+        "schema": {
+          "anyOf": [
+            {
+              "pattern": "^[0-9a-f]{64}$",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        }
+      },
+      "reason": "Request fields carrying internal digests require tagged BLAKE3.",
+      "release": "0.2.10"
+    },
+    "request:Request.data_issue_option_hash": {
+      "new_schema": {
+        "required": false,
+        "schema": {
+          "anyOf": [
+            {
+              "pattern": "^blake3:[0-9a-f]{64}$",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        }
+      },
+      "old_schema": {
+        "required": false,
+        "schema": {
+          "anyOf": [
+            {
+              "pattern": "^[0-9a-f]{64}$",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        }
+      },
+      "reason": "Request fields carrying internal digests require tagged BLAKE3.",
+      "release": "0.2.10"
+    },
+    "request:Request.evidence_index_id": {
+      "new_schema": {
+        "required": false,
+        "schema": {
+          "anyOf": [
+            {
+              "pattern": "^blake3:[0-9a-f]{64}$",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        }
+      },
+      "old_schema": {
+        "required": false,
+        "schema": {
+          "anyOf": [
+            {
+              "pattern": "^[0-9a-f]{64}$",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        }
+      },
+      "reason": "Request fields carrying internal digests require tagged BLAKE3.",
+      "release": "0.2.10"
+    },
+    "request:Request.expected_task_hash": {
+      "new_schema": {
+        "required": false,
+        "schema": {
+          "anyOf": [
+            {
+              "pattern": "^blake3:[0-9a-f]{64}$",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        }
+      },
+      "old_schema": {
+        "required": false,
+        "schema": {
+          "anyOf": [
+            {
+              "pattern": "^[0-9a-f]{64}$",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        }
+      },
+      "reason": "Request fields carrying internal digests require tagged BLAKE3.",
+      "release": "0.2.10"
+    },
+    "request:Request.experiment_plan_hash": {
+      "new_schema": {
+        "required": false,
+        "schema": {
+          "anyOf": [
+            {
+              "pattern": "^blake3:[0-9a-f]{64}$",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        }
+      },
+      "old_schema": {
+        "required": false,
+        "schema": {
+          "anyOf": [
+            {
+              "pattern": "^[0-9a-f]{64}$",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        }
+      },
+      "reason": "Request fields carrying internal digests require tagged BLAKE3.",
+      "release": "0.2.10"
+    },
+    "request:Request.feature_plan_hash": {
+      "new_schema": {
+        "required": false,
+        "schema": {
+          "anyOf": [
+            {
+              "pattern": "^blake3:[0-9a-f]{64}$",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        }
+      },
+      "old_schema": {
+        "required": false,
+        "schema": {
+          "anyOf": [
+            {
+              "pattern": "^[0-9a-f]{64}$",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        }
+      },
+      "reason": "Request fields carrying internal digests require tagged BLAKE3.",
+      "release": "0.2.10"
+    },
+    "request:Request.feature_preparation_hash": {
+      "new_schema": {
+        "required": false,
+        "schema": {
+          "anyOf": [
+            {
+              "pattern": "^blake3:[0-9a-f]{64}$",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        }
+      },
+      "old_schema": {
+        "required": false,
+        "schema": {
+          "anyOf": [
+            {
+              "pattern": "^[0-9a-f]{64}$",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        }
+      },
+      "reason": "Request fields carrying internal digests require tagged BLAKE3.",
+      "release": "0.2.10"
+    },
+    "request:Request.feature_trial_id": {
+      "new_schema": {
+        "required": false,
+        "schema": {
+          "anyOf": [
+            {
+              "pattern": "^blake3:[0-9a-f]{64}$",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        }
+      },
+      "old_schema": {
+        "required": false,
+        "schema": {
+          "anyOf": [
+            {
+              "pattern": "^[0-9a-f]{64}$",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        }
+      },
+      "reason": "Request fields carrying internal digests require tagged BLAKE3.",
+      "release": "0.2.10"
+    },
+    "request:Request.foundation_admission_hash": {
+      "new_schema": {
+        "required": false,
+        "schema": {
+          "anyOf": [
+            {
+              "pattern": "^blake3:[0-9a-f]{64}$",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        }
+      },
+      "old_schema": {
+        "required": false,
+        "schema": {
+          "anyOf": [
+            {
+              "pattern": "^[0-9a-f]{64}$",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        }
+      },
+      "reason": "Request fields carrying internal digests require tagged BLAKE3.",
+      "release": "0.2.10"
+    },
+    "request:Request.goal_hash": {
+      "new_schema": {
+        "required": false,
+        "schema": {
+          "anyOf": [
+            {
+              "pattern": "^blake3:[0-9a-f]{64}$",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        }
+      },
+      "old_schema": {
+        "required": false,
+        "schema": {
+          "anyOf": [
+            {
+              "pattern": "^[0-9a-f]{64}$",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        }
+      },
+      "reason": "Request fields carrying internal digests require tagged BLAKE3.",
+      "release": "0.2.10"
+    },
+    "request:Request.handoff_hash": {
+      "new_schema": {
+        "required": false,
+        "schema": {
+          "anyOf": [
+            {
+              "pattern": "^blake3:[0-9a-f]{64}$",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        }
+      },
+      "old_schema": {
+        "required": false,
+        "schema": {
+          "anyOf": [
+            {
+              "pattern": "^[0-9a-f]{64}$",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        }
+      },
+      "reason": "Request fields carrying internal digests require tagged BLAKE3.",
+      "release": "0.2.10"
+    },
+    "request:Request.incident_key": {
+      "new_schema": {
+        "required": false,
+        "schema": {
+          "anyOf": [
+            {
+              "pattern": "^blake3:[0-9a-f]{64}$",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        }
+      },
+      "old_schema": {
+        "required": false,
+        "schema": {
+          "anyOf": [
+            {
+              "pattern": "^[0-9a-f]{64}$",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        }
+      },
+      "reason": "Request fields carrying internal digests require tagged BLAKE3.",
+      "release": "0.2.10"
+    },
+    "request:Request.input_binding_hash": {
+      "new_schema": {
+        "required": false,
+        "schema": {
+          "anyOf": [
+            {
+              "pattern": "^blake3:[0-9a-f]{64}$",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        }
+      },
+      "old_schema": {
+        "required": false,
+        "schema": {
+          "anyOf": [
+            {
+              "pattern": "^[0-9a-f]{64}$",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        }
+      },
+      "reason": "Request fields carrying internal digests require tagged BLAKE3.",
+      "release": "0.2.10"
+    },
+    "request:Request.left_result_hash": {
+      "new_schema": {
+        "required": false,
+        "schema": {
+          "anyOf": [
+            {
+              "pattern": "^blake3:[0-9a-f]{64}$",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        }
+      },
+      "old_schema": {
+        "required": false,
+        "schema": {
+          "anyOf": [
+            {
+              "pattern": "^[0-9a-f]{64}$",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        }
+      },
+      "reason": "Request fields carrying internal digests require tagged BLAKE3.",
+      "release": "0.2.10"
+    },
+    "request:Request.preparation_binding_hash": {
+      "new_schema": {
+        "required": false,
+        "schema": {
+          "anyOf": [
+            {
+              "pattern": "^blake3:[0-9a-f]{64}$",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        }
+      },
+      "old_schema": {
+        "required": false,
+        "schema": {
+          "anyOf": [
+            {
+              "pattern": "^[0-9a-f]{64}$",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        }
+      },
+      "reason": "Request fields carrying internal digests require tagged BLAKE3.",
+      "release": "0.2.10"
+    },
+    "request:Request.preparation_plan_hash": {
+      "new_schema": {
+        "required": false,
+        "schema": {
+          "anyOf": [
+            {
+              "pattern": "^blake3:[0-9a-f]{64}$",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        }
+      },
+      "old_schema": {
+        "required": false,
+        "schema": {
+          "anyOf": [
+            {
+              "pattern": "^[0-9a-f]{64}$",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        }
+      },
+      "reason": "Request fields carrying internal digests require tagged BLAKE3.",
+      "release": "0.2.10"
+    },
+    "request:Request.prepared_input_hash": {
+      "new_schema": {
+        "required": false,
+        "schema": {
+          "anyOf": [
+            {
+              "pattern": "^blake3:[0-9a-f]{64}$",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        }
+      },
+      "old_schema": {
+        "required": false,
+        "schema": {
+          "anyOf": [
+            {
+              "pattern": "^[0-9a-f]{64}$",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        }
+      },
+      "reason": "Request fields carrying internal digests require tagged BLAKE3.",
+      "release": "0.2.10"
+    },
+    "request:Request.prior_review_publication_hash": {
+      "new_schema": {
+        "required": false,
+        "schema": {
+          "anyOf": [
+            {
+              "pattern": "^blake3:[0-9a-f]{64}$",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        }
+      },
+      "old_schema": {
+        "required": false,
+        "schema": {
+          "anyOf": [
+            {
+              "pattern": "^[0-9a-f]{64}$",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        }
+      },
+      "reason": "Request fields carrying internal digests require tagged BLAKE3.",
+      "release": "0.2.10"
+    },
+    "request:Request.recovery_task_hash": {
+      "new_schema": {
+        "required": false,
+        "schema": {
+          "anyOf": [
+            {
+              "pattern": "^blake3:[0-9a-f]{64}$",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        }
+      },
+      "old_schema": {
+        "required": false,
+        "schema": {
+          "anyOf": [
+            {
+              "pattern": "^[0-9a-f]{64}$",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        }
+      },
+      "reason": "Request fields carrying internal digests require tagged BLAKE3.",
+      "release": "0.2.10"
+    },
+    "request:Request.research_input_plan_hash": {
+      "new_schema": {
+        "required": false,
+        "schema": {
+          "anyOf": [
+            {
+              "pattern": "^blake3:[0-9a-f]{64}$",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        }
+      },
+      "old_schema": {
+        "required": false,
+        "schema": {
+          "anyOf": [
+            {
+              "pattern": "^[0-9a-f]{64}$",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        }
+      },
+      "reason": "Request fields carrying internal digests require tagged BLAKE3.",
+      "release": "0.2.10"
+    },
+    "request:Request.result_hash": {
+      "new_schema": {
+        "required": false,
+        "schema": {
+          "anyOf": [
+            {
+              "pattern": "^blake3:[0-9a-f]{64}$",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        }
+      },
+      "old_schema": {
+        "required": false,
+        "schema": {
+          "anyOf": [
+            {
+              "pattern": "^[0-9a-f]{64}$",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        }
+      },
+      "reason": "Request fields carrying internal digests require tagged BLAKE3.",
+      "release": "0.2.10"
+    },
+    "request:Request.review_dossier_hash": {
+      "new_schema": {
+        "required": false,
+        "schema": {
+          "anyOf": [
+            {
+              "pattern": "^blake3:[0-9a-f]{64}$",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        }
+      },
+      "old_schema": {
+        "required": false,
+        "schema": {
+          "anyOf": [
+            {
+              "pattern": "^[0-9a-f]{64}$",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        }
+      },
+      "reason": "Request fields carrying internal digests require tagged BLAKE3.",
+      "release": "0.2.10"
+    },
+    "request:Request.review_policy_hash": {
+      "new_schema": {
+        "required": false,
+        "schema": {
+          "anyOf": [
+            {
+              "pattern": "^blake3:[0-9a-f]{64}$",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        }
+      },
+      "old_schema": {
+        "required": false,
+        "schema": {
+          "anyOf": [
+            {
+              "pattern": "^[0-9a-f]{64}$",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        }
+      },
+      "reason": "Request fields carrying internal digests require tagged BLAKE3.",
+      "release": "0.2.10"
+    },
+    "request:Request.review_publication_hash": {
+      "new_schema": {
+        "required": false,
+        "schema": {
+          "anyOf": [
+            {
+              "pattern": "^blake3:[0-9a-f]{64}$",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        }
+      },
+      "old_schema": {
+        "required": false,
+        "schema": {
+          "anyOf": [
+            {
+              "pattern": "^[0-9a-f]{64}$",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        }
+      },
+      "reason": "Request fields carrying internal digests require tagged BLAKE3.",
+      "release": "0.2.10"
+    },
+    "request:Request.review_schema_hash": {
+      "new_schema": {
+        "required": false,
+        "schema": {
+          "anyOf": [
+            {
+              "pattern": "^blake3:[0-9a-f]{64}$",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        }
+      },
+      "old_schema": {
+        "required": false,
+        "schema": {
+          "anyOf": [
+            {
+              "pattern": "^[0-9a-f]{64}$",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        }
+      },
+      "reason": "Request fields carrying internal digests require tagged BLAKE3.",
+      "release": "0.2.10"
+    },
+    "request:Request.right_result_hash": {
+      "new_schema": {
+        "required": false,
+        "schema": {
+          "anyOf": [
+            {
+              "pattern": "^blake3:[0-9a-f]{64}$",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        }
+      },
+      "old_schema": {
+        "required": false,
+        "schema": {
+          "anyOf": [
+            {
+              "pattern": "^[0-9a-f]{64}$",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        }
+      },
+      "reason": "Request fields carrying internal digests require tagged BLAKE3.",
+      "release": "0.2.10"
+    },
+    "request:Request.score_plan_hash": {
+      "new_schema": {
+        "required": false,
+        "schema": {
+          "anyOf": [
+            {
+              "pattern": "^blake3:[0-9a-f]{64}$",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        }
+      },
+      "old_schema": {
+        "required": false,
+        "schema": {
+          "anyOf": [
+            {
+              "pattern": "^[0-9a-f]{64}$",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        }
+      },
+      "reason": "Request fields carrying internal digests require tagged BLAKE3.",
+      "release": "0.2.10"
+    },
+    "request:Request.score_snapshot_hash": {
+      "new_schema": {
+        "required": false,
+        "schema": {
+          "anyOf": [
+            {
+              "pattern": "^blake3:[0-9a-f]{64}$",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        }
+      },
+      "old_schema": {
+        "required": false,
+        "schema": {
+          "anyOf": [
+            {
+              "pattern": "^[0-9a-f]{64}$",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        }
+      },
+      "reason": "Request fields carrying internal digests require tagged BLAKE3.",
+      "release": "0.2.10"
+    },
+    "request:Request.storage_plan_hash": {
+      "new_schema": {
+        "required": false,
+        "schema": {
+          "anyOf": [
+            {
+              "pattern": "^blake3:[0-9a-f]{64}$",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        }
+      },
+      "old_schema": {
+        "required": false,
+        "schema": {
+          "anyOf": [
+            {
+              "pattern": "^[0-9a-f]{64}$",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        }
+      },
+      "reason": "Request fields carrying internal digests require tagged BLAKE3.",
+      "release": "0.2.10"
+    },
+    "request:Request.update_plan_hash": {
+      "new_schema": {
+        "required": false,
+        "schema": {
+          "anyOf": [
+            {
+              "pattern": "^blake3:[0-9a-f]{64}$",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        }
+      },
+      "old_schema": {
+        "required": false,
+        "schema": {
+          "anyOf": [
+            {
+              "pattern": "^[0-9a-f]{64}$",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        }
+      },
+      "reason": "Request fields carrying internal digests require tagged BLAKE3.",
+      "release": "0.2.10"
+    },
+    "request:Request.update_publication_hash": {
+      "new_schema": {
+        "required": false,
+        "schema": {
+          "anyOf": [
+            {
+              "pattern": "^blake3:[0-9a-f]{64}$",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        }
+      },
+      "old_schema": {
+        "required": false,
+        "schema": {
+          "anyOf": [
+            {
+              "pattern": "^[0-9a-f]{64}$",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        }
+      },
+      "reason": "Request fields carrying internal digests require tagged BLAKE3.",
+      "release": "0.2.10"
+    },
+    "request:Request/FactorCurationRequest.expected_receipt_hash": {
+      "new_schema": {
+        "required": true,
+        "schema": {
+          "pattern": "^blake3:[0-9a-f]{64}$",
+          "type": "string"
+        }
+      },
+      "old_schema": {
+        "required": true,
+        "schema": {
+          "pattern": "^[0-9a-f]{64}$",
+          "type": "string"
+        }
+      },
+      "reason": "Request fields carrying internal digests require tagged BLAKE3.",
+      "release": "0.2.10"
+    },
+    "request:Request/PersonConfirmation.decision_hash": {
+      "new_schema": {
+        "required": true,
+        "schema": {
+          "pattern": "^blake3:[0-9a-f]{64}$",
+          "type": "string"
+        }
+      },
+      "old_schema": {
+        "required": true,
+        "schema": {
+          "pattern": "^[0-9a-f]{64}$",
+          "type": "string"
+        }
+      },
+      "reason": "Request fields carrying internal digests require tagged BLAKE3.",
+      "release": "0.2.10"
+    }
+  },
   "entries": {
     "answer:ACTIVITY_LIST.calls": {
       "required": true,
@@ -58568,6 +59966,7 @@
     "refusal:content_store.document_type_invalid": {},
     "refusal:content_store.identity_invalid": {},
     "refusal:content_store.identity_reused": {},
+    "refusal:content_store.path_component_invalid": {},
     "refusal:content_store.verified_value_size_invalid": {},
     "refusal:data.adjusted_close_unavailable": {},
     "refusal:data.candidate_recheck_reference_invalid": {},

@@ -34,6 +34,7 @@ from alphalattice.investment.alpha_research.scores.temporal_aggregation import (
     row_axis_hash,
     score_value_hash,
 )
+from alphalattice.kernel.identity import BLAKE3_PATTERN, is_blake3
 
 type FloatArray = npt.NDArray[np.float64]
 type IntArray = npt.NDArray[np.int64]
@@ -43,7 +44,7 @@ type Disposition = Literal[
     "INCONCLUSIVE_PAIRED_EVIDENCE",
 ]
 
-_HASH = r"^[0-9a-f]{64}$"
+_HASH = BLAKE3_PATTERN
 _BOOTSTRAP_SEED = 1729
 _BOOTSTRAP_RESAMPLES = 2_000
 
@@ -342,6 +343,8 @@ class PanelScoreFilterEvidence(_Contract):
 
     @model_validator(mode="after")  # type: ignore[untyped-decorator]
     def validate_axis(self) -> Self:
+        """Verify the score-filter evidence identity against the admitted Panel axis."""
+
         payload = self.model_dump(mode="json", exclude={"evidence_hash"})
         admitted_hashes = {str(canonical_hash(payload))}
         if not self.upstream_raw_score_artifact_hashes:
@@ -358,7 +361,7 @@ class PanelScoreFilterEvidence(_Contract):
                 bool(self.upstream_raw_score_artifact_hashes)
                 and len(self.upstream_raw_score_artifact_hashes) != len(self.model_spec_ids_by_fold)
             )
-            or any(len(value) != 64 for value in self.upstream_raw_score_artifact_hashes)
+            or any(not is_blake3(value) for value in self.upstream_raw_score_artifact_hashes)
             or self.evidence_hash not in admitted_hashes
         ):
             raise PanelStatisticError("alpha_research.score_filter_evidence_invalid")
@@ -1833,7 +1836,7 @@ def evaluate_panel_score_filters(
         or not all(np.isfinite(value).all() for value in (raw_scores, raw_simple_returns))
         or not filter_specs
         or len(upstream_raw_score_artifact_hashes) != len(model_spec_ids_by_fold)
-        or any(len(value) != 64 for value in upstream_raw_score_artifact_hashes)
+        or any(not is_blake3(value) for value in upstream_raw_score_artifact_hashes)
         or len({value.spec_id for value in filter_specs}) != len(filter_specs)
         or tuple(sorted(set(persistence_lags))) != persistence_lags
         or not persistence_lags

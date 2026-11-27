@@ -59,6 +59,7 @@ from alphalattice.investment.alpha_research.targets.materialization import (
 from alphalattice.investment.alpha_research.verification.identity import (
     alpha_numerical_environment_identity,
 )
+from alphalattice.kernel.identity import BLAKE3_PATTERN
 
 from .return_unit import (
     RETURN_UNIT_CALIBRATION_METHOD_ID,
@@ -72,7 +73,7 @@ from .stock_returns import StockCalibrationEvidence, StockCalibrationRecipe
 
 type FloatArray = npt.NDArray[np.float64]
 
-_HASH = r"^[0-9a-f]{64}$"
+_HASH = BLAKE3_PATTERN
 
 type CalibrationDisposition = Literal[
     "REDERIVED_UNDER_INSTALLED_CAPABILITY",

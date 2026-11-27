@@ -15,6 +15,7 @@ from alphalattice.foundation.market_data_ops.storage.duckdb import (
     MarketDataRepository,
     ProviderAdjustedSeriesRevision,
 )
+from alphalattice.kernel.identity import BLAKE3_PATTERN
 
 
 def set_change_explained(
@@ -38,7 +39,7 @@ class AdjustedReturnSemanticDelta(BaseModel):
     changed_return_sessions: tuple[date, ...]
     session_set_changed: bool
     uniform_rescale: bool
-    semantic_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
+    semantic_hash: str = Field(pattern=BLAKE3_PATTERN)
 
 
 class AdjustedReturnSemanticRevision(BaseModel):
@@ -47,7 +48,7 @@ class AdjustedReturnSemanticRevision(BaseModel):
     model_config = ConfigDict(extra="forbid", frozen=True)
 
     cursor: int = Field(ge=0)
-    chain_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
+    chain_hash: str = Field(pattern=BLAKE3_PATTERN)
     deltas: tuple[AdjustedReturnSemanticDelta, ...]
 
 

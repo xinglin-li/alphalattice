@@ -21,6 +21,7 @@ from alphalattice.control.observation_runtime.telemetry.progress import WorkProg
 from alphalattice.control.task_control.child import ChildCalls, ChildRefused
 from alphalattice.control.workspace_runtime.artifacts import ArtifactResolver
 from alphalattice.control.workspace_runtime.mutation_gate import WorkspaceMutationGate
+from alphalattice.control.workspace_runtime.reader_threads import connect_duckdb
 from alphalattice.foundation.feature_engine.catalog.contracts import FeatureCatalog
 from alphalattice.foundation.feature_engine.catalog.layer import (
     FeatureCatalogLayer,
@@ -83,6 +84,7 @@ from alphalattice.foundation.market_data_ops.storage.duckdb import (
     MarketDataRepository,
 )
 from tests._support import development_universe, sufficient_universe
+from tests._support.identity_fixtures import fixture_digest
 from tests.feature_engine.panel_workspace import (
     NOW,
     SESSIONS,
@@ -173,9 +175,9 @@ def test_a_build_after_an_added_column_computes_it_and_carries_every_held_value(
 
     manifest = fixture_manifest()
     as_of = SESSIONS[300]
-    held = panel_workspace(tmp_path / "held", manifest, end=as_of, spy="a" * 64)
+    held = panel_workspace(tmp_path / "held", manifest, end=as_of, spy=fixture_digest("a"))
     _outcome, manifest_one = build_and_publish(
-        held, manifest, spy="a" * 64, as_of=as_of, observed_at=NOW, refresh_sector=True
+        held, manifest, spy=fixture_digest("a"), as_of=as_of, observed_at=NOW, refresh_sector=True
     )
     shipped = FeatureCatalog.load()
     listings = tuple(item.listing_id for item in manifest.listings)
@@ -230,7 +232,7 @@ def test_a_build_after_an_added_column_computes_it_and_carries_every_held_value(
     _outcome, manifest_two = build_and_publish(
         replace(held, feature_state=feature_state, service=service, publisher=publisher),
         manifest,
-        spy="a" * 64,
+        spy=fixture_digest("a"),
         as_of=as_of,
         observed_at=NOW + timedelta(hours=1),
         invalidations=(
@@ -347,9 +349,9 @@ def test_an_interrupted_first_load_is_discarded_and_its_column_built_again(
 
     manifest = fixture_manifest()
     as_of = SESSIONS[300]
-    held = panel_workspace(tmp_path / "held", manifest, end=as_of, spy="a" * 64)
+    held = panel_workspace(tmp_path / "held", manifest, end=as_of, spy=fixture_digest("a"))
     build_and_publish(
-        held, manifest, spy="a" * 64, as_of=as_of, observed_at=NOW, refresh_sector=True
+        held, manifest, spy=fixture_digest("a"), as_of=as_of, observed_at=NOW, refresh_sector=True
     )
     shipped = FeatureCatalog.load()
     extended, layer, column, _spec = extended_formula_layer(shipped)
@@ -385,7 +387,7 @@ def test_an_interrupted_first_load_is_discarded_and_its_column_built_again(
     request = FeatureBuildRequest.create(
         manifest_revision=manifest.revision_sha256,
         catalog=extended.binding,
-        spy_revision="a" * 64,
+        spy_revision=fixture_digest("a"),
         history_start=SESSIONS[0],
         as_of_session=as_of,
         invalidations=(
@@ -649,8 +651,8 @@ def test_an_activated_catalog_is_layered_on_the_shipped_one() -> None:
 def test_a_layered_catalog_reads_its_rows_composed_from_its_parts() -> None:
     """A layered catalog reads its rows composed from its parts."""
 
-    base, column, layered = "a" * 64, "c" * 64, "b" * 64
-    connection = duckdb.connect(":memory:")
+    base, column, layered = ("blake3:" + digit * 64 for digit in "acb")
+    connection = connect_duckdb(":memory:", read_only=False)
     try:
         connection.execute(
             "CREATE TABLE feature_daily_current (listing_id VARCHAR NOT NULL, "
@@ -1064,10 +1066,15 @@ def test_missing_daily_market_observation_keeps_the_other_members_usable(tmp_pat
     )
     prior, today = SESSIONS[400:402]
     workspace = panel_workspace(
-        tmp_path / "partial", manifest, end=prior, spy="a" * 64, provider=provider
+        tmp_path / "partial", manifest, end=prior, spy=fixture_digest("a"), provider=provider
     )
     _first, original = build_and_publish(
-        workspace, manifest, spy="a" * 64, as_of=prior, observed_at=NOW, refresh_sector=True
+        workspace,
+        manifest,
+        spy=fixture_digest("a"),
+        as_of=prior,
+        observed_at=NOW,
+        refresh_sector=True,
     )
     missing = manifest.listings[-1].listing_id
     usable = replace(manifest, listings=manifest.listings[:-1])
@@ -1077,7 +1084,7 @@ def test_missing_daily_market_observation_keeps_the_other_members_usable(tmp_pat
         listing_id=MarketReference.spy(manifest).listing_id,
         provider=workspace.provider.name,
         symbol="SPY",
-        revision_hash="b" * 64,
+        revision_hash=fixture_digest("b"),
         action_audit_receipt_hash=None,
         latest_session=today,
         observed_at=NOW + timedelta(days=1),
@@ -1085,7 +1092,7 @@ def test_missing_daily_market_observation_keeps_the_other_members_usable(tmp_pat
     outcome, partial = build_and_publish(
         workspace,
         manifest,
-        spy="b" * 64,
+        spy=fixture_digest("b"),
         as_of=today,
         observed_at=NOW + timedelta(days=1),
         invalidations=new_session_invalidations(manifest, today),
@@ -1162,7 +1169,7 @@ def test_missing_daily_market_observation_keeps_the_other_members_usable(tmp_pat
     _resumed, complete = build_and_publish(
         workspace,
         manifest,
-        spy="b" * 64,
+        spy=fixture_digest("b"),
         as_of=today,
         observed_at=NOW + timedelta(days=1),
         invalidations=new_session_invalidations(recovered, today),
@@ -1230,7 +1237,7 @@ def test_missing_daily_market_observation_keeps_the_other_members_usable(tmp_pat
     _masked, restricted = build_and_publish(
         workspace,
         manifest,
-        spy="b" * 64,
+        spy=fixture_digest("b"),
         as_of=today,
         observed_at=NOW + timedelta(days=1),
         invalidations=(
@@ -1285,7 +1292,7 @@ def test_daily_append_reuses_closed_years_and_keeps_provenance_recovery_and_rete
 
     manifest, provider = development_panel_inputs()
     day_one, day_two = SESSIONS[-2], SESSIONS[-1]
-    spy_one, spy_two = "a" * 64, "b" * 64
+    spy_one, spy_two = fixture_digest("a"), fixture_digest("b")
     workspace = panel_workspace(
         tmp_path / "daily", manifest, end=day_one, spy=spy_one, provider=provider
     )
@@ -1750,7 +1757,7 @@ def test_a_panel_is_the_same_whatever_its_workers(tmp_path) -> None:
     written: dict[int, tuple[object, ...]] = {}
     for workers in (1, 3):
         workspace = panel_workspace(
-            tmp_path / f"workers-{workers}", manifest, end=as_of, spy="a" * 64
+            tmp_path / f"workers-{workers}", manifest, end=as_of, spy=fixture_digest("a")
         )
         workspace.provider.sectors = {
             item.symbol: f"Sector-{index // 10}" for index, item in enumerate(manifest.listings)
@@ -1758,7 +1765,12 @@ def test_a_panel_is_the_same_whatever_its_workers(tmp_path) -> None:
         workspace.provider.sectors["SPY"] = "Reference"
         workspace.service.feature_workers = workers
         outcome, published = build_and_publish(
-            workspace, manifest, spy="a" * 64, as_of=as_of, observed_at=NOW, refresh_sector=True
+            workspace,
+            manifest,
+            spy=fixture_digest("a"),
+            as_of=as_of,
+            observed_at=NOW,
+            refresh_sector=True,
         )
         chunks = published["chunks"]
         assert isinstance(chunks, list) and chunks
@@ -1802,12 +1814,12 @@ def test_panel_fails_closed_below_coverage_and_small_sector() -> None:
     panel = materializer.materialize(
         feature_rows=rows,
         active_listing_ids=tuple(f"l{index}" for index in range(8)),
-        manifest_revision="a" * 64,
-        sector_revision="s" * 64,
+        manifest_revision=fixture_digest("a"),
+        sector_revision=fixture_digest("s"),
         sector_by_listing_id={
             f"l{index}": "sector-a" if index < 4 else "sector-b" for index in range(8)
         },
-        spy_revision="p" * 64,
+        spy_revision=fixture_digest("p"),
     )
     assert not panel.complete
     assert not panel.admission.research_admissible
@@ -1846,12 +1858,12 @@ def test_panel_fails_closed_at_97_point_5_percent_coverage() -> None:
     panel = SectorNeutralPanelMaterializer(catalog).materialize(
         feature_rows=rows,
         active_listing_ids=active,
-        manifest_revision="m" * 64,
-        sector_revision="s" * 64,
+        manifest_revision=fixture_digest("m"),
+        sector_revision=fixture_digest("s"),
         sector_by_listing_id={
             listing_id: f"sector-{index % 5}" for index, listing_id in enumerate(active)
         },
-        spy_revision="p" * 64,
+        spy_revision=fixture_digest("p"),
     )
     assert {item["reason"] for item in panel.availability} == {"coverage_below_98_percent"}
 
@@ -1867,9 +1879,14 @@ def test_a_stale_panel_is_judged_by_feature_alone_and_its_projection_follows(
 
     manifest = fixture_manifest()
     as_of = SESSIONS[-1]
-    workspace = panel_workspace(tmp_path / "stale", manifest, end=as_of, spy="a" * 64)
+    workspace = panel_workspace(tmp_path / "stale", manifest, end=as_of, spy=fixture_digest("a"))
     _built, published = build_and_publish(
-        workspace, manifest, spy="a" * 64, as_of=as_of, observed_at=NOW, refresh_sector=True
+        workspace,
+        manifest,
+        spy=fixture_digest("a"),
+        as_of=as_of,
+        observed_at=NOW,
+        refresh_sector=True,
     )
     snapshot = str(published["snapshot_hash"])
 
@@ -1927,9 +1944,9 @@ def test_an_activation_holds_the_base_and_retires_rows_outside_its_layer(tmp_pat
 
     manifest = fixture_manifest()
     as_of = SESSIONS[300]
-    held = panel_workspace(tmp_path / "held", manifest, end=as_of, spy="a" * 64)
+    held = panel_workspace(tmp_path / "held", manifest, end=as_of, spy=fixture_digest("a"))
     build_and_publish(
-        held, manifest, spy="a" * 64, as_of=as_of, observed_at=NOW, refresh_sector=True
+        held, manifest, spy=fixture_digest("a"), as_of=as_of, observed_at=NOW, refresh_sector=True
     )
     shipped = FeatureCatalog.load()
     connection = duckdb.connect(str(held.market_data.path))
@@ -1986,7 +2003,7 @@ def test_an_activation_holds_the_base_and_retires_rows_outside_its_layer(tmp_pat
     _outcome, published = build_and_publish(
         replace(held, feature_state=feature_state, service=service, publisher=publisher),
         manifest,
-        spy="a" * 64,
+        spy=fixture_digest("a"),
         as_of=as_of,
         observed_at=NOW + timedelta(hours=1),
         invalidations=(

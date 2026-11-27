@@ -195,7 +195,7 @@ def test_a_machine_backup_restores_every_retained_result_all_equal(sample, tmp_p
     ) == digest(b"retained result")
     assert next(
         entry["digest"] for entry in manifest["files"] if entry["path"] == "blobs/later"
-    ).startswith("blake3:v1:")
+    ).startswith("blake3:")
     first_head = json.loads((first / "manifest.json").read_text(encoding="utf-8"))["head"]
     assert manifest["head"]["seq"] > first_head["seq"]
     paths = [p.relative_to(repository).as_posix() for p in repository.rglob("*") if p.is_file()]

@@ -25,6 +25,7 @@ from alphalattice.interface.local_application.portfolio_research import (
 from alphalattice.oversight.chief_risk_officer.decision.portfolio_review import (
     PortfolioReviewDossier,
 )
+from tests._support.identity_fixtures import fixture_digest
 from tests.alternative_evidence_desk.planted_corpus import _CitingActor
 from tests.alternative_evidence_desk.review_dossiers import (
     _issue,
@@ -136,7 +137,7 @@ def test_a_finding_is_read_as_its_evidence_package_before_and_after_review(
                     "operation": "CRO_REVIEW_FINDING",
                     **selected,
                     "finding_handle": handle,
-                    "review_dossier_hash": "0" * 64,
+                    "review_dossier_hash": fixture_digest("stale review dossier"),
                 },
             )
         with pytest.raises(ValueError, match=r"chief_risk_officer\.finding_handle_unknown"):

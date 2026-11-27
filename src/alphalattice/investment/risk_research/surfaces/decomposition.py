@@ -54,7 +54,7 @@ from alphalattice.capabilities.domain_contracts.sealing import (
     scoped_payload_digest,
     seal_payload_digest,
 )
-from alphalattice.kernel.identity import identity_sha256
+from alphalattice.kernel.identity import BLAKE3_PATTERN, identity_blake3, is_blake3, tagged_blake3
 
 type FloatArray = npt.NDArray[np.float64]
 
@@ -85,7 +85,7 @@ class RiskDecompositionError(ValueError):
 
 
 def _array_hash(values: npt.NDArray[np.generic], *, dtype: npt.DTypeLike) -> str:
-    return identity_sha256(np.ascontiguousarray(values, dtype=dtype).tobytes()).hexdigest()
+    return tagged_blake3(identity_blake3(np.ascontiguousarray(values, dtype=dtype).tobytes()))
 
 
 def _frozen(values: npt.ArrayLike) -> FloatArray:
@@ -162,7 +162,7 @@ class RiskDecompositionRecipe(BaseModel):  # type: ignore[misc]
     forecast one, and no Sector module is implied by this recipe.
     """
 
-    recipe_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
+    recipe_hash: str = Field(pattern=BLAKE3_PATTERN)
 
     @classmethod
     def installed(cls) -> Self:
@@ -568,10 +568,7 @@ class RiskAllocationProjection:
     def verify_content(self) -> None:
         """Refuse a readback whose values or axis do not match its identity."""
         hashes = (self.surface_hash, self.recipe_hash, self.projection_hash)
-        if any(
-            len(value) != 64 or any(character not in "0123456789abcdef" for character in value)
-            for value in hashes
-        ):
+        if any(not is_blake3(value) for value in hashes):
             raise RiskDecompositionError("risk_research.allocation_projection_hash_invalid")
         names = len(self.ordered_listing_ids)
         if names == 0 or len(set(self.ordered_listing_ids)) != names:

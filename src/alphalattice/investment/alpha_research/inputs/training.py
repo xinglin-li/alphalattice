@@ -16,6 +16,7 @@ from alphalattice.capabilities.alpha_modeling.contracts import (
     alpha_model_array_content_hash,
 )
 from alphalattice.capabilities.domain_contracts.identity import canonical_hash
+from alphalattice.kernel.identity import BLAKE3_PATTERN
 
 from ..targets.execution_outcome import AlphaTargetPolicy
 
@@ -55,29 +56,29 @@ class AlphaTrainingInputBinding(_Contract):
     """Content and authority identity that travels with one materialized fit surface."""
 
     scope: AlphaTrainingScope
-    foundation_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
-    feature_panel_snapshot_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
-    causal_outcome_snapshot_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
-    target_policy_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
-    target_surface_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
-    economic_return_surface_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
-    feature_catalog_binding_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
-    feature_surface_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
-    training_feature_values_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
-    prediction_feature_values_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
-    training_target_values_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
-    prediction_target_values_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
+    foundation_hash: str = Field(pattern=BLAKE3_PATTERN)
+    feature_panel_snapshot_hash: str = Field(pattern=BLAKE3_PATTERN)
+    causal_outcome_snapshot_hash: str = Field(pattern=BLAKE3_PATTERN)
+    target_policy_hash: str = Field(pattern=BLAKE3_PATTERN)
+    target_surface_hash: str = Field(pattern=BLAKE3_PATTERN)
+    economic_return_surface_hash: str = Field(pattern=BLAKE3_PATTERN)
+    feature_catalog_binding_hash: str = Field(pattern=BLAKE3_PATTERN)
+    feature_surface_hash: str = Field(pattern=BLAKE3_PATTERN)
+    training_feature_values_hash: str = Field(pattern=BLAKE3_PATTERN)
+    prediction_feature_values_hash: str = Field(pattern=BLAKE3_PATTERN)
+    training_target_values_hash: str = Field(pattern=BLAKE3_PATTERN)
+    prediction_target_values_hash: str = Field(pattern=BLAKE3_PATTERN)
     ordered_feature_ids: tuple[str, ...] = Field(min_length=1)
-    training_row_axis_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
-    prediction_row_axis_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
-    training_mask_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
-    prediction_mask_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
+    training_row_axis_hash: str = Field(pattern=BLAKE3_PATTERN)
+    prediction_row_axis_hash: str = Field(pattern=BLAKE3_PATTERN)
+    training_mask_hash: str = Field(pattern=BLAKE3_PATTERN)
+    prediction_mask_hash: str = Field(pattern=BLAKE3_PATTERN)
     training_cutoff: date
     outcome_maturity_session: date
     prediction_anchor: date
-    fold_commitment_hash: str | None = Field(default=None, pattern=r"^[0-9a-f]{64}$")
-    feature_context_hash: str | None = Field(default=None, pattern=r"^[0-9a-f]{64}$")
-    binding_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
+    fold_commitment_hash: str | None = Field(default=None, pattern=BLAKE3_PATTERN)
+    feature_context_hash: str | None = Field(default=None, pattern=BLAKE3_PATTERN)
+    binding_hash: str = Field(pattern=BLAKE3_PATTERN)
 
     @model_validator(mode="after")  # type: ignore[untyped-decorator]
     def validate_identity(self) -> Self:

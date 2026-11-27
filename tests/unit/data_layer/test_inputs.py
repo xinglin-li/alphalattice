@@ -10,7 +10,8 @@ import pytest
 from blake3 import blake3
 
 from alphalattice.capabilities.data.errors import DataError
-from alphalattice.foundation.data_layer import inputs
+from alphalattice.foundation.data_layer import chain, inputs
+from alphalattice.kernel.identity import blake3_digest, blake3_filename, canonical_hash
 
 TEST_SOURCE = "src/alphalattice/foundation/data_layer/inputs.py"
 
@@ -61,8 +62,9 @@ def test_a_path_that_leaves_its_binding_is_refused_before_anything_is_kept(
     touched, so a carried or upgraded binding never writes beside its folder."""
     source = tmp_path / "file"
     source.write_bytes(b"bytes")
+    binding = canonical_hash("binding")
     with pytest.raises(DataError) as refused:
-        inputs.keep_binding(tmp_path, cast(Any, None), "a" * 64, [(relative, source)])
+        inputs.keep_binding(tmp_path, cast(Any, None), binding, [(relative, source)])
     assert refused.value.failure.code == "data_layer.input_invalid"
     assert sorted(p.name for p in tmp_path.iterdir()) == ["file"]
 
@@ -74,7 +76,7 @@ def _store(root: Path, bindings: dict[str, dict[str, bytes]]) -> Any:
     relations: dict[str, str] = {}
 
     def body(payload: bytes) -> str:
-        digest = "blake3:" + blake3(payload).hexdigest()
+        digest = blake3_digest(payload)
         if digest not in known:
             known[digest] = f"artifact-{len(known)}"
             (root / "blobs").mkdir(parents=True, exist_ok=True)
@@ -83,7 +85,7 @@ def _store(root: Path, bindings: dict[str, dict[str, bytes]]) -> Any:
 
     for binding_hash, files in bindings.items():
         listed = [[relative, body(payload)] for relative, payload in sorted(files.items())]
-        relations[binding_hash] = body(json.dumps(listed).encode())
+        relations[binding_hash] = body(chain.canonical(listed))
 
     def read(sql: str, args: tuple[str, ...]) -> list[tuple[str, ...]]:
         if "json_extract" in sql:
@@ -97,13 +99,15 @@ def _store(root: Path, bindings: dict[str, dict[str, bytes]]) -> Any:
 def test_a_view_lays_out_each_binding_and_places_a_shared_database_once(tmp_path: Path) -> None:
     """Each binding reads as its folder under the holder's view, its pooled database placed once
     beside it and kept for the next binding that shares it, each file the kept body's bytes."""
-    a, b = "a" * 64, "b" * 64
+    a, b = canonical_hash("binding-a"), canonical_hash("binding-b")
+    panel_a = f"{blake3_filename(a)}/source/panel.parquet"
+    panel_b = f"{blake3_filename(b)}/source/panel.parquet"
     database = "databases/d/market-data.duckdb"
     read = _store(
         tmp_path,
         {
-            a: {f"{a}/source/panel.parquet": b"panel-a", database: b"db"},
-            b: {f"{b}/source/panel.parquet": b"panel-b", database: b"db"},
+            a: {panel_a: b"panel-a", database: b"db"},
+            b: {panel_b: b"panel-b", database: b"db"},
         },
     )
     folder = inputs.view(tmp_path, read, a, "w")
@@ -111,13 +115,13 @@ def test_a_view_lays_out_each_binding_and_places_a_shared_database_once(tmp_path
     assert inputs.view(tmp_path, read, b, "w") == folder
     files = {relative: path.read_bytes() for relative, path in inputs.folder_files(folder)}
     assert files == {
-        f"{a}/source/panel.parquet": b"panel-a",
-        f"{b}/source/panel.parquet": b"panel-b",
+        panel_a: b"panel-a",
+        panel_b: b"panel-b",
         database: b"db",
     }
     assert not [p for p in folder.iterdir() if p.name.startswith(".")]  # no staged folder left
     with pytest.raises(DataError) as refused:
-        inputs.view(tmp_path, read, "c" * 64, "w")
+        inputs.view(tmp_path, read, canonical_hash("missing"), "w")
     assert refused.value.failure.code == "data_layer.input_missing"
 
 
@@ -125,15 +129,19 @@ def test_a_view_lays_out_each_binding_and_places_a_shared_database_once(tmp_path
 def test_a_collected_bindings_view_and_its_unlisted_database_are_dropped(tmp_path: Path) -> None:
     """A view of a binding whose bodies were collected goes, with each pooled database no kept
     binding in that view lists, while a kept binding's view and its database stay."""
-    kept, collected = "a" * 64, "b" * 64
+    kept, collected = canonical_hash("kept"), canonical_hash("collected")
+    kept_name, collected_name = blake3_filename(kept), blake3_filename(collected)
     read = _store(
         tmp_path,
         {
             kept: {
-                f"{kept}/source/panel.parquet": b"panel-a",
+                f"{kept_name}/source/panel.parquet": b"panel-a",
                 "databases/d/market-data.duckdb": b"d",
             },
-            collected: {f"{collected}/x.parquet": b"x", "databases/e/market-data.duckdb": b"e"},
+            collected: {
+                f"{collected_name}/x.parquet": b"x",
+                "databases/e/market-data.duckdb": b"e",
+            },
         },
     )
     folder = inputs.view(tmp_path, read, kept, "w")
@@ -143,7 +151,7 @@ def test_a_collected_bindings_view_and_its_unlisted_database_are_dropped(tmp_pat
         return [] if "json_extract" in sql and args[0] == collected else read(sql, args)
 
     assert inputs.drop_views(tmp_path, after_collection) == 2
-    assert sorted(p.name for p in folder.iterdir()) == sorted([kept, "databases"])
+    assert sorted(p.name for p in folder.iterdir()) == sorted([kept_name, "databases"])
     assert sorted(p.name for p in (folder / "databases").iterdir()) == ["d"]
     assert inputs.drop_views(tmp_path, after_collection) == 0
 
@@ -153,13 +161,17 @@ def test_a_carried_binding_takes_its_selection_only_from_its_own_files(tmp_path:
     """A carried binding whose document names no market selection records none. One whose
     document is another binding's, or whose files lack the sealed index or the panel manifest its
     window is derived from, is refused by name before any database is read."""
-    held = "c" * 64
+    held, other = canonical_hash("held"), canonical_hash("other")
     document = tmp_path / "manifest.json"
-    files = [(f"{held}/manifest.json", document)]
-    named = {"binding_hash": held, "market_selection_id": "s-1", "panel_snapshot_hash": "p"}
+    files = [(f"{blake3_filename(held)}/manifest.json", document)]
+    named = {
+        "binding_hash": held,
+        "market_selection_id": "s-1",
+        "panel_snapshot_hash": canonical_hash("panel"),
+    }
     for body, refusal in (
         ({"binding_hash": held}, None),
-        (named | {"binding_hash": "d" * 64}, "holds the document of another binding"),
+        (named | {"binding_hash": other}, "holds the document of another binding"),
         (named, "names a selection its files do not hold"),
     ):
         document.write_text(json.dumps(body), encoding="utf-8")

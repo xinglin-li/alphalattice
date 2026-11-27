@@ -176,6 +176,18 @@
 "testing.layer_contract": {"owner": "devtools.testing", "category": "INVALID_ARGUMENT"},
 "testing.layer_contract_unmeasured": {"owner": "devtools.testing", "category": "UNAVAILABLE"},
 "test_size.required_selection_invalid": {"owner": "devtools.testing", "category": "INVALID_ARGUMENT", "message_id": "test_size.required_selection_invalid"},
+"factor_research.artifact_identity_invalid": {
+"owner": "factor_research",
+"category": "INVALID_ARGUMENT"
+},
+"factor_research.artifact_name_invalid": {
+"owner": "factor_research",
+"category": "INVALID_ARGUMENT"
+},
+"identity.blake3_digest_invalid": {
+"owner": "identity",
+"category": "INVALID_ARGUMENT"
+},
 "result_cache.request_invalid": {
 "owner": "devtools.pipeline",
 "category": "INVALID_ARGUMENT",
@@ -2404,6 +2416,10 @@
 "owner": "alpha_research",
 "category": "FAILED_PRECONDITION"
 },
+"alpha_research.heterogeneous_evidence_before_blake3": {
+"owner": "alpha_research",
+"category": "FAILED_PRECONDITION"
+},
 "alpha_research.heterogeneous_evidence_identity_invalid": {
 "owner": "alpha_research",
 "category": "INVALID_ARGUMENT"
@@ -3283,6 +3299,10 @@
 "owner": "alpha_research",
 "category": "FAILED_PRECONDITION"
 },
+"alpha_research.portfolio_preflight_source_not_installed": {
+"owner": "alpha_research",
+"category": "FAILED_PRECONDITION"
+},
 "alpha_research.portfolio_return_surface_not_this_risk_input": {
 "owner": "alpha_research",
 "category": "FAILED_PRECONDITION"
@@ -3680,6 +3700,10 @@
 "category": "FAILED_PRECONDITION"
 },
 "alpha_research.replay_manifest_axis_lineage_mismatch": {
+"owner": "alpha_research",
+"category": "FAILED_PRECONDITION"
+},
+"alpha_research.replay_manifest_before_blake3": {
 "owner": "alpha_research",
 "category": "FAILED_PRECONDITION"
 },
@@ -6528,6 +6552,10 @@
 "content_store.identity_reused": {
 "owner": "content_store",
 "category": "ALREADY_EXISTS"
+},
+"content_store.path_component_invalid": {
+"owner": "content_store",
+"category": "INVALID_ARGUMENT"
 },
 "content_store.verified_value_size_invalid": {
 "owner": "content_store",
@@ -16101,6 +16129,10 @@
 "owner": "research_workspace",
 "category": "FAILED_PRECONDITION",
 "classification_note": "The source requires compatible persisted metadata, complete observation/source/projection support, an installed service or a usable current workflow state before proceeding."
+},
+"research_workspace.manifest_before_blake3": {
+"owner": "research_workspace",
+"category": "FAILED_PRECONDITION"
 },
 "research_workspace.manifest_unreadable": {
 "owner": "research_workspace",

@@ -5,9 +5,9 @@ from __future__ import annotations
 from collections.abc import Callable, Iterable
 from typing import cast
 
-from alphalattice.capabilities.domain_contracts.domain.serialization import sha256_hex
 from alphalattice.evidence.live_evidence.errors import LiveEvidenceError
 from alphalattice.evidence.live_evidence.online_sources import extract_canonical_markdown
+from alphalattice.kernel.identity import blake3_digest
 
 from ..contracts import ADMITTED_DOCUMENT_CAPACITY, AlternativeEvidenceReadingDepth
 from ..sources.contracts import AcquiredEvidenceDocument
@@ -166,7 +166,7 @@ def canonicalize_source_documents(
                     published_precision=document.published_precision,
                     report_period_end=document.report_period_end,
                     canonical_markdown=payload,
-                    canonical_content_hash=sha256_hex(payload),
+                    canonical_content_hash=blake3_digest(payload),
                     character_count=len(text),
                     byte_count=len(payload),
                 )

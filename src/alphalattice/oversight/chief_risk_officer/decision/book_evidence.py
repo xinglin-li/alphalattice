@@ -74,6 +74,7 @@ from alphalattice.investment.portfolio_strategy_lab.publication.finalization_led
 from alphalattice.investment.portfolio_strategy_lab.publication.portfolio_ledger import (
     PortfolioLedgerStore,
 )
+from alphalattice.kernel.identity import blake3_hex
 from alphalattice.oversight.chief_risk_officer.decision.portfolio_review import (
     OpenIssueState,
     PortfolioReviewAnswer,
@@ -1076,7 +1077,7 @@ def _portfolio_report_link(inputs: PortfolioEvidenceReviewInputs, book: SealedBo
 
 
 def _qualifier(publication_hash: str) -> str:
-    return f"P{publication_hash[:8].upper()}"
+    return f"P{blake3_hex(publication_hash)[:8].upper()}"
 
 
 def _qualified_finding(handle: str, qualifier: str) -> str:

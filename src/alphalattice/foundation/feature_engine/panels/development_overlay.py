@@ -24,6 +24,7 @@ from alphalattice.capabilities.quant.factor_contracts import FactorSpec
 from alphalattice.capabilities.quant.sector_history import reclassification_payload, sector_slices
 from alphalattice.control.workspace_runtime.artifacts import ArtifactResolver
 from alphalattice.control.workspace_runtime.content_store import staging_directory
+from alphalattice.control.workspace_runtime.verified_facts import verified_file_digest
 from alphalattice.foundation.feature_engine.catalog.research_values import ResearchFormulaValues
 from alphalattice.foundation.feature_engine.contracts import FeaturePanelBinding
 from alphalattice.foundation.feature_engine.panels.closure_artifacts import (
@@ -33,7 +34,6 @@ from alphalattice.foundation.feature_engine.panels.development_input import (
     DEVELOPMENT_FEATURE_OVERLAY_CATEGORY,
     DevelopmentFeatureOverlayColumn,
     DevelopmentFeatureOverlayManifest,
-    sha256_file,
 )
 from alphalattice.foundation.feature_engine.producers.factors.catalog import (
     default_extension_kernel_registry,
@@ -57,7 +57,12 @@ from alphalattice.foundation.feature_engine.producers.preprocessing.adapters imp
 from alphalattice.foundation.feature_engine.producers.preprocessing.catalog import (
     build_installed_panel_preprocessing_catalog,
 )
-from alphalattice.kernel.identity import integrity_sha256
+from alphalattice.kernel.identity import (
+    BLAKE3_PATTERN,
+    blake3_filename,
+    integrity_blake3,
+    tagged_blake3,
+)
 
 if TYPE_CHECKING:
     import pandas as pd
@@ -221,7 +226,7 @@ def _write_parquet(path: Path, rows: pd.DataFrame) -> str:
     staged = path.with_name(f".{path.name}.tmp")
     rows.to_parquet(staged, index=False, compression="zstd")
     os.replace(staged, path)
-    return sha256_file(path)
+    return cast(str, verified_file_digest(path, written=True))
 
 
 def _write_manifest(path: Path, manifest: BaseModel) -> None:
@@ -279,9 +284,9 @@ def _overlay_manifest(
     listing_ids: Sequence[str],
     candidate_ids: Sequence[str],
     columns: Sequence[DevelopmentFeatureOverlayColumn],
-    parquet_sha256: str,
+    parquet_digest: str,
     row_count: int,
-    raw_parquet_sha256: str | None = None,
+    raw_parquet_digest: str | None = None,
     raw_column_references: tuple[tuple[str, str], ...] | None = None,
     preparation_admission_hash: str | None = None,
 ) -> DevelopmentFeatureOverlayManifest:
@@ -302,13 +307,13 @@ def _overlay_manifest(
             item.model_dump(mode="json", exclude_none=True)
             for item in sorted(columns, key=lambda item: item.factor_id)
         ],
-        "parquet_sha256": parquet_sha256,
+        "parquet_digest": parquet_digest,
         "parquet_relative_path": "values.parquet",
         "row_count": row_count,
     }
-    if raw_parquet_sha256 is not None:
+    if raw_parquet_digest is not None:
         values.update(
-            raw_parquet_sha256=raw_parquet_sha256,
+            raw_parquet_digest=raw_parquet_digest,
             raw_parquet_relative_path="raw_values.parquet",
         )
     if raw_column_references is not None:
@@ -324,12 +329,12 @@ class PreparedFeatureOverlayAdmission(_Contract):
 
     kind: Literal["PreparedFeatureOverlayAdmission"] = "PreparedFeatureOverlayAdmission"
     scope: Literal["DEVELOPMENT_ONLY"] = "DEVELOPMENT_ONLY"
-    input_binding_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
-    source_identity: str = Field(pattern=r"^[0-9a-f]{64}$")
+    input_binding_hash: str = Field(pattern=BLAKE3_PATTERN)
+    source_identity: str = Field(pattern=BLAKE3_PATTERN)
     numerical_definitions: tuple[tuple[str, str], ...] = Field(min_length=1)
     specifications: tuple[FactorFormulaSpecification, ...] = Field(min_length=1)
     raw_column_references: tuple[tuple[str, str], ...] = Field(min_length=1)
-    admission_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
+    admission_hash: str = Field(pattern=BLAKE3_PATTERN)
 
     @model_validator(mode="after")  # type: ignore[untyped-decorator]
     def validate_admission(self) -> Self:
@@ -403,7 +408,7 @@ class NoAdmittedCandidatesReceipt(_Contract):
     kind: Literal["NoAdmittedCandidatesReceipt"] = "NoAdmittedCandidatesReceipt"
     disposition: Literal["NO_ADMITTED_CANDIDATES"] = "NO_ADMITTED_CANDIDATES"
     admission_receipt_hashes: tuple[str, ...]
-    receipt_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
+    receipt_hash: str = Field(pattern=BLAKE3_PATTERN)
 
     @model_validator(mode="after")  # type: ignore[untyped-decorator]
     def validate_identity(self) -> Self:
@@ -420,21 +425,21 @@ class DevelopmentMethodologySurfaceManifest(_Contract):
 
     kind: Literal["DevelopmentMethodologySurfaceManifest"] = "DevelopmentMethodologySurfaceManifest"
     scope: Literal["DEVELOPMENT_ONLY"] = "DEVELOPMENT_ONLY"
-    base_panel_snapshot_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
-    base_panel_binding_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
-    source_identity: str = Field(pattern=r"^[0-9a-f]{64}$")
-    preprocessing_catalog_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
+    base_panel_snapshot_hash: str = Field(pattern=BLAKE3_PATTERN)
+    base_panel_binding_hash: str = Field(pattern=BLAKE3_PATTERN)
+    source_identity: str = Field(pattern=BLAKE3_PATTERN)
+    preprocessing_catalog_hash: str = Field(pattern=BLAKE3_PATTERN)
     ordered_session_axis: tuple[str, ...] = Field(min_length=1)
     ordered_listing_axis: tuple[str, ...] = Field(min_length=1)
     ordered_factor_axis: tuple[str, ...] = Field(min_length=1)
-    raw_formula_surface_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
-    formula_authority_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
+    raw_formula_surface_hash: str = Field(pattern=BLAKE3_PATTERN)
+    formula_authority_hash: str = Field(pattern=BLAKE3_PATTERN)
     method_by_factor: tuple[tuple[str, str, str, str], ...] = Field(min_length=1)
     """Factor, method id, recipe hash, and exact implementation binding hash."""
-    transformed_parquet_sha256: str = Field(pattern=r"^[0-9a-f]{64}$")
+    transformed_parquet_digest: str = Field(pattern=BLAKE3_PATTERN)
     transformed_parquet_relative_path: Literal["values.parquet"] = "values.parquet"
     row_count: int = Field(ge=1)
-    surface_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
+    surface_hash: str = Field(pattern=BLAKE3_PATTERN)
 
     @model_validator(mode="after")  # type: ignore[untyped-decorator]
     def validate_surface(self) -> Self:
@@ -453,18 +458,18 @@ class DevelopmentRawFormulaSurfaceManifest(_Contract):
 
     kind: Literal["DevelopmentRawFormulaSurfaceManifest"] = "DevelopmentRawFormulaSurfaceManifest"
     scope: Literal["DEVELOPMENT_ONLY"] = "DEVELOPMENT_ONLY"
-    base_panel_snapshot_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
-    base_panel_binding_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
-    source_identity: str = Field(pattern=r"^[0-9a-f]{64}$")
-    formula_authority_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
+    base_panel_snapshot_hash: str = Field(pattern=BLAKE3_PATTERN)
+    base_panel_binding_hash: str = Field(pattern=BLAKE3_PATTERN)
+    source_identity: str = Field(pattern=BLAKE3_PATTERN)
+    formula_authority_hash: str = Field(pattern=BLAKE3_PATTERN)
     ordered_session_axis: tuple[str, ...] = Field(min_length=1)
     ordered_listing_axis: tuple[str, ...] = Field(min_length=1)
     ordered_factor_axis: tuple[str, ...] = Field(min_length=1)
     ordered_context_axis: tuple[str, ...] = ()
-    parquet_sha256: str = Field(pattern=r"^[0-9a-f]{64}$")
+    parquet_digest: str = Field(pattern=BLAKE3_PATTERN)
     parquet_relative_path: Literal["raw_values.parquet"] = "raw_values.parquet"
     row_count: int = Field(ge=1)
-    surface_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
+    surface_hash: str = Field(pattern=BLAKE3_PATTERN)
 
     @model_validator(mode="after")  # type: ignore[untyped-decorator]
     def validate_surface(self) -> Self:
@@ -490,7 +495,10 @@ def _read_verified_overlay(
 ) -> tuple[DevelopmentFeatureOverlayManifest, dict[str, npt.NDArray[np.float64]] | None]:
     """One read scope; return verified raw arrays only to this call's consumer."""
     manifest_path = (
-        output_root / DEVELOPMENT_FEATURE_OVERLAY_CATEGORY / overlay_hash / "manifest.json"
+        output_root
+        / DEVELOPMENT_FEATURE_OVERLAY_CATEGORY
+        / blake3_filename(overlay_hash)
+        / "manifest.json"
     )
     if not manifest_path.is_file():
         raise ValueError("FEATURE_OVERLAY_MANIFEST_MISSING")
@@ -500,14 +508,14 @@ def _read_verified_overlay(
     if manifest.overlay_hash != overlay_hash:
         raise ValueError("FEATURE_OVERLAY_IDENTITY_INVALID")
     parquet_path = manifest_path.parent / manifest.parquet_relative_path
-    if not parquet_path.is_file() or sha256_file(parquet_path) != manifest.parquet_sha256:
+    if not parquet_path.is_file() or verified_file_digest(parquet_path) != manifest.parquet_digest:
         raise ValueError("FEATURE_OVERLAY_PARQUET_IDENTITY_INVALID")
     if manifest.raw_parquet_relative_path is not None:
         raw_path = manifest_path.parent / manifest.raw_parquet_relative_path
         if (
             not raw_path.is_file()
-            or manifest.raw_parquet_sha256 is None
-            or sha256_file(raw_path) != manifest.raw_parquet_sha256
+            or manifest.raw_parquet_digest is None
+            or verified_file_digest(raw_path) != manifest.raw_parquet_digest
         ):
             raise ValueError("FEATURE_OVERLAY_RAW_PARQUET_IDENTITY_INVALID")
     raw = (
@@ -709,7 +717,7 @@ class DevelopmentFeatureOverlayService:
         columns = []
         if reusable is not None:
             retained = pd.read_parquet(
-                root / reusable.overlay_hash / reusable.parquet_relative_path
+                root / blake3_filename(reusable.overlay_hash) / reusable.parquet_relative_path
             )
             retained["session_date"] = pd.to_datetime(retained["session_date"]).dt.date
             old_columns = {v.factor_id: v for v in reusable.columns}
@@ -786,7 +794,7 @@ class DevelopmentFeatureOverlayService:
             listing_ids=listing_ids,
             candidate_ids=axis,
             columns=columns,
-            parquet_sha256=integrity_sha256(content).hexdigest(),
+            parquet_digest=tagged_blake3(integrity_blake3(content)),
             raw_column_references=raw_column_references,
             preparation_admission_hash=admission.admission_hash,
             row_count=len(transformed),
@@ -796,7 +804,7 @@ class DevelopmentFeatureOverlayService:
             sort_keys=True,
             separators=(",", ":"),
         ).encode()
-        target = root / manifest.overlay_hash
+        target = root / blake3_filename(manifest.overlay_hash)
         closure = PanelClosureArtifactStore(ArtifactResolver(output_root), capacity=capacity)
         admission_bytes = json.dumps(
             admission.model_dump(mode="json"),
@@ -810,7 +818,7 @@ class DevelopmentFeatureOverlayService:
             (
                 closure.root
                 / "research-feature-preprocessing"
-                / f"{admission.admission_hash}.json",
+                / f"{blake3_filename(admission.admission_hash)}.json",
                 admission_bytes,
             ),
         ]
@@ -888,7 +896,7 @@ class DevelopmentFeatureOverlayService:
                 and manifest.factor_catalog_revision_hash == factor_catalog_revision_hash
                 and preprocessing.catalog_current(manifest.preprocessing_catalog_hash)
                 and parquet.is_file()
-                and sha256_file(parquet) == manifest.parquet_sha256
+                and verified_file_digest(parquet) == manifest.parquet_digest
             ):
                 return manifest
         return None
@@ -954,7 +962,7 @@ class DevelopmentFeatureOverlayService:
             previous_parquet = (
                 output_root
                 / DEVELOPMENT_FEATURE_OVERLAY_CATEGORY
-                / previous_overlay.overlay_hash
+                / blake3_filename(previous_overlay.overlay_hash)
                 / previous_overlay.parquet_relative_path
             )
             if (
@@ -963,7 +971,7 @@ class DevelopmentFeatureOverlayService:
                 or previous_overlay.source_identity != source_identity
                 or previous_overlay.ordered_listing_axis != active_listing_ids
                 or not previous_parquet.is_file()
-                or sha256_file(previous_parquet) != previous_overlay.parquet_sha256
+                or verified_file_digest(previous_parquet) != previous_overlay.parquet_digest
             ):
                 raise ValueError("FEATURE_OVERLAY_PREVIOUS_AUTHORITY_MISMATCH")
             for column in previous_overlay.columns:
@@ -997,9 +1005,9 @@ class DevelopmentFeatureOverlayService:
                         previous_parquet.parent / previous_overlay.raw_parquet_relative_path
                     )
                     if (
-                        previous_overlay.raw_parquet_sha256 is None
+                        previous_overlay.raw_parquet_digest is None
                         or not previous_raw.is_file()
-                        or sha256_file(previous_raw) != previous_overlay.raw_parquet_sha256
+                        or verified_file_digest(previous_raw) != previous_overlay.raw_parquet_digest
                     ):
                         raise ValueError("FEATURE_OVERLAY_PREVIOUS_RAW_AUTHORITY_MISMATCH")
                     reused_raw_values = pd.read_parquet(previous_raw).loc[
@@ -1111,7 +1119,7 @@ class DevelopmentFeatureOverlayService:
                 }
             )
         )
-        directory = root / provisional_hash
+        directory = root / blake3_filename(provisional_hash)
         directory.mkdir(parents=True, exist_ok=True)
         parquet_path = directory / "values.parquet"
         parquet_hash = _write_parquet(parquet_path, transformed)
@@ -1131,11 +1139,11 @@ class DevelopmentFeatureOverlayService:
             listing_ids=active_listing_ids,
             candidate_ids=ordered_candidates,
             columns=columns,
-            parquet_sha256=parquet_hash,
-            raw_parquet_sha256=raw_parquet_hash,
+            parquet_digest=parquet_hash,
+            raw_parquet_digest=raw_parquet_hash,
             row_count=len(transformed),
         )
-        final_directory = root / manifest.overlay_hash
+        final_directory = root / blake3_filename(manifest.overlay_hash)
         if final_directory != directory:
             if final_directory.exists():
                 raise ValueError("FEATURE_OVERLAY_ALREADY_EXISTS")
@@ -1165,15 +1173,15 @@ def read_raw_development_feature_overlay(
                 **raw,
             }
         )
-    if manifest.raw_parquet_relative_path is None or manifest.raw_parquet_sha256 is None:
+    if manifest.raw_parquet_relative_path is None or manifest.raw_parquet_digest is None:
         raise ValueError("FEATURE_OVERLAY_RAW_VALUES_UNAVAILABLE")
     path = (
         output_root
         / DEVELOPMENT_FEATURE_OVERLAY_CATEGORY
-        / manifest.overlay_hash
+        / blake3_filename(manifest.overlay_hash)
         / manifest.raw_parquet_relative_path
     )
-    if sha256_file(path) != manifest.raw_parquet_sha256:
+    if verified_file_digest(path) != manifest.raw_parquet_digest:
         raise ValueError("FEATURE_OVERLAY_RAW_PARQUET_IDENTITY_INVALID")
     return manifest, pd.read_parquet(path)
 
@@ -1184,7 +1192,9 @@ def load_development_raw_formula_surface(
     """Load a raw formula surface after verifying its manifest and bytes."""
     import pandas as pd  # lazy: pandas loads where it is used, not at the Host's start
 
-    directory = output_root / DEVELOPMENT_RAW_FORMULA_SURFACE_CATEGORY / surface_hash
+    directory = (
+        output_root / DEVELOPMENT_RAW_FORMULA_SURFACE_CATEGORY / blake3_filename(surface_hash)
+    )
     marker = directory / "manifest.json"
     if not marker.is_file():
         raise ValueError("FEATURE_RAW_FORMULA_SURFACE_MISSING")
@@ -1195,7 +1205,7 @@ def load_development_raw_formula_surface(
     if (
         manifest.surface_hash != surface_hash
         or not path.is_file()
-        or sha256_file(path) != manifest.parquet_sha256
+        or verified_file_digest(path) != manifest.parquet_digest
     ):
         raise ValueError("FEATURE_RAW_FORMULA_SURFACE_TAMPERED")
     return cast(DevelopmentRawFormulaSurfaceManifest, manifest), pd.read_parquet(path)
@@ -1205,7 +1215,9 @@ def load_development_methodology_surface_manifest(
     *, output_root: Path, surface_hash: str
 ) -> DevelopmentMethodologySurfaceManifest:
     """Load and verify a development methodology surface manifest."""
-    directory = output_root / DEVELOPMENT_METHODOLOGY_SURFACE_CATEGORY / surface_hash
+    directory = (
+        output_root / DEVELOPMENT_METHODOLOGY_SURFACE_CATEGORY / blake3_filename(surface_hash)
+    )
     path = directory / "manifest.json"
     if not path.is_file():
         raise ValueError("FEATURE_METHODOLOGY_SURFACE_MISSING")
@@ -1214,8 +1226,8 @@ def load_development_methodology_surface_manifest(
     )
     if (
         manifest.surface_hash != surface_hash
-        or sha256_file(directory / manifest.transformed_parquet_relative_path)
-        != manifest.transformed_parquet_sha256
+        or verified_file_digest(directory / manifest.transformed_parquet_relative_path)
+        != manifest.transformed_parquet_digest
     ):
         raise ValueError("FEATURE_METHODOLOGY_SURFACE_TAMPERED")
     raw_surface, _rows = load_development_raw_formula_surface(

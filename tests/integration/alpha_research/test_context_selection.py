@@ -22,6 +22,7 @@ from alphalattice.investment.alpha_research.inputs.panel_feature_views import (
 from alphalattice.investment.alpha_research.scores.heterogeneous_product import (
     INSTALLED_HETEROGENEOUS_ALPHA_STRATEGY,
 )
+from tests._support.identity_fixtures import fixture_digest
 
 MARKET_IDS = (*BASE_MARKET_CONTEXT_SOURCE_IDS, *OBSERVED_MARKET_SOURCE_IDS)
 INFERENCE_MARKET_IDS = (
@@ -49,7 +50,7 @@ def context_source(request):
     base = {name: f"sector-{index % 3}" for index, name in enumerate(names)}
     current = {**base, names[0]: "sector-1", names[7]: "sector-2"}
     sectors = SectorHistory(
-        current_revision="b" * 64,
+        current_revision=fixture_digest("sector-revision"),
         current=current,
         reclassifications=(
             SectorReclassification(names[0], days[110], "sector-0", "sector-1"),
@@ -231,7 +232,7 @@ def test_installed_component_feature_history_keeps_exact_selected_context_bytes(
         "volume": rng.uniform(1e5, 1e6, (300, 12)),
         "formula_values": formula_values,
         "reference_eligible": context_source["reference_eligible"],
-        "source_binding_hash": "c" * 64,
+        "source_binding_hash": fixture_digest("frozen-source"),
     }
     baseline = FrozenPriceVolumeInputs(
         **common,
@@ -286,7 +287,7 @@ def test_a_formation_row_from_its_window_is_the_full_pass_row_on_every_day(
             )
         },
         reference_eligible=context_source["reference_eligible"],
-        source_binding_hash="c" * 64,
+        source_binding_hash=fixture_digest("frozen-source"),
         market_context_values=market,
         sector_trend_values=sector[:, :, 0],
     )

@@ -10,6 +10,7 @@ import pyarrow as pa
 from alphalattice.foundation.causal_outcomes.execution.methods import (
     ExecutionOutcomeMethodSeal,
 )
+from alphalattice.kernel.identity import is_blake3
 
 from .contracts import PortfolioExecutionEvents
 
@@ -19,20 +20,20 @@ class ExecutionScheduleAuthority(Protocol):
 
 
 def manifest_snapshot_hash(manifest_ref: str) -> str:
-    """Extract an exact lowercase SHA-256 handle from a manifest reference.
+    """Extract the tagged BLAKE3 identity from a manifest reference.
 
     Args:
-        manifest_ref: Owner manifest handle whose final component is a hash with optional .json
-            suffix.
+        manifest_ref: Owner manifest handle whose final component is a tagged digest with an
+            optional .json suffix.
 
     Returns:
-        The validated 64-character snapshot identity.
+        The validated tagged snapshot identity.
 
     Raises:
-        ValueError: The final reference component is not a lowercase SHA-256 identity.
+        ValueError: The final reference component does not name a tagged BLAKE3 identity.
     """
     value = manifest_ref.rsplit("/", maxsplit=1)[-1].removesuffix(".json")
-    if len(value) != 64 or any(character not in "0123456789abcdef" for character in value):
+    if not is_blake3(value):
         raise ValueError("portfolio_inputs.execution_manifest_ref_unreadable")
     return value
 

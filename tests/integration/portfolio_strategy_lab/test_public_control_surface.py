@@ -38,8 +38,9 @@ from alphalattice.investment.portfolio_strategy_lab.policies.tranche_book import
     TOP_K_RANGE,
     TRANCHES_RANGE,
 )
+from tests._support.identity_fixtures import fixture_digest
 
-HASH = "a" * 64
+HASH = fixture_digest("control owner coverage")
 CATALOG = INSTALLED_PUBLIC_CONTROL_CATALOG
 
 
@@ -375,7 +376,7 @@ def test_the_schedule_guard_states_that_phase_is_not_selectable() -> None:
         PortfolioScheduleGuard.model_validate(payload)
 
     reworded = guard.model_dump(mode="json")
-    reworded["guard_hash"] = "b" * 64
+    reworded["guard_hash"] = fixture_digest("wrong schedule guard")
     with pytest.raises(ValueError, match="schedule_guard_identity_invalid"):
         PortfolioScheduleGuard.model_validate(reworded)
 

@@ -35,6 +35,7 @@ from alphalattice.foundation.data_layer import history
 from alphalattice.foundation.data_layer.history import catalog_session as session
 from alphalattice.foundation.data_layer.root import sql_path
 from alphalattice.kernel import storage
+from alphalattice.kernel.identity import blake3_from_filename, blake3_hex
 
 from . import market_snapshots, world
 from .world import DATASET, DISPLAY_ALIAS, LATEST, LISTING_ALIAS, _log_rows
@@ -155,7 +156,7 @@ def binding(database: Path) -> str | None:
     name = source.parent.name
     if source.name != "source" or source.parent.parent.name != "research-inputs":
         return None
-    return name if len(name) == 64 and set(name) <= set("0123456789abcdef") else None
+    return blake3_from_filename(name)
 
 
 def _copy_workspace(database: Path) -> Path | None:
@@ -249,7 +250,8 @@ def holds(database: Path, cutoff_us: int, *, listings: Sequence[str] | None = No
         if cursor is None:
             return False
         _log_tables(cursor)
-        alias = f"bound_{binding(database) or 'database'}"
+        bound = binding(database)
+        alias = f"bound_{blake3_hex(bound)}" if bound else "bound_database"
         release_workspace_database(database)  # an instance of the file this process keeps open
         cursor.execute(f"ATTACH '{sql_path(database)}' AS {alias} (READ_ONLY)").fetchall()
         try:

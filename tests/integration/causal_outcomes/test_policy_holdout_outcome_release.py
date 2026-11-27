@@ -25,6 +25,8 @@ from alphalattice.foundation.causal_outcomes.execution.readers import (
     CausalExecutionOutcomeDevelopmentReader,
     CausalExecutionOutcomePolicyHoldoutReader,
 )
+from alphalattice.kernel.identity import blake3_digest, blake3_filename
+from tests._support.identity_fixtures import fixture_digest
 
 PLAYPEN_ROOT = Path(__file__).resolve().parents[3]
 PLAYPEN_SRC = PLAYPEN_ROOT / "src"
@@ -46,14 +48,14 @@ def outcome_catalog(tmp_path, monkeypatch):
 def _authority() -> PolicyHoldoutExecutionOutcomeAuthority:
     formations = tuple(date(2025, 1, 2) + timedelta(days=value) for value in range(252))
     values = {
-        "claim_hash": "1" * 64,
-        "mandate_hash": "2" * 64,
-        "slate_hash": "3" * 64,
+        "claim_hash": fixture_digest("claim"),
+        "mandate_hash": fixture_digest("mandate"),
+        "slate_hash": fixture_digest("slate"),
         "task_id": "validation-task",
         "source_manifest_ref": "playpen://data-operations/execution-outcomes/manifests/source",
-        "source_snapshot_hash": "4" * 64,
-        "alpha_program_hashes": ("5" * 64,),
-        "validation_numerical_binding_hash": "6" * 64,
+        "source_snapshot_hash": fixture_digest("source-snapshot"),
+        "alpha_program_hashes": (fixture_digest("alpha-program"),),
+        "validation_numerical_binding_hash": fixture_digest("validation-numerical-binding"),
         "embargo_session": date(2025, 1, 1),
         "formation_sessions": formations,
         "claimed_at": datetime(2026, 8, 11, tzinfo=UTC),
@@ -120,9 +122,9 @@ def _reader(tmp_path: Path) -> tuple[CausalExecutionOutcomePolicyHoldoutReader, 
         "market_as_of": date(2025, 1, 5),
         "listing_ids": ("listing",),
         "listing_set_hash": canonical_hash(("listing",)),
-        "schedule_hash": "1" * 64,
-        "ordered_session_triples_hash": "2" * 64,
-        "source_rows_semantic_hash": "3" * 64,
+        "schedule_hash": fixture_digest("schedule"),
+        "ordered_session_triples_hash": fixture_digest("session-triples"),
+        "source_rows_semantic_hash": fixture_digest("source-rows"),
         "data_validity_class": "CURRENT_UNIVERSE_RESEARCH_ONLY",
         "development_chunks": (development,),
         "sealed_holdout_chunks": (sealed,),
@@ -241,13 +243,13 @@ def test_existing_release_index_requires_an_exact_schema(
     tmp_path: Path, outcome_catalog, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     reader, _sealed = _reader(tmp_path)
-    claim_hash = "7" * 64
+    claim_hash = fixture_digest("release-index-claim")
     values = {
         "claim_hash": claim_hash,
-        "source_snapshot_hash": "1" * 64,
-        "source_listing_set_hash": "2" * 64,
-        "universe_manifest_revision": "3" * 64,
-        "source_watermark_hash": "4" * 64,
+        "source_snapshot_hash": fixture_digest("release-source-snapshot"),
+        "source_listing_set_hash": fixture_digest("source-listings"),
+        "universe_manifest_revision": fixture_digest("universe-revision"),
+        "source_watermark_hash": fixture_digest("source-watermark"),
         "embargo_session": date(2025, 1, 1),
         "formation_sessions": tuple(
             date(2025, 1, 4) - timedelta(days=value) for value in reversed(range(252))
@@ -268,7 +270,11 @@ def test_existing_release_index_requires_an_exact_schema(
         payload=release.model_dump(mode="json"),
         identity_field="release_hash",
     )
-    index = reader.artifacts.root / "policy-holdout-releases" / "by-claim" / f"{claim_hash}.json"
+    index = (
+        reader.artifacts.root
+        / "policy-holdout-releases/by-claim"
+        / f"{blake3_filename(claim_hash)}.json"
+    )
     index.parent.mkdir(parents=True)
     payload = {"claim_hash": claim_hash, "release_hash": release.release_hash}
     index.write_text(json.dumps(payload), encoding="utf-8")
@@ -335,8 +341,6 @@ def test_existing_release_index_requires_an_exact_schema(
     assert outcomes.read_chunk(chunk).equals(values)
 
     # The upgrade runner maps and compares an old file before switching readers.
-    from hashlib import sha256
-
     from pyarrow import parquet as pq
 
     from alphalattice.foundation.causal_outcomes.execution.contracts import (
@@ -356,9 +360,9 @@ def test_existing_release_index_requires_an_exact_schema(
             "alphalattice.chunk_hash": base.content_hash,
             "alphalattice.split": split,
         }
-        meta_hash = sha256(
+        meta_hash = blake3_digest(
             json.dumps(metadata, sort_keys=True, separators=(",", ":")).encode()
-        ).hexdigest()
+        )
         value = base.model_copy(
             update={
                 "split": split,
@@ -381,10 +385,10 @@ def test_existing_release_index_requires_an_exact_schema(
         "research_cadence": "DAILY",
         "market_as_of": day,
         "listing_ids": ("listing",),
-        "listing_set_hash": "a" * 64,
-        "schedule_hash": "b" * 64,
-        "ordered_session_triples_hash": "c" * 64,
-        "source_rows_semantic_hash": "d" * 64,
+        "listing_set_hash": fixture_digest("old-listings"),
+        "schedule_hash": fixture_digest("old-schedule"),
+        "ordered_session_triples_hash": fixture_digest("old-session-triples"),
+        "source_rows_semantic_hash": fixture_digest("old-source-rows"),
         "price_basis": "open_split_adjusted",
         "return_formula_identity": (
             "formation-close-next-common-open-following-common-open-simple-return"
@@ -437,11 +441,11 @@ def test_existing_release_index_requires_an_exact_schema(
     extension_base = chunk.model_copy(update={"content_hash": extension_hash})
     extension, _ = old_chunk("SEALED_HOLDOUT", extension_base, extension_values)
     release_fields = {
-        "claim_hash": "1" * 64,
+        "claim_hash": fixture_digest("claim"),
         "source_snapshot_hash": manifest.snapshot_hash,
         "source_listing_set_hash": manifest.listing_set_hash,
-        "universe_manifest_revision": "2" * 64,
-        "source_watermark_hash": "3" * 64,
+        "universe_manifest_revision": fixture_digest("old-universe-revision"),
+        "source_watermark_hash": fixture_digest("old-source-watermark"),
         "embargo_session": day - timedelta(days=253),
         "formation_sessions": tuple(day - timedelta(days=i) for i in reversed(range(252))),
         "extension_chunk": extension,
@@ -460,7 +464,11 @@ def test_existing_release_index_requires_an_exact_schema(
         payload=release.model_dump(mode="json"),
         identity_field="release_hash",
     )
-    index = old.root / "policy-holdout-releases" / "by-claim" / f"{release.claim_hash}.json"
+    index = (
+        old.root
+        / "policy-holdout-releases/by-claim"
+        / f"{blake3_filename(release.claim_hash)}.json"
+    )
     index.parent.mkdir(parents=True)
     index.write_text(
         json.dumps({"claim_hash": release.claim_hash, "release_hash": release.release_hash})

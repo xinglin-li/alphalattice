@@ -40,6 +40,7 @@ import numpy as np
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 from alphalattice.capabilities.domain_contracts.identity import canonical_hash
+from alphalattice.kernel.identity import BLAKE3_PATTERN
 
 from ..contracts import FloatArray, SectorResearchError, grid_to_matrix
 from ..experiments.development_artifacts import SectorForecastSurface
@@ -77,10 +78,10 @@ class SectorShrinkCalibrationEvidence(_Contract):
     calibration_method_id: Literal["NONNEGATIVE_SECTOR_SHRINK_TO_ZERO_CALIBRATION"] = (
         "NONNEGATIVE_SECTOR_SHRINK_TO_ZERO_CALIBRATION"
     )
-    surface_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
-    target_evidence_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
+    surface_hash: str = Field(pattern=BLAKE3_PATTERN)
+    target_evidence_hash: str = Field(pattern=BLAKE3_PATTERN)
     method_id: str = Field(min_length=1, max_length=96)
-    economic_lane_identity: str = Field(pattern=r"^[0-9a-f]{64}$")
+    economic_lane_identity: str = Field(pattern=BLAKE3_PATTERN)
     fold_count: int = Field(ge=2)
     folds: tuple[SectorShrinkCalibrationFold, ...] = Field(min_length=2)
     evaluated_pair_count: int = Field(ge=0)
@@ -98,7 +99,7 @@ class SectorShrinkCalibrationEvidence(_Contract):
     mean_zero_economic_squared_error: float | None = Field(
         default=None, ge=0.0, allow_inf_nan=False
     )
-    calibration_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
+    calibration_hash: str = Field(pattern=BLAKE3_PATTERN)
 
     @model_validator(mode="after")  # type: ignore[untyped-decorator]
     def validate_identity(self) -> Self:

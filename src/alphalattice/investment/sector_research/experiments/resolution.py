@@ -29,6 +29,7 @@ from alphalattice.control.workspace_runtime.artifacts import ArtifactResolver
 from alphalattice.foundation.causal_outcomes.execution.readers import (
     CausalExecutionOutcomeDevelopmentReader,
 )
+from alphalattice.kernel.identity import BLAKE3_PATTERN
 
 from ..contracts import FloatArray, SectorResearchError
 from ..inputs.membership import load_sector_membership
@@ -52,8 +53,8 @@ class SectorForecastSelection(BaseModel):  # type: ignore[misc]
 
     kind: Literal["SectorForecastSelection"] = "SectorForecastSelection"
     method_id: str = Field(min_length=1, max_length=96)
-    sector_experiment_hash: str | None = Field(default=None, pattern=r"^[0-9a-f]{64}$")
-    selection_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
+    sector_experiment_hash: str | None = Field(default=None, pattern=BLAKE3_PATTERN)
+    selection_hash: str = Field(pattern=BLAKE3_PATTERN)
 
     @classmethod
     def control_zero(cls) -> Self:

@@ -10,6 +10,7 @@ from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 from alphalattice.capabilities.domain_contracts.bounded_memo import stage_digest
 from alphalattice.capabilities.domain_contracts.identity import canonical_hash
+from alphalattice.kernel.identity import BLAKE3_PATTERN
 
 Hash = str
 
@@ -27,7 +28,7 @@ class PanelLogicalFactorDigest(_Contract):
     """Record one factor's value and null digest in logical content."""
 
     factor_id: str = Field(min_length=1)
-    value_null_digest: Hash = Field(pattern=r"^[0-9a-f]{64}$")
+    value_null_digest: Hash = Field(pattern=BLAKE3_PATTERN)
 
 
 class PanelLogicalAnnualContent(_Contract):
@@ -38,7 +39,7 @@ class PanelLogicalAnnualContent(_Contract):
     last_session: date
     session_count: int = Field(gt=0)
     row_count: int = Field(gt=0)
-    ordered_key_hash: Hash = Field(pattern=r"^[0-9a-f]{64}$")
+    ordered_key_hash: Hash = Field(pattern=BLAKE3_PATTERN)
     factor_digests: tuple[PanelLogicalFactorDigest, ...]
 
     @model_validator(mode="after")  # type: ignore[untyped-decorator]
@@ -58,7 +59,7 @@ class PanelLogicalMembershipEpoch(_Contract):
     first_session: date
     last_session: date
     member_count: int = Field(gt=0)
-    membership_hash: Hash = Field(pattern=r"^[0-9a-f]{64}$")
+    membership_hash: Hash = Field(pattern=BLAKE3_PATTERN)
 
     @model_validator(mode="after")  # type: ignore[untyped-decorator]
     def validate_epoch(self) -> PanelLogicalMembershipEpoch:
@@ -95,14 +96,14 @@ class PanelLogicalContentManifest(_Contract):
     listing_ids: tuple[str, ...]
     factor_ids: tuple[str, ...]
     annual_content: tuple[PanelLogicalAnnualContent, ...]
-    availability_semantics_hash: Hash = Field(pattern=r"^[0-9a-f]{64}$")
+    availability_semantics_hash: Hash = Field(pattern=BLAKE3_PATTERN)
     # Present for a Panel whose sessions hold their own members: ``listing_ids``
     # is then the calculation axis and each session's row count is its
     # epoch's member count. Absent for a dense Panel, where every session
     # holds the whole axis, and excluded from its identity so a manifest
     # published before the field re-derives the hash it recorded.
     membership_epochs: tuple[PanelLogicalMembershipEpoch, ...] | None = None
-    logical_manifest_hash: Hash = Field(pattern=r"^[0-9a-f]{64}$")
+    logical_manifest_hash: Hash = Field(pattern=BLAKE3_PATTERN)
 
     IDENTITY_EXCLUDES_NONE_FIELDS: ClassVar[frozenset[str]] = frozenset({"membership_epochs"})
 
@@ -143,12 +144,12 @@ class PanelLogicalRevision(_Contract):
     """Bind logical Panel content to catalog and policy semantics."""
 
     kind: Literal["PanelLogicalRevision"] = "PanelLogicalRevision"
-    logical_manifest_hash: Hash = Field(pattern=r"^[0-9a-f]{64}$")
-    catalog_semantics_hash: Hash = Field(pattern=r"^[0-9a-f]{64}$")
-    cross_section_policy_hash: Hash = Field(pattern=r"^[0-9a-f]{64}$")
-    listing_set_hash: Hash = Field(pattern=r"^[0-9a-f]{64}$")
-    calendar_hash: Hash = Field(pattern=r"^[0-9a-f]{64}$")
-    logical_panel_hash: Hash = Field(pattern=r"^[0-9a-f]{64}$")
+    logical_manifest_hash: Hash = Field(pattern=BLAKE3_PATTERN)
+    catalog_semantics_hash: Hash = Field(pattern=BLAKE3_PATTERN)
+    cross_section_policy_hash: Hash = Field(pattern=BLAKE3_PATTERN)
+    listing_set_hash: Hash = Field(pattern=BLAKE3_PATTERN)
+    calendar_hash: Hash = Field(pattern=BLAKE3_PATTERN)
+    logical_panel_hash: Hash = Field(pattern=BLAKE3_PATTERN)
 
     @model_validator(mode="after")  # type: ignore[untyped-decorator]
     def validate_revision(self) -> PanelLogicalRevision:
@@ -161,23 +162,23 @@ class PanelDerivationBinding(_Contract):
     """Record the source identities used to derive a logical Panel."""
 
     kind: Literal["PanelDerivationBinding"] = "PanelDerivationBinding"
-    legacy_snapshot_hash: Hash = Field(pattern=r"^[0-9a-f]{64}$")
-    legacy_panel_content_hash: Hash = Field(pattern=r"^[0-9a-f]{64}$")
-    legacy_panel_binding_hash: Hash = Field(pattern=r"^[0-9a-f]{64}$")
-    logical_panel_hash: Hash = Field(pattern=r"^[0-9a-f]{64}$")
-    manifest_revision: Hash = Field(pattern=r"^[0-9a-f]{64}$")
-    sector_revision: Hash = Field(pattern=r"^[0-9a-f]{64}$")
-    sector_map_hash: Hash | None = Field(default=None, pattern=r"^[0-9a-f]{64}$")
-    catalog_hash: Hash = Field(pattern=r"^[0-9a-f]{64}$")
-    policy_hash: Hash = Field(pattern=r"^[0-9a-f]{64}$")
-    spy_revision: Hash = Field(pattern=r"^[0-9a-f]{64}$")
-    temporal_identity_hash: Hash = Field(pattern=r"^[0-9a-f]{64}$")
-    closure_head_hash: Hash | None = Field(default=None, pattern=r"^[0-9a-f]{64}$")
+    legacy_snapshot_hash: Hash = Field(pattern=BLAKE3_PATTERN)
+    legacy_panel_content_hash: Hash = Field(pattern=BLAKE3_PATTERN)
+    legacy_panel_binding_hash: Hash = Field(pattern=BLAKE3_PATTERN)
+    logical_panel_hash: Hash = Field(pattern=BLAKE3_PATTERN)
+    manifest_revision: Hash = Field(pattern=BLAKE3_PATTERN)
+    sector_revision: Hash = Field(pattern=BLAKE3_PATTERN)
+    sector_map_hash: Hash | None = Field(default=None, pattern=BLAKE3_PATTERN)
+    catalog_hash: Hash = Field(pattern=BLAKE3_PATTERN)
+    policy_hash: Hash = Field(pattern=BLAKE3_PATTERN)
+    spy_revision: Hash = Field(pattern=BLAKE3_PATTERN)
+    temporal_identity_hash: Hash = Field(pattern=BLAKE3_PATTERN)
+    closure_head_hash: Hash | None = Field(default=None, pattern=BLAKE3_PATTERN)
     """A legacy binding's closure ledger head, which the write batch decides;
     the ledger keeps it by snapshot, outside the Panel's identity."""
-    recovery_recipe_hash: Hash | None = Field(default=None, pattern=r"^[0-9a-f]{64}$")
+    recovery_recipe_hash: Hash | None = Field(default=None, pattern=BLAKE3_PATTERN)
     recovery_disposition: Literal["RECOVERY_CLOSURE_VERIFIED", "PHYSICAL_RETENTION_REQUIRED"]
-    derivation_binding_hash: Hash = Field(pattern=r"^[0-9a-f]{64}$")
+    derivation_binding_hash: Hash = Field(pattern=BLAKE3_PATTERN)
 
     @model_validator(mode="after")  # type: ignore[untyped-decorator]
     def validate_binding(self) -> PanelDerivationBinding:
@@ -198,14 +199,14 @@ class PanelPhysicalChunk(_Contract):
     """Locate a physical chunk of a logical Panel materialization."""
 
     year: int = Field(ge=1900, le=2200)
-    logical_annual_hash: Hash = Field(pattern=r"^[0-9a-f]{64}$")
-    legacy_chunk_hash: Hash = Field(pattern=r"^[0-9a-f]{64}$")
+    logical_annual_hash: Hash = Field(pattern=BLAKE3_PATTERN)
+    legacy_chunk_hash: Hash = Field(pattern=BLAKE3_PATTERN)
     uri: str = Field(min_length=1)
-    raw_sha256: Hash = Field(pattern=r"^[0-9a-f]{64}$")
+    raw_digest: Hash = Field(pattern=BLAKE3_PATTERN)
     byte_count: int = Field(gt=0)
     row_count: int = Field(gt=0)
-    schema_hash: Hash = Field(pattern=r"^[0-9a-f]{64}$")
-    metadata_hash: Hash = Field(pattern=r"^[0-9a-f]{64}$")
+    schema_hash: Hash = Field(pattern=BLAKE3_PATTERN)
+    metadata_hash: Hash = Field(pattern=BLAKE3_PATTERN)
     compression_codecs: tuple[str, ...]
     parquet_created_by: str | None = None
     # The sub-year part the file holds; absent for a whole-year chunk, as every chunk before
@@ -217,10 +218,10 @@ class PanelPhysicalMaterializationManifest(_Contract):
     """Associate physical chunks with their logical Panel identity."""
 
     kind: Literal["PanelPhysicalMaterializationManifest"] = "PanelPhysicalMaterializationManifest"
-    logical_panel_hash: Hash = Field(pattern=r"^[0-9a-f]{64}$")
+    logical_panel_hash: Hash = Field(pattern=BLAKE3_PATTERN)
     physical_chunks: tuple[PanelPhysicalChunk, ...]
     encoder_provenance: tuple[tuple[str, str], ...]
-    physical_materialization_hash: Hash = Field(pattern=r"^[0-9a-f]{64}$")
+    physical_materialization_hash: Hash = Field(pattern=BLAKE3_PATTERN)
 
     @model_validator(mode="after")  # type: ignore[untyped-decorator]
     def validate_materialization(self) -> PanelPhysicalMaterializationManifest:
@@ -236,17 +237,17 @@ class PanelPublicationMarker(_Contract):
     """Record the published logical and physical Panel identities."""
 
     kind: Literal["PanelPublicationMarker"] = "PanelPublicationMarker"
-    legacy_snapshot_hash: Hash = Field(pattern=r"^[0-9a-f]{64}$")
-    logical_panel_hash: Hash = Field(pattern=r"^[0-9a-f]{64}$")
-    derivation_binding_hash: Hash = Field(pattern=r"^[0-9a-f]{64}$")
-    physical_materialization_hash: Hash = Field(pattern=r"^[0-9a-f]{64}$")
-    logical_semantic_index_hash: Hash = Field(pattern=r"^[0-9a-f]{64}$")
+    legacy_snapshot_hash: Hash = Field(pattern=BLAKE3_PATTERN)
+    logical_panel_hash: Hash = Field(pattern=BLAKE3_PATTERN)
+    derivation_binding_hash: Hash = Field(pattern=BLAKE3_PATTERN)
+    physical_materialization_hash: Hash = Field(pattern=BLAKE3_PATTERN)
+    logical_semantic_index_hash: Hash = Field(pattern=BLAKE3_PATTERN)
     retention_disposition: Literal[
         "REMATERIALIZATION_VERIFIED_CURRENT_ENVIRONMENT",
         "PHYSICAL_RETENTION_REQUIRED",
     ]
     published_at: datetime
-    marker_hash: Hash = Field(pattern=r"^[0-9a-f]{64}$")
+    marker_hash: Hash = Field(pattern=BLAKE3_PATTERN)
 
     @model_validator(mode="after")  # type: ignore[untyped-decorator]
     def validate_marker(self) -> PanelPublicationMarker:
@@ -263,14 +264,14 @@ class LegacyPanelLogicalEquivalenceAttestation(_Contract):
     kind: Literal["LegacyPanelLogicalEquivalenceAttestation"] = (
         "LegacyPanelLogicalEquivalenceAttestation"
     )
-    legacy_snapshot_hash: Hash = Field(pattern=r"^[0-9a-f]{64}$")
-    legacy_panel_content_hash: Hash = Field(pattern=r"^[0-9a-f]{64}$")
-    logical_panel_hash: Hash = Field(pattern=r"^[0-9a-f]{64}$")
+    legacy_snapshot_hash: Hash = Field(pattern=BLAKE3_PATTERN)
+    legacy_panel_content_hash: Hash = Field(pattern=BLAKE3_PATTERN)
+    logical_panel_hash: Hash = Field(pattern=BLAKE3_PATTERN)
     axes_equal: Literal[True] = True
     ieee_values_and_null_masks_equal: Literal[True] = True
     availability_semantics_equal: Literal[True] = True
     verified_annual_hashes: tuple[Hash, ...]
-    attestation_hash: Hash = Field(pattern=r"^[0-9a-f]{64}$")
+    attestation_hash: Hash = Field(pattern=BLAKE3_PATTERN)
 
     @model_validator(mode="after")  # type: ignore[untyped-decorator]
     def validate_attestation(self) -> LegacyPanelLogicalEquivalenceAttestation:

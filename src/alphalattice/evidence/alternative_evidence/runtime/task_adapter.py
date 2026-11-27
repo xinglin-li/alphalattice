@@ -43,7 +43,7 @@ from alphalattice.control.task_control.contracts import (
 from alphalattice.control.task_control.registry import DuckDbTaskControlRegistry
 from alphalattice.control.task_control.runner import StageDisposition, StageExecutionResult
 from alphalattice.kernel.clock import utc_now
-from alphalattice.kernel.identity import integrity_sha256
+from alphalattice.kernel.identity import BLAKE3_PATTERN, blake3_digest, is_blake3
 from alphalattice.protocols.actor_execution import ActorKind, ActorSubmissionBinding
 from alphalattice.protocols.actor_execution.answers import AnswerProblem
 
@@ -178,9 +178,9 @@ class SubmittedEvidenceAnalysis(AlternativeEvidenceContract):
     prepared_unit_id: str | None = Field(default=None, pattern=r"^u[0-9]{2,3}$")
     """The unit of a coverage run whose packet this answers; None for a single
     preparation."""
-    packet_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
-    analysis_policy_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
-    decision_policy_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
+    packet_hash: str = Field(pattern=BLAKE3_PATTERN)
+    analysis_policy_hash: str = Field(pattern=BLAKE3_PATTERN)
+    decision_policy_hash: str = Field(pattern=BLAKE3_PATTERN)
     answer: AlternativeEvidenceAnalystAnswer | None = Field(
         default=None, exclude_if=lambda v: v is None
     )
@@ -225,9 +225,9 @@ class EvidenceContinuation(AlternativeEvidenceContract):
 
     prepared_task_id: UUID
     prepared_unit_id: str | None = Field(default=None, pattern=r"^u[0-9]{2,3}$")
-    continuation_of: str = Field(pattern=r"^[0-9a-f]{64}$")
+    continuation_of: str = Field(pattern=BLAKE3_PATTERN)
     """The access receipt whose matter record this session continues."""
-    continuation_spans: str = Field(pattern=r"^[0-9a-f]{64}$")
+    continuation_spans: str = Field(pattern=BLAKE3_PATTERN)
     """The resolved span set that receipt delivered."""
     session_limit: int = Field(ge=1, le=99)
     window_limit: int = Field(ge=1, le=4096)
@@ -251,14 +251,10 @@ class AlternativeEvidenceDocumentTaskResources:
         """Validate coverage and optional resource binding hashes."""
         if not 0.0 <= self.minimum_entity_coverage <= 1.0:
             raise ValueError("alternative_evidence.minimum_entity_coverage_invalid")
-        if self.admitted_authority_hash is not None and (
-            len(self.admitted_authority_hash) != 64
-            or any(value not in "0123456789abcdef" for value in self.admitted_authority_hash)
-        ):
+        if self.admitted_authority_hash is not None and not is_blake3(self.admitted_authority_hash):
             raise ValueError("alternative_evidence.admitted_authority_hash_invalid")
-        if self.recorded_document_bundle_hash is not None and (
-            len(self.recorded_document_bundle_hash) != 64
-            or any(value not in "0123456789abcdef" for value in self.recorded_document_bundle_hash)
+        if self.recorded_document_bundle_hash is not None and not is_blake3(
+            self.recorded_document_bundle_hash
         ):
             raise ValueError("alternative_evidence.recorded_document_bundle_hash_invalid")
 
@@ -503,17 +499,17 @@ def _verify_table_view(
         raise ValueError("alternative_evidence.brief_table_view_placeholder_mismatch")
     if original is None:
         raise ValueError("alternative_evidence.brief_table_view_original_unavailable")
-    content, content_sha256, media_type = original
+    content, content_digest, media_type = original
     if (
-        content_sha256 != binding.parent_source_content_hash
+        content_digest != binding.parent_source_content_hash
         or media_type != binding.parent_media_type
-        or integrity_sha256(content).hexdigest() != content_sha256
+        or blake3_digest(content) != content_digest
     ):
         raise ValueError("alternative_evidence.brief_table_view_original_mismatch")
     try:
         view = render_table_view(
             content,
-            parent_source_content_hash=content_sha256,
+            parent_source_content_hash=content_digest,
             policy=SecTableCarry(reference.document_type)
             if reference.source_name == "SEC_EDGAR"
             else None,
@@ -1290,7 +1286,9 @@ class AlternativeEvidenceDocumentTaskAdapter:
         for path in sorted(root.glob("*.json")) if root.is_dir() else ():
             try:
                 plan = self.runtime.artifacts.load(
-                    "sec-selection-plans", path.stem, SecFilingSelectionPlan
+                    "sec-selection-plans",
+                    self.runtime.artifacts.file_identity(path),
+                    SecFilingSelectionPlan,
                 )
             except (ValueError, FileNotFoundError):
                 continue
@@ -1371,11 +1369,12 @@ class AlternativeEvidenceDocumentTaskAdapter:
             index: dict[str, list[AlternativeEvidenceCoverageRun]] = {}
             root = self.runtime.artifacts.root / COVERAGE_RUN_CATEGORY
             for path in sorted(root.glob("*.json")) if root.is_dir() else ():
-                if path.stem in executed:
-                    continue
                 try:
+                    identity = self.runtime.artifacts.file_identity(path)
+                    if identity in executed:
+                        continue
                     run = self.runtime.artifacts.load(
-                        COVERAGE_RUN_CATEGORY, path.stem, AlternativeEvidenceCoverageRun
+                        COVERAGE_RUN_CATEGORY, identity, AlternativeEvidenceCoverageRun
                     )
                 except (ValueError, FileNotFoundError):
                     continue
@@ -2624,7 +2623,7 @@ def _evidence(kind: str, identity: str, **parameters: str) -> TaskEvidence:
 
 def _parameter(reference: str, name: str) -> str:
     values = parse_qs(urlparse(reference).query).get(name, ())
-    if len(values) != 1 or len(values[0]) != 64:
+    if len(values) != 1 or not is_blake3(values[0]):
         raise ValueError("alternative_evidence.stage_reference_invalid")
     return values[0]
 

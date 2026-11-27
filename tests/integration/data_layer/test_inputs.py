@@ -18,6 +18,8 @@ import pytest
 from alphalattice.capabilities.data.errors import DataError
 from alphalattice.foundation.data_layer import governance, history, inputs, project
 from alphalattice.foundation.data_layer.store import StorePort
+from alphalattice.kernel.identity import blake3_filename, blake3_hex
+from tests._support.identity_fixtures import fixture_digest
 
 TEST_SOURCE = "src/alphalattice/foundation/data_layer/inputs.py"
 
@@ -32,7 +34,8 @@ def _binding(folder: Path, files: dict[str, bytes]) -> Path:
 
 def _laid_out(binding_hash: str, folder: Path) -> list[tuple[str, Path]]:
     """A binding's files at their paths under `research-inputs/`."""
-    return [(f"{binding_hash}/{relative}", path) for relative, path in inputs.folder_files(folder)]
+    name = blake3_filename(binding_hash)
+    return [(f"{name}/{relative}", path) for relative, path in inputs.folder_files(folder)]
 
 
 def _tree(folder: Path) -> dict[str, bytes]:
@@ -61,23 +64,25 @@ def test_a_binding_is_kept_once_held_by_its_workspace_and_read_back_as_its_folde
     files = {"market-data.duckdb": shared, "artifacts/panel.parquet": b"a", "binding.json": b"{}"}
     first = _binding(tmp_path / "a", files)
     second = _binding(tmp_path / "b", {"market-data.duckdb": shared, "binding.json": b"[]"})
-    bindings = (("a" * 64, first), ("b" * 64, second))
+    bindings = ((fixture_digest("a"), first), (fixture_digest("b"), second))
     for binding_hash, folder in bindings:
         inputs.keep_binding(root, log, binding_hash, _laid_out(binding_hash, folder), workspace="w")
     events = log.read("SELECT count(*) FROM event")[0][0]
-    inputs.keep_binding(root, log, "a" * 64, _laid_out("a" * 64, first), workspace="w")
+    inputs.keep_binding(
+        root, log, fixture_digest("a"), _laid_out(fixture_digest("a"), first), workspace="w"
+    )
     assert log.read("SELECT count(*) FROM event")[0][0] == events  # kept again: nothing new
-    assert _holders(log, "a" * 64) == [("workspace", "w")]
+    assert _holders(log, fixture_digest("a")) == [("workspace", "w")]
     for binding_hash, folder in bindings:
         view = inputs.view(root, log.read, binding_hash, "w")
         assert view == root / "views" / "w" / "research-inputs"
-        assert _tree(view / binding_hash) == _tree(folder)
+        assert _tree(view / blake3_filename(binding_hash)) == _tree(folder)
     duckdb = inputs.file_digest(first / "market-data.duckdb")
     assert _holders(log, duckdb) == [("workspace", "w")]  # one body, held once
     bodies = [p for p in (root / "blobs").iterdir() if not p.name.startswith(".")]
     assert len(bodies) == 6  # four distinct files and two manifests
     with pytest.raises(DataError) as refused:
-        inputs.view(root, log.read, "c" * 64, "w")
+        inputs.view(root, log.read, fixture_digest("c"), "w")
     assert refused.value.failure.code == "data_layer.input_missing"
 
 
@@ -86,7 +91,7 @@ def test_a_second_workspace_binding_a_kept_input_holds_it_too(tmp_path: Path) ->
     """A binding kept for one workspace is held again by the next workspace that binds it, so
     either one's copy carries it and neither one's removal releases it from the other."""
     folder = _binding(tmp_path / "a", {"market-data.duckdb": b"db", "binding.json": b"{}"})
-    binding = "a" * 64
+    binding = fixture_digest("a")
     history.open_history("w1", "first", tmp_path / "w1")
     try:
         history.keep_research_input(binding, _laid_out(binding, folder))
@@ -115,9 +120,9 @@ def test_a_binding_goes_with_its_last_workspace_and_its_views_with_it(
         log = history.held()
         for workspace in ("w1", "w2"):
             log.record("workspace.created", ("workspace", workspace), {"name": workspace})
-        gone, stays = "a" * 64, "b" * 64
+        gone, stays = fixture_digest("a"), fixture_digest("b")
         for binding_hash, workspace, payload in ((gone, "w1", b"one"), (stays, "w2", b"two")):
-            folder = _binding(tmp_path / binding_hash[:1], {"panel.parquet": payload})
+            folder = _binding(tmp_path / workspace, {"panel.parquet": payload})
             laid_out = _laid_out(binding_hash, folder)
             inputs.keep_binding(root, log, binding_hash, laid_out, workspace=workspace)
             inputs.view(root, log.read, binding_hash, "-")
@@ -129,9 +134,9 @@ def test_a_binding_goes_with_its_last_workspace_and_its_views_with_it(
         finally:
             port.close()
         view = root / "views" / "-" / "research-inputs"
-        assert sorted(p.name for p in view.iterdir()) == [stays]
+        assert sorted(p.name for p in view.iterdir()) == [blake3_filename(stays)]
         assert not inputs.kept(root, log.read, gone) and inputs.kept(root, log.read, stays)
-        assert _tree(view / stays) == {"panel.parquet": b"two"}
+        assert _tree(view / blake3_filename(stays)) == {"panel.parquet": b"two"}
 
 
 _CUTOFF = 1_700_000_000_000_000
@@ -162,9 +167,9 @@ def _sealed_binding(
     )
     from alphalattice.foundation.market_data_ops.storage import market_snapshots
 
-    panel, outcome = "a" * 64, "b" * 64
+    panel, outcome = fixture_digest("a"), fixture_digest("b")
     lineage = {"safe_summary": {"lineage": {"manifest_revision": "carried-universe"}}}
-    manifest = f"artifacts/feature-panel/manifests/{panel}.json"
+    manifest = f"artifacts/feature-panel/manifests/{blake3_filename(panel)}.json"
     _binding(folder, {f"source/{manifest}": json.dumps(lineage).encode()})
     carried = _anchored_index(folder / "source" / "market-data.duckdb", anchored, _CUTOFF)
     sealed = carried
@@ -183,7 +188,7 @@ def _sealed_binding(
         sessions=(date(2024, 1, 2), date(2024, 1, 31)),
         files=tuple(sorted((name, digests[path]) for name, path in named.items())),
         binding_version=3,
-        outcomes=((str(project.uuid7()), "f" * 64),),
+        outcomes=((str(project.uuid7()), fixture_digest("f")),),
         market_selection_id=selection,
         market_catalog_snapshot=snapshot,
         market_index_hash=index_hash,
@@ -209,7 +214,7 @@ def test_a_carried_binding_brings_the_market_selection_it_names(tmp_path: Path) 
         first="2024-01-02",
         last="2024-01-31",
         snapshot=7,
-        recipes={"feature_panel": "a" * 64, "execution_outcome": "b" * 64},
+        recipes={"feature_panel": fixture_digest("a"), "execution_outcome": fixture_digest("b")},
     )
     selection, forged, moved = (str(project.uuid7()) for _ in range(3))
     inputs._adopt_selection(log, source, {"selection_id": selection, **window})
@@ -217,9 +222,12 @@ def test_a_carried_binding_brings_the_market_selection_it_names(tmp_path: Path) 
     inputs.keep_binding(root, log, held, files, workspace=source)
     copy = tmp_path / "copy"
     assert inputs.carry(log.read, root, source, copy) == 1
-    bodies = {inputs.file_digest(path).partition(":")[2] for _relative, path in files}
+    bodies = {blake3_hex(inputs.file_digest(path)) for _relative, path in files}
     carried = {p.name for p in (copy / inputs.CARRIED).iterdir() if not p.name.startswith(".")}
-    assert carried == {f"{held}.json", *bodies}  # nothing beside the binding's own files
+    assert carried == {
+        f"{blake3_filename(held)}.json",
+        *bodies,
+    }  # nothing beside the binding's own files
     refused_copies = {}
     for name, named, anchored, sealed_cutoff in (
         ("forged", forged, 7, _CUTOFF + 1),  # another index under the same snapshot
@@ -274,7 +282,7 @@ def test_a_copy_carries_its_workspace_bindings_onto_its_own_root(
     for byte, refusing before any keep a body, path, digest or manifest name that is not sound."""
     log, root = history.held(), history.data_root()
     folder = _binding(tmp_path / "a", {"market-data.duckdb": b"db", "binding.json": b"{}"})
-    held, alone = "a" * 64, "b" * 64
+    held, alone = fixture_digest("a"), fixture_digest("b")
     inputs.keep_binding(root, log, held, _laid_out(held, folder), workspace="w")
     inputs.keep_binding(root, log, alone, _laid_out(alone, folder))
     copy, tampered = tmp_path / "copy", tmp_path / "tampered"
@@ -301,7 +309,7 @@ def test_a_copy_carries_its_workspace_bindings_onto_its_own_root(
         interrupted.setattr(Path, "open", interrupted_open)
         with pytest.raises(OSError, match="carried manifest write interrupted"):
             inputs.carry(log.read, root, "w", copy)
-    assert not (carried / f"{held}.json").exists()
+    assert not (carried / f"{blake3_filename(held)}.json").exists()
     assert inputs.carry(log.read, root, "w", copy) == 1
 
     def no_links(_source: Path, _target: Path) -> None:
@@ -310,7 +318,7 @@ def test_a_copy_carries_its_workspace_bindings_onto_its_own_root(
     with monkeypatch.context() as linkless:
         linkless.setattr(inputs.os, "link", no_links)
         assert inputs.carry(log.read, root, "w", tampered) == 1
-    manifest = copy / inputs.CARRIED / f"{held}.json"
+    manifest = copy / inputs.CARRIED / f"{blake3_filename(held)}.json"
     original = manifest.stat()
     manifest.chmod(0o444)
     try:
@@ -319,7 +327,7 @@ def test_a_copy_carries_its_workspace_bindings_onto_its_own_root(
     finally:
         manifest.chmod(original.st_mode)
 
-    conflicting = tampered / inputs.CARRIED / f"{held}.json"
+    conflicting = tampered / inputs.CARRIED / f"{blake3_filename(held)}.json"
     previous = conflicting.read_bytes()
     conflicting.write_bytes(b"[]")
     with pytest.raises(DataError, match="carried research input manifest differs") as refused:
@@ -337,12 +345,14 @@ def test_a_copy_carries_its_workspace_bindings_onto_its_own_root(
     )
     for forged in (escaping, unsealed, misnamed):
         assert inputs.carry(log.read, root, "w", forged) == 1
-    manifest = escaping / inputs.CARRIED / f"{held}.json"
+    manifest = escaping / inputs.CARRIED / f"{blake3_filename(held)}.json"
     listed = json.loads(manifest.read_bytes())
     manifest.write_text(json.dumps([[r"..\..\escape.duckdb", listed[0][1]], *listed[1:]]))
-    manifest = unsealed / inputs.CARRIED / f"{held}.json"
+    manifest = unsealed / inputs.CARRIED / f"{blake3_filename(held)}.json"
     manifest.write_text(json.dumps([[listed[0][0], "../" + listed[0][1][7:]], *listed[1:]]))
-    (misnamed / inputs.CARRIED / f"{held}.json").rename(misnamed / inputs.CARRIED / "..json")
+    (misnamed / inputs.CARRIED / f"{blake3_filename(held)}.json").rename(
+        misnamed / inputs.CARRIED / "..json"
+    )
     with history.own_root(tmp_path / "other") as other:
         copied = history.held()
         for forged in (tampered, escaping, unsealed, misnamed):  # refused before anything is kept
@@ -353,6 +363,6 @@ def test_a_copy_carries_its_workspace_bindings_onto_its_own_root(
         assert inputs.import_carried(other, copied, copy, workspace="w2") == 1
         assert not (copy / inputs.CARRIED).exists()
         view = inputs.view(other, copied.read, held, "w2")
-        assert _tree(view / held) == _tree(folder)
+        assert _tree(view / blake3_filename(held)) == _tree(folder)
         with pytest.raises(DataError):
             inputs.view(other, copied.read, alone, "w2")  # held by no workspace: not carried

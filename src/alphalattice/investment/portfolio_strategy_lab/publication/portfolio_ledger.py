@@ -32,6 +32,7 @@ from alphalattice.investment.portfolio_strategy_lab.application.contracts import
     PortfolioExecutionProgram,
     PortfolioResearchResult,
 )
+from alphalattice.kernel.identity import BLAKE3_PATTERN, blake3_filename, blake3_from_filename
 
 if TYPE_CHECKING:
     from alphalattice.foundation.causal_outcomes.execution.contracts import LocalQAMarketSnapshot
@@ -59,7 +60,7 @@ class ObservationPart(BaseModel):  # type: ignore[misc]
 
     model_config = ConfigDict(extra="forbid", frozen=True)
     payload_json: str = Field(repr=False)
-    content_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
+    content_hash: str = Field(pattern=BLAKE3_PATTERN)
 
     @model_validator(mode="after")  # type: ignore[untyped-decorator]
     def validate_identity(self) -> ObservationPart:
@@ -120,7 +121,6 @@ class ObservationStore:
 
     root: Path
     content: ContentAddressedStore
-    _observation_category = "decision-observations"
 
     def publish_decision_observations(self, *values: LocalQAMarketSnapshot) -> tuple[str, ...]:
         """Seal full logical sources while sharing unchanged daily and listing parts."""
@@ -138,16 +138,6 @@ class ObservationStore:
 
         uris = []
         for value in {id(v): v for v in values}.values():
-            legacy = self.root / self._observation_category / f"{value.content_hash}.json"
-            if legacy.is_file():
-                uris.append(
-                    self.content.publish_model(
-                        category=self._observation_category,
-                        value=value,
-                        identity_field="content_hash",
-                    )
-                )
-                continue
             payload = value.model_dump(mode="json")
             references: dict[str, list[str]] = {}
             for field in ("bars", "actions", "schedule"):
@@ -201,13 +191,6 @@ class ObservationStore:
         self, content_hash: str, proved_parts: dict[str, list[object]]
     ) -> LocalQAMarketSnapshot:
         self.content.require_hash(content_hash)
-        if (self.root / self._observation_category / f"{content_hash}.json").is_file():
-            return self.content.load_model(
-                category=self._observation_category,
-                content_hash=content_hash,
-                model=LocalQAMarketSnapshot,
-                identity_field="content_hash",
-            )
         try:
             index = CommittedIndex(self.root, self.content)
             entry = json.loads(index.path(_OBSERVATIONS.index, content_hash).read_bytes())
@@ -536,8 +519,9 @@ class PortfolioLedgerStore(ObservationStore):
 
     def has_rolling_report_head(self, head_hash: str) -> bool:
         """Check for a head file without opening it; `load` proves its contents."""
-        self.content.require_hash(head_hash)
-        return (self.root / "rolling-report-heads" / f"{head_hash}.json").is_file()
+        return self.content.artifact_path(
+            category="rolling-report-heads", content_hash=head_hash
+        ).is_file()
 
     # ----------------------------------------------------------- index entries
     #
@@ -566,8 +550,7 @@ class PortfolioLedgerStore(ObservationStore):
         self, category: str, digest: str, descriptor: dict[str, Any]
     ) -> None:
         """Keep non-result fields under their existing sealed artifact identity."""
-        self.content.require_hash(digest)
-        path = self.root / category / f"{digest}.json"
+        path = self.content.artifact_path(category=category, content_hash=digest)
         payload = json.dumps(descriptor, sort_keys=True, separators=(",", ":")).encode()
         if path.is_file() and path.read_bytes() != payload:
             raise PortfolioLedgerStoreError("portfolio_application.result_identity_reused")
@@ -578,9 +561,9 @@ class PortfolioLedgerStore(ObservationStore):
         """The reconstructed model's original identity proves this descriptor and its rows; one
         that is not a descriptor holding `field`, the part its rows rebuild, is refused as
         tampered before it is read."""
-        self.content.require_hash(digest)
+        path = self.content.artifact_path(category=category, content_hash=digest)
         try:
-            descriptor = json.loads((self.root / category / f"{digest}.json").read_bytes())
+            descriptor = json.loads(path.read_bytes())
         except FileNotFoundError as error:
             raise ContentAddressedStoreError(f"content_store.artifact_missing:{digest}") from error
         except (OSError, ValueError) as error:
@@ -690,7 +673,7 @@ class PortfolioLedgerStore(ObservationStore):
         key = canonical_hash(
             {"holdings_spec_hash": holdings_spec_hash, "authorities_hash": authorities_hash}
         )
-        return self.root / "by-holdings" / f"{key}.json"
+        return self.root / "by-holdings" / f"{blake3_filename(key)}.json"
 
     def find_program_for(
         self, *, holdings_spec_hash: str, authorities_hash: str
@@ -741,7 +724,7 @@ class PortfolioLedgerStore(ObservationStore):
 
     def _execution_index(self, program_hash: str) -> Path:
         self.content.require_hash(program_hash)
-        return self.root / "by-program-execution" / f"{program_hash}.json"
+        return self.root / "by-program-execution" / f"{blake3_filename(program_hash)}.json"
 
     def publish_execution(self, value: PortfolioExecutionLedger) -> str:
         """Publish exact sealed execution evidence.
@@ -964,7 +947,7 @@ class PortfolioLedgerStore(ObservationStore):
         self.content.require_hash(spec_hash)
         self.content.require_hash(authorities_hash)
         key = canonical_hash({"spec_hash": spec_hash, "authorities_hash": authorities_hash})
-        return self.root / "by-plan" / f"{key}.json"
+        return self.root / "by-plan" / f"{blake3_filename(key)}.json"
 
     def find_planned_result(
         self, *, spec_hash: str, authorities_hash: str
@@ -1018,7 +1001,7 @@ class PortfolioLedgerStore(ObservationStore):
         self.content.require_hash(program_hash)
         self.content.require_hash(spec_hash)
         key = canonical_hash({"program_hash": program_hash, "spec_hash": spec_hash})
-        return self.root / "by-request" / f"{key}.json"
+        return self.root / "by-request" / f"{blake3_filename(key)}.json"
 
     def find_result_for(
         self, *, program_hash: str, spec_hash: str
@@ -1474,10 +1457,13 @@ def portfolio_results_upgrade_family(holder: Callable[[Path], str | None]) -> Fa
                     namespace = path.parent.parent.name
                     if namespace not in {PUBLIC_NAMESPACE, PENDING_FINALIZATION_NAMESPACE}:
                         continue
+                    digest = blake3_from_filename(path.stem)
+                    if digest is None:
+                        raise ValueError("portfolio_application.upgrade_path_invalid")
                     store = PortfolioLedgerStore(path.parents[3], namespace=namespace)
                     value = store.content.load_model(
                         category=category,
-                        content_hash=path.stem,
+                        content_hash=digest,
                         model=model,
                         identity_field=identity,
                     )

@@ -10,6 +10,7 @@ from alphalattice.capabilities.domain_contracts.identity import canonical_hash
 from alphalattice.foundation.factor_research.programs.program import (
     FactorResearchDeterministicEvidence,
 )
+from alphalattice.kernel.identity import BLAKE3_PATTERN
 from alphalattice.protocols.actor_execution.projections import (
     ModelFacingProjection,
     build_model_facing_projection,
@@ -22,9 +23,9 @@ class FactorResearchDecisionDossier(BaseModel):  # type: ignore[misc]
     model_config = ConfigDict(extra="forbid", frozen=True)
 
     kind: Literal["FactorResearchDecisionDossier"] = "FactorResearchDecisionDossier"
-    review_binding_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
+    review_binding_hash: str = Field(pattern=BLAKE3_PATTERN)
     projection: ModelFacingProjection
-    dossier_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
+    dossier_hash: str = Field(pattern=BLAKE3_PATTERN)
 
     @model_validator(mode="after")  # type: ignore[untyped-decorator]
     def validate_dossier(self) -> FactorResearchDecisionDossier:

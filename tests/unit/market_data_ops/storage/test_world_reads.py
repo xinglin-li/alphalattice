@@ -8,6 +8,8 @@ from pathlib import Path
 import pytest
 
 from alphalattice.foundation.market_data_ops.storage import world_reads
+from alphalattice.kernel.identity import blake3_filename, blake3_hex
+from tests._support.identity_fixtures import fixture_digest
 
 TEST_SOURCE = "src/alphalattice/foundation/market_data_ops/storage/world_reads.py"
 
@@ -69,18 +71,24 @@ def test_a_held_relation_replaces_a_version_only_by_an_admission_held_by_then():
         assert not any(macro in held[name] for name in ("bars", "actions", "action_evidence"))
 
 
-BINDING = "0123456789abcdef" * 4
+BINDING = fixture_digest("research input binding")
+BINDING_FOLDER = blake3_filename(BINDING)
 
 
 @pytest.mark.proves("market_data_ops.a_research_copy_is_named_by_its_place")
 @pytest.mark.parametrize(
     ("path", "expected"),
     [
-        pytest.param(f"w/research-inputs/{BINDING}/source", BINDING, id="a copy"),
+        pytest.param(f"w/research-inputs/{BINDING_FOLDER}/source", BINDING, id="a copy"),
         pytest.param("w", None, id="the workspace's own database"),
-        pytest.param(f"w/research-inputs/{BINDING}/other", None, id="not its source folder"),
+        pytest.param(f"w/research-inputs/{BINDING_FOLDER}/other", None, id="not its source folder"),
         pytest.param("w/research-inputs/databases/source", None, id="the pool, not a binding"),
-        pytest.param(f"w/research-inputs/{BINDING.upper()}/source", None, id="not a binding hash"),
+        pytest.param(
+            f"w/research-inputs/{BINDING_FOLDER.upper()}/source", None, id="not a binding hash"
+        ),
+        pytest.param(
+            f"w/research-inputs/{blake3_hex(BINDING)}/source", None, id="older hash format"
+        ),
     ],
 )
 def test_a_research_copy_is_named_by_its_binding_folder(path, expected):
@@ -91,11 +99,11 @@ def test_a_research_copy_is_named_by_its_binding_folder(path, expected):
 
 @pytest.mark.proves("market_data_ops.binding_names_a_copy_by_its_research_input_place")
 def test_only_a_database_in_a_research_input_source_is_a_binding_copy(tmp_path):
-    """A copy's database sits at research-inputs/<64-hex binding>/source/market-data.duckdb; any
+    """A copy's database sits in the binding's portable source folder. A database in any
     other place, or a name that is not a binding's hash, is no copy and reads its own tables."""
-    key = "a" * 64
-    copy = tmp_path / "ws" / "research-inputs" / key / "source" / "market-data.duckdb"
-    assert world_reads.binding(copy) == key
-    assert world_reads.binding(tmp_path / "ws" / "other" / key / "source" / "x.duckdb") is None
+    folder = blake3_filename(BINDING)
+    copy = tmp_path / "ws" / "research-inputs" / folder / "source" / "market-data.duckdb"
+    assert world_reads.binding(copy) == BINDING
+    assert world_reads.binding(tmp_path / "ws" / "other" / folder / "source" / "x.duckdb") is None
     short = tmp_path / "ws" / "research-inputs" / "not-a-hash" / "source" / "market-data.duckdb"
     assert world_reads.binding(short) is None

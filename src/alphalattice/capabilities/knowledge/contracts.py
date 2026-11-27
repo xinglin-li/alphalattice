@@ -9,21 +9,19 @@ from typing import Annotated, Literal
 from pydantic import Field, StringConstraints, model_validator
 
 from alphalattice.capabilities.domain_contracts.domain.base import (
+    Blake3Identity,
     DomainModel,
-    Sha256Hex,
     ShortString,
 )
 from alphalattice.capabilities.domain_contracts.domain.models import TypedFailure
-from alphalattice.capabilities.domain_contracts.domain.serialization import (
-    canonical_json_bytes,
-    sha256_hex,
-)
+from alphalattice.capabilities.domain_contracts.domain.serialization import canonical_json_bytes
 from alphalattice.capabilities.knowledge.enums import (
     ArgumentValueKind,
     ResolutionStatus,
     ResourceKind,
     ResourceNamespace,
 )
+from alphalattice.kernel.identity import blake3_digest
 
 StableId = Annotated[
     str,
@@ -76,7 +74,7 @@ class KnowledgeRef(DomainModel):
     namespace: ResourceNamespace
     stable_id: StableId
     revision: Revision
-    logical_hash: Sha256Hex
+    logical_hash: Blake3Identity
 
 
 class SkillRef(DomainModel):
@@ -90,7 +88,7 @@ class SkillRef(DomainModel):
     namespace: ResourceNamespace
     stable_id: StableId
     revision: Revision
-    logical_hash: Sha256Hex
+    logical_hash: Blake3Identity
 
 
 class PromptRef(DomainModel):
@@ -104,7 +102,7 @@ class PromptRef(DomainModel):
     namespace: ResourceNamespace
     stable_id: StableId
     revision: Revision
-    logical_hash: Sha256Hex
+    logical_hash: Blake3Identity
 
 
 class PackageArgSpecRef(DomainModel):
@@ -118,7 +116,7 @@ class PackageArgSpecRef(DomainModel):
     namespace: ResourceNamespace
     stable_id: StableId
     revision: Revision
-    logical_hash: Sha256Hex
+    logical_hash: Blake3Identity
 
 
 type ResourceRef = Annotated[
@@ -130,8 +128,8 @@ type ResourceRef = Annotated[
 class CatalogEntry(DomainModel):
     """Bind one installed JSON resource to its path, file digest and logical identity.
 
-    The namespace is SYSTEM. The relative path is validated for its resource kind; the file SHA-256
-    binds bytes while logical_hash binds the resource payload.
+    The namespace is SYSTEM. The relative path is validated for its resource kind. The file digest
+    binds bytes and the logical hash binds the resource payload.
     """
 
     resource_kind: ResourceKind
@@ -140,8 +138,8 @@ class CatalogEntry(DomainModel):
     revision: Revision
     relative_path: ShortString
     media_type: Literal["application/json"] = "application/json"
-    logical_hash: Sha256Hex
-    file_sha256: Sha256Hex
+    logical_hash: Blake3Identity
+    file_digest: Blake3Identity
 
     @model_validator(mode="after")
     def validate_path(self) -> CatalogEntry:
@@ -420,7 +418,7 @@ class PackageArgumentAudit(DomainModel):
     installed_versions: tuple[tuple[StableId, ShortString], ...]
     normalized_arguments: tuple[tuple[ShortString, ArgumentValue], ...] = ()
     failure: TypedFailure | None = None
-    audit_hash: Sha256Hex
+    audit_hash: Blake3Identity
 
     @model_validator(mode="after")
     def validate_outcome_and_hash(self) -> PackageArgumentAudit:
@@ -472,7 +470,7 @@ def _package_argument_audit_hash(
     normalized_arguments: tuple[tuple[str, ArgumentValue], ...],
     failure: TypedFailure | None,
 ) -> str:
-    return sha256_hex(
+    return blake3_digest(
         canonical_json_bytes(
             {
                 "status": status,

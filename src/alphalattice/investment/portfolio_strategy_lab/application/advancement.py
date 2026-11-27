@@ -36,6 +36,7 @@ from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 from alphalattice.capabilities.domain_contracts.identity import canonical_hash
 from alphalattice.capabilities.domain_contracts.sealing import seal_model_from_dump
+from alphalattice.kernel.identity import BLAKE3_PATTERN
 
 AdvancementLaneId = Literal[
     "DATA_READINESS",
@@ -158,10 +159,10 @@ class LaneCoverage(_Contract):
     first_session: date | None = None
     last_session: date | None = None
     session_count: int = Field(ge=0)
-    session_axis_hash: str | None = Field(default=None, pattern=r"^[0-9a-f]{64}$")
+    session_axis_hash: str | None = Field(default=None, pattern=BLAKE3_PATTERN)
 
     listing_count: int = Field(default=0, ge=0)
-    listing_axis_hash: str | None = Field(default=None, pattern=r"^[0-9a-f]{64}$")
+    listing_axis_hash: str | None = Field(default=None, pattern=BLAKE3_PATTERN)
     source_bound: Literal["INDEPENDENT_SOURCE", "DOWNSTREAM_OF_PIPELINE"] = "INDEPENDENT_SOURCE"
     """Whether this lane has a source of its own that can limit the target.
 
@@ -173,8 +174,8 @@ class LaneCoverage(_Contract):
     """
 
     reachable_end: date | None = None
-    identity_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
-    coverage_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
+    identity_hash: str = Field(pattern=BLAKE3_PATTERN)
+    coverage_hash: str = Field(pattern=BLAKE3_PATTERN)
 
     @classmethod
     def create(cls, **values: object) -> Self:
@@ -362,10 +363,10 @@ class CorrectionLineage(_Contract):
 
     kind: Literal["CorrectionLineage"] = "CorrectionLineage"
     corrected_owner_id: str = Field(min_length=1, max_length=120)
-    source_revision_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
-    superseded_identity_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
+    source_revision_hash: str = Field(pattern=BLAKE3_PATTERN)
+    superseded_identity_hash: str = Field(pattern=BLAKE3_PATTERN)
     rebuilt_sessions: tuple[date, ...] = ()
-    lineage_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
+    lineage_hash: str = Field(pattern=BLAKE3_PATTERN)
 
     @classmethod
     def create(cls, **values: object) -> Self:
@@ -415,7 +416,7 @@ class DomainLaneReceipt(_Contract):
     """
 
     kind: Literal["DomainLaneReceipt"] = "DomainLaneReceipt"
-    program_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
+    program_hash: str = Field(pattern=BLAKE3_PATTERN)
     """Which sealed advancement this answer belongs to.
 
     Carried on the receipt rather than only in an index key, so a lane result
@@ -435,7 +436,7 @@ class DomainLaneReceipt(_Contract):
     coverage_after: LaneCoverage
     correction_lineage: CorrectionLineage | None = None
     refusal_code: str | None = None
-    receipt_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
+    receipt_hash: str = Field(pattern=BLAKE3_PATTERN)
 
     @classmethod
     def create(cls, **values: object) -> Self:
@@ -527,7 +528,7 @@ class OperationalReceipt(_Contract):
     """
 
     kind: Literal["OperationalReceipt"] = "OperationalReceipt"
-    capacity_plan_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
+    capacity_plan_hash: str = Field(pattern=BLAKE3_PATTERN)
     profile_resolution: str = Field(min_length=1, max_length=40)
     process_logical_processor_limit: int = Field(ge=1)
     fold_workers: int = Field(ge=0)
@@ -540,7 +541,7 @@ class OperationalReceipt(_Contract):
     scientific_identity_disposition: Literal["OPERATIONAL_ONLY_NEVER_SCIENTIFIC_IDENTITY"] = (
         "OPERATIONAL_ONLY_NEVER_SCIENTIFIC_IDENTITY"
     )
-    receipt_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
+    receipt_hash: str = Field(pattern=BLAKE3_PATTERN)
 
     @classmethod
     def create(cls, **values: object) -> Self:
@@ -597,7 +598,7 @@ class WatermarkAdvancementProgram(_Contract):
     previous_watermark_start: date | None = None
     previous_watermark_end: date | None = None
     previous_common_session_count: int = Field(default=0, ge=0)
-    previous_common_axis_hash: str | None = Field(default=None, pattern=r"^[0-9a-f]{64}$")
+    previous_common_axis_hash: str | None = Field(default=None, pattern=BLAKE3_PATTERN)
     """The exact intersection this advancement started from.
 
     Bound separately from the endpoints because two workspaces can share a first
@@ -606,7 +607,7 @@ class WatermarkAdvancementProgram(_Contract):
     """
 
     target_sessions: tuple[date, ...] = ()
-    source_revision_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
+    source_revision_hash: str = Field(pattern=BLAKE3_PATTERN)
     """One digest over every lane's own artifact identity.
 
     Separate from the targets on purpose: a corrected Risk surface changes this
@@ -614,10 +615,10 @@ class WatermarkAdvancementProgram(_Contract):
     reopened, and the run that follows is a rebuild rather than a no-op.
     """
 
-    alpha_recipe_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
-    risk_recipe_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
+    alpha_recipe_hash: str = Field(pattern=BLAKE3_PATTERN)
+    risk_recipe_hash: str = Field(pattern=BLAKE3_PATTERN)
     coverage: tuple[LaneCoverage, ...] = Field(min_length=1)
-    program_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
+    program_hash: str = Field(pattern=BLAKE3_PATTERN)
 
     @classmethod
     def create(cls, **values: object) -> Self:
@@ -747,7 +748,7 @@ class WatermarkAdvancementReceipt(_Contract):
     """What the advancement did, per lane, and where the watermark ended up."""
 
     kind: Literal["WatermarkAdvancementReceipt"] = "WatermarkAdvancementReceipt"
-    program_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
+    program_hash: str = Field(pattern=BLAKE3_PATTERN)
     workspace_id: str = Field(min_length=1, max_length=120)
     product_mode: PortfolioProductMode
     disposition: AdvancementDisposition
@@ -755,7 +756,7 @@ class WatermarkAdvancementReceipt(_Contract):
     previous_watermark_start: date | None = None
     previous_watermark_end: date | None = None
     previous_common_session_count: int = Field(default=0, ge=0)
-    previous_common_axis_hash: str | None = Field(default=None, pattern=r"^[0-9a-f]{64}$")
+    previous_common_axis_hash: str | None = Field(default=None, pattern=BLAKE3_PATTERN)
     """The exact intersection the advancement started from.
 
     Carried beside the endpoints because a quiet run and a rebuild both leave the
@@ -766,7 +767,7 @@ class WatermarkAdvancementReceipt(_Contract):
     new_watermark_start: date | None = None
     new_watermark_end: date | None = None
     new_common_session_count: int = Field(default=0, ge=0)
-    new_common_axis_hash: str | None = Field(default=None, pattern=r"^[0-9a-f]{64}$")
+    new_common_axis_hash: str | None = Field(default=None, pattern=BLAKE3_PATTERN)
     """The exact intersection the advancement ended at, for the same reason."""
 
     blocking_lane: AdvancementLaneId | None = None
@@ -774,10 +775,10 @@ class WatermarkAdvancementReceipt(_Contract):
     blocking_available_end: date | None = None
     refusal_code: str | None = None
     total_work: LaneWork = LaneWork()
-    operational_receipt_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
+    operational_receipt_hash: str = Field(pattern=BLAKE3_PATTERN)
     """Bound, never hashed into a scientific identity. See ``OperationalReceipt``."""
 
-    receipt_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
+    receipt_hash: str = Field(pattern=BLAKE3_PATTERN)
 
     @classmethod
     def create(cls, **values: object) -> Self:
@@ -976,15 +977,15 @@ class PortfolioLedgerCoverage(_Contract):
     """
 
     kind: Literal["PortfolioLedgerCoverage"] = "PortfolioLedgerCoverage"
-    program_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
-    ledger_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
+    program_hash: str = Field(pattern=BLAKE3_PATTERN)
+    ledger_hash: str = Field(pattern=BLAKE3_PATTERN)
     first_formation_session: date
     last_formation_session: date
     formation_count: int = Field(gt=0)
-    formation_axis_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
+    formation_axis_hash: str = Field(pattern=BLAKE3_PATTERN)
     listing_count: int = Field(gt=0)
-    listing_axis_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
-    source_coverage_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
+    listing_axis_hash: str = Field(pattern=BLAKE3_PATTERN)
+    source_coverage_hash: str = Field(pattern=BLAKE3_PATTERN)
     """The `CommonWatermark`/owner-coverage identity this path was cut against.
 
     Without it the geometry describes a ledger but not the support that admitted
@@ -998,7 +999,7 @@ class PortfolioLedgerCoverage(_Contract):
     superseded_codec: Literal["FIXED_1260_FULL_PATH_REPORTING_HISTORICAL_READBACK_ONLY"] = (
         "FIXED_1260_FULL_PATH_REPORTING_HISTORICAL_READBACK_ONLY"
     )
-    coverage_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
+    coverage_hash: str = Field(pattern=BLAKE3_PATTERN)
 
     @classmethod
     def create(cls, **values: object) -> Self:

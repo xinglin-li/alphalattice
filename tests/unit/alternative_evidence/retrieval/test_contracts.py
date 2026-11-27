@@ -23,15 +23,15 @@ from alphalattice.evidence.alternative_evidence.retrieval.contracts import (
 
 TEST_SOURCE = "src/alphalattice/evidence/alternative_evidence/retrieval/contracts.py"
 FIELDS: dict[str, object] = {
-    "document_set_hash": "1" * 64,
+    "document_set_hash": canonical_hash("document set"),
     "workspace_snapshot_id": str(UUID(int=1)),
-    "workspace_snapshot_hash": "2" * 64,
-    "retrieval_binding_hash": "3" * 64,
+    "workspace_snapshot_hash": canonical_hash("snapshot"),
+    "retrieval_binding_hash": canonical_hash("binding"),
     "reading_depth": AlternativeEvidenceReadingDepth.FULL_FILING,
-    "corpus_hash": "4" * 64,
-    "index_id": "5" * 64,
-    "index_spec_hash": "6" * 64,
-    "index_manifest_hash": "7" * 64,
+    "corpus_hash": canonical_hash("corpus"),
+    "index_id": canonical_hash("index"),
+    "index_spec_hash": canonical_hash("index spec"),
+    "index_manifest_hash": canonical_hash("index manifest"),
     "vector_payload_sha256": "8" * 64,
     "document_count": 3,
     "chunk_count": 120,

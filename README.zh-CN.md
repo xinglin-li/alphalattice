@@ -27,6 +27,8 @@
 - **结果更容易核查。** 每日更新会报告五项市场数据检查。文件发生变化后会重新校验，Host 空闲时也会复核。
 - **供集成开发者参考。** 操作统一通过已注册的接口，缓存和外部请求均设有上限，七个包的导入路径已变更。
 
+从 0.2.10 开始，请求中的内部摘要须带 `blake3:` 前缀，旧格式会被拒绝。
+
 [0.2.9 发行说明（英文）](docs/public-source/release-notes.md#029)逐项说明这些改动。各项测量及其适用范围保留在对应版本的说明中。
 
 <a id="two-ways-to-use-alphalattice"></a>
@@ -94,7 +96,9 @@ if (-not (Get-Command uvx -ErrorAction SilentlyContinue)) { throw 'Install uv / 
 
 ## 升级
 
-从 0.2.0 升级到后续 0.2.x 补丁，请按[升级指南（英文）](docs/public-source/upgrading.md)操作。
+从 0.2.10 开始，请新建数据根目录和研究工作区。该版本使用 BLAKE3 生成内部标识，只能打开新格式的数据。旧数据根目录、工作区和备份仍可用原版本打开。
+
+从 0.2.0 升级到 0.2.9，请按[升级指南（英文）](docs/public-source/upgrading.md)操作。
 先备份代理项目中的 `.alphalattice/user/`，记下研究工作区的绝对路径，再用 `alphalattice host stop` 停止该工作区的 Host，等它释放工作区。
 源代码安装先更新代码，再同步锁定依赖、运行 doctor，并按其回答修复设置或重新配置代理项目；wheel 安装使用新包自带的运行依赖和约束。
 升级后仍在原代理项目和工作区中继续每日更新，保留此前封存的目标和报告。

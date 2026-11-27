@@ -295,7 +295,7 @@ def test_the_surface_owns_its_bytes_and_freezes_them() -> None:
 def test_content_verification_catches_a_surface_its_hash_does_not_describe() -> None:
     surface = _surface()
     surface.verify_content()
-    forged = replace(surface, surface_hash="0" * 64)
+    forged = replace(surface, surface_hash=canonical_hash("another surface"))
     with pytest.raises(RiskDecompositionError, match="content_hash_mismatch"):
         forged.verify_content()
 
@@ -380,15 +380,15 @@ def _sector_map(listings: tuple[str, ...]) -> SectorRevisionMap:
             provider_symbol=listing_id,
             sector_name=f"Sector {index % 2}",
             sector_key=f"sector-{index % 2}",
-            payload_hash=f"{index + 1:064x}",
-            evidence_hash=f"{index + 101:064x}",
+            payload_hash=canonical_hash(("payload", index)),
+            evidence_hash=canonical_hash(("evidence", index)),
         )
         for index, listing_id in enumerate(listings)
     )
     identity = {
         "kind": "SectorRevisionMap",
-        "manifest_revision": "1" * 64,
-        "sector_revision": "2" * 64,
+        "manifest_revision": canonical_hash("manifest"),
+        "sector_revision": canonical_hash("sectors"),
         "entries": [entry.model_dump(mode="json") for entry in entries],
     }
     return SectorRevisionMap(**identity, map_hash=canonical_hash(identity))
@@ -408,7 +408,7 @@ def _producer_inputs(*, omit_last_classification: bool = False) -> RiskDecomposi
         ordered_listing_ids=listings,
         open_to_open_log_returns=returns,
         classification=_sector_map(classification_axis),
-        return_surface_hash="3" * 64,
+        return_surface_hash=canonical_hash("returns"),
     )
 
 

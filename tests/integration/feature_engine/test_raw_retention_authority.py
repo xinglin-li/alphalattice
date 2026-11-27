@@ -24,6 +24,7 @@ from alphalattice.foundation.market_data_ops.sources.manifest import (
 from alphalattice.foundation.market_data_ops.storage.duckdb import (
     MarketDataRepository,
 )
+from tests._support.identity_fixtures import fixture_digest
 from tests.feature_input_gateway.gateway_support import (
     NOW,
     _evidence,
@@ -163,7 +164,9 @@ def test_raw_retention_choice_continues_only_for_the_same_case_on_a_derived_mani
                         invalid.setattr(
                             goals.store,
                             "attributed",
-                            lambda _: tuple({**e, "rule_hash": "f" * 64} for e in entries),
+                            lambda _: tuple(
+                                {**e, "rule_hash": fixture_digest("foreign-rule")} for e in entries
+                            ),
                         )
                     if fault == "late":
                         invalid.setattr(
@@ -253,7 +256,9 @@ def test_raw_retention_choice_continues_only_for_the_same_case_on_a_derived_mani
 
         first_case = current_by_listing[old_cases[0].listing_ids[0]]
         first_proof = proof_by_listing[old_cases[0].listing_ids[0]]
-        changed_evidence = replace(child_evidence[0], evidence_hash="e" * 64)
+        changed_evidence = replace(
+            child_evidence[0], evidence_hash=fixture_digest("changed-raw-retention-evidence")
+        )
         changed_result = service.gateway.assess(
             candidate_manifest=child,
             evidence=(changed_evidence, *child_evidence[1:]),
@@ -308,9 +313,9 @@ def test_raw_retention_choice_continues_only_for_the_same_case_on_a_derived_mani
                 is None
             )
         for candidate, retained in (
-            (replace(child, membership_fingerprint="f" * 64), proofs),
+            (replace(child, membership_fingerprint=fixture_digest("foreign-membership")), proofs),
             (child, (replace(first_proof, actor_kind="UNKNOWN"),)),
-            (child, (replace(first_proof, option_hash="f" * 64),)),
+            (child, (replace(first_proof, option_hash=fixture_digest("foreign-option")),)),
             (
                 child,
                 (

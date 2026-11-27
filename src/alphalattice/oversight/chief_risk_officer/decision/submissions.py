@@ -20,6 +20,7 @@ from alphalattice.capabilities.domain_contracts.identity import canonical_hash, 
 from alphalattice.capabilities.domain_contracts.sealing import seal_payload_digest
 from alphalattice.capabilities.domain_contracts.source_identity import source_rule_closure_hash
 from alphalattice.evidence.alternative_evidence.contracts import seal_contract
+from alphalattice.kernel.identity import BLAKE3_PATTERN
 from alphalattice.protocols.actor_execution import (
     ActorKind,
     AgentExecutionBinding,
@@ -73,10 +74,10 @@ class CROHostPolicyBinding(BaseModel):  # type: ignore[misc]
     kind: Literal["CROHostPolicyBinding"] = "CROHostPolicyBinding"
     owner_id: str = Field(min_length=1, max_length=128)
     policy_version: Literal["2026-09-02"] = "2026-09-02"
-    contract_schema_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
-    validation_source_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
-    semantics_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
-    binding_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
+    contract_schema_hash: str = Field(pattern=BLAKE3_PATTERN)
+    validation_source_hash: str = Field(pattern=BLAKE3_PATTERN)
+    semantics_hash: str = Field(pattern=BLAKE3_PATTERN)
+    binding_hash: str = Field(pattern=BLAKE3_PATTERN)
 
     @model_validator(mode="after")  # type: ignore[untyped-decorator]
     def validate_binding(self) -> Self:

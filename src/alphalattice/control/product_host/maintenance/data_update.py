@@ -97,6 +97,7 @@ from alphalattice.control.workspace_runtime.database import WorkspaceDatabase
 from alphalattice.control.workspace_runtime.mutation_gate import WorkspaceMutationGate
 from alphalattice.control.workspace_runtime.network_access import network_access
 from alphalattice.control.workspace_runtime.paths import resolve_confined
+from alphalattice.control.workspace_runtime.verified_facts import verified_file_digest
 from alphalattice.control.workspace_runtime.writer_lease import WorkspaceWriterLease
 from alphalattice.foundation.factor_research.publication.artifacts import (
     FactorResearchArtifactStore,
@@ -132,7 +133,6 @@ from alphalattice.foundation.research_foundation.contracts import (
 )
 from alphalattice.interface.local_application.dispatcher import CommandAdmission
 from alphalattice.interface.local_application.failure_codes import public_failure
-from alphalattice.kernel.identity import integrity_sha256
 
 PROFILE = (
     resolve_playpen_root(Path(__file__)) / "config/market-profiles/us-current-index-research.yaml"
@@ -172,7 +172,7 @@ def installed_data_update_binding(workspace: Path | None = None) -> WorkspaceDat
     )
 
     return WorkspaceDataUpdateBinding.seal(
-        profile_file_hash=integrity_sha256(PROFILE.read_bytes()).hexdigest(),
+        profile_file_hash=verified_file_digest(PROFILE),
         data_policy_hash=workspace_maintenance_data_policy_hash(),
         feature_catalog_hash=workspace_feature_catalog(workspace).binding.catalog_hash,
     )

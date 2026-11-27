@@ -56,10 +56,11 @@ from alphalattice.capabilities.causal_inputs.contracts import (
     SessionAnchor,
 )
 from alphalattice.capabilities.domain_contracts.identity import canonical_hash
+from alphalattice.kernel.identity import BLAKE3_PATTERN
 
 type FloatArray = npt.NDArray[np.float64]
 
-_HASH = r"^[0-9a-f]{64}$"
+_HASH = BLAKE3_PATTERN
 
 SIGNED_SCORE_SEMANTICS = "CROSS_SECTIONAL_SIGNED_DIMENSIONLESS_SCORE"
 """The one unit this consumer accepts.

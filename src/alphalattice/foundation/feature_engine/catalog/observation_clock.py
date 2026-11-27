@@ -55,6 +55,7 @@ from pydantic import BaseModel, ConfigDict, Field, model_validator
 from alphalattice.capabilities.domain_contracts.bounded_memo import stage_digest
 from alphalattice.capabilities.domain_contracts.identity import canonical_hash
 from alphalattice.capabilities.quant.factor_contracts import FactorSpec
+from alphalattice.kernel.identity import BLAKE3_PATTERN
 from alphalattice.protocols.research_authoring.contracts import DecisionCutoff, MarketPhase
 
 FEATURE_OBSERVATION_CLOCK_POLICY_ID = "feature-observation-clock.true-observation-session"
@@ -171,7 +172,7 @@ class FormulaSourceInterval(_Contract):
     latest_consumed_event: str = Field(min_length=1)
     earliest_consumed_bound_offset_sessions: int | None
     notes: str = Field(min_length=1)
-    interval_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
+    interval_hash: str = Field(pattern=BLAKE3_PATTERN)
 
     @classmethod
     def create(cls, **values: object) -> Self:
@@ -238,7 +239,7 @@ class FeatureObservationClock(_Contract):
 
     formula_skip_sessions: int = Field(ge=0)
     source_interval: FormulaSourceInterval
-    clock_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
+    clock_hash: str = Field(pattern=BLAKE3_PATTERN)
 
     @classmethod
     def create(cls, **values: object) -> Self:
@@ -297,7 +298,7 @@ class FeatureAvailabilityPolicy(_Contract):
     available_after_phase: MarketPhase = MarketPhase.OFFICIAL_CLOSE
     publication_delay_sessions: int = Field(ge=0)
     revision_risk: str = Field(min_length=1)
-    policy_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
+    policy_hash: str = Field(pattern=BLAKE3_PATTERN)
 
     @classmethod
     def create(cls, **values: object) -> Self:
@@ -361,7 +362,7 @@ class SourceAvailabilityCatalog(_Contract):
         default_factory=dict, exclude_if=lambda value: not value
     )
     """Each field's point-in-time mark; a catalog recorded before the marks holds none."""
-    catalog_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
+    catalog_hash: str = Field(pattern=BLAKE3_PATTERN)
 
     @classmethod
     def create(cls, **values: object) -> Self:

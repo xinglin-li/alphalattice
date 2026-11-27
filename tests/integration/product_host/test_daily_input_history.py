@@ -35,6 +35,7 @@ from alphalattice.investment.alpha_research.publication.artifacts import AlphaCu
 from alphalattice.investment.alpha_research.publication.contracts import (
     FrozenScoreObservationSnapshot,
 )
+from tests._support.identity_fixtures import fixture_digest
 from tests._support.researcher_methodology_session_fixtures import (
     real_risk_workspace,
 )
@@ -45,6 +46,8 @@ from tests.researcher_methodology_surface.session_workspace import copy_workspac
 __all__ = ["offline_execution_environment", "real_risk_workspace"]
 
 FIRST, LAST = date(2026, 7, 28), date(2026, 7, 31)
+HISTORY_SCOPE = fixture_digest("daily observation history scope")
+HISTORY_SELECTION = fixture_digest("daily observation history selection")
 
 
 @pytest.fixture
@@ -55,8 +58,8 @@ def daily_workspace(real_risk_workspace, tmp_path):
 def _publish(store, prepared, reuse=None, **rebased):
     assert prepared.dependency_prefix_hash is not None
     return store.publish_workspace_observation_history(
-        scope_hash="1" * 64,
-        selection_hash="2" * 64,
+        scope_hash=HISTORY_SCOPE,
+        selection_hash=HISTORY_SELECTION,
         dependency_prefix_hash=prepared.dependency_prefix_hash,
         formation_sessions=prepared.formation_sessions,
         ordered_listing_ids=prepared.ordered_listing_ids,
@@ -114,7 +117,7 @@ def test_a_fresh_owner_appends_the_same_history_and_publishes_the_same_observati
     previous = _publish(store, _capture(daily_workspace, FIRST, features))
     # This is a new owner with no in-memory prepared value from the first Task.
     fresh = AlphaCurrentArtifactStore(daily_workspace / "artifacts")
-    history = fresh.load_workspace_observation_history("1" * 64)
+    history = fresh.load_workspace_observation_history(HISTORY_SCOPE)
     assert history is not None
     appended = _capture(daily_workspace, LAST, features, history)
     full = _capture(daily_workspace, LAST, features)
@@ -164,7 +167,7 @@ def test_an_old_value_correction_rebuilds_what_it_touched_even_without_a_revisio
         monkeypatch.setattr(strategy_score_inputs, "PER_LISTING_EXTENSIONS", frozenset())
     store = AlphaCurrentArtifactStore(daily_workspace / "artifacts")
     previous = _publish(store, _capture(daily_workspace, FIRST, WIDE))
-    history = store.load_workspace_observation_history("1" * 64)
+    history = store.load_workspace_observation_history(HISTORY_SCOPE)
     assert history is not None
     market = MarketDataRepository(daily_workspace)
     ids = previous.ordered_listing_ids
@@ -280,7 +283,7 @@ def test_the_day_after_a_renewal_reuses_its_wider_history_as_a_cold_rebuild(dail
     previous = _publish(store, _capture(daily_workspace, FIRST, WIDE))
     history = AlphaCurrentArtifactStore(
         daily_workspace / "artifacts"
-    ).load_workspace_observation_history("1" * 64)
+    ).load_workspace_observation_history(HISTORY_SCOPE)
     narrow = WIDE[:1]
     appended = _capture(daily_workspace, LAST, narrow, history)
     assert appended.reused_history_hash == previous.head_hash
@@ -296,7 +299,7 @@ def test_the_day_after_a_renewal_reuses_its_wider_history_as_a_cold_rebuild(dail
         _publish(store, appended, reuse=history[0])
     narrow_head = _publish(store, appended)
     again = _capture(
-        daily_workspace, LAST, narrow, store.load_workspace_observation_history("1" * 64)
+        daily_workspace, LAST, narrow, store.load_workspace_observation_history(HISTORY_SCOPE)
     )
     assert again.reused_history_hash == narrow_head.head_hash
     assert (
@@ -329,7 +332,7 @@ def test_a_kept_history_is_refused_for_more_columns_or_another_implementation(da
 
     store = AlphaCurrentArtifactStore(daily_workspace / "artifacts")
     _publish(store, _capture(daily_workspace, FIRST, WIDE[:1]))
-    history = store.load_workspace_observation_history("1" * 64)
+    history = store.load_workspace_observation_history(HISTORY_SCOPE)
     wider = _capture(daily_workspace, LAST, WIDE, history)
     assert wider.reused_history_hash is None
     _same_preparation(_capture(daily_workspace, LAST, WIDE), wider)
@@ -337,11 +340,17 @@ def test_a_kept_history_is_refused_for_more_columns_or_another_implementation(da
         strategy_package_id="package",
         component_id="component",
         source_kind="WORKSPACE_DATA_FEATURE",
-        strategy_package_hash="3" * 64,
+        strategy_package_hash=fixture_digest("daily strategy package"),
     )
-    same = workspace_observation_history_selection(binding, implementation="a" * 64)
-    assert same == workspace_observation_history_selection(binding, implementation="a" * 64)
-    assert same != workspace_observation_history_selection(binding, implementation="b" * 64)
+    same = workspace_observation_history_selection(
+        binding, implementation=fixture_digest("daily score implementation")
+    )
+    assert same == workspace_observation_history_selection(
+        binding, implementation=fixture_digest("daily score implementation")
+    )
+    assert same != workspace_observation_history_selection(
+        binding, implementation=fixture_digest("other score implementation")
+    )
 
 
 @pytest.mark.parametrize("selection", ("installed", "predecessor", "unrecorded"))
@@ -369,7 +378,8 @@ def test_a_renewing_component_keeps_its_training_columns_on_a_day_it_does_not_re
         raise ValueError("causal execution split is invalid")  # the owner's own early return
 
     monkeypatch.setattr(scoring, "prepare_workspace_component_inputs", capture)
-    previous, unrelated = "a" * 64, "c" * 64
+    previous = fixture_digest("previous score implementation")
+    unrelated = fixture_digest("unrecorded score implementation")
     installed = scoring._implementation_hash()
     move = identity_successors.IdentityMove(
         scoring.IMPLEMENTATION_ROLE, previous, installed, "Read reuse", "Equal captured values"
@@ -379,7 +389,7 @@ def test_a_renewing_component_keeps_its_training_columns_on_a_day_it_does_not_re
         strategy_package_id="p",
         component_id="c",
         source_kind="WORKSPACE_DATA_FEATURE",
-        strategy_package_hash="3" * 64,
+        strategy_package_hash=fixture_digest("daily strategy package"),
     )
     implementation = {"installed": installed, "predecessor": previous, "unrecorded": unrelated}[
         selection
@@ -399,7 +409,12 @@ def test_a_renewing_component_keeps_its_training_columns_on_a_day_it_does_not_re
         clock=lambda: OBSERVED_AT,
     )
     prepare = scoring.StrategyScoringApplication.prepare_inputs
-    assert prepare(owner, binding, through=LAST, expected_source_hash="4" * 64) is None
+    assert (
+        prepare(
+            owner, binding, through=LAST, expected_source_hash=fixture_digest("daily score source")
+        )
+        is None
+    )
     assert captured["training_factor_ids"] == ("amihud_21",)
     assert captured["history"] is (None if selection == "unrecorded" else held)
 
@@ -415,7 +430,7 @@ def test_a_reference_adjusted_series_restated_keeps_the_kept_history_warm(daily_
             "UPDATE provider_adjusted_close_current SET adjusted_close = adjusted_close * 1.001 "
             "WHERE listing_id IN (SELECT listing_id FROM market_reference_current)"
         )
-    history = store.load_workspace_observation_history("1" * 64)
+    history = store.load_workspace_observation_history(HISTORY_SCOPE)
     appended = _capture(daily_workspace, LAST, WIDE[:1], history)
     assert appended.reused_history_hash == previous.head_hash
     _same_preparation(_capture(daily_workspace, LAST, WIDE[:1]), appended)
@@ -430,8 +445,8 @@ def test_a_head_without_listing_proofs_keeps_its_seal_and_reuses_whole(daily_wor
     store = AlphaCurrentArtifactStore(daily_workspace / "artifacts")
     prepared = _capture(daily_workspace, FIRST, WIDE[:1])
     head = store.publish_workspace_observation_history(
-        scope_hash="1" * 64,
-        selection_hash="2" * 64,
+        scope_hash=HISTORY_SCOPE,
+        selection_hash=HISTORY_SELECTION,
         dependency_prefix_hash=prepared.dependency_prefix_hash,
         formation_sessions=prepared.formation_sessions,
         ordered_listing_ids=prepared.ordered_listing_ids,
@@ -441,7 +456,7 @@ def test_a_head_without_listing_proofs_keeps_its_seal_and_reuses_whole(daily_wor
     )
     apart = {"head_hash", "axes_proof", "listing_digests", "listing_closed"}
     assert head.head_hash == canonical_hash(head.model_dump(mode="json", exclude=apart))
-    history = store.load_workspace_observation_history("1" * 64)
+    history = store.load_workspace_observation_history(HISTORY_SCOPE)
     assert history is not None and history[0] == head
     appended = _capture(daily_workspace, LAST, WIDE[:1], history)
     assert appended.reused_history_hash == head.head_hash and not appended.restated_listing_ids
@@ -577,7 +592,7 @@ def test_a_split_reaches_the_kept_history_the_frozen_read_and_the_next_day_as_st
             receipts = recorded(connection, (listing,))
         assert len(receipts) == (1 if step < 3 else 2)
         with market.database.retain(read_only=True):
-            history = store.load_workspace_observation_history("1" * 64)
+            history = store.load_workspace_observation_history(HISTORY_SCOPE)
             prepared = _capture(daily_workspace, through, WIDE, history, clock)
             assert [item.receipt_hash for item in prepared.rebases] == [
                 item.receipt_hash for item in receipts

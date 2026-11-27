@@ -23,6 +23,8 @@ from alphalattice.evidence.alternative_evidence.publication.usage import (
     ProviderStageUsageRecord,
     record_provider_stage_usage,
 )
+from alphalattice.kernel.identity import blake3_filename
+from tests._support.identity_fixtures import fixture_digest
 
 
 def _usage(call_count: int = 1, **overrides: Any) -> Any:
@@ -59,7 +61,7 @@ def _legacy_usage_record(**overrides: Any) -> dict[str, Any]:
     payload: dict[str, Any] = {
         "kind": "ProviderStageUsageRecord",
         "stage": "ALTERNATIVE_EVIDENCE_ANALYST",
-        "subject_hash": "c" * 64,
+        "subject_hash": fixture_digest("legacy usage subject"),
         "model_id": "deepseek:fixture@0",
         "call_count": 1,
         "elapsed_seconds": 25.719,
@@ -80,7 +82,7 @@ def test_a_usage_record_is_content_addressed_in_fact_not_only_in_name(
     record = record_provider_stage_usage(
         store,
         stage="ALTERNATIVE_EVIDENCE_ANALYST",
-        subject_hash="a" * 64,
+        subject_hash=fixture_digest("usage subject"),
         usage=_usage(),
         model_call_count=1,
     )
@@ -117,7 +119,7 @@ def test_a_record_written_before_the_coverage_counter_still_reads_back(
     # The file as it actually sits on disk: written before the field existed, so
     # its bytes do not mention it. Read through the store's own reader, which
     # re-validates and requires the identity to be the name it is filed under.
-    filed = store.root / "provider-stage-usage" / f"{legacy['usage_hash']}.json"
+    filed = store.root / "provider-stage-usage" / f"{blake3_filename(legacy['usage_hash'])}.json"
     filed.parent.mkdir(parents=True, exist_ok=True)
     filed.write_bytes(json.dumps(legacy, sort_keys=True, separators=(",", ":")).encode("utf-8"))
     assert "attempts_with_tokens" not in filed.read_text(encoding="utf-8")
@@ -159,7 +161,7 @@ def test_a_stage_that_reports_no_usage_cannot_hide_a_model_call(tmp_path: Path) 
         return record_provider_stage_usage(
             store,
             stage="ALTERNATIVE_EVIDENCE_ANALYST",
-            subject_hash="a" * 64,
+            subject_hash=fixture_digest("usage subject"),
             usage=usage,
             model_call_count=model_call_count,
         )
@@ -191,7 +193,7 @@ def test_a_zero_call_stage_that_measured_something_is_refused(tmp_path: Path) ->
         return record_provider_stage_usage(
             store,
             stage="ALTERNATIVE_EVIDENCE_ANALYST",
-            subject_hash="a" * 64,
+            subject_hash=fixture_digest("usage subject"),
             usage=usage,
             model_call_count=model_call_count,
         )

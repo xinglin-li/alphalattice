@@ -98,6 +98,7 @@ from alphalattice.foundation.market_data_ops.storage.duckdb import (
 )
 from tests._support import development_universe
 from tests._support.development_universe import DevelopmentProvider
+from tests._support.identity_fixtures import fixture_digest
 from tests.researcher_methodology_surface.real_workspace import SeededWalkProvider, ordered_window
 
 NOW = datetime(2026, 8, 3, 22, tzinfo=UTC)
@@ -265,7 +266,9 @@ def fixture_manifest(
         ManifestListing(f"listing-{index:02d}", symbol, "XNYS", symbol)
         for index, symbol in enumerate(symbols or tuple(f"T{i:02d}" for i in range(listing_count)))
     )
-    return UniverseManifest("fixture-feature-manifest", profile, listings, "f" * 64)
+    return UniverseManifest(
+        "fixture-feature-manifest", profile, listings, fixture_digest("feature fixture manifest")
+    )
 
 
 def development_panel_inputs(
@@ -311,7 +314,7 @@ def seed_feature_input_fixture(
     provider: FixtureProvider | DevelopmentProvider,
     *,
     end: date = SESSIONS[-1],
-    spy_revision: str = "a" * 64,
+    spy_revision: str = fixture_digest("feature fixture SPY revision"),
 ) -> str:
     """Bulk-load verified fixture bars; raw-pipeline behavior has its own case.
 
@@ -521,9 +524,9 @@ def identity_panel_table(raw: pa.Table) -> pa.Table:
     """Hash a fresh fixture table under the declared golden panel identity."""
     return hash_panel_rows(
         raw,
-        manifest_revision="1" * 64,
-        sector_revision="2" * 64,
-        catalog_hash="3" * 64,
-        policy_hash="4" * 64,
+        manifest_revision="blake3:" + "1" * 64,
+        sector_revision="blake3:" + "2" * 64,
+        catalog_hash="blake3:" + "3" * 64,
+        policy_hash="blake3:" + "4" * 64,
         factor_ids=("factor_a", "factor_b"),
     )

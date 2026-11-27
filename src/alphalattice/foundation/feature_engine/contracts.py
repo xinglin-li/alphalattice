@@ -12,6 +12,7 @@ from alphalattice.capabilities.domain_contracts.bounded_memo import stage_digest
 from alphalattice.capabilities.domain_contracts.identity import canonical_hash
 from alphalattice.capabilities.domain_contracts.sector_treatment import SECTOR_HISTORY_BACKFILLED
 from alphalattice.foundation.market_data_ops.sources.membership import membership_identity
+from alphalattice.kernel.identity import is_blake3
 
 PANEL_ROW_IDENTITY_BY_BINDING = "PANEL_BINDING"
 """The row-identity rule of Panels built before temporal membership.
@@ -229,8 +230,8 @@ class FeatureInvalidation:
             and not self.listing_id
         ):
             raise ValueError("listing-scoped invalidation requires a listing_id")
-        if self.source_receipt_hash is not None and len(self.source_receipt_hash) != 64:
-            raise ValueError("feature invalidation receipt requires a SHA-256 identity")
+        if self.source_receipt_hash is not None and not is_blake3(self.source_receipt_hash):
+            raise ValueError("feature invalidation receipt requires a BLAKE3 identity")
         if self.affected_sessions != tuple(sorted(set(self.affected_sessions))):
             raise ValueError("feature invalidation sessions must be sorted and unique")
         if self.source_fields != tuple(sorted(set(self.source_fields))):
@@ -478,8 +479,7 @@ class PanelSourceExclusion:
             not self.listing_id
             or self.first_session > self.last_session
             or not self.reason_codes
-            or len(self.evidence_hash) != 64
-            or any(value not in "0123456789abcdef" for value in self.evidence_hash)
+            or not is_blake3(self.evidence_hash)
             or any(not reason for reason in self.reason_codes)
         ):
             raise ValueError("invalid Panel source exclusion")
@@ -1018,7 +1018,7 @@ def panel_source_manifest_revision(manifest: Mapping[str, object]) -> str:
     summary = manifest.get("safe_summary")
     lineage = summary.get("lineage") if isinstance(summary, Mapping) else None
     revision = lineage.get("manifest_revision") if isinstance(lineage, Mapping) else None
-    if not isinstance(revision, str) or len(revision) != 64:
+    if not isinstance(revision, str) or not is_blake3(revision):
         raise ValueError("feature_panel.source_manifest_revision_missing")
     return revision
 

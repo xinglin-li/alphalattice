@@ -32,6 +32,8 @@ from alphalattice.control.product_host.composition.research_workspace import (
     ResearchWorkspaceExperimentInput,
     ResearchWorkspaceManifest,
 )
+from alphalattice.kernel.identity import blake3_filename
+from tests._support.identity_fixtures import fixture_digest
 from tests.alternative_evidence_desk.review_package import (
     CAPABILITY_HASH,
     _package,
@@ -370,16 +372,21 @@ def test_source_setup_preflights_acquires_and_preserves_prior_authority(
     from tests.alternative_evidence_desk.sec_fixture_transport import SecFixtureTransport
 
     root = tmp_path / "installed-input"
-    authority_hash, risk_hash, sector_hash = "a" * 64, "b" * 64, "c" * 64
+    authority_hash = fixture_digest("installed input authority")
+    risk_hash = fixture_digest("installed input Risk surface")
+    sector_hash = fixture_digest("installed input sector map")
     classification = SimpleNamespace(
-        manifest_revision="d" * 64,
+        manifest_revision=fixture_digest("installed input universe"),
         entries=tuple(
             SimpleNamespace(provider_symbol=symbol, listing_id=f"US-{symbol}")
             for symbol in ("AAPL", "MSFT")
         ),
     )
     surface = SimpleNamespace(
-        surface_hash=risk_hash, epoch=SimpleNamespace(universe_manifest_revision="d" * 64)
+        surface_hash=risk_hash,
+        epoch=SimpleNamespace(
+            universe_manifest_revision=fixture_digest("installed input universe")
+        ),
     )
 
     def load_authority(store, **options):
@@ -422,7 +429,7 @@ def test_source_setup_preflights_acquires_and_preserves_prior_authority(
         strategy_artifacts=(
             ResearchWorkspaceArtifact(
                 artifact_key=portfolio_result_context.ARTIFACT_KEY,
-                relative_path=f"installed-input/portfolio-strategy-lab/{portfolio_result_context.CATEGORY}/{authority_hash}.json",
+                relative_path=f"installed-input/portfolio-strategy-lab/{portfolio_result_context.CATEGORY}/{blake3_filename(authority_hash)}.json",
             ),
         ),
     ).with_bindings(evidence_review=old_binding)
@@ -468,14 +475,14 @@ def test_source_setup_preflights_acquires_and_preserves_prior_authority(
     with pytest.raises(ValueError, match="lifecycle_manifest_path_invalid"):
         setup.materialize(args)
     publish_research_workspace_manifest(tmp_path, original)
-    surface.surface_hash = "f" * 64
+    surface.surface_hash = fixture_digest("wrong Risk surface")
     with pytest.raises(ValueError, match="saved_source_binding_mismatch"):
         setup.materialize(args)
     surface.surface_hash = risk_hash
-    classification.manifest_revision = "e" * 64
+    classification.manifest_revision = fixture_digest("wrong universe")
     with pytest.raises(ValueError, match="saved_source_binding_mismatch"):
         setup.materialize(args)
-    classification.manifest_revision = "d" * 64
+    classification.manifest_revision = fixture_digest("installed input universe")
     args.entities = ["AAPL", "MSFT"]
     args.accessions = ["0000320193-26-000001"]
     with pytest.raises(ValueError, match="accession_scope_requires_one_entity"):
@@ -956,7 +963,7 @@ def test_a_recorded_import_names_the_root_it_could_not_read_and_its_own_check_is
     assert refused["detail"] == refusal_words(refused["failure_code"])["detail"]
     assert refused["location"] == {
         "option": "source_artifact_root",
-        "file": f"source-document-sets/{acquired['source_set_hash']}.json",
+        "file": f"source-document-sets/{blake3_filename(acquired['source_set_hash'])}.json",
         "expected": SETUP_OPTIONS["source_artifact_root"],
     }
     assert any(cause["kind"] == "OS" and cause["errno"] == 2 for cause in refused["causes"])
@@ -1025,7 +1032,7 @@ def test_a_recorded_import_whose_knowledge_root_lacks_an_object_names_it_under_t
         "source_knowledge_root",
         SETUP_OPTIONS["source_knowledge_root"],
     )
-    assert re.fullmatch(r"\.system/source-objects/[0-9a-f]{64}", location["file"]), location
+    assert re.fullmatch(r"\.system/source-objects/blake3-[0-9a-f]{64}", location["file"]), location
     assert any(cause["kind"] == "OS" and cause["errno"] == 2 for cause in refused["causes"])
     assert "next_requests" not in refused and set(refused["next_commands"]) == {"preflight"}
     assert list(elsewhere.iterdir()) == [], "nothing is created in the root the import named"
@@ -1219,7 +1226,9 @@ def test_research_only_evidence_binding_preserves_inputs_without_installing_a_st
     binding, _registry = _package(tmp_path)
     original = ResearchWorkspaceManifest.research_only("authored-review").with_bindings(
         experiment_inputs=(
-            ResearchWorkspaceExperimentInput(input_id="research", binding_hash="a" * 64),
+            ResearchWorkspaceExperimentInput(
+                input_id="research", binding_hash=fixture_digest("research-only binding")
+            ),
         )
     )
     installed = original.with_bindings(evidence_review=binding)

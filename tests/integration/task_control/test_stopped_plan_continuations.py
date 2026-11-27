@@ -31,6 +31,7 @@ from alphalattice.evidence.alternative_evidence.runtime.task_adapter import (
     AlternativeEvidenceDocumentTaskAdapter,
 )
 from alphalattice.interface.local_application.cli import main
+from tests._support.identity_fixtures import fixture_digest
 from tests.portfolio_strategy_lab.strategy_dates_support import date_host
 from tests.workspace_task_runner.task_control_support import lose_the_log_keeping_frozen_requests
 
@@ -46,7 +47,7 @@ def test_a_ledger_rebuilt_preparation_keeps_its_declaration_in_every_way_on(
             publish_research_workspace_manifest(workspace, live.workspace_manifest)
             owner = live.operations.research_strategies
             declaration = FrozenPortfolioPreparationRequest(
-                input_binding_hash="b" * 64,
+                input_binding_hash=fixture_digest("input binding"),
                 alpha_task_ids=(uuid4(), uuid4()),
                 risk_task_id=uuid4(),
                 unavailable_return_policy="quarantine_listings",
@@ -200,7 +201,7 @@ def test_an_evidence_task_without_its_book_selector_names_the_choice_before_repl
             envelope = TaskInputEnvelope.create(
                 task_kind=AlternativeEvidenceDocumentTaskAdapter.task_kind,
                 input_schema_id="synthetic-evidence-input",
-                payload={"scope_hash": "a" * 64, "run_hash": "b" * 64},
+                payload={"scope_hash": fixture_digest("scope"), "run_hash": fixture_digest("run")},
             )
             goal = ResearchGoal.create(
                 goal_kind="PREPARE_EVIDENCE",
@@ -210,8 +211,8 @@ def test_an_evidence_task_without_its_book_selector_names_the_choice_before_repl
             )
             plan = ResearchPlan.create(
                 goal_hash=goal.goal_hash,
-                workflow_definition_hash="c" * 64,
-                verifier_catalog_hash="d" * 64,
+                workflow_definition_hash=fixture_digest("workflow"),
+                verifier_catalog_hash=fixture_digest("verifier catalog"),
                 work_items=(
                     WorkItemDefinition.create(
                         stage_id="prepare",

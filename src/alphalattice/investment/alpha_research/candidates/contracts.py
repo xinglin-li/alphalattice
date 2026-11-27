@@ -8,6 +8,8 @@ from typing import Literal, Self
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
+from alphalattice.kernel.identity import BLAKE3_PATTERN, is_blake3
+
 from ..experiments.contracts import (
     MODEL_SPEC_ADAPTER,
     AlphaExperimentBatch,
@@ -58,11 +60,11 @@ class AlphaModelResearchGoalCriteria(_Contract):
         "lasso",
         "elastic_net",
     )
-    model_mandate_hash: Hash | None = Field(default=None, pattern=r"^[0-9a-f]{64}$")
+    model_mandate_hash: Hash | None = Field(default=None, pattern=BLAKE3_PATTERN)
     terminal_outputs: tuple[
         Literal["CURRENT_ALPHA_CANDIDATE_SET", "EVIDENCE_COMPLETE_SCIENTIFIC_STOP"], ...
     ] = ("CURRENT_ALPHA_CANDIDATE_SET", "EVIDENCE_COMPLETE_SCIENTIFIC_STOP")
-    criteria_hash: Hash = Field(pattern=r"^[0-9a-f]{64}$")
+    criteria_hash: Hash = Field(pattern=BLAKE3_PATTERN)
 
     @model_validator(mode="after")  # type: ignore[untyped-decorator]
     def validate_criteria(self) -> Self:
@@ -130,7 +132,7 @@ class AlphaOosEvidenceRecord(_Contract):
     classification: AlphaOosEvidenceClassification
     reason_codes: tuple[str, ...] = Field(min_length=1)
     failure_codes: tuple[str, ...] = ()
-    evidence_hash: Hash = Field(pattern=r"^[0-9a-f]{64}$")
+    evidence_hash: Hash = Field(pattern=BLAKE3_PATTERN)
 
     @model_validator(mode="after")  # type: ignore[untyped-decorator]
     def validate_evidence(self) -> Self:
@@ -156,12 +158,12 @@ class AlphaOosEvidenceAssessment(_Contract):
     """Seal a unique tested candidate family and reconcile positive/mixed dispositions."""
 
     kind: Literal["AlphaOosEvidenceAssessment"] = "AlphaOosEvidenceAssessment"
-    program_hash: Hash = Field(pattern=r"^[0-9a-f]{64}$")
+    program_hash: Hash = Field(pattern=BLAKE3_PATTERN)
     records: tuple[AlphaOosEvidenceRecord, ...] = Field(min_length=1)
     positive_candidate_ids: tuple[str, ...]
     mixed_candidate_ids: tuple[str, ...]
     hypothesis_count: int = Field(ge=1)
-    assessment_hash: Hash = Field(pattern=r"^[0-9a-f]{64}$")
+    assessment_hash: Hash = Field(pattern=BLAKE3_PATTERN)
 
     @model_validator(mode="after")  # type: ignore[untyped-decorator]
     def validate_assessment(self) -> Self:
@@ -203,8 +205,8 @@ class AlphaHistoricalCandidateEvidence(_Contract):
     candidate_id: str
     spec: StoredModelSpec
     failure_codes: tuple[str, ...] = Field(min_length=1)
-    stability_assessment_hash: Hash = Field(pattern=r"^[0-9a-f]{64}$")
-    evidence_hash: Hash = Field(pattern=r"^[0-9a-f]{64}$")
+    stability_assessment_hash: Hash = Field(pattern=BLAKE3_PATTERN)
+    evidence_hash: Hash = Field(pattern=BLAKE3_PATTERN)
 
     @model_validator(mode="after")  # type: ignore[untyped-decorator]
     def validate_evidence(self) -> Self:
@@ -230,13 +232,13 @@ class AlphaCandidateRecord(_Contract):
     kind: Literal["AlphaCandidateRecord"] = "AlphaCandidateRecord"
     spec: StoredModelSpec
     candidate_id: str = Field(pattern=r"^(?:agent-linear|alpha-candidate)-[0-9a-f]{16}$")
-    batch_hash: Hash = Field(pattern=r"^[0-9a-f]{64}$")
+    batch_hash: Hash = Field(pattern=BLAKE3_PATTERN)
     status: AlphaCandidateStatus
-    development_result_ref: Hash | None = Field(default=None, pattern=r"^[0-9a-f]{64}$")
-    development_candidate_hash: Hash | None = Field(default=None, pattern=r"^[0-9a-f]{64}$")
-    current_state_hash: Hash | None = Field(default=None, pattern=r"^[0-9a-f]{64}$")
-    stability_assessment_hash: Hash | None = Field(default=None, pattern=r"^[0-9a-f]{64}$")
-    current_score_child_hash: Hash | None = Field(default=None, pattern=r"^[0-9a-f]{64}$")
+    development_result_ref: Hash | None = Field(default=None, pattern=BLAKE3_PATTERN)
+    development_candidate_hash: Hash | None = Field(default=None, pattern=BLAKE3_PATTERN)
+    current_state_hash: Hash | None = Field(default=None, pattern=BLAKE3_PATTERN)
+    stability_assessment_hash: Hash | None = Field(default=None, pattern=BLAKE3_PATTERN)
+    current_score_child_hash: Hash | None = Field(default=None, pattern=BLAKE3_PATTERN)
     holm_adjusted_p_value: float | None = Field(default=None, ge=0, le=1, allow_inf_nan=False)
     oos_evidence_classification: AlphaOosEvidenceClassification | None = None
     mean_rank_ic: float | None = Field(default=None, allow_inf_nan=False)
@@ -246,7 +248,7 @@ class AlphaCandidateRecord(_Contract):
     current_score_std: float | None = Field(default=None, ge=0, allow_inf_nan=False)
     current_score_coverage: float | None = Field(default=None, ge=0, le=1, allow_inf_nan=False)
     failure_codes: tuple[str, ...] = ()
-    record_hash: Hash = Field(pattern=r"^[0-9a-f]{64}$")
+    record_hash: Hash = Field(pattern=BLAKE3_PATTERN)
 
     @model_validator(mode="after")  # type: ignore[untyped-decorator]
     def validate_record(self) -> Self:
@@ -302,14 +304,14 @@ class AlphaCandidateRegistrySnapshot(_Contract):
     """
 
     kind: Literal["AlphaCandidateRegistrySnapshot"] = "AlphaCandidateRegistrySnapshot"
-    program_hash: Hash = Field(pattern=r"^[0-9a-f]{64}$")
+    program_hash: Hash = Field(pattern=BLAKE3_PATTERN)
     revision: int = Field(ge=0, le=32)
-    predecessor_registry_hash: Hash | None = Field(default=None, pattern=r"^[0-9a-f]{64}$")
+    predecessor_registry_hash: Hash | None = Field(default=None, pattern=BLAKE3_PATTERN)
     candidates: tuple[AlphaCandidateRecord, ...]
     exhausted_legacy_specs: tuple[ResolvedRegularizedLinearSpec, ...] = ()
     historical_current_stability_rejections: tuple[AlphaHistoricalCandidateEvidence, ...] = ()
-    latest_hypothesis_family_hash: Hash | None = Field(default=None, pattern=r"^[0-9a-f]{64}$")
-    registry_hash: Hash = Field(pattern=r"^[0-9a-f]{64}$")
+    latest_hypothesis_family_hash: Hash | None = Field(default=None, pattern=BLAKE3_PATTERN)
+    registry_hash: Hash = Field(pattern=BLAKE3_PATTERN)
 
     @model_validator(mode="after")  # type: ignore[untyped-decorator]
     def validate_registry(self) -> Self:
@@ -349,7 +351,7 @@ class AlphaCandidateScoreCorrelation(_Contract):
     right_candidate_id: str
     common_scored_count: int = Field(ge=0)
     correlation: float | None = Field(default=None, ge=-1, le=1, allow_inf_nan=False)
-    correlation_hash: Hash = Field(pattern=r"^[0-9a-f]{64}$")
+    correlation_hash: Hash = Field(pattern=BLAKE3_PATTERN)
 
     @model_validator(mode="after")  # type: ignore[untyped-decorator]
     def validate_correlation(self) -> Self:
@@ -378,18 +380,18 @@ class AlphaQualificationSnapshot(_Contract):
     """
 
     kind: Literal["AlphaQualificationSnapshot"] = "AlphaQualificationSnapshot"
-    program_hash: Hash = Field(pattern=r"^[0-9a-f]{64}$")
-    registry_hash: Hash = Field(pattern=r"^[0-9a-f]{64}$")
-    hypothesis_family_hash: Hash = Field(pattern=r"^[0-9a-f]{64}$")
+    program_hash: Hash = Field(pattern=BLAKE3_PATTERN)
+    registry_hash: Hash = Field(pattern=BLAKE3_PATTERN)
+    hypothesis_family_hash: Hash = Field(pattern=BLAKE3_PATTERN)
     attempted_candidate_ids: tuple[str, ...] = Field(min_length=1)
     nominated_candidate_ids: tuple[str, ...]
     development_admissible_ids: tuple[str, ...]
     current_qualified_ids: tuple[str, ...]
     current_stability_rejected_ids: tuple[str, ...]
-    viability_assessment_hash: Hash | None = Field(default=None, pattern=r"^[0-9a-f]{64}$")
-    oos_evidence_assessment_hash: Hash | None = Field(default=None, pattern=r"^[0-9a-f]{64}$")
+    viability_assessment_hash: Hash | None = Field(default=None, pattern=BLAKE3_PATTERN)
+    oos_evidence_assessment_hash: Hash | None = Field(default=None, pattern=BLAKE3_PATTERN)
     score_correlations: tuple[AlphaCandidateScoreCorrelation, ...] = ()
-    qualification_hash: Hash = Field(pattern=r"^[0-9a-f]{64}$")
+    qualification_hash: Hash = Field(pattern=BLAKE3_PATTERN)
 
     @model_validator(mode="after")  # type: ignore[untyped-decorator]
     def validate_qualification(self) -> Self:
@@ -445,9 +447,9 @@ class AlphaGoalProgress(_Contract):
     """
 
     kind: Literal["AlphaGoalProgress"] = "AlphaGoalProgress"
-    criteria_hash: Hash = Field(pattern=r"^[0-9a-f]{64}$")
-    registry_hash: Hash = Field(pattern=r"^[0-9a-f]{64}$")
-    qualification_hash: Hash | None = Field(default=None, pattern=r"^[0-9a-f]{64}$")
+    criteria_hash: Hash = Field(pattern=BLAKE3_PATTERN)
+    registry_hash: Hash = Field(pattern=BLAKE3_PATTERN)
+    qualification_hash: Hash | None = Field(default=None, pattern=BLAKE3_PATTERN)
     proposed_count: int = Field(ge=0)
     development_admissible_count: int = Field(ge=0)
     development_rejected_count: int = Field(ge=0)
@@ -461,7 +463,7 @@ class AlphaGoalProgress(_Contract):
     max_batch_count: int | None = Field(default=None, ge=1)
     unresolved_failure_codes: tuple[str, ...]
     disposition: AlphaGoalDisposition
-    progress_hash: Hash = Field(pattern=r"^[0-9a-f]{64}$")
+    progress_hash: Hash = Field(pattern=BLAKE3_PATTERN)
 
     @model_validator(mode="after")  # type: ignore[untyped-decorator]
     def validate_progress(self) -> Self:
@@ -514,20 +516,20 @@ class CurrentAlphaCandidateSetSnapshot(_Contract):
     """
 
     kind: Literal["CurrentAlphaCandidateSetSnapshot"] = "CurrentAlphaCandidateSetSnapshot"
-    program_hash: Hash = Field(pattern=r"^[0-9a-f]{64}$")
-    foundation_hash: Hash = Field(pattern=r"^[0-9a-f]{64}$")
-    registry_hash: Hash = Field(pattern=r"^[0-9a-f]{64}$")
-    qualification_hash: Hash = Field(pattern=r"^[0-9a-f]{64}$")
+    program_hash: Hash = Field(pattern=BLAKE3_PATTERN)
+    foundation_hash: Hash = Field(pattern=BLAKE3_PATTERN)
+    registry_hash: Hash = Field(pattern=BLAKE3_PATTERN)
+    qualification_hash: Hash = Field(pattern=BLAKE3_PATTERN)
     ordered_candidate_ids: tuple[str, ...] = Field(min_length=1)
     current_score_child_hashes: tuple[Hash, ...] = Field(min_length=1)
     estimator_state_hashes: tuple[Hash, ...] = Field(min_length=1)
     stability_assessment_hashes: tuple[Hash, ...] = Field(min_length=1)
-    model_mandate_hash: Hash | None = Field(default=None, pattern=r"^[0-9a-f]{64}$")
+    model_mandate_hash: Hash | None = Field(default=None, pattern=BLAKE3_PATTERN)
     target_candidate_count: int | None = Field(default=None, ge=1)
-    sector_ema_manifest_hash: Hash | None = Field(default=None, pattern=r"^[0-9a-f]{64}$")
+    sector_ema_manifest_hash: Hash | None = Field(default=None, pattern=BLAKE3_PATTERN)
     downstream_score_modes: tuple[Literal["STOCK_ONLY", "STOCK_PLUS_SECTOR_COMPONENT"], ...] = ()
     limitations: tuple[str, ...]
-    snapshot_hash: Hash = Field(pattern=r"^[0-9a-f]{64}$")
+    snapshot_hash: Hash = Field(pattern=BLAKE3_PATTERN)
 
     @model_validator(mode="after")  # type: ignore[untyped-decorator]
     def validate_snapshot(self) -> Self:
@@ -554,7 +556,7 @@ class CurrentAlphaCandidateSetSnapshot(_Contract):
             if (
                 len(values) != expected
                 or len(set(values)) != expected
-                or any(len(value) != 64 for value in values)
+                or any(not is_blake3(value) for value in values)
             ):
                 raise ValueError("current Alpha candidate-set evidence axis is invalid")
         if (self.sector_ema_manifest_hash is None) != (not self.downstream_score_modes):
@@ -585,19 +587,19 @@ class AlphaResearchScientificStop(_Contract):
     """
 
     kind: Literal["AlphaResearchScientificStop"] = "AlphaResearchScientificStop"
-    program_hash: Hash = Field(pattern=r"^[0-9a-f]{64}$")
-    registry_hash: Hash = Field(pattern=r"^[0-9a-f]{64}$")
-    qualification_hash: Hash = Field(pattern=r"^[0-9a-f]{64}$")
-    goal_progress_hash: Hash = Field(pattern=r"^[0-9a-f]{64}$")
+    program_hash: Hash = Field(pattern=BLAKE3_PATTERN)
+    registry_hash: Hash = Field(pattern=BLAKE3_PATTERN)
+    qualification_hash: Hash = Field(pattern=BLAKE3_PATTERN)
+    goal_progress_hash: Hash = Field(pattern=BLAKE3_PATTERN)
     attempted_spec_hashes: tuple[Hash, ...] = ()
     attempted_recipe_hashes: tuple[Hash, ...] | None = None
     current_qualified_count: int = Field(ge=0)
-    model_mandate_hash: Hash | None = Field(default=None, pattern=r"^[0-9a-f]{64}$")
+    model_mandate_hash: Hash | None = Field(default=None, pattern=BLAKE3_PATTERN)
     target_candidate_count: int | None = Field(default=None, ge=1)
     failure_codes: tuple[str, ...] = Field(min_length=1)
     next_research_actions: tuple[str, ...] = Field(min_length=1)
-    science_policy_hash: Hash = Field(pattern=r"^[0-9a-f]{64}$")
-    stop_hash: Hash = Field(pattern=r"^[0-9a-f]{64}$")
+    science_policy_hash: Hash = Field(pattern=BLAKE3_PATTERN)
+    stop_hash: Hash = Field(pattern=BLAKE3_PATTERN)
 
     @model_validator(mode="after")  # type: ignore[untyped-decorator]
     def validate_stop(self) -> Self:
@@ -639,18 +641,18 @@ class AlphaGoalResearchMarker(_Contract):
     """
 
     kind: Literal["AlphaGoalResearchMarker"] = "AlphaGoalResearchMarker"
-    program_hash: Hash = Field(pattern=r"^[0-9a-f]{64}$")
-    goal_progress_hash: Hash = Field(pattern=r"^[0-9a-f]{64}$")
-    registry_hash: Hash = Field(pattern=r"^[0-9a-f]{64}$")
-    qualification_hash: Hash = Field(pattern=r"^[0-9a-f]{64}$")
-    board_hash: Hash | None = Field(default=None, pattern=r"^[0-9a-f]{64}$")
+    program_hash: Hash = Field(pattern=BLAKE3_PATTERN)
+    goal_progress_hash: Hash = Field(pattern=BLAKE3_PATTERN)
+    registry_hash: Hash = Field(pattern=BLAKE3_PATTERN)
+    qualification_hash: Hash = Field(pattern=BLAKE3_PATTERN)
+    board_hash: Hash | None = Field(default=None, pattern=BLAKE3_PATTERN)
     """The retired goal loop's board a legacy marker concluded; a qualification's names none,
     its family bound through its Program (GR3)."""
-    candidate_set_snapshot_hash: Hash | None = Field(default=None, pattern=r"^[0-9a-f]{64}$")
-    scientific_stop_hash: Hash | None = Field(default=None, pattern=r"^[0-9a-f]{64}$")
+    candidate_set_snapshot_hash: Hash | None = Field(default=None, pattern=BLAKE3_PATTERN)
+    scientific_stop_hash: Hash | None = Field(default=None, pattern=BLAKE3_PATTERN)
     disposition: Literal["CURRENT_ALPHA_CANDIDATE_SET_READY", "NO_STABLE_CURRENT_ALPHA_MODEL"]
     risk_admitted: Literal[False] = False
-    marker_hash: Hash = Field(pattern=r"^[0-9a-f]{64}$")
+    marker_hash: Hash = Field(pattern=BLAKE3_PATTERN)
 
     @model_validator(mode="after")  # type: ignore[untyped-decorator]
     def validate_marker(self) -> Self:
@@ -681,8 +683,8 @@ class AlphaGoalResearchSafeProjection(_Contract):
     """Seal terminal Alpha counts, selected identities, next action and a timezone-aware clock."""
 
     kind: Literal["AlphaGoalResearchSafeProjection"] = "AlphaGoalResearchSafeProjection"
-    program_hash: Hash = Field(pattern=r"^[0-9a-f]{64}$")
-    marker_hash: Hash = Field(pattern=r"^[0-9a-f]{64}$")
+    program_hash: Hash = Field(pattern=BLAKE3_PATTERN)
+    marker_hash: Hash = Field(pattern=BLAKE3_PATTERN)
     goal_target: int = Field(ge=1)
     current_qualified_count: int = Field(ge=0)
     attempted_spec_count: int = Field(ge=0)
@@ -695,7 +697,7 @@ class AlphaGoalResearchSafeProjection(_Contract):
     selected_candidate_ids: tuple[str, ...] = ()
     limitations: tuple[str, ...]
     updated_at: datetime
-    projection_hash: Hash = Field(pattern=r"^[0-9a-f]{64}$")
+    projection_hash: Hash = Field(pattern=BLAKE3_PATTERN)
 
     @model_validator(mode="after")  # type: ignore[untyped-decorator]
     def validate_projection(self) -> Self:

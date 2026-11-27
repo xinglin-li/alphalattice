@@ -32,7 +32,8 @@ from alphalattice.investment.alpha_research.scores.model_renewal import (
 from alphalattice.investment.alpha_research.scores.product_replay import (
     HeterogeneousVintageFeatureSurface,
 )
-from alphalattice.kernel.identity import FileDigestTrust
+from alphalattice.kernel.identity import FileDigestTrust, blake3_filename
+from tests._support.identity_fixtures import fixture_digest
 
 
 def _source() -> FrozenPriceVolumeInputs:
@@ -95,13 +96,11 @@ def test_frozen_observations_and_feature_preparation_reuse_npz_with_fresh_shells
         return load(*args, **kwargs)
 
     identify = FileDigestTrust.identity
-    snapshot_path = (
-        store.root / "current/frozen-observation-snapshots" / (f"{observation.snapshot_hash}.json")
+    snapshot_path = store._path(
+        "current/frozen-observation-snapshots", observation.snapshot_hash, "json"
     )
-    preparation_path = (
-        store.root
-        / "current/frozen-feature-preparations"
-        / (f"{preparation.preparation_hash}.json")
+    preparation_path = store._path(
+        "current/frozen-feature-preparations", preparation.preparation_hash, "json"
     )
     descriptor_reads = Counter()
 
@@ -181,15 +180,11 @@ def test_immutable_artifacts_are_read_once_across_request_scopes(
         store._packed_source_path(
             "frozen-feature-arrays", preparation.array_content_hash
         ).resolve(): "arrays",
-        (
-            store.root
-            / "current/frozen-observation-snapshots"
-            / f"{observation.snapshot_hash}.json"
+        store._path(
+            "current/frozen-observation-snapshots", observation.snapshot_hash, "json"
         ).resolve(): "json",
-        (
-            store.root
-            / "current/frozen-feature-preparations"
-            / f"{preparation.preparation_hash}.json"
+        store._path(
+            "current/frozen-feature-preparations", preparation.preparation_hash, "json"
         ).resolve(): "json",
     }
     read_counts = Counter()
@@ -278,9 +273,7 @@ def _check_frozen_bytes(tmp_path):
 
 def _check_candidate_score(tmp_path):
     """A nullable score and its listing identity read back from the door and the typed relation."""
-    from hashlib import sha256
-
-    from alphalattice.foundation.data_layer import history
+    from alphalattice.foundation.data_layer import arrays, history
 
     store = AlphaCurrentArtifactStore(tmp_path / "artifacts")
     session = date(2026, 1, 2)
@@ -293,19 +286,19 @@ def _check_candidate_score(tmp_path):
         }
     )
     args = dict(
-        request_hash="a" * 64,
-        foundation_hash="b" * 64,
-        logical_panel_hash="c" * 64,
+        request_hash=fixture_digest("request"),
+        foundation_hash=fixture_digest("foundation"),
+        logical_panel_hash=fixture_digest("logical-panel"),
         candidate_id="candidate",
-        estimator_state_hash="d" * 64,
-        stability_assessment_hash="e" * 64,
+        estimator_state_hash=fixture_digest("estimator-state"),
+        stability_assessment_hash=fixture_digest("stability-assessment"),
         formation_session=session,
         ordered_listing_ids=("QA-A", "QA-B"),
     )
     new = store.publish_current_candidate_score_chunk(table, **args)
     assert store.resolve_current_candidate_score_chunk(new).equals(table)
     packed = history.read_alpha_part(new.content_hash, "current/current-candidate-score-chunks")
-    digest = sha256(packed).hexdigest()
+    digest = arrays.packed_digest(packed)
     assert digest != new.content_hash
     assert history.array_profile(digest)["kind"] == "packed"
     assert store.publish_current_candidate_score_chunk(table, **args) == new
@@ -329,7 +322,7 @@ def _check_array_doors(tmp_path):
     workspace = tmp_path / "upgrade-workspace"
     folder = workspace / "alpha-research" / "current" / "current-candidate-score-chunks"
     folder.mkdir(parents=True)
-    old = folder / f"{'f' * 64}.parquet"
+    old = folder / f"{blake3_filename(fixture_digest('loose-score-part'))}.parquet"
     pq.write_table(pa.table({"row_id": ["2026-01-02|QA-A"], "value": [1.5]}), old)
     assert [path for path, _ in alpha_array_files(workspace)] == [old]
     assert family.holds(workspace)
@@ -361,12 +354,12 @@ def _check_array_doors(tmp_path):
     )
     score = store.publish_current_candidate_score_chunk(
         table,
-        request_hash="a" * 64,
-        foundation_hash="b" * 64,
-        logical_panel_hash="c" * 64,
+        request_hash=fixture_digest("request"),
+        foundation_hash=fixture_digest("foundation"),
+        logical_panel_hash=fixture_digest("logical-panel"),
         candidate_id="candidate",
-        estimator_state_hash="d" * 64,
-        stability_assessment_hash="e" * 64,
+        estimator_state_hash=fixture_digest("estimator-state"),
+        stability_assessment_hash=fixture_digest("stability-assessment"),
         formation_session=session,
         ordered_listing_ids=("QA-A",),
     )
@@ -665,13 +658,13 @@ def test_a_split_day_keeps_earlier_frozen_blocks_and_reads_the_rebase(tmp_path, 
         )  # fmt: skip
 
     trend = np.full((43, 1), 0.01)
-    before, twin = (
+    earlier_snapshots = tuple(
         store.publish_frozen_observations(
             source(42, {n: base for n in names}, trend * scale), disposition="SYNTHETIC_INPUT_QA"
         )
         for scale in (1.0, 1 + 2e-15)
     )
-    before = min((before, twin), key=lambda item: item.snapshot_hash)  # the tie's first by name
+    before = min(earlier_snapshots, key=lambda item: item.snapshot_hash)  # first by name
     listed, reads = Path.glob, []
     monkeypatch.setattr(Path, "glob", lambda self, pattern: reversed(sorted(listed(self, pattern))))
     monkeypatch.setattr(Path, "read_text", lambda self, *a, **k: reads.append(self.name) or (
@@ -697,7 +690,7 @@ def test_a_split_day_keeps_earlier_frozen_blocks_and_reads_the_rebase(tmp_path, 
     )
     monkeypatch.undo()
     assert after.array_blocks[:2] == before.array_blocks[:2] and after.rebases == (rebase,)
-    earlier = {f"{item.snapshot_hash}.json" for item in (before, twin)}
+    earlier = {f"{blake3_filename(item.snapshot_hash)}.json" for item in earlier_snapshots}
     assert sorted(name for name in reads if name in earlier) == sorted(earlier)  # each once
     assert (after.kept_blocks, after.kept_agreement) == (
         (0, 1),

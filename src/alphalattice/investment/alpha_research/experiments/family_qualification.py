@@ -21,6 +21,7 @@ from typing import Any, Literal, Self, cast
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 from alphalattice.capabilities.domain_contracts.identity import canonical_hash
+from alphalattice.kernel.identity import BLAKE3_PATTERN
 from alphalattice.protocols.research_authoring.contracts import (
     AuthoringError,
     ResearchExecutionEvidence,
@@ -75,7 +76,7 @@ def alpha_question_hash(program: AlphaDevelopmentProgram) -> str:
 
 class _Sealed(BaseModel):  # type: ignore[misc]
     model_config = ConfigDict(extra="forbid", frozen=True)
-    content_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
+    content_hash: str = Field(pattern=BLAKE3_PATTERN)
 
     @classmethod
     def create(cls, **values: object) -> Self:
@@ -99,8 +100,8 @@ class AlphaFamilyMember(_Sealed):
     task_id: str = Field(min_length=36, max_length=36)
     admitted_at: datetime
     output_workspace: str = Field(min_length=1, max_length=512)
-    receipt_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
-    batch_result_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
+    receipt_hash: str = Field(pattern=BLAKE3_PATTERN)
+    batch_result_hash: str = Field(pattern=BLAKE3_PATTERN)
     recipe: AlphaResearchModelRecipe
 
 
@@ -111,7 +112,7 @@ class AlphaQualificationFamily(_Sealed):
     it adds no hypothesis the correction could count.
     """
 
-    question_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
+    question_hash: str = Field(pattern=BLAKE3_PATTERN)
     goal_id: str = Field(min_length=36, max_length=36)
     opened_at: datetime
     members: tuple[AlphaFamilyMember, ...] = Field(min_length=1, max_length=200)
@@ -126,17 +127,17 @@ class AlphaQualificationFamily(_Sealed):
 class AlphaQualificationReceipt(_Sealed):
     """What one qualification sealed: the family, the Program it read and its end."""
 
-    program_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
-    authority_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
-    method_binding_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
-    family_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
-    qualification_program_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
-    registry_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
-    qualification_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
-    marker_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
+    program_hash: str = Field(pattern=BLAKE3_PATTERN)
+    authority_hash: str = Field(pattern=BLAKE3_PATTERN)
+    method_binding_hash: str = Field(pattern=BLAKE3_PATTERN)
+    family_hash: str = Field(pattern=BLAKE3_PATTERN)
+    qualification_program_hash: str = Field(pattern=BLAKE3_PATTERN)
+    registry_hash: str = Field(pattern=BLAKE3_PATTERN)
+    qualification_hash: str = Field(pattern=BLAKE3_PATTERN)
+    marker_hash: str = Field(pattern=BLAKE3_PATTERN)
     disposition: Literal["CURRENT_ALPHA_CANDIDATE_SET_READY", "NO_STABLE_CURRENT_ALPHA_MODEL"]
-    candidate_set_hash: str | None = Field(default=None, pattern=r"^[0-9a-f]{64}$")
-    scientific_stop_hash: str | None = Field(default=None, pattern=r"^[0-9a-f]{64}$")
+    candidate_set_hash: str | None = Field(default=None, pattern=BLAKE3_PATTERN)
+    scientific_stop_hash: str | None = Field(default=None, pattern=BLAKE3_PATTERN)
     selected_candidate_ids: tuple[str, ...] = ()
     attempted_candidate_ids: tuple[str, ...] = Field(min_length=1)
     current_qualified_ids: tuple[str, ...] = ()

@@ -240,7 +240,7 @@ def _index_id(snapshot: EvidenceSnapshot, spec_hash: str) -> str:
     digest: str = canonical_hash(
         {
             "revisions": [
-                [item.document.document_id, item.revision, item.content_sha256]
+                [item.document.document_id, item.revision, item.content_digest]
                 for item in snapshot.revisions
             ],
             "spec": spec_hash,

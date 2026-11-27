@@ -55,6 +55,7 @@ from alphalattice.investment.portfolio_strategy_lab.publication.artifacts import
 from alphalattice.investment.portfolio_strategy_lab.publication.portfolio_ledger import (
     PortfolioLedgerStore,
 )
+from alphalattice.kernel.identity import blake3_filename
 from tests.portfolio_strategy_lab.local_web_support import _resolved, _Resolver
 from tests.portfolio_strategy_lab.synthetic_numerical import build_numerical
 
@@ -121,7 +122,8 @@ def date_host(
         )
         _write(
             workspace,
-            f"artifacts/alpha-research/current/frozen-observation-snapshots/{snapshot.snapshot_hash}.json",
+            "artifacts/alpha-research/current/frozen-observation-snapshots/"
+            f"{blake3_filename(snapshot.snapshot_hash)}.json",
             snapshot,
         )
         observations = AlphaTrainingObservations.create(
@@ -136,7 +138,8 @@ def date_host(
         )
         _write(
             workspace,
-            f"artifacts/alpha-research/current/lifecycle-training-observations/{observations.content_hash}.json",
+            "artifacts/alpha-research/current/lifecycle-training-observations/"
+            f"{blake3_filename(observations.content_hash)}.json",
             observations,
         )
         plan = resolve_alpha_refit_plan(
@@ -189,7 +192,8 @@ def date_host(
             renewal_through=date(2026, 9, 30) if active else None,
         )
         path = (
-            f"artifacts/alpha-research/current/lifecycle-admissions/{admission.content_hash}.json"
+            "artifacts/alpha-research/current/lifecycle-admissions/"
+            f"{blake3_filename(admission.content_hash)}.json"
         )
         if not missing or cid != "G6_R0_FAST_REBOUND":
             _write(workspace, path, admission)
@@ -298,7 +302,10 @@ def date_host(
         strategy_artifacts=(
             ResearchWorkspaceArtifact(
                 artifact_key=ARTIFACT_KEY,
-                relative_path=f"artifacts/research-strategy-inputs/synthetic/portfolio-strategy-lab/{CATEGORY}/{authority.authority_hash}.json",
+                relative_path=(
+                    "artifacts/research-strategy-inputs/synthetic/portfolio-strategy-lab/"
+                    f"{CATEGORY}/{blake3_filename(authority.authority_hash)}.json"
+                ),
             ),
         ),
         score_inputs=score_inputs,
@@ -352,7 +359,7 @@ def study_date_owner(live):
             (
                 root
                 / "artifacts/alpha-research/current/lifecycle-training-observations"
-                / f"{admission.observations_hash}.json"
+                / f"{blake3_filename(admission.observations_hash)}.json"
             ).read_bytes()
         )
         original = store.load_frozen_observation_snapshot(observations.observation_hash)
@@ -397,7 +404,7 @@ def study_date_owner(live):
         training = AlphaModelLifecycleAdmission.create(**values)
         path = _write(
             root,
-            f"artifacts/alpha-research/current/lifecycle-admissions/{training.content_hash}.json",
+            f"artifacts/alpha-research/current/lifecycle-admissions/{blake3_filename(training.content_hash)}.json",
             training,
         )
         binding = ResearchWorkspaceModelTrainingInput(
@@ -431,7 +438,8 @@ def study_date_owner(live):
         output = f"studies/{evidence.component_id}"
         _write(
             root,
-            f"{output}/alpha-lifecycle/alpha-research/current/lifecycle-model-sets/{publication.content_hash}.json",
+            f"{output}/alpha-lifecycle/alpha-research/current/lifecycle-model-sets/"
+            f"{blake3_filename(publication.content_hash)}.json",
             publication,
         )
         summaries[evidence.task_id] = {

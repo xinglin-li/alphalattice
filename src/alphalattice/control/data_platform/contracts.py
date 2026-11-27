@@ -10,6 +10,7 @@ from pydantic import BaseModel, ConfigDict, Field, model_validator
 from alphalattice.capabilities.domain_contracts.identity import canonical_hash
 from alphalattice.foundation.market_data_ops.runtime.remediation import PolicyDecision
 from alphalattice.foundation.market_data_ops.sources.contracts import DataRemediationProposal
+from alphalattice.kernel.identity import BLAKE3_PATTERN
 from alphalattice.protocols.actor_execution.contracts import (
     ActorKind,
     ActorSubmissionBinding,
@@ -69,7 +70,7 @@ class DataRemediationExecutionSubmission(BaseModel):  # type: ignore[misc]
 
     kind: Literal["DataRemediationExecutionSubmission"] = "DataRemediationExecutionSubmission"
     proposal: DataRemediationProposal
-    submission_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
+    submission_hash: str = Field(pattern=BLAKE3_PATTERN)
 
     @model_validator(mode="after")  # type: ignore[untyped-decorator]
     def validate_submission(self) -> Self:
@@ -96,8 +97,8 @@ class DataRemediationExecutionReceipt(BaseModel):  # type: ignore[misc]
     submission: DataRemediationExecutionSubmission
     actor_submission: ActorSubmissionBinding
     policy_decision: PolicyDecision
-    execution_policy_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
-    receipt_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
+    execution_policy_hash: str = Field(pattern=BLAKE3_PATTERN)
+    receipt_hash: str = Field(pattern=BLAKE3_PATTERN)
 
     @model_validator(mode="after")  # type: ignore[untyped-decorator]
     def validate_receipt(self) -> Self:

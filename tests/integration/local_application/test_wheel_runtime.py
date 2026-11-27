@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import hashlib
 import json
 import os
 import re
@@ -19,6 +18,7 @@ from types import SimpleNamespace
 from urllib.parse import unquote, urlsplit
 
 import pytest
+from blake3 import blake3
 from markdown_it import MarkdownIt
 from scripts.release import install_smoke, wheel_smoke
 from scripts.release.wheel_build import resource_files, runtime_requirements
@@ -534,7 +534,7 @@ print(json.dumps({
         "alphalattice": "alphalattice.control.product_host.composition.entry:main"
     }
     assert project["build-system"] == {
-        "requires": ["setuptools==83.0.0", "psutil==7.2.2"],
+        "requires": ["setuptools==83.0.0", "psutil==7.2.2", "blake3==1.0.11"],
         "build-backend": "setuptools.build_meta",
     }
     manifest = json.loads(MANIFEST.read_text(encoding="utf-8"))
@@ -634,7 +634,8 @@ def test_a_built_wheel_holds_the_exact_runtime_content_set(tmp_path: Path) -> No
             assert archive.read("alphalattice/_runtime/" + name) == (ROOT / name).read_bytes()
         hashes = json.loads(archive.read("alphalattice/_runtime/config/release/source-hashes.json"))
         assert hashes == {
-            name: hashlib.sha256((ROOT / name).read_bytes()).hexdigest() for name in SOURCE_HASHES
+            name: "blake3:" + blake3((ROOT / name).read_bytes()).hexdigest()
+            for name in SOURCE_HASHES
         }
         requirements = archive.read("alphalattice/_runtime/config/release/runtime-requirements.txt")
         assert requirements.decode() == runtime_requirements()

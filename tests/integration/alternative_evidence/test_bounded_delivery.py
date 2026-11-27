@@ -36,6 +36,7 @@ from alphalattice.evidence.alternative_evidence.analysis.packet import (
 from alphalattice.interface.local_application.portfolio_research import (
     PortfolioResearchOperationRequest,
 )
+from tests._support.identity_fixtures import fixture_digest
 from tests.alternative_evidence_desk.planted_corpus import _NOW, _CitingActor
 from tests.alternative_evidence_desk.review_dossiers import (
     _issue,
@@ -233,7 +234,10 @@ def test_an_oversize_packet_is_delivered_in_complete_parts_through_executable_co
         del stale
         for document, code in (
             (
-                {**first["delivery"]["next_request"], "analysis_context_hash": "0" * 64},
+                {
+                    **first["delivery"]["next_request"],
+                    "analysis_context_hash": fixture_digest("stale analysis context"),
+                },
                 "alternative_evidence.delivery_continuation_stale",
             ),
             (
@@ -422,7 +426,10 @@ def test_the_dossier_is_delivered_through_the_same_mechanism(
         with pytest.raises(ValueError, match=r"chief_risk_officer\.delivery_continuation_stale"):
             _operation(
                 service,
-                {**parts[0]["delivery"]["next_request"], "review_dossier_hash": "0" * 64},
+                {
+                    **parts[0]["delivery"]["next_request"],
+                    "review_dossier_hash": fixture_digest("stale review dossier"),
+                },
             )
         with pytest.raises(ValueError, match=r"chief_risk_officer\.delivery_part_unknown"):
             _operation(

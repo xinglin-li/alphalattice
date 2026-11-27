@@ -110,11 +110,13 @@ from alphalattice.investment.alpha_research.targets.standardization import (
     RANK_GAUSS_STANDARDIZATION_ID,
     ROBUST_Z_STANDARDIZATION_ID,
 )
+from alphalattice.kernel.identity import blake3_filename
 from alphalattice.protocols.actor_execution.contracts import ActorKind
 from alphalattice.protocols.research_authoring.contracts import (
     AuthoringError,
     ResearchExperimentEnvelope,
 )
+from tests._support.identity_fixtures import fixture_digest
 from tests._support.researcher_methodology_session_fixtures import (
     development_risk_workspace as development_risk_workspace,
 )
@@ -670,30 +672,30 @@ def test_a_receipt_cannot_pair_one_recipe_with_another_recipes_values() -> None:
     """A receipt cannot pair one recipe with another recipe's values."""
 
     methods = installed_alpha_target_methods(
-        sector_revision="a" * 64,
+        sector_revision=fixture_digest("sector-revision"),
         execution_outcome_recipe_id=ONE_SESSION_RECIPE_ID,
     )
     robust = AlphaTargetMethodBinding.create(
         method=methods.resolve(CROSS_STANDARDIZED_DEVELOPMENT_TARGET_RECIPE_ID),
         execution_outcome_recipe_id=ONE_SESSION_RECIPE_ID,
-        causal_outcome_snapshot_hash="c" * 64,
-        outcome_method_binding_hash="d" * 64,
+        causal_outcome_snapshot_hash=fixture_digest("causal-outcome-snapshot"),
+        outcome_method_binding_hash=fixture_digest("outcome-method-binding"),
     )
     rank = AlphaTargetMethodBinding.create(
         method=methods.resolve(DEFAULT_DEVELOPMENT_TARGET_RECIPE_ID),
         execution_outcome_recipe_id=ONE_SESSION_RECIPE_ID,
-        causal_outcome_snapshot_hash="c" * 64,
-        outcome_method_binding_hash="d" * 64,
+        causal_outcome_snapshot_hash=fixture_digest("causal-outcome-snapshot"),
+        outcome_method_binding_hash=fixture_digest("outcome-method-binding"),
     )
     record = AlphaDevelopmentTargetFoldRecord.create(
         fold_index=0,
-        fold_commitment_hash="d" * 64,
+        fold_commitment_hash=fixture_digest("fold-commitment"),
         training_dtype="float64",
         training_shape=(120,),
-        training_value_hash="e" * 64,
+        training_value_hash=fixture_digest("training-value"),
         validation_dtype="float64",
         validation_shape=(30,),
-        validation_value_hash="f" * 64,
+        validation_value_hash=fixture_digest("validation-value"),
     )
     materialized = AlphaDevelopmentTargetMaterializationBinding.create(
         recipe_binding=rank,
@@ -714,24 +716,24 @@ def test_a_receipt_cannot_pair_one_recipe_with_another_recipes_values() -> None:
     ) -> object:
         materialized_binding = materialization or materialized
         return AlphaDevelopmentExecutionReceipt.create(
-            program_hash="1" * 64,
-            desk_program_hash="2" * 64,
-            method_binding_hash="3" * 64,
-            desk_input_binding_hash="4" * 64,
+            program_hash=fixture_digest("program"),
+            desk_program_hash=fixture_digest("desk-program"),
+            method_binding_hash=fixture_digest("method-binding"),
+            desk_input_binding_hash=fixture_digest("desk-input-binding"),
             target_recipe_binding=recipe_binding,
             target_materialization_binding=materialized_binding,
             ordered_base_feature_ids=("factor.a",),
-            research_recipe_hash="5" * 64,
+            research_recipe_hash=fixture_digest("research-recipe"),
             model_adapter_id="ridge",
-            model_adapter_recipe_hash="6" * 64,
-            development_program_hash="7" * 64,
+            model_adapter_recipe_hash=fixture_digest("model-adapter-recipe"),
+            development_program_hash=fixture_digest("development-program"),
             split_policy=split_policy,
-            model_method_binding_hash="e" * 64,
-            batch_hash="8" * 64,
-            batch_result_hash="9" * 64,
-            development_surface_hash="a" * 64,
-            development_surface_binding_hash="b" * 64,
-            fold_surface_hashes=("c" * 64,),
+            model_method_binding_hash=fixture_digest("model-method-binding"),
+            batch_hash=fixture_digest("batch"),
+            batch_result_hash=fixture_digest("batch-result"),
+            development_surface_hash=fixture_digest("development-surface"),
+            development_surface_binding_hash=fixture_digest("development-surface-binding"),
+            fold_surface_hashes=(fixture_digest("fold-surface"),),
             child_lineage=(
                 seal_current_contract(
                     AlphaDevelopmentChildLineage,
@@ -739,14 +741,14 @@ def test_a_receipt_cannot_pair_one_recipe_with_another_recipes_values() -> None:
                         "kind": "AlphaDevelopmentChildLineage",
                         "candidate_id": "alpha-candidate-0000000000000000",
                         "fold_index": 0,
-                        "fold_commitment_hash": "d" * 64,
-                        "numerical_result_hash": "0" * 64,
-                        "estimator_state_hash": "1" * 64,
-                        "fit_evidence_hash": "2" * 64,
-                        "training_input_binding_hash": "3" * 64,
-                        "estimator_content_hash": "4" * 64,
-                        "fit_provenance_hash": "5" * 64,
-                        "score_evidence_hash": "6" * 64,
+                        "fold_commitment_hash": fixture_digest("fold-commitment"),
+                        "numerical_result_hash": fixture_digest("numerical-result"),
+                        "estimator_state_hash": fixture_digest("estimator-state"),
+                        "fit_evidence_hash": fixture_digest("fit-evidence"),
+                        "training_input_binding_hash": fixture_digest("training-input-binding"),
+                        "estimator_content_hash": fixture_digest("estimator-content"),
+                        "fit_provenance_hash": fixture_digest("fit-provenance"),
+                        "score_evidence_hash": fixture_digest("score-evidence"),
                         "ordered_factor_ids": ("factor.a",),
                         "target_recipe_binding_hash": recipe_binding.binding_hash,
                         "target_materialization_binding_hash": materialized_binding.binding_hash,
@@ -824,12 +826,12 @@ def test_a_chunk_read_again_is_checked_again_and_changed_bytes_are_refused(
         }
     )
     identity = dict(
-        execution_binding_hash="a" * 64,
-        development_surface_binding_hash="b" * 64,
+        execution_binding_hash=fixture_digest("execution-binding"),
+        development_surface_binding_hash=fixture_digest("development-surface-binding"),
         candidate_id="C1",
-        candidate_card_hash="c" * 64,
+        candidate_card_hash=fixture_digest("candidate-card"),
         fold_index=0,
-        fold_commitment_hash="d" * 64,
+        fold_commitment_hash=fixture_digest("fold-commitment"),
     )
     reference = store.publish_numerical_score_chunk(table, **identity)
     assert store.resolve_numerical_score_chunk(reference).equals(table)
@@ -1100,7 +1102,7 @@ def test_the_candidate_evidence_a_batch_names_is_verified_on_readback(
             "fold_evidence_unavailable",
         ),
     ):
-        path = current / category / f"{artifact_hash}.json"
+        path = current / category / f"{blake3_filename(artifact_hash)}.json"
         original = path.read_bytes()
         path.unlink()
         with pytest.raises(AuthoringError, match=code):
@@ -1220,7 +1222,11 @@ def test_the_candidate_evidence_a_batch_names_is_verified_on_readback(
         legacy = seal_current_contract(
             LegacyAlphaCandidateFoldEvidence, {**legacy_fields, **overrides}, "fold_evidence_hash"
         )
-        path = current / "candidate-fold-evidence" / f"{legacy.fold_evidence_hash}.json"
+        path = (
+            current
+            / "candidate-fold-evidence"
+            / f"{blake3_filename(legacy.fold_evidence_hash)}.json"
+        )
         path.write_text(json.dumps(legacy.model_dump(mode="json")), encoding="utf-8")
         assert isinstance(
             store.load_candidate_fold_evidence(legacy.fold_evidence_hash),
@@ -1377,7 +1383,9 @@ def test_the_candidate_evidence_a_batch_names_is_verified_on_readback(
 def test_the_declared_standardization_is_the_one_that_executed() -> None:
     """The declared standardization is the one that executed."""
 
-    recipes = installed_alpha_development_target_recipes(sector_revision="a" * 64)
+    recipes = installed_alpha_development_target_recipes(
+        sector_revision=fixture_digest("sector-revision")
+    )
     recipe = recipes.resolve(CROSS_STANDARDIZED_DEVELOPMENT_TARGET_RECIPE_ID)
 
     # The lane still says rank-gauss and always will -- it is a property of a

@@ -70,6 +70,7 @@ from alphalattice.investment.portfolio_strategy_lab.application.contracts import
     PortfolioResearchSpec,
     PortfolioSupportCoverage,
 )
+from tests._support.identity_fixtures import fixture_digest
 from tests.portfolio_strategy_lab.local_web_support import _resolved, _Resolver
 
 # A synthetic calendar with no historical shape in it: not 1,260, not 494, not
@@ -130,23 +131,23 @@ def test_an_empty_target_list_is_not_evidence_of_zero_work() -> None:
         owner_id="risk_surface_producer",
         lane_label="CAUSAL_OPEN_TO_OPEN_RETURN",
         sessions=(date(2024, 1, 2), date(2024, 1, 3)),
-        identity_hash="a" * 64,
+        identity_hash=fixture_digest("watermark a"),
         reachable_end=date(2024, 1, 3),
     )
     lineage = CorrectionLineage.create(
         corrected_owner_id="risk_return_surface",
-        source_revision_hash="b" * 64,
-        superseded_identity_hash="c" * 64,
+        source_revision_hash=fixture_digest("watermark b"),
+        superseded_identity_hash=fixture_digest("watermark c"),
     )
     with pytest.raises(ValueError, match="lane_rebuild_reported_no_work"):
         DomainLaneReceipt.create(
-            program_hash="d" * 64,
+            program_hash=fixture_digest("watermark d"),
             lane="RISK",
             owner_id="risk_surface_producer",
             disposition="REBUILT_FROM_CORRECTION",
             coverage_before=coverage,
             coverage_after=coverage,
-            produced_identities=("e" * 64,),
+            produced_identities=(fixture_digest("watermark e"),),
             correction_lineage=lineage,
             work=LaneWork(),
         )
@@ -164,7 +165,7 @@ def _risk_coverage(sessions: tuple[date, ...]) -> LaneCoverage:
         owner_id="risk_surface_producer",
         lane_label="CAUSAL_OPEN_TO_OPEN_RETURN",
         sessions=sessions,
-        identity_hash="a" * 64,
+        identity_hash=fixture_digest("watermark a"),
         reachable_end=sessions[-1],
     )
 
@@ -196,8 +197,15 @@ def test_portfolio_support_recomputes_the_exact_owner_intersection() -> None:
     left = (date(2024, 1, 2), date(2024, 1, 3), date(2024, 1, 6))
     right = (date(2024, 1, 2), date(2024, 1, 4), date(2024, 1, 6))
     owners = (
-        OwnerCoverage.of(owner_id="left", lane="LEFT", sessions=left, identity_hash="a" * 64),
-        OwnerCoverage.of(owner_id="right", lane="RIGHT", sessions=right, identity_hash="b" * 64),
+        OwnerCoverage.of(
+            owner_id="left", lane="LEFT", sessions=left, identity_hash=fixture_digest("watermark a")
+        ),
+        OwnerCoverage.of(
+            owner_id="right",
+            lane="RIGHT",
+            sessions=right,
+            identity_hash=fixture_digest("watermark b"),
+        ),
     )
     with pytest.raises(ValueError, match="common_watermark_not_the_owner_intersection"):
         PortfolioSupportCoverage.create(
@@ -210,7 +218,9 @@ def test_portfolio_support_recomputes_the_exact_owner_intersection() -> None:
 
 def test_owner_coverage_refuses_a_projection_that_disagrees_with_its_axis() -> None:
     axis = (date(2024, 1, 2), date(2024, 1, 3))
-    valid = OwnerCoverage.of(owner_id="owner", lane="LANE", sessions=axis, identity_hash="a" * 64)
+    valid = OwnerCoverage.of(
+        owner_id="owner", lane="LANE", sessions=axis, identity_hash=fixture_digest("watermark a")
+    )
     payload = valid.model_dump(mode="python")
     payload["session_count"] = 999
     with pytest.raises(ValueError, match="owner_coverage_axis_invalid"):
@@ -244,17 +254,17 @@ def test_ledger_coverage_binds_the_program_axes_and_source_support() -> None:
     sessions = tuple(date(2024, 1, 2) + timedelta(days=index) for index in range(253))
     listings = tuple(f"listing-{index:04d}" for index in range(466))
     coverage = PortfolioLedgerCoverage.of(
-        program_hash="a" * 64,
-        ledger_hash="b" * 64,
+        program_hash=fixture_digest("watermark a"),
+        ledger_hash=fixture_digest("watermark b"),
         formation_sessions=sessions,
         ordered_listing_ids=listings,
-        source_coverage_hash="c" * 64,
+        source_coverage_hash=fixture_digest("watermark c"),
     )
     assert coverage.describes(sessions)
     assert not coverage.describes((*sessions[:-1], sessions[-1] + timedelta(days=1)))
     assert coverage.contains(start=sessions[10], end=sessions[-10])
     assert not coverage.contains(start=sessions[0] - timedelta(days=1), end=sessions[-1])
-    assert coverage.source_coverage_hash == "c" * 64
+    assert coverage.source_coverage_hash == fixture_digest("watermark c")
 
 
 # ================================================= Alpha lifecycle authority
@@ -292,7 +302,7 @@ def test_a_downstream_lane_may_not_declare_a_source_bound() -> None:
             session_axis_hash=ordered_session_axis_hash(sessions),
             source_bound="DOWNSTREAM_OF_PIPELINE",
             reachable_end=date(2024, 1, 4),
-            identity_hash="a" * 64,
+            identity_hash=fixture_digest("watermark a"),
         )
 
 
@@ -303,7 +313,7 @@ def test_a_lane_cannot_reach_less_far_than_it_holds() -> None:
             owner_id="risk_surface_producer",
             lane_label="CAUSAL_OPEN_TO_OPEN_RETURN",
             sessions=(date(2024, 1, 2), date(2024, 1, 10)),
-            identity_hash="a" * 64,
+            identity_hash=fixture_digest("watermark a"),
             reachable_end=date(2024, 1, 5),
         )
 
@@ -312,7 +322,7 @@ def test_reuse_that_reports_work_is_refused() -> None:
     coverage = _risk_coverage((date(2024, 1, 2), date(2024, 1, 10)))
     with pytest.raises(ValueError, match="lane_reuse_is_not_exact"):
         DomainLaneReceipt.create(
-            program_hash="b" * 64,
+            program_hash=fixture_digest("watermark b"),
             lane="RISK",
             owner_id="risk_surface_producer",
             disposition="REUSED_EXACT",
@@ -329,18 +339,18 @@ def test_a_lane_cannot_materialize_a_session_nobody_requested() -> None:
         owner_id="risk_surface_producer",
         lane_label="CAUSAL_OPEN_TO_OPEN_RETURN",
         sessions=(date(2024, 1, 2), date(2024, 1, 3)),
-        identity_hash="b" * 64,
+        identity_hash=fixture_digest("watermark b"),
         reachable_end=date(2024, 1, 10),
     )
     with pytest.raises(ValueError, match="lane_materialized_outside_request"):
         DomainLaneReceipt.create(
-            program_hash="c" * 64,
+            program_hash=fixture_digest("watermark c"),
             lane="RISK",
             owner_id="risk_surface_producer",
             disposition="ADVANCED",
             requested_sessions=(date(2024, 1, 3),),
             materialized_sessions=(date(2024, 1, 3), date(2024, 1, 4)),
-            produced_identities=("d" * 64,),
+            produced_identities=(fixture_digest("watermark d"),),
             work=LaneWork(risk_updates=2),
             coverage_before=before,
             coverage_after=after,
@@ -367,7 +377,7 @@ def test_a_zero_work_receipt_cannot_move_the_watermark() -> None:
     )
     receipts = tuple(
         DomainLaneReceipt.create(
-            program_hash="b" * 64,
+            program_hash=fixture_digest("watermark b"),
             lane=coverage.lane,
             owner_id=coverage.owner_id,
             disposition="REUSED_EXACT",
@@ -380,7 +390,7 @@ def test_a_zero_work_receipt_cannot_move_the_watermark() -> None:
     axis_hash = ordered_session_axis_hash(axis)
     with pytest.raises(ValueError, match="receipt_common_axis_invalid"):
         WatermarkAdvancementReceipt.create(
-            program_hash="b" * 64,
+            program_hash=fixture_digest("watermark b"),
             workspace_id="synthetic",
             product_mode="SYNTHETIC_QA",
             disposition="NO_ADVANCE_EXACT_ZERO_WORK",
@@ -393,7 +403,7 @@ def test_a_zero_work_receipt_cannot_move_the_watermark() -> None:
             new_watermark_end=axis[-1],
             new_common_session_count=999,
             new_common_axis_hash=axis_hash,
-            operational_receipt_hash="c" * 64,
+            operational_receipt_hash=fixture_digest("watermark c"),
         )
 
 
@@ -411,7 +421,7 @@ def test_a_study_window_change_asks_no_owner_for_anything(tmp_path: Path) -> Non
         application = PortfolioResearchApplication(
             workspace_id="synthetic",
             workspace=workspace,
-            manifest_binding=lambda: "a" * 64,
+            manifest_binding=lambda: fixture_digest("watermark workspace manifest"),
             session=session,
             resolver=resolver,
         )
@@ -460,7 +470,7 @@ def test_a_result_can_name_the_task_that_produced_it(tmp_path: Path) -> None:
         application = PortfolioResearchApplication(
             workspace_id="lineage",
             workspace=workspace,
-            manifest_binding=lambda: "a" * 64,
+            manifest_binding=lambda: fixture_digest("watermark workspace manifest"),
             session=session,
             resolver=_Resolver(_resolved()),
         )
@@ -472,7 +482,7 @@ def test_a_result_can_name_the_task_that_produced_it(tmp_path: Path) -> None:
         service = LocalPortfolioResearchService(application=application, lineage=application)
         assert service.originating_task(completed.result.result_hash) == task_id
         assert "--workspace lineage" in service.export(completed.result.result_hash)
-        assert application.originating_task("f" * 64) is None
+        assert application.originating_task(fixture_digest("watermark f")) is None
 
 
 def test_the_service_refuses_an_operation_it_was_not_wired_for(tmp_path: Path) -> None:
@@ -485,7 +495,7 @@ def test_the_service_refuses_an_operation_it_was_not_wired_for(tmp_path: Path) -
             application=PortfolioResearchApplication(
                 workspace_id="unwired",
                 workspace=workspace,
-                manifest_binding=lambda: "a" * 64,
+                manifest_binding=lambda: fixture_digest("watermark workspace manifest"),
                 session=session,
                 resolver=_Resolver(_resolved()),
             )
@@ -493,7 +503,7 @@ def test_the_service_refuses_an_operation_it_was_not_wired_for(tmp_path: Path) -
         with pytest.raises(LocalApplicationError, match="advancement_not_wired"):
             service.advance()
         with pytest.raises(LocalApplicationError, match="task_lineage_not_wired"):
-            service.originating_task("a" * 64)
+            service.originating_task(fixture_digest("watermark a"))
 
 
 # ======================================= the real owners, end to end, isolated
@@ -540,11 +550,11 @@ def test_program_recomputes_its_previous_common_axis() -> None:
             previous_watermark_start=left[0],
             previous_watermark_end=left[-1],
             previous_common_session_count=999,
-            previous_common_axis_hash="f" * 64,
+            previous_common_axis_hash=fixture_digest("watermark f"),
             target_sessions=(),
             source_revision_hash=WatermarkAdvancementProgram.revision_of(coverage),
-            alpha_recipe_hash="a" * 64,
-            risk_recipe_hash="b" * 64,
+            alpha_recipe_hash=fixture_digest("watermark a"),
+            risk_recipe_hash=fixture_digest("watermark b"),
             coverage=coverage,
         )
 
@@ -561,18 +571,18 @@ def test_coverage_after_must_account_for_what_was_materialized() -> None:
         owner_id="risk_surface_producer",
         lane_label="CAUSAL_OPEN_TO_OPEN_RETURN",
         sessions=(date(2024, 1, 2), date(2024, 1, 3), date(2024, 1, 4)),
-        identity_hash="b" * 64,
+        identity_hash=fixture_digest("watermark b"),
         reachable_end=date(2024, 1, 10),
     )
     with pytest.raises(ValueError, match="lane_coverage_after_unaccounted"):
         DomainLaneReceipt.create(
-            program_hash="c" * 64,
+            program_hash=fixture_digest("watermark c"),
             lane="RISK",
             owner_id="risk_surface_producer",
             disposition="ADVANCED",
             requested_sessions=(date(2024, 1, 3), date(2024, 1, 4)),
             materialized_sessions=(date(2024, 1, 3),),
-            produced_identities=("d" * 64,),
+            produced_identities=(fixture_digest("watermark d"),),
             work=LaneWork(risk_updates=1),
             coverage_before=before,
             coverage_after=after,

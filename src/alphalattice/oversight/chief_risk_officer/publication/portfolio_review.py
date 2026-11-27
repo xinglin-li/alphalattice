@@ -23,7 +23,13 @@ from alphalattice.evidence.alternative_evidence.publication.artifacts import (
     AlternativeEvidenceArtifactStore,
     AlternativeEvidencePublicationError,
 )
-from alphalattice.kernel.identity import integrity_sha256
+from alphalattice.kernel.identity import (
+    blake3_filename,
+    blake3_from_filename,
+    blake3_hex,
+    integrity_blake3,
+    tagged_blake3,
+)
 from alphalattice.oversight.chief_risk_officer.decision.portfolio_review import (
     OpenIssueState,
     PortfolioReviewDossier,
@@ -144,7 +150,13 @@ class _Register(BaseModel):  # type: ignore[misc]
     def indexed(self) -> tuple[date, str]:
         if not self.fresh:
             return _day(self.cutoff), _CARRIED
-        return _day(self.cutoff), (self.review_basis or "unbased")[:16]
+        basis = "unbased" if self.review_basis is None else _basis_tag(self.review_basis)
+        return _day(self.cutoff), basis
+
+
+def _basis_tag(basis: str) -> str:
+    """Use a portable, sixteen-character prefix of the verified digest payload."""
+    return blake3_hex(basis)[:16]
 
 
 def _day(moment: datetime) -> date:
@@ -153,7 +165,7 @@ def _day(moment: datetime) -> date:
 
 def _digest(entry: _Register) -> str:
     content = json.dumps(entry.model_dump(mode="json", exclude={"digest"}), sort_keys=True)
-    return integrity_sha256(content.encode("utf-8")).hexdigest()
+    return tagged_blake3(integrity_blake3(content.encode("utf-8")))
 
 
 def _fold(
@@ -295,16 +307,25 @@ class PortfolioReviewPublicationService:
         without its record is read from its receipt (H9), and the register is
         settled from the first such fresh review."""
         if self._index is None:
-            names = {path.stem for path in (self.store.root / _PUBLICATION_CATEGORY).glob("*.json")}
+            names = set(self.publication_hashes())
             directory = self.store.root / _REGISTER_CATEGORY
             recorded = (
-                {path.stem for path in directory.glob("*.json")} if directory.is_dir() else set()
+                {
+                    digest
+                    for path in directory.glob("*.json")
+                    if (digest := blake3_from_filename(path.stem)) is not None
+                }
+                if directory.is_dir()
+                else set()
             )
             index: dict[str, tuple[date, str]] = {}
             days = directory / _REGISTER_DAYS
             for path in days.iterdir() if days.is_dir() else ():
                 day, _, rest = path.name.partition(".")
-                tag, _, publication_hash = rest.partition(".")
+                tag, _, stem = rest.partition(".")
+                publication_hash = blake3_from_filename(stem)
+                if publication_hash is None:
+                    continue
                 try:
                     index[publication_hash] = (date.fromisoformat(day), tag)
                 except ValueError:
@@ -331,7 +352,9 @@ class PortfolioReviewPublicationService:
     def _load(self, publication_hash: str) -> _Register:
         entry = self._held.get(publication_hash)
         if entry is None:
-            path = self.store.root / _REGISTER_CATEGORY / f"{publication_hash}.json"
+            path = (
+                self.store.root / _REGISTER_CATEGORY / f"{blake3_filename(publication_hash)}.json"
+            )
             entry = _Register.model_validate_json(path.read_bytes())
             if entry.publication_hash != publication_hash or entry.digest != _digest(entry):
                 raise AlternativeEvidencePublicationError(
@@ -432,7 +455,7 @@ class PortfolioReviewPublicationService:
     def _write_register(self, entry: _Register) -> None:
         directory = self.store.root / _REGISTER_CATEGORY
         directory.mkdir(parents=True, exist_ok=True)
-        target = directory / f"{entry.publication_hash}.json"
+        target = directory / f"{blake3_filename(entry.publication_hash)}.json"
         staged = target.with_name(f".{target.name}.{os.getpid()}.tmp")
         staged.write_bytes(entry.sealed().model_dump_json().encode("utf-8"))
         os.replace(staged, target)
@@ -443,7 +466,7 @@ class PortfolioReviewPublicationService:
         day, tag = entry.indexed()
         days = self.store.root / _REGISTER_CATEGORY / _REGISTER_DAYS
         days.mkdir(parents=True, exist_ok=True)
-        (days / f"{day.isoformat()}.{tag}.{entry.publication_hash}").touch()
+        (days / f"{day.isoformat()}.{tag}.{blake3_filename(entry.publication_hash)}").touch()
 
     def find_for_basis(
         self, basis: str, *, open_issues: tuple[PortfolioReviewOpenIssue, ...]
@@ -465,7 +488,7 @@ class PortfolioReviewPublicationService:
         """
         fresh = [
             value
-            for _, names in self._fresh(basis[:16])
+            for _, names in self._fresh(_basis_tag(basis))
             for value in map(self._load, names)
             if value.review_basis == basis
         ]
@@ -588,11 +611,17 @@ class PortfolioReviewPublicationService:
         directory = self.store.root / _PUBLICATION_CATEGORY
         if not directory.is_dir():
             return ()
-        return tuple(sorted(path.stem for path in directory.glob("*.json")))
+        return tuple(
+            sorted(
+                digest
+                for path in directory.glob("*.json")
+                if (digest := blake3_from_filename(path.stem)) is not None
+            )
+        )
 
     def find_for_review_key(self, review_key: str) -> PortfolioReviewView | None:
         """The exact prior answer to this question, or nothing."""
-        path = self.store.root / _REVIEW_KEY_CATEGORY / f"{review_key}.json"
+        path = self.store.root / _REVIEW_KEY_CATEGORY / f"{blake3_filename(review_key)}.json"
         if not path.is_file():
             return None
         recorded = json.loads(path.read_text(encoding="utf-8"))
@@ -604,7 +633,11 @@ class PortfolioReviewPublicationService:
         return view if view.under_installed_policy else None
 
     def _write_review_key(self, publication: PortfolioReviewPublication) -> None:
-        path = self.store.root / _REVIEW_KEY_CATEGORY / f"{publication.review_key}.json"
+        path = (
+            self.store.root
+            / _REVIEW_KEY_CATEGORY
+            / f"{blake3_filename(publication.review_key)}.json"
+        )
         path.parent.mkdir(parents=True, exist_ok=True)
         payload = json.dumps(
             {

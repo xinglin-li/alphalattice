@@ -41,6 +41,7 @@ from alphalattice.capabilities.domain_contracts.sector_treatment import (
     SectorHistoryTreatment,
 )
 from alphalattice.capabilities.quant.sector_history import sector_positions as sector_runs
+from alphalattice.kernel.identity import BLAKE3_PATTERN
 
 from ..contracts import (
     FloatArray,
@@ -101,11 +102,11 @@ class SectorTargetRecipe(_Contract):
     """Below this many finite constituents a sector-session is unavailable
     rather than a mean over a sample too small to call a sector."""
 
-    sector_revision: str = Field(pattern=r"^[0-9a-f]{64}$")
+    sector_revision: str = Field(pattern=BLAKE3_PATTERN)
     sector_source: str = Field(min_length=1, max_length=96)
     sector_history_treatment: SectorHistoryTreatment = "CURRENT_CLASSIFICATION_BACKFILLED"
     sector_point_in_time_qualified: Literal[False] = False
-    recipe_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
+    recipe_hash: str = Field(pattern=BLAKE3_PATTERN)
 
     @model_validator(mode="after")  # type: ignore[untyped-decorator]
     def validate_identity(self) -> Self:
@@ -327,8 +328,8 @@ class SectorTargetEvidence(_Contract):
     """Embedded, not referenced: the recipe is small, has no second consumer,
     and embedding it makes the evidence revalidate its method on read."""
 
-    causal_outcome_snapshot_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
-    outcome_method_binding_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
+    causal_outcome_snapshot_hash: str = Field(pattern=BLAKE3_PATTERN)
+    outcome_method_binding_hash: str = Field(pattern=BLAKE3_PATTERN)
     maturity_lag_sessions: int = Field(ge=2)
     actual_session_span: int = Field(ge=2)
     forecast_horizon_sessions: int = Field(ge=1)
@@ -337,16 +338,16 @@ class SectorTargetEvidence(_Contract):
     exit_sessions: tuple[date, ...] = Field(min_length=1)
     target_available_sessions: tuple[date, ...] = Field(min_length=1)
     ordered_sectors: tuple[str, ...] = Field(min_length=1)
-    ordered_listing_ids_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
-    ordered_sessions_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
-    ordered_sectors_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
+    ordered_listing_ids_hash: str = Field(pattern=BLAKE3_PATTERN)
+    ordered_sessions_hash: str = Field(pattern=BLAKE3_PATTERN)
+    ordered_sectors_hash: str = Field(pattern=BLAKE3_PATTERN)
     sector_target_values: tuple[tuple[float | None, ...], ...] = Field(min_length=1)
     economic_diagnostic_values: tuple[tuple[float | None, ...], ...] = Field(min_length=1)
     available: tuple[tuple[bool, ...], ...] = Field(min_length=1)
     unavailable_reasons: tuple[tuple[str | None, ...], ...] = Field(min_length=1)
-    sector_target_identity: str = Field(pattern=r"^[0-9a-f]{64}$")
-    economic_diagnostic_identity: str = Field(pattern=r"^[0-9a-f]{64}$")
-    evidence_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
+    sector_target_identity: str = Field(pattern=BLAKE3_PATTERN)
+    economic_diagnostic_identity: str = Field(pattern=BLAKE3_PATTERN)
+    evidence_hash: str = Field(pattern=BLAKE3_PATTERN)
 
     @model_validator(mode="after")  # type: ignore[untyped-decorator]
     def validate_identity(self) -> Self:

@@ -14,7 +14,6 @@ from uuid import UUID
 from pydantic import BaseModel
 
 from alphalattice.capabilities.domain_contracts.domain.errors import DomainValidationError
-from alphalattice.kernel.identity import integrity_sha256
 
 
 def _normalize(value: Any) -> Any:
@@ -87,18 +86,6 @@ def canonical_json_bytes(value: Any) -> bytes:
         separators=(",", ":"),
     )
     return text.encode("utf-8")
-
-
-def sha256_hex(value: bytes) -> str:
-    """Hash exact bytes with SHA-256.
-
-    Args:
-        value: Exact byte sequence to hash.
-
-    Returns:
-        Lowercase hexadecimal SHA-256 digest.
-    """
-    return integrity_sha256(value).hexdigest()
 
 
 def _strict_pairs(pairs: list[tuple[str, Any]]) -> dict[str, Any]:

@@ -15,7 +15,6 @@ from alphalattice.capabilities.domain_contracts.domain.models import TypedFailur
 from alphalattice.capabilities.domain_contracts.domain.serialization import (
     canonical_json_bytes,
     parse_model,
-    sha256_hex,
 )
 from alphalattice.capabilities.knowledge.contracts import (
     ArgumentValue,
@@ -42,6 +41,7 @@ from alphalattice.capabilities.knowledge.enums import (
     ResourceNamespace,
 )
 from alphalattice.capabilities.knowledge.errors import KnowledgeError, knowledge_failure
+from alphalattice.kernel.identity import blake3_digest
 
 type ResourceKey = tuple[ResourceKind, str, str]
 
@@ -185,7 +185,7 @@ class SystemResourceCatalog:
                     code="knowledge.resource_integrity",
                     cause_chain=_cause_chain(exc),
                 ) from exc
-            if sha256_hex(data) != entry.file_sha256:
+            if blake3_digest(data) != entry.file_digest:
                 raise KnowledgeError(
                     f"declared resource byte hash differs: {entry.relative_path}",
                     code="knowledge.resource_integrity",
@@ -202,7 +202,7 @@ class SystemResourceCatalog:
                     f"declared resource identity differs: {entry.relative_path}",
                     code="knowledge.resource_integrity",
                 )
-            if sha256_hex(canonical_json_bytes(resource)) != entry.logical_hash:
+            if blake3_digest(canonical_json_bytes(resource)) != entry.logical_hash:
                 raise KnowledgeError(
                     f"declared resource logical hash differs: {entry.relative_path}",
                     code="knowledge.resource_integrity",

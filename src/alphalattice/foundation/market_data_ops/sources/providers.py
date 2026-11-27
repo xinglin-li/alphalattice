@@ -30,7 +30,7 @@ from alphalattice.foundation.market_data_ops.sources.price_integrity import (
     validate_split_adjusted_history,
 )
 from alphalattice.kernel.egress import EgressRefusal, HttpSource, require_network, yahoo_session
-from alphalattice.kernel.identity import identity_sha256
+from alphalattice.kernel.identity import identity_blake3, tagged_blake3
 
 YFINANCE_PRICE_POLICY: Mapping[str, object] = {
     "actions": True,
@@ -38,9 +38,11 @@ YFINANCE_PRICE_POLICY: Mapping[str, object] = {
     "repair": True,
     "split_integrity": "action-aligned-open-ratio-and-unexplained-fivefold-discontinuity",
 }
-YFINANCE_PRICE_POLICY_HASH = identity_sha256(
-    json.dumps(YFINANCE_PRICE_POLICY, sort_keys=True, separators=(",", ":")).encode("utf-8")
-).hexdigest()
+YFINANCE_PRICE_POLICY_HASH = tagged_blake3(
+    identity_blake3(
+        json.dumps(YFINANCE_PRICE_POLICY, sort_keys=True, separators=(",", ":")).encode("utf-8")
+    )
+)
 
 
 class ProviderFetchError(RuntimeError):
@@ -609,9 +611,11 @@ class YFinanceMarketDataProvider:
             provider_symbol=provider_symbol,
             sector_name=normalized["sector"],
             sector_key=normalized["sectorKey"],
-            payload_hash=identity_sha256(
-                json.dumps(normalized, sort_keys=True, separators=(",", ":")).encode("utf-8")
-            ).hexdigest(),
+            payload_hash=tagged_blake3(
+                identity_blake3(
+                    json.dumps(normalized, sort_keys=True, separators=(",", ":")).encode("utf-8")
+                )
+            ),
         )
 
 

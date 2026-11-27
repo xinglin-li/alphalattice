@@ -30,7 +30,7 @@ from __future__ import annotations
 import numpy as np
 import numpy.typing as npt
 
-from alphalattice.kernel.identity import identity_sha256
+from alphalattice.kernel.identity import identity_blake3, tagged_blake3
 
 type FloatArray = npt.NDArray[np.float64]
 
@@ -130,11 +130,11 @@ def score_values_identity(values: FloatArray) -> str:
     convention that happens to agree today.
     """
     contiguous = np.ascontiguousarray(values, dtype=np.float64)
-    digest = identity_sha256()
+    digest = identity_blake3()
     digest.update(str(contiguous.shape).encode("utf-8"))
     digest.update(b"float64")
     digest.update(contiguous.tobytes(order="C"))
-    return digest.hexdigest()
+    return tagged_blake3(digest)
 
 
 def finite_listing_counts(values: FloatArray) -> npt.NDArray[np.int64]:

@@ -27,7 +27,7 @@ from alphalattice.foundation.feature_engine.contracts import (
 )
 from alphalattice.kernel import storage
 from alphalattice.kernel.execution import interruptible
-from alphalattice.kernel.identity import identity_sha256
+from alphalattice.kernel.identity import identity_blake3, tagged_blake3
 
 PANEL_IDENTITY_COLUMNS = (
     "manifest_revision",
@@ -112,7 +112,7 @@ def _row_hash_sql(*, identity_basis: str, factors: tuple[str, ...], stamped: boo
         + ", ".join(f'{factor_id} := "{factor_id}"' for factor_id in factors)
         + ")",
     ]
-    return f"sha256(to_json(struct_pack({', '.join(packed)})))"
+    return f"system.main.alphalattice_blake3(to_json(struct_pack({', '.join(packed)})))"
 
 
 def panel_rows_match_their_hashes(
@@ -268,7 +268,7 @@ def _in_batches(table: pa.Table) -> pa.Table:
 
 def panel_schema_hash(schema: pa.Schema) -> str:
     """Return the unchanged logical schema identity used by snapshots."""
-    return identity_sha256(str(schema.remove_metadata()).encode("utf-8")).hexdigest()
+    return tagged_blake3(identity_blake3(str(schema.remove_metadata()).encode("utf-8")))
 
 
 def panel_chunk_hash(

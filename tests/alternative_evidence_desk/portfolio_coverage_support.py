@@ -38,6 +38,7 @@ from alphalattice.oversight.chief_risk_officer.portfolio_evidence.contracts impo
     seal_portfolio_evidence_contract,
 )
 from alphalattice.protocols.actor_execution import ActorKind
+from tests._support.identity_fixtures import fixture_digest
 from tests.alternative_evidence_desk.planted_corpus import (
     _NOW,
     PLANTED_CLAIMS,
@@ -80,7 +81,7 @@ def coverage_registry(entities: tuple[str, ...] = COVERAGE_ENTITIES) -> SecIssue
             )
             for index, entity in enumerate(entities, start=1)
         ),
-        source_content_hash="2" * 64,
+        source_content_hash=fixture_digest("portfolio coverage registry bytes"),
     )
 
 

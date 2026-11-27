@@ -11,8 +11,8 @@ ENTRY = SectorRevisionEntry(
     provider="fixture",
     provider_symbol="AAPL",
     sector_name="Technology",
-    payload_hash="a" * 64,
-    evidence_hash="b" * 64,
+    payload_hash="blake3:" + "a" * 64,
+    evidence_hash="blake3:" + "b" * 64,
 )
 
 

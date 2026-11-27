@@ -2,12 +2,12 @@
 
 from __future__ import annotations
 
-import re
 from dataclasses import dataclass
 from datetime import date, datetime
 from typing import Literal
 
 from alphalattice.capabilities.domain_contracts.identity import canonical_hash
+from alphalattice.kernel.identity import is_blake3
 
 type QualificationDomain = Literal["MARKET_DATA", "BASE_FEATURES", "SECTOR_REFERENCE"]
 FEATURE_QUALIFICATION_DOMAINS: tuple[QualificationDomain, ...] = (
@@ -25,7 +25,7 @@ class FeatureCandidateRecheck:
 
     def __post_init__(self) -> None:
         if (
-            re.fullmatch(r"[0-9a-f]{64}", self.parent_manifest_revision) is None
+            not is_blake3(self.parent_manifest_revision)
             or not self.listing_ids
             or self.listing_ids != tuple(sorted(set(self.listing_ids)))
             or any(not value for value in self.listing_ids)

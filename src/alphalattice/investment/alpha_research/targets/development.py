@@ -48,6 +48,7 @@ from alphalattice.investment.alpha_research.targets.standardization import (
     RANK_GAUSS_STANDARDIZATION_ID,
     ROBUST_Z_STANDARDIZATION_ID,
 )
+from alphalattice.kernel.identity import BLAKE3_PATTERN
 
 
 class AlphaDevelopmentTargetRecipe(BaseModel):  # type: ignore[misc]
@@ -67,7 +68,7 @@ class AlphaDevelopmentTargetRecipe(BaseModel):  # type: ignore[misc]
     standardization_id: str = Field(min_length=1, max_length=128)
     """The installed standardization this recipe selects, stated rather than derived."""
 
-    recipe_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
+    recipe_hash: str = Field(pattern=BLAKE3_PATTERN)
 
     @classmethod
     def create(cls, *, policy: AlphaTargetPolicy, standardization_id: str) -> Self:
@@ -150,14 +151,14 @@ class AlphaDevelopmentTargetFoldRecord(BaseModel):  # type: ignore[misc]
 
     kind: Literal["AlphaDevelopmentTargetFoldRecord"] = "AlphaDevelopmentTargetFoldRecord"
     fold_index: int = Field(ge=0)
-    fold_commitment_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
+    fold_commitment_hash: str = Field(pattern=BLAKE3_PATTERN)
     training_dtype: str = Field(min_length=1, max_length=32)
     training_shape: tuple[int, ...] = Field(min_length=1)
-    training_value_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
+    training_value_hash: str = Field(pattern=BLAKE3_PATTERN)
     validation_dtype: str = Field(min_length=1, max_length=32)
     validation_shape: tuple[int, ...] = Field(min_length=1)
-    validation_value_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
-    record_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
+    validation_value_hash: str = Field(pattern=BLAKE3_PATTERN)
+    record_hash: str = Field(pattern=BLAKE3_PATTERN)
 
     @classmethod
     def create(
@@ -253,16 +254,16 @@ class AlphaDevelopmentTargetMaterializationBinding(BaseModel):  # type: ignore[m
     kind: Literal["AlphaDevelopmentTargetMaterializationBinding"] = (
         "AlphaDevelopmentTargetMaterializationBinding"
     )
-    recipe_binding_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
+    recipe_binding_hash: str = Field(pattern=BLAKE3_PATTERN)
     standardization_id: str = Field(min_length=1, max_length=128)
     ordered_base_feature_ids: tuple[str, ...] = Field(min_length=1)
     fold_records: tuple[AlphaDevelopmentTargetFoldRecord, ...] = Field(min_length=1)
     training_row_count: int = Field(ge=1)
-    transformed_target_value_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
+    transformed_target_value_hash: str = Field(pattern=BLAKE3_PATTERN)
     """Derived from the ordered fold records, so it is a summary of them rather
     than a second, independently computable opinion about the same values."""
 
-    binding_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
+    binding_hash: str = Field(pattern=BLAKE3_PATTERN)
 
     @staticmethod
     def value_hash_for(records: tuple[AlphaDevelopmentTargetFoldRecord, ...]) -> str:

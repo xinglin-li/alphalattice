@@ -48,8 +48,9 @@ from alphalattice.investment.risk_research.surfaces.artifacts import (
     RiskArtifactError,
     RiskArtifactStore,
 )
+from alphalattice.kernel.identity import BLAKE3_PATTERN, blake3_from_filename
 
-_HASH = r"^[0-9a-f]{64}$"
+_HASH = BLAKE3_PATTERN
 
 DEVELOPMENT_SURFACE_CATEGORY = "development/covariance-surfaces"
 DEVELOPMENT_DIAGNOSTICS_CATEGORY = "development/covariance-diagnostics"
@@ -368,7 +369,7 @@ def covariance_chunks(
             if path.suffix != ".json":
                 continue
             checkpoint = RiskDevelopmentCheckpoint.model_validate_json(path.read_bytes())
-            if path.stem != checkpoint.execution_key:
+            if blake3_from_filename(path.stem) != checkpoint.execution_key:
                 raise RiskArtifactError("risk_research.development_checkpoint_scope_mismatch")
             for chunk, axis in checkpoint.chunks_with_axes():
                 packed = store._path("covariance/chunks", chunk.content_hash, "bin")

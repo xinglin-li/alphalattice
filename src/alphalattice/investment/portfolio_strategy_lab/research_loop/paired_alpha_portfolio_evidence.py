@@ -18,8 +18,9 @@ from alphalattice.capabilities.portfolio_backtesting.metrics import (
 from alphalattice.investment.portfolio_strategy_lab.contracts import (
     PortfolioLabContract,
 )
+from alphalattice.kernel.identity import BLAKE3_PATTERN
 
-_HASH = r"^[0-9a-f]{64}$"
+_HASH = BLAKE3_PATTERN
 
 type PortfolioEffectDimension = Literal[
     "R0_HYPERPARAMETER_SELECTION",

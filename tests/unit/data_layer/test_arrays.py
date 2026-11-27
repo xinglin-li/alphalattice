@@ -3,20 +3,22 @@ its profile, and what start does with a staged body."""
 
 from __future__ import annotations
 
-import hashlib
 import json
 import struct
 from pathlib import Path
 from typing import Any
+from uuid import uuid4
 
 import numpy as np
 import pandas  # noqa: F401  # Arrow's NumPy conversion loads it: at collection, not in a test
 import pyarrow as pa
 import pyarrow.parquet as pq
 import pytest
+from blake3 import blake3
 
 from alphalattice.capabilities.data.errors import DataError
 from alphalattice.foundation.data_layer import arrays
+from alphalattice.kernel.identity import blake3_filename
 
 TEST_SOURCE = "src/alphalattice/foundation/data_layer/arrays.py"
 NAN = np.frombuffer(struct.pack("<Q", 0x7FF8000000000123), dtype="<f8")[0]  # a NaN with a payload
@@ -54,13 +56,14 @@ def test_every_lane_kind_reads_back_bit_exact(tmp_path: Path, kind: str) -> None
     a document cites, read back flat as columns and whole as packed bytes."""
     columns = KINDS[kind]
     array = arrays.describe(columns)
-    assert array.content_digest == hashlib.sha256(_packed(columns)).hexdigest()
+    packed = _packed(columns)
+    assert array.content_digest == "blake3:" + blake3(packed).hexdigest()
     _path, read = _kept(tmp_path, array)
     back = arrays.read_columns(tmp_path, read, array.content_digest)
     assert {name: (v.dtype.str, v.tobytes()) for name, v in back.items()} == {
         name: (v.dtype.str, v.tobytes()) for name, v in columns.items()
     }
-    assert arrays.read_packed(tmp_path, read, array.content_digest) == _packed(columns)
+    assert arrays.read_packed(tmp_path, read, array.content_digest) == packed
     with pytest.raises(DataError) as refused:
         arrays.read_packed(tmp_path, read, array.content_digest, packed_only=True)
     assert refused.value.failure.code == "data_layer.array_profile_mismatch"
@@ -157,11 +160,8 @@ def test_a_lane_file_read_in_place_proves_its_name(tmp_path: Path, suffix: str) 
     """A carried lane file reads back under its name and is refused once its bytes change."""
     lane = np.array([1.0, -0.0])
     array = arrays.describe({"value": lane})
-    path = tmp_path / f"{array.content_digest}{suffix}"
-    if suffix == ".bin":
-        path.write_bytes(lane.tobytes())
-    else:
-        _rewrite(path, lane, [2])
+    path = tmp_path / f"{blake3_filename(array.content_digest)}{suffix}"
+    path.write_bytes(lane.tobytes() if suffix == ".bin" else array.body())
     found = arrays.read_file(path)
     assert (found if isinstance(found, bytes) else found["value"].tobytes()) == lane.tobytes()
     if suffix == ".bin":
@@ -175,14 +175,15 @@ def test_a_lane_file_read_in_place_proves_its_name(tmp_path: Path, suffix: str) 
 
 @pytest.mark.proves("data_layer.array_start_places_only_a_committed_staged_body")
 @pytest.mark.parametrize(
-    ("committed", "placed"),
+    ("kind", "committed"),
     [
-        pytest.param(False, False, id="its profile never committed: collected"),
-        pytest.param(True, True, id="its profile committed: placed"),
+        pytest.param(arrays.TYPE, False, id="array not committed"),
+        pytest.param(arrays.TYPE, True, id="array committed"),
+        pytest.param("research_input", True, id="UUID-named input committed"),
     ],
 )
 def test_start_places_a_staged_body_only_when_its_profile_committed(
-    tmp_path: Path, committed: bool, placed: bool, monkeypatch: pytest.MonkeyPatch
+    tmp_path: Path, kind: str, committed: bool, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     """A body a crash left staged goes into place when the log holds its profile, its writer's
     BLAKE3 identity recorded with the file-trust port, and is handed to the collector when it
@@ -191,11 +192,14 @@ def test_start_places_a_staged_body_only_when_its_profile_committed(
     monkeypatch.setattr(
         arrays, "record_sealed", lambda path, digest: sealed.append((path.name, digest))
     )
-    array = arrays.describe({"value": np.array([1.0, -0.0])})
-    staged = tmp_path / "blobs" / f".{array.artifact_id}.4242{arrays.STAGED}"
+    artifact = "1" * 64 if kind == arrays.TYPE else str(uuid4())
+    staged = tmp_path / "blobs" / f".{artifact}.4242{arrays.STAGED}"
     staged.parent.mkdir()
-    staged.write_bytes(array.body())
-    rows = [("present",)] if committed else []
+    payload = b"staged body"
+    staged.write_bytes(payload)
+    digest = "blake3:" + "2" * 64
+    seal = f"blake3:{artifact}" if kind == arrays.TYPE else digest
+    rows = [("present", digest, kind)] if committed else []
     collected: list[str] = []
 
     def collect(handle: str) -> bool:
@@ -204,12 +208,14 @@ def test_start_places_a_staged_body_only_when_its_profile_committed(
         return True
 
     report = arrays.settle(tmp_path, lambda _sql, _args: rows, collect)
-    handle = f"blobs/{array.artifact_id}" if placed else f"blobs/{staged.name}"
+    handle = f"blobs/{artifact}" if committed else f"blobs/{staged.name}"
     assert report == {
-        "placed": [handle] if placed else [],
-        "collected": [] if placed else [handle],
+        "placed": [handle] if committed else [],
+        "collected": [] if committed else [handle],
         "waiting": [],
     }
     left = [path.name for path in staged.parent.iterdir()]
-    assert left == ([array.artifact_id] if placed else [])
-    assert sealed == ([(array.artifact_id, f"blake3:{array.artifact_id}")] if placed else [])
+    assert left == ([artifact] if committed else [])
+    assert sealed == ([(artifact, seal)] if committed else [])
+    if committed:
+        assert (tmp_path / handle).read_bytes() == payload

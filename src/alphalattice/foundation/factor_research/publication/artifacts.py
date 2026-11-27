@@ -10,7 +10,13 @@ from typing import Literal
 
 from alphalattice.capabilities.domain_contracts.identity import canonical_hash
 from alphalattice.control.workspace_runtime.artifacts import ArtifactDescriptor
-from alphalattice.kernel.identity import identity_sha256, integrity_sha256
+from alphalattice.kernel.identity import (
+    blake3_filename,
+    blake3_from_filename,
+    integrity_blake3,
+    is_blake3,
+    tagged_blake3,
+)
 
 type FactorPipelineArtifactKind = Literal[
     "deterministic-evidence",
@@ -75,12 +81,18 @@ class FactorResearchArtifactStore:
 
     @staticmethod
     def _require_hash(value: str) -> None:
-        if len(value) != 64 or any(character not in "0123456789abcdef" for character in value):
-            raise ValueError("Factor Research content identity is not SHA-256")
+        if not is_blake3(value):
+            raise ValueError("factor_research.artifact_identity_invalid")
 
     def _path(self, category: str, content_hash: str, suffix: str) -> Path:
-        self._require_hash(content_hash)
-        return self.root / category / f"{content_hash}.{suffix}"
+        return self.root / category / f"{blake3_filename(content_hash)}.{suffix}"
+
+    @staticmethod
+    def _file_identity(path: Path) -> str:
+        identity = blake3_from_filename(path.stem)
+        if identity is None:
+            raise ValueError("factor_research.artifact_name_invalid")
+        return identity
 
     @classmethod
     def uri(cls, category: str, content_hash: str) -> str:
@@ -131,7 +143,6 @@ class FactorResearchArtifactStore:
         content_hash: str,
         identity_field: str,
     ) -> ArtifactDescriptor:
-        self._require_hash(content_hash)
         if payload.get(identity_field) != content_hash:
             raise ValueError("Factor Research JSON identity field is invalid")
         identity = dict(payload)
@@ -148,7 +159,7 @@ class FactorResearchArtifactStore:
         return ArtifactDescriptor(
             kind=f"factor-research-{category.replace('/', '-')}",
             content_hash=content_hash,
-            metadata_hash=identity_sha256(serialized).hexdigest(),
+            metadata_hash=tagged_blake3(integrity_blake3(serialized)),
             uri=self.uri(category, content_hash),
         )
 
@@ -217,7 +228,7 @@ class FactorResearchArtifactStore:
         root = self.root / category
         for path in sorted(root.glob("*.json")) if root.is_dir() else ():
             payload = self._load_identity_json(
-                uri=self.uri(category, path.stem),
+                uri=self.uri(category, self._file_identity(path)),
                 category=category,
                 identity_field=identity_field,
             )
@@ -250,7 +261,7 @@ class FactorResearchArtifactStore:
         root = self.root / category
         for path in sorted(root.glob("*.json")) if root.is_dir() else ():
             payload = self._load_identity_json(
-                uri=self.uri(category, path.stem),
+                uri=self.uri(category, self._file_identity(path)),
                 category=category,
                 identity_field=identity_field,
             )
@@ -286,7 +297,7 @@ class FactorResearchArtifactStore:
         root = self.root / category
         for path in sorted(root.glob("*.json")) if root.is_dir() else ():
             payload = self._load_identity_json(
-                uri=self.uri(category, path.stem),
+                uri=self.uri(category, self._file_identity(path)),
                 category=category,
                 identity_field=identity_field,
             )
@@ -332,7 +343,8 @@ class FactorResearchArtifactStore:
         root = self.root / "outcomes" / "manifests"
         values: list[tuple[dict[str, object], ArtifactDescriptor]] = []
         for path in sorted(root.glob("*.json")) if root.is_dir() else ():
-            uri = self.uri("outcomes/manifests", path.stem)
+            content_hash = self._file_identity(path)
+            uri = self.uri("outcomes/manifests", content_hash)
             payload = self.load_outcome_manifest(uri)
             serialized = self._json_bytes(payload)
             values.append(
@@ -340,8 +352,8 @@ class FactorResearchArtifactStore:
                     payload,
                     ArtifactDescriptor(
                         kind="factor-research-outcomes-manifests",
-                        content_hash=path.stem,
-                        metadata_hash=integrity_sha256(serialized).hexdigest(),
+                        content_hash=content_hash,
+                        metadata_hash=tagged_blake3(integrity_blake3(serialized)),
                         uri=uri,
                     ),
                 )
@@ -362,7 +374,7 @@ class FactorResearchArtifactStore:
         root = self.root / "outcomes" / "reuse-receipts"
         return tuple(
             self._load_identity_json(
-                uri=self.uri("outcomes/reuse-receipts", path.stem),
+                uri=self.uri("outcomes/reuse-receipts", self._file_identity(path)),
                 category="outcomes/reuse-receipts",
                 identity_field="receipt_hash",
             )
@@ -559,7 +571,7 @@ class FactorResearchArtifactStore:
         """
         admission_hash = str(payload["submission_hash"])
         self._require_hash(admission_hash)
-        category = f"research-desk/foundation-confirmations/{admission_hash}"
+        category = f"research-desk/foundation-confirmations/{blake3_filename(admission_hash)}"
         descriptor = self._publish_identity_json(
             category=category,
             payload=payload,

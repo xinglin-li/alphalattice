@@ -52,6 +52,7 @@ from alphalattice.protocols.actor_execution.bundles import (
 from tests._support.alternative_evidence_desk_fixtures import (
     review_on_the_store as review_on_the_store,
 )
+from tests._support.identity_fixtures import fixture_digest
 from tests.alternative_evidence_desk.document_intelligence_support import (
     _obligation,
     _open_recorded,
@@ -355,9 +356,9 @@ def test_the_review_header_keeps_positions_date_apart_from_evidence_clock(host_l
 
     subject = PortfolioUpdateReviewSubject(
         update_task_id="00000000-0000-4000-8000-000000000001",
-        update_publication_hash="a" * 64,
-        position_hash="b" * 64,
-        checkpoint_hash="c" * 64,
+        update_publication_hash=fixture_digest("update-publication"),
+        position_hash=fixture_digest("positions"),
+        checkpoint_hash=fixture_digest("checkpoint"),
         position_basis="OBSERVED_RESEARCH_ENTRY",
         strategy_package_id="test",
         observed_through="2026-10-16",

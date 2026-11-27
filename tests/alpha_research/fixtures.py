@@ -10,6 +10,7 @@ import numpy as np
 
 from alphalattice.capabilities.domain_contracts.domain.enums import DataValidityClass
 from alphalattice.capabilities.domain_contracts.identity import canonical_hash
+from alphalattice.capabilities.domain_contracts.sealing import seal_model
 from alphalattice.capabilities.validation.contracts import (
     RebalanceEvidencePoint,
     ResearchSplitSpec,
@@ -25,7 +26,6 @@ from alphalattice.investment.alpha_research.experiments.bindings import (
     build_alpha_experiment_request,
 )
 from alphalattice.investment.alpha_research.experiments.contracts import (
-    AlphaCandidateRole,
     AlphaExperimentCard,
     AlphaExperimentRequest,
     AlphaFoldCommitment,
@@ -45,7 +45,6 @@ from tests.alpha_research.registered_catalog import (
     load_registered_alpha_catalog,
 )
 
-FIXTURE_FOUNDATION_HASH = "390ca69c479b0e7f9d2b02e057c0e45b96d1df60f7d8e7e0e25334a161ee7a83"
 FIXTURE_FACTOR_IDS = (
     "dollar_volume_252",
     "dollar_volume_21",
@@ -72,53 +71,10 @@ FIXTURE_LISTING_IDS = tuple(f"listing-{index:03d}" for index in range(100))
 
 
 def registered_test_cards() -> tuple[AlphaExperimentCard, ...]:
-    rows = (
-        {
-            "kind": "AlphaExperimentCard",
-            "candidate_id": "benchmark.zero-forecast",
-            "source_card_hash": "1" * 64,
-            "family_id": "zero_forecast",
-            "role": AlphaCandidateRole.BENCHMARK,
-            "feature_shape": "NONE",
-            "factor_count": 0,
-            "secondary_feature_preprocessing": False,
-            "package_identity": "alpha-research-deterministic",
-        },
-        {
-            "kind": "AlphaExperimentCard",
-            "candidate_id": "benchmark.historical-mean",
-            "source_card_hash": "2" * 64,
-            "family_id": "historical_mean",
-            "role": AlphaCandidateRole.BENCHMARK,
-            "feature_shape": "NONE",
-            "factor_count": 0,
-            "secondary_feature_preprocessing": False,
-            "package_identity": "alpha-research-deterministic",
-        },
-        *(
-            {
-                "kind": "AlphaExperimentCard",
-                "candidate_id": candidate_id,
-                "source_card_hash": source_hash * 64,
-                "family_id": "ridge",
-                "role": AlphaCandidateRole.REGULARIZED_ALPHA,
-                "feature_shape": "FROZEN_ORDERED",
-                "factor_count": len(FIXTURE_FACTOR_IDS),
-                "alpha": alpha,
-                "fit_intercept": True,
-                "solver": "svd",
-                "tolerance": 1e-8,
-                "deterministic_seed": 1729,
-                "secondary_feature_preprocessing": False,
-                "package_identity": "scikit-learn==1.9.0",
-            }
-            for candidate_id, source_hash, alpha in (
-                ("model.ridge.alpha-1p0", "3", 1.0),
-                ("model.ridge.alpha-10p0", "4", 10.0),
-            )
-        ),
+    """Build the four approved cards against the synthetic Factor axis."""
+    return load_registered_alpha_catalog(
+        load_initial_candidate_inventory(), ordered_factor_ids=FIXTURE_FACTOR_IDS
     )
-    return tuple(seal_contract(AlphaExperimentCard, value, "card_hash") for value in rows)
 
 
 def _readonly(value: np.ndarray) -> np.ndarray:
@@ -244,7 +200,7 @@ def synthetic_prepared_arrays() -> PreparedAlphaArrays:
 def synthetic_request() -> tuple[AlphaExperimentRequest, object]:
     """The fixture's experiment request over the four-card inventory, with that inventory."""
     inventory = load_initial_candidate_inventory()
-    foundation = _foundation(foundation_hash=FIXTURE_FOUNDATION_HASH)
+    foundation = research_foundation_binding(FIXTURE_FACTOR_IDS)
     cards = load_registered_alpha_catalog(inventory, ordered_factor_ids=FIXTURE_FACTOR_IDS)
     request = build_alpha_experiment_request(
         foundation=foundation,
@@ -254,34 +210,6 @@ def synthetic_request() -> tuple[AlphaExperimentRequest, object]:
         ordered_listing_ids=FIXTURE_LISTING_IDS,
     )
     return request, inventory
-
-
-def _foundation(foundation_hash: str = "9" * 64) -> ResearchFoundationBinding:
-    execution = ResearchDeskExecutionOutcomeRef.model_construct(
-        research_cadence=RebalanceFrequency.DAILY,
-        snapshot_hash="d" * 64,
-        schedule_hash="e" * 64,
-        development_content_hash="f" * 64,
-        sealed_holdout_content_hash="0" * 64,
-        marker_hash="1" * 64,
-        market_as_of="2026-07-31",
-        data_validity_class=DataValidityClass.CURRENT_UNIVERSE_RESEARCH_ONLY,
-    )
-    return ResearchFoundationBinding.model_construct(
-        research_cadence=RebalanceFrequency.DAILY,
-        feature_panel_snapshot_hash="2" * 64,
-        logical_panel_hash="a" * 64,
-        logical_semantic_index_hash="c" * 64,
-        factor_training_outcome_snapshot_hash="3" * 64,
-        factor_screening_result_hash="4" * 64,
-        factor_candidate_slate_hash="5" * 64,
-        research_desk_factor_input_hash="b" * 64,
-        execution_outcome=execution,
-        ordered_factor_ids=FIXTURE_FACTOR_IDS,
-        downstream_factor_research_forbidden=True,
-        secondary_feature_preprocessing_forbidden=True,
-        foundation_hash=foundation_hash,
-    )
 
 
 def _bound_fold(fold: AlphaFoldArrays, foundation: ResearchFoundationBinding) -> AlphaFoldArrays:
@@ -363,7 +291,7 @@ class _ArrayWorkspace:
 def _plan_and_workspace() -> tuple[AlphaFoldArrayPlan, _ArrayWorkspace]:
     request, _inventory = synthetic_request()
     prepared = synthetic_prepared_arrays()
-    foundation = _foundation()
+    foundation = research_foundation_binding(FIXTURE_FACTOR_IDS)
     plan = AlphaFoldArrayPlan(
         foundation=foundation,
         ordered_listing_ids=request.ordered_listing_ids,
@@ -490,28 +418,30 @@ __all__ = [
 
 
 def research_foundation_binding(factor_ids: tuple[str, ...]) -> ResearchFoundationBinding:
-    execution = ResearchDeskExecutionOutcomeRef.model_construct(
+    """Seal the synthetic Foundation and its execution lineage for this Factor axis."""
+    execution = ResearchDeskExecutionOutcomeRef(
         research_cadence=RebalanceFrequency.DAILY,
-        snapshot_hash="d" * 64,
-        schedule_hash="e" * 64,
-        development_content_hash="f" * 64,
-        sealed_holdout_content_hash="0" * 64,
-        marker_hash="1" * 64,
+        snapshot_hash=canonical_hash("fixture execution outcome"),
+        schedule_hash=canonical_hash("fixture execution schedule"),
+        development_content_hash=canonical_hash("fixture development outcomes"),
+        sealed_holdout_content_hash=canonical_hash("fixture holdout commitment"),
+        marker_hash=canonical_hash("fixture execution marker"),
         market_as_of="2026-07-31",
         data_validity_class=DataValidityClass.CURRENT_UNIVERSE_RESEARCH_ONLY,
     )
-    return ResearchFoundationBinding.model_construct(
-        research_cadence=RebalanceFrequency.DAILY,
-        feature_panel_snapshot_hash="2" * 64,
-        logical_panel_hash="a" * 64,
-        logical_semantic_index_hash="c" * 64,
-        factor_training_outcome_snapshot_hash="3" * 64,
-        factor_screening_result_hash="4" * 64,
-        factor_candidate_slate_hash="5" * 64,
-        research_desk_factor_input_hash="b" * 64,
-        execution_outcome=execution,
-        ordered_factor_ids=factor_ids,
-        downstream_factor_research_forbidden=True,
-        secondary_feature_preprocessing_forbidden=True,
-        foundation_hash="9" * 64,
+    return seal_model(
+        ResearchFoundationBinding,
+        {
+            "research_cadence": RebalanceFrequency.DAILY,
+            "feature_panel_snapshot_hash": canonical_hash("fixture Feature Panel snapshot"),
+            "logical_panel_hash": canonical_hash("fixture logical Panel"),
+            "logical_semantic_index_hash": canonical_hash("fixture logical semantic index"),
+            "factor_training_outcome_snapshot_hash": canonical_hash("fixture Factor outcomes"),
+            "factor_screening_result_hash": canonical_hash("fixture Factor screening"),
+            "factor_candidate_slate_hash": canonical_hash("fixture Factor candidate slate"),
+            "research_desk_factor_input_hash": canonical_hash("fixture Factor input"),
+            "execution_outcome": execution,
+            "ordered_factor_ids": factor_ids,
+        },
+        field="foundation_hash",
     )

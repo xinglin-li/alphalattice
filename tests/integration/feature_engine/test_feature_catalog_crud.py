@@ -35,6 +35,7 @@ from alphalattice.foundation.feature_engine.producers.factors.open_intraday impo
 from alphalattice.foundation.feature_engine.producers.factors.registry import (
     FeatureKernelRegistry,
 )
+from tests._support.identity_fixtures import fixture_digest
 
 ROOT = Path(__file__).resolve().parents[3]
 EXTENSION_ID = "zz_mean_adjusted_return_10"
@@ -112,7 +113,7 @@ def test_source_bound_research_edits_preserve_each_revision_and_never_compute(
     ):
         factor_id = "research_mean_alias" if operation == "RETIRE" else EXTENSION_ID
         request = ResearchFeatureChange(
-            input_binding_hash="a" * 64,
+            input_binding_hash=fixture_digest("input-binding"),
             base_revision_hash=revision.revision_hash,
             parent_plan_hash=None if not plans else plans[-1].plan_hash,
             edits=[{"operation": operation, "factor_id": factor_id, "specification": definition}],
@@ -121,7 +122,7 @@ def test_source_bound_research_edits_preserve_each_revision_and_never_compute(
         planned = plan_research_feature_change(
             catalog=catalog,
             base=revision,
-            source_panel_snapshot_hash="b" * 64,
+            source_panel_snapshot_hash=fixture_digest("source-panel-snapshot"),
             request=request,
         )
         assert planned.work.base_compute_factor_ids == expected_computed
@@ -139,14 +140,14 @@ def test_source_bound_research_edits_preserve_each_revision_and_never_compute(
     assert fixture.catalog.to_payload() == original
     assert all(ResearchFeaturePlan.model_validate_json(p.model_dump_json()) == p for p in plans)
     bad = plans[0].model_dump(mode="json")
-    bad["request"]["input_binding_hash"] = "c" * 64
+    bad["request"]["input_binding_hash"] = fixture_digest("wrong-input-binding")
     with pytest.raises(ValueError, match="plan_binding_invalid"):
         ResearchFeaturePlan.model_validate_json(json.dumps(bad))
     with pytest.raises(FeatureCatalogCrudError, match="exact definition revision"):
         plan_research_feature_change(
             catalog=catalog,
             base=revision,
-            source_panel_snapshot_hash="b" * 64,
+            source_panel_snapshot_hash=fixture_digest("source-panel-snapshot"),
             request=plans[0].request,
         )
     controls = research_feature_controls()
@@ -158,9 +159,9 @@ def test_source_bound_research_edits_preserve_each_revision_and_never_compute(
         plan_research_feature_change(
             catalog=FeatureCatalog.from_payload(first.candidate_payload),
             base=first.candidate,
-            source_panel_snapshot_hash="b" * 64,
+            source_panel_snapshot_hash=fixture_digest("source-panel-snapshot"),
             request=ResearchFeatureChange(
-                input_binding_hash="a" * 64,
+                input_binding_hash=fixture_digest("input-binding"),
                 base_revision_hash=first.candidate.revision_hash,
                 edits=[
                     {"operation": "UPDATE", "factor_id": EXTENSION_ID, "specification": weakened}
@@ -180,16 +181,17 @@ def test_feature_build_retains_raw_contract_and_combines_preprocessing_in_one_ta
         PortfolioResearchRequestDocument,
     )
 
-    request = {"operation": "FEATURE_CATALOG_BUILD", "feature_plan_hash": "a" * 64}
+    plan_hash = fixture_digest("feature-plan")
+    request = {"operation": "FEATURE_CATALOG_BUILD", "feature_plan_hash": plan_hash}
     old = PortfolioResearchRequestDocument.model_validate(request).to_operation_request()
     assert old.feature_output is None
     explicit = PortfolioResearchRequestDocument.model_validate(
         {**request, "feature_output": "PREPROCESSED_VALUES"}
     ).to_operation_request()
     assert explicit.feature_output == "PREPROCESSED_VALUES"
-    _, old_goal, raw = _contract({"definition_plan_hash": "a" * 64})
+    _, old_goal, raw = _contract({"definition_plan_hash": plan_hash})
     _, new_goal, complete = _contract(
-        {"definition_plan_hash": "a" * 64, "purpose": "PREPROCESS_VALUES"}
+        {"definition_plan_hash": plan_hash, "purpose": "PREPROCESS_VALUES"}
     )
     assert old_goal.deliverable_kind == "ResearchFeatureMaterialization"
     assert new_goal.deliverable_kind == "ResearchFeaturePreparation"
@@ -204,7 +206,7 @@ def test_feature_build_retains_raw_contract_and_combines_preprocessing_in_one_ta
         PortfolioResearchRequestDocument.model_validate(
             {
                 "operation": "FEATURE_CATALOG_READBACK",
-                "feature_plan_hash": "a" * 64,
+                "feature_plan_hash": plan_hash,
                 "feature_output": "PREPROCESSED_VALUES",
             }
         ).to_operation_request()
@@ -228,10 +230,10 @@ def test_research_formula_value_children_are_bounded_reused_and_tamper_checked(t
     )
     owner = ResearchFormulaValues(store)
     binding = dict(
-        input_binding_hash="a" * 64,
-        numerical_spec_hash="b" * 64,
-        implementation_hash="c" * 64,
-        source_projection_hash="d" * 64,
+        input_binding_hash=fixture_digest("input-binding"),
+        numerical_spec_hash=fixture_digest("numerical-spec"),
+        implementation_hash=fixture_digest("implementation"),
+        source_projection_hash=fixture_digest("source-projection"),
     )
     binding["binding_hash"] = column_binding_hash(**binding)
     binding.update(sessions=(date(2024, 1, 2), date(2024, 1, 3)), listing_ids=("A", "B"))

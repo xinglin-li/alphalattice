@@ -47,6 +47,7 @@ from alphalattice.investment.alpha_research.scores.product_replay import (
     AlphaProductRecipeView,
     calendar_model_vintages,
 )
+from alphalattice.kernel.identity import BLAKE3_PATTERN
 
 AlphaLifecycleDisposition = Literal[
     "SCORE_ONLY",
@@ -100,7 +101,7 @@ class AlphaLifecycleError(ValueError):
 
 class _LifecycleContract(BaseModel):  # type: ignore[misc]
     model_config = ConfigDict(extra="forbid", frozen=True)
-    content_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
+    content_hash: str = Field(pattern=BLAKE3_PATTERN)
 
     @classmethod
     def create(cls, **values: object) -> Self:
@@ -221,12 +222,12 @@ class ResolvedAlphaRefitPlan(_LifecycleContract):
     """One immutable, cutoff-bound period; inputs must prove these exact axes."""
 
     lifecycle: AlphaModelLifecycleRecipe
-    component_recipe_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
+    component_recipe_hash: str = Field(pattern=BLAKE3_PATTERN)
     vintage: str = Field(pattern=r"^\d{4}-\d{2}$")
     first_formation: date
     training_sessions: tuple[date, ...]
     purge_sessions: tuple[date, ...]
-    source_binding_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
+    source_binding_hash: str = Field(pattern=BLAKE3_PATTERN)
     ordered_listing_ids: tuple[str, ...] = Field(min_length=2)
     ordered_feature_ids: tuple[str, ...] = Field(min_length=1)
 

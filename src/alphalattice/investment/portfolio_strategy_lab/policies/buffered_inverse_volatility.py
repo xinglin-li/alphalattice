@@ -16,6 +16,7 @@ from alphalattice.capabilities.portfolio_backtesting.contracts import (
     PortfolioTargetDecision,
     PortfolioWalkForwardError,
 )
+from alphalattice.kernel.identity import BLAKE3_PATTERN
 
 from .buffered_equal_weight import whole_book_equal_weight_target, whole_book_hysteresis_selection
 from .contracts import (
@@ -50,7 +51,7 @@ class WholeBookHysteresisInverseVolatilityRecipe(BaseModel):  # type: ignore[mis
     exit_rank: Literal[150] = 150
     cadence: Literal[3] = 3
     burn_in: Literal[126] = 126
-    recipe_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
+    recipe_hash: str = Field(pattern=BLAKE3_PATTERN)
 
     @property
     def policy_id(self) -> str:

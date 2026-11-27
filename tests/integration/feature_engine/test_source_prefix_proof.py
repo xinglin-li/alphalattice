@@ -6,12 +6,12 @@ import json
 import struct
 from contextlib import nullcontext
 from datetime import UTC, date, datetime, timedelta
-from hashlib import sha256
 from pathlib import Path
 
 import duckdb
 import pyarrow as pa
 import pytest
+from blake3 import blake3
 
 from alphalattice.control.workspace_runtime.database import (
     WorkspaceDatabase,
@@ -127,7 +127,7 @@ def _batch_proofs(
 
 
 def _original_v1_proof(connection, *, listing_ids, catalog_hash, start, end, factor_ids):
-    """Frozen pre-batch values hash, in the year-sealed envelope of a prefix in one year.
+    """Pre-batch value framing in the year-sealed envelope of a prefix in one year.
 
     This oracle queries each bound directly and normalizes its Arrow IPC; it does not call the
     batch/scalar implementation or a private production hash helper. It retains the original SQL
@@ -174,7 +174,7 @@ def _original_v1_proof(connection, *, listing_ids, catalog_hash, start, end, fac
     sink = pa.BufferOutputStream()
     with pa.ipc.new_stream(sink, normalized.schema) as writer:
         writer.write_table(normalized)
-    values_hash = sha256(sink.getvalue()).hexdigest()
+    values_hash = f"blake3:{blake3(memoryview(sink.getvalue())).hexdigest()}"
     payload = {
         "kind": "FeatureSourcePrefixProofV2",
         "listing_ids": scope,
@@ -185,11 +185,10 @@ def _original_v1_proof(connection, *, listing_ids, catalog_hash, start, end, fac
         "closed_years": [],
         "open_values": values_hash,
     }
-    return sha256(
-        json.dumps(
-            payload, ensure_ascii=False, sort_keys=True, separators=(",", ":"), default=str
-        ).encode("utf-8")
-    ).hexdigest()
+    encoded = json.dumps(
+        payload, ensure_ascii=False, sort_keys=True, separators=(",", ":"), default=str
+    ).encode("utf-8")
+    return f"blake3:{blake3(encoded).hexdigest()}"
 
 
 def _assert_batch_matches_original(feature, catalog, **request):

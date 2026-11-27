@@ -478,9 +478,9 @@ def test_continuation_references_preserve_owner_fields_and_reject_the_wrong_temp
         "operation": "EXPERIMENT_PLAN",
         "origin_task_id": str(task_id),
         "research_input_id": "same-input",
-        "input_binding_hash": "a" * 64,
+        "input_binding_hash": "blake3:" + "a" * 64,
         "factor_task_id": str(uuid4()),
-        "curation_receipt_hash": "b" * 64,
+        "curation_receipt_hash": "blake3:" + "b" * 64,
     }
     reply.write_text(
         json.dumps({"status": "DRAFT_READY", "plan_request": template}), encoding="utf-8"
@@ -488,8 +488,8 @@ def test_continuation_references_preserve_owner_fields_and_reject_the_wrong_temp
     edits = {"experiment_yaml": edited.read_text(encoding="utf-8")}
     assert continuation("EXPERIMENT_PLAN", reply, edits, allowed) == {**template, **edits}
     with pytest.raises(ValueError, match="bound_reference_override:input_binding_hash"):
-        continuation("EXPERIMENT_PLAN", reply, {**edits, "input_binding_hash": "d" * 64}, allowed)
-    same = {**edits, "input_binding_hash": "a" * 12}
+        continuation("EXPERIMENT_PLAN", reply, {**edits, "input_binding_hash": "a" * 64}, allowed)
+    same = {**edits, "input_binding_hash": "blake3:" + "a" * 12}
     assert continuation("EXPERIMENT_PLAN", reply, same, allowed) == {**template, **edits}
     for status in ("DRAFT_INCOMPLETE", "INPUT_COMPILER_PREFLIGHT_PASSED", "PORTFOLIO_DRAFT_READY"):
         reply.write_text(json.dumps({"status": status, "plan_request": template}), encoding="utf-8")
@@ -515,14 +515,14 @@ def test_continuation_references_preserve_owner_fields_and_reject_the_wrong_temp
     controls = {
         "status": "READY",
         "research_input_id": "the-input",
-        "input_binding_hash": "c" * 64,
+        "input_binding_hash": "blake3:" + "c" * 64,
         "template": {"experiment": {"kind": "factor.screening-development"}},
     }
     reply.write_text(json.dumps(controls), encoding="utf-8")
     planned = {
         "operation": "EXPERIMENT_PLAN",
         "research_input_id": "the-input",
-        "input_binding_hash": "c" * 64,
+        "input_binding_hash": "blake3:" + "c" * 64,
     }
     assert continuation("EXPERIMENT_PLAN", reply, {}, allowed) == {
         **planned,
@@ -530,7 +530,9 @@ def test_continuation_references_preserve_owner_fields_and_reject_the_wrong_temp
     }
     assert continuation("EXPERIMENT_PLAN", reply, edits, allowed) == {**planned, **edits}
     with pytest.raises(ValueError, match="bound_reference_override:input_binding_hash"):
-        continuation("EXPERIMENT_PLAN", reply, {"input_binding_hash": "d" * 64}, allowed)
+        continuation(
+            "EXPERIMENT_PLAN", reply, {"input_binding_hash": "blake3:" + "d" * 64}, allowed
+        )
     reply.write_text(json.dumps({"status": "AVAILABLE", "experiments": []}), encoding="utf-8")
     with pytest.raises(ValueError, match="plan_source_unsupported:AVAILABLE"):
         continuation("EXPERIMENT_PLAN", reply, edits, allowed)
@@ -538,7 +540,7 @@ def test_continuation_references_preserve_owner_fields_and_reject_the_wrong_temp
     template = {
         "operation": "EXPERIMENT_CURATE",
         "task_id": task,
-        "experiment_curation": {"expected_receipt_hash": "a" * 64},
+        "experiment_curation": {"expected_receipt_hash": "blake3:" + "a" * 64},
     }
     response = tmp_path / "response.json"
     choices = tmp_path / "choices.yaml"
@@ -558,7 +560,7 @@ def test_continuation_references_preserve_owner_fields_and_reject_the_wrong_temp
             "limitations_acknowledged": [],
         },
     }
-    assert template["experiment_curation"] == {"expected_receipt_hash": "a" * 64}
+    assert template["experiment_curation"] == {"expected_receipt_hash": "blake3:" + "a" * 64}
     cut = {**template, "experiment_curation": {"_omitted": "collection", "item_count": 1}}
     compact = {
         "representation": "COMPACT_DISPLAY_NOT_AN_AUTHORITY_DOCUMENT",
@@ -606,11 +608,12 @@ def test_authored_text_is_never_a_reference_and_one_reference_has_two_spellings(
     from alphalattice.interface.local_application.client import (
         LocalResearchClientError,
         continuation,
+        short_references,
         whole_references,
     )
 
     authored = "abcdefabcdef"
-    first, second = (authored + "0" * 52, authored + "1" * 52)
+    first, second = ("blake3:" + authored + digit * 52 for digit in "01")
     task = "927be8a3-305b-5237-9f9e-f765da4fa147"
     declared = {"goal_declaration": {"criteria": [{"criterion_id": authored, "text": "t"}]}}
     for held in ([], [first], [first, second]):
@@ -628,19 +631,30 @@ def test_authored_text_is_never_a_reference_and_one_reference_has_two_spellings(
     whole_references(entry, tmp_path)
     assert entry["history_entry_id"] == f"experiment:{task}"
     with pytest.raises(LocalResearchClientError, match="ambiguous"):
-        whole_references({"result_hash": authored}, tmp_path)
-    plan = "abcdef123456" + "0" * 52
-    task = "927be8a3-305b-5237-9f9e-f765da4fa147"
+        whole_references({"result_hash": "blake3:" + authored}, tmp_path)
+    compact_plan = "blake3:abcdef123456"
+    plan = compact_plan + "0" * 52
     ReferenceLedger(tmp_path).record([plan, task])
+    issued = {"history_entry_id": f"result:{plan}", "result_hash": plan}
+    compact = short_references(issued)
+    assert compact == {"history_entry_id": f"result:{compact_plan}", "result_hash": compact_plan}
+    whole_references(compact, tmp_path)
+    assert compact == issued
+    with pytest.raises(LocalResearchClientError, match="unknown"):
+        whole_references({"result_hash": "abcdef123456"}, tmp_path)
     request = {
         "operation": "GOAL_OPEN",
-        "goal_declaration": {"title": plan[:12], "objective": plan[:12], "notes": [task[:12]]},
+        "goal_declaration": {
+            "title": compact_plan,
+            "objective": compact_plan,
+            "notes": [task[:12]],
+        },
         "goal_submission": {"references": [{"request": {"task_id": task[:12]}}]},
     }
     whole_references(request, tmp_path)
     assert request["goal_declaration"] == {
-        "title": plan[:12],
-        "objective": plan[:12],
+        "title": compact_plan,
+        "objective": compact_plan,
         "notes": [task[:12]],
     }
     assert request["goal_submission"]["references"][0]["request"]["task_id"] == task

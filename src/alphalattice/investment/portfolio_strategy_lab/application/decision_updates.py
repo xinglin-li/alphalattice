@@ -51,11 +51,12 @@ from alphalattice.investment.portfolio_strategy_lab.application.tranche_book_exe
 from alphalattice.investment.portfolio_strategy_lab.policies.post_observed_authority import (
     FrozenHistoricalBookRecipe,
 )
+from alphalattice.kernel.identity import BLAKE3_PATTERN
 
 
 class _Sealed(BaseModel):  # type: ignore[misc]
     model_config = ConfigDict(extra="forbid", frozen=True)
-    content_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
+    content_hash: str = Field(pattern=BLAKE3_PATTERN)
 
     @classmethod
     def create(cls, **values: object) -> Self:
@@ -145,8 +146,8 @@ class PortfolioDecisionCheckpoint(_Sealed):
     recipe: FrozenHistoricalBookRecipe
     ordered_listing_ids: tuple[str, ...]
     listing_labels: tuple[str, ...]
-    model_authority_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
-    inference_recipe_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
+    model_authority_hash: str = Field(pattern=BLAKE3_PATTERN)
+    inference_recipe_hash: str = Field(pattern=BLAKE3_PATTERN)
     epoch_start: date
     epoch_end: date
     formation_sessions: tuple[date, ...]
@@ -155,10 +156,10 @@ class PortfolioDecisionCheckpoint(_Sealed):
     component_authority_hashes: tuple[str, ...] = Field(default=(), exclude_if=lambda v: not v)
     component_recipe_hashes: tuple[str, ...] = Field(default=(), exclude_if=lambda v: not v)
     lineage_root_hash: str | None = Field(
-        default=None, pattern=r"^[0-9a-f]{64}$", exclude_if=lambda v: v is None
+        default=None, pattern=BLAKE3_PATTERN, exclude_if=lambda v: v is None
     )
     previous_checkpoint_hash: str | None = Field(
-        default=None, pattern=r"^[0-9a-f]{64}$", exclude_if=lambda v: v is None
+        default=None, pattern=BLAKE3_PATTERN, exclude_if=lambda v: v is None
     )
 
     @property
@@ -386,15 +387,15 @@ class PortfolioUpdatePublication(_Sealed):
     active_entry: PortfolioObservedSettlement | None
     events: tuple[PortfolioObservedSettlement, ...]
     source_snapshot_hash: str
-    html_hash: str | None = Field(default=None, pattern=r"^[0-9a-f]{64}$")
+    html_hash: str | None = Field(default=None, pattern=BLAKE3_PATTERN)
     claim: UpdateClaim = "POST_OBSERVED_QA_NOT_TIMELY_ADVICE"
     risk_status: Literal["NOT_EVALUATED_FOR_THIS_PROPOSAL"] = "NOT_EVALUATED_FOR_THIS_PROPOSAL"
     cro_status: Literal["NOT_REVIEWED_FOR_THIS_PROPOSAL"] = "NOT_REVIEWED_FOR_THIS_PROPOSAL"
     input_checkpoint_hash: str | None = Field(
-        default=None, pattern=r"^[0-9a-f]{64}$", exclude_if=lambda v: v is None
+        default=None, pattern=BLAKE3_PATTERN, exclude_if=lambda v: v is None
     )
     revised_source_hash: str | None = Field(
-        default=None, pattern=r"^[0-9a-f]{64}$", exclude_if=lambda v: v is None
+        default=None, pattern=BLAKE3_PATTERN, exclude_if=lambda v: v is None
     )
     source_revision: PortfolioSourceRevision | None = Field(
         default=None, exclude_if=lambda v: v is None

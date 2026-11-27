@@ -25,6 +25,7 @@ from alphalattice.interface.local_application.portfolio_research import (
     PortfolioResearchRequestDocument as PortfolioResearchAgentRequest,
 )
 from tests._support import development_universe
+from tests._support.identity_fixtures import fixture_digest
 from tests.portfolio_strategy_lab.host_requests import _json
 from tests.portfolio_strategy_lab.local_web_support import (
     InstalledAgent,
@@ -242,7 +243,9 @@ def test_verified_universe_proposal_requires_human_and_binds_book_head(qualified
         assert approved == repeated and approved["lifecycle"] == "QUEUED"
         assert len(service.session.task_control_registry.tasks()) == before + 1
         assert provider.calls == []
-        stored = owner.changes.content.root / "data-update-plans" / (plan["plan_hash"] + ".json")
+        stored = owner.changes.content.artifact_path(
+            category="data-update-plans", content_hash=plan["plan_hash"]
+        )
         original = stored.read_bytes()
         stored.write_text(original.decode().replace('"UNIVERSE"', '"OTHER"'))
         # The changed plan is refused where it is proved: in full proof (LAWS.md EV2).
@@ -361,7 +364,9 @@ def test_a_partial_membership_update_reopens_its_exact_approved_task(
         fetched = len(provider.calls)
         stale = json.loads(
             agent.invoke(
-                PortfolioResearchAgentRequest(**{**replan, "recovery_task_hash": "0" * 64})
+                PortfolioResearchAgentRequest(
+                    **{**replan, "recovery_task_hash": fixture_digest("unknown recovery task")}
+                )
             )
         )
         assert stale["failure_code"] == "local_application.confirmation_stale"
@@ -1293,11 +1298,13 @@ def test_a_removed_historical_member_still_receives_its_owed_pre_exit_tail(
     mutation_gate = WorkspaceMutationGate()
     # Observe this fixture's single sector through its normal source and
     # activation owners, so removing a name leaves the five-member floor intact.
+    from alphalattice.capabilities.domain_contracts.identity import canonical_hash
+
     stager = SectorRefreshStager(
         manifest=previous,
         provider=provider,
         artifact_root=workspace / "staging" / "sector-reference",
-        staging_id="owed-exit-tail-sector",
+        staging_id=canonical_hash("owed-exit-tail-sector"),
         activation_coordinator=SectorRevisionMapActivationCoordinator(
             store=features,
             mutation_gate=mutation_gate,
@@ -1420,7 +1427,7 @@ def test_an_unknown_accumulated_listing_is_still_refused(current_member_seed, tm
                 {"catalog": binding.feature_catalog_hash, "invalidation": "domain-topology"}
             ),
         )
-        receipt_hash = "1" * 64
+        receipt_hash = fixture_digest("market change receipt")
         change = MarketDataChangeSet(
             listing_changes=(
                 ListingMarketDataChange(

@@ -36,6 +36,7 @@ from alphalattice.investment.portfolio_strategy_lab.application.executor import 
 from alphalattice.investment.portfolio_strategy_lab.application.tranche_book_execution import (
     EligiblePoolShort,
 )
+from alphalattice.kernel.identity import BLAKE3_PATTERN
 
 PORTFOLIO_PUBLIC_TASK_KIND = "portfolio_public_development_replay"
 PORTFOLIO_PUBLIC_INPUT_SCHEMA = "portfolio-research-durable-request"
@@ -49,14 +50,14 @@ class PortfolioResearchTaskInput(BaseModel):  # type: ignore[misc]
     model_config = ConfigDict(extra="forbid", frozen=True)
 
     workspace_id: str
-    workspace_manifest_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
+    workspace_manifest_hash: str = Field(pattern=BLAKE3_PATTERN)
     spec: PortfolioResearchSpec
     selected_strategy_package_id: str
     selected_score_source_mode: ScoreSourceMode
-    selected_strategy_package_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
-    strategy_catalog_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
+    selected_strategy_package_hash: str = Field(pattern=BLAKE3_PATTERN)
+    strategy_catalog_hash: str = Field(pattern=BLAKE3_PATTERN)
     program: PortfolioExecutionProgram
-    admission_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
+    admission_hash: str = Field(pattern=BLAKE3_PATTERN)
 
     @model_validator(mode="after")  # type: ignore[untyped-decorator]
     def validate_selection(self) -> Self:

@@ -9,9 +9,9 @@ from typing import Literal, Self, cast
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
-from alphalattice.capabilities.domain_contracts.domain.serialization import sha256_hex
 from alphalattice.capabilities.domain_contracts.identity import canonical_hash
 from alphalattice.capabilities.domain_contracts.sealing import scoped_payload_digest
+from alphalattice.kernel.identity import BLAKE3_PATTERN, blake3_digest, blake3_filename
 
 from ..contracts import (
     MAXIMUM_SOURCE_DOCUMENT_BYTES,
@@ -21,7 +21,7 @@ from ..contracts import (
     validate_contract_identity,
 )
 
-_HASH = r"^[0-9a-f]{64}$"
+_HASH = BLAKE3_PATTERN
 
 
 def _validate_temporal_fields(
@@ -80,7 +80,7 @@ class AcquiredEvidenceDocument(BaseModel):  # type: ignore[misc]
     content: bytes = Field(min_length=1)
     immutable_source: bool
     limitations: tuple[str, ...] = ()
-    source_content_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
+    source_content_hash: str = Field(pattern=BLAKE3_PATTERN)
     # Time is evidence metadata: each meaning is kept apart and absent from
     # the identity when unknown, so documents acquired before these were
     # recorded keep their references' hashes.
@@ -153,11 +153,11 @@ class AcquiredEvidenceDocumentSet(AlternativeEvidenceContract):
     """
 
     kind: Literal["AcquiredEvidenceDocumentSet"] = "AcquiredEvidenceDocumentSet"
-    request_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
-    source_snapshot_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
+    request_hash: str = Field(pattern=BLAKE3_PATTERN)
+    source_snapshot_hash: str = Field(pattern=BLAKE3_PATTERN)
     documents: tuple[AcquiredEvidenceDocument, ...]
     acquired_at: datetime
-    source_set_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
+    source_set_hash: str = Field(pattern=BLAKE3_PATTERN)
 
     @model_validator(mode="after")  # type: ignore[untyped-decorator]
     def validate_set(self) -> Self:
@@ -181,19 +181,19 @@ class AcquiredEvidenceDocumentSet(AlternativeEvidenceContract):
 
 SOURCE_OBJECT_ROOT = ".system/source-objects"
 """Where the evidence Workspace keeps original source bytes, one object per
-distinct content, addressed by the SHA-256 of the bytes."""
+distinct content, addressed by the BLAKE3 of the bytes."""
 
 
-def source_object_relative(content_sha256: str) -> str:
-    return f"{SOURCE_OBJECT_ROOT}/{content_sha256}"
+def source_object_relative(content_digest: str) -> str:
+    return f"{SOURCE_OBJECT_ROOT}/{blake3_filename(content_digest)}"
 
 
 SOURCE_OBJECT_ZLIB = b"alphalattice-source-object zlib 1\n"
 """A source object kept compressed: this line, then the original bytes as one zlib stream. The
-object's identity stays the original bytes' length and SHA-256."""
+object's identity stays the original bytes' length and BLAKE3 digest."""
 
 
-def source_object_bytes(stored: bytes, content_sha256: str, content_bytes: int) -> bytes:
+def source_object_bytes(stored: bytes, content_digest: str, content_bytes: int) -> bytes:
     """The original bytes a kept source object holds, as kept or expanded from its zlib form.
 
     Bytes that already have the identity are the original, whatever they begin with; only bytes
@@ -201,9 +201,9 @@ def source_object_bytes(stored: bytes, content_sha256: str, content_bytes: int) 
     length. Anything else, or an expansion without the identity, is tampered.
     """
     original = stored
-    if (len(stored) != content_bytes or sha256_hex(stored) != content_sha256) and stored.startswith(
-        SOURCE_OBJECT_ZLIB
-    ):
+    if (
+        len(stored) != content_bytes or blake3_digest(stored) != content_digest
+    ) and stored.startswith(SOURCE_OBJECT_ZLIB):
         expander = zlib.decompressobj()
         try:
             original = expander.decompress(stored[len(SOURCE_OBJECT_ZLIB) :], content_bytes + 1)
@@ -211,7 +211,7 @@ def source_object_bytes(stored: bytes, content_sha256: str, content_bytes: int) 
             raise ValueError("alternative_evidence.source_object_tampered") from error
         if not expander.eof or expander.unused_data:
             raise ValueError("alternative_evidence.source_object_tampered")
-    if len(original) != content_bytes or sha256_hex(original) != content_sha256:
+    if len(original) != content_bytes or blake3_digest(original) != content_digest:
         raise ValueError("alternative_evidence.source_object_tampered")
     return original
 
@@ -243,12 +243,12 @@ class AcquiredEvidenceDocumentReference(BaseModel):  # type: ignore[misc]
     accepted_at: datetime | None = None
     available_at: datetime
     media_type: Literal["text/html", "text/plain", "text/markdown"]
-    content_sha256: str = Field(pattern=r"^[0-9a-f]{64}$")
+    content_digest: str = Field(pattern=BLAKE3_PATTERN)
     content_bytes: int = Field(gt=0)
     content_object_path: str = Field(min_length=1)
     immutable_source: bool
     limitations: tuple[str, ...] = ()
-    source_content_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
+    source_content_hash: str = Field(pattern=BLAKE3_PATTERN)
     published_precision: PublishedPrecision | None = Field(
         default=None, exclude_if=lambda value: value is None
     )
@@ -284,17 +284,17 @@ class AcquiredEvidenceDocumentReference(BaseModel):  # type: ignore[misc]
             retrieved_at=self.retrieved_at,
             code="alternative_evidence.source_document",
         )
-        if self.content_object_path != source_object_relative(self.content_sha256):
+        if self.content_object_path != source_object_relative(self.content_digest):
             raise ValueError("alternative_evidence.source_object_path_not_content_addressed")
         return self
 
     @classmethod
-    def of(cls, document: AcquiredEvidenceDocument, *, content_sha256: str) -> Self:
+    def of(cls, document: AcquiredEvidenceDocument, *, content_digest: str) -> Self:
         return cls(
             **document.model_dump(mode="python", exclude={"content"}),
-            content_sha256=content_sha256,
+            content_digest=content_digest,
             content_bytes=len(document.content),
-            content_object_path=source_object_relative(content_sha256),
+            content_object_path=source_object_relative(content_digest),
         )
 
     def resolve(self, content: bytes) -> AcquiredEvidenceDocument:
@@ -302,7 +302,7 @@ class AcquiredEvidenceDocumentReference(BaseModel):  # type: ignore[misc]
         return AcquiredEvidenceDocument(
             **self.model_dump(
                 mode="python",
-                exclude={"content_sha256", "content_bytes", "content_object_path"},
+                exclude={"content_digest", "content_bytes", "content_object_path"},
             ),
             content=content,
         )
@@ -312,11 +312,11 @@ class AcquiredEvidenceSourceReferenceSet(AlternativeEvidenceContract):
     """One request's acquired documents, by reference to their retained bytes."""
 
     kind: Literal["AcquiredEvidenceSourceReferenceSet"] = "AcquiredEvidenceSourceReferenceSet"
-    request_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
-    source_snapshot_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
+    request_hash: str = Field(pattern=BLAKE3_PATTERN)
+    source_snapshot_hash: str = Field(pattern=BLAKE3_PATTERN)
     documents: tuple[AcquiredEvidenceDocumentReference, ...]
     acquired_at: datetime
-    source_set_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
+    source_set_hash: str = Field(pattern=BLAKE3_PATTERN)
 
     @model_validator(mode="after")  # type: ignore[untyped-decorator]
     def validate_set(self) -> Self:

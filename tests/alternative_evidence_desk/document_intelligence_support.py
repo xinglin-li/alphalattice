@@ -117,7 +117,7 @@ def _registry(entities: tuple[str, ...] = ("AAPL",)) -> SecIssuerRegistrySnapsho
             )
             for entity in entities
         ),
-        source_content_hash="1" * 64,
+        source_content_hash="blake3:" + "1" * 64,
     )
 
 

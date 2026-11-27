@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import hashlib
 import json
 import time
 from dataclasses import replace
@@ -38,6 +37,7 @@ from alphalattice.foundation.market_data_ops.sources.sanitization import (
     sanitize_payload,
 )
 from alphalattice.foundation.market_data_ops.storage.duckdb import MarketDataRepository, _bar_hash
+from alphalattice.kernel.identity import blake3_digest
 
 NOW = datetime(2026, 8, 3, 22, tzinfo=UTC)
 
@@ -222,7 +222,7 @@ def _canonical_digest(value: object) -> str:
     payload = json.dumps(
         value, ensure_ascii=False, sort_keys=True, separators=(",", ":"), default=str
     )
-    return hashlib.sha256(payload.encode("utf-8")).hexdigest()
+    return blake3_digest(payload.encode("utf-8"))
 
 
 def test_bar_payload_hash_is_the_canonical_json_digest(request) -> None:

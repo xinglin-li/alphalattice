@@ -15,6 +15,7 @@ import pytest
 
 from alphalattice.capabilities.data.errors import DataError
 from alphalattice.foundation.data_layer import create_data_root
+from alphalattice.foundation.data_layer.log import HostLog, attach
 from alphalattice.foundation.data_layer.project import lineage, register, uuid7
 from alphalattice.foundation.data_layer.reading import reading_session
 from alphalattice.foundation.data_layer.root import (
@@ -27,7 +28,7 @@ from alphalattice.foundation.data_layer.root import (
 from alphalattice.kernel.resources import cpu_width
 from tests.integration.data_layer.root_knowledge import assert_knowledge_tables
 from tests.integration.data_layer.root_protected_validation import (
-    assert_old_receipt_catalog_opens,
+    assert_old_receipt_catalog_is_refused,
 )
 
 TEST_SOURCE = "src/alphalattice/foundation/data_layer/root.py"
@@ -397,6 +398,19 @@ def _files(root: Path) -> dict[str, str]:
 def test_a_data_root_created_twice_is_all_equal_and_refuses_another_version(tmp_path):
     """The second creation makes and changes nothing; another schema version of a database or of
     the catalog is refused by name. The catalog is made at its first use, not with the root."""
+    older = tmp_path / "sha256-root"
+    machine = older / "machine"
+    machine.mkdir(parents=True)
+    with closing(sqlite3.connect(machine / "log.sqlite")) as prior:
+        prior.execute("PRAGMA user_version = 16")
+    before = _files(older)
+    for open_root in (create_data_root, HostLog.open, attach, reading_session):
+        with pytest.raises(DataError, match="start a fresh data root") as stale:
+            open_root(older)
+        assert stale.value.failure.code == "data_layer.schema_mismatch"
+        assert _files(older) == before
+
+    tmp_path = tmp_path / "fresh"
     first = create_data_root(tmp_path)
     assert not (tmp_path / "machine" / "catalog.sqlite").exists()
     assert (catalog(tmp_path), catalog(tmp_path)) == (True, False)
@@ -407,7 +421,6 @@ def test_a_data_root_created_twice_is_all_equal_and_refuses_another_version(tmp_
         assert reading.execute("SELECT count(*) FROM corporate_action_asof(1)").fetchall() == [(0,)]
         assert reading.execute("SELECT count(*) FROM universe_member_asof(1)").fetchall() == [(0,)]
         assert reading.execute("SELECT count(*) FROM experience").fetchall() == [(0,)]
-    assert_old_receipt_catalog_opens(tmp_path)
     files = _files(tmp_path)
     second = create_data_root(tmp_path)
     made = ("machine", "data", "blobs", "staging", "extensions")
@@ -425,6 +438,10 @@ def test_a_data_root_created_twice_is_all_equal_and_refuses_another_version(tmp_
     with pytest.raises(DataError, match=r"world.superseded differ") as moved:
         reading_session(tmp_path)
     assert moved.value.failure.code == "data_layer.schema_mismatch"
+    old_catalog = tmp_path / "old-catalog"
+    create_data_root(old_catalog)
+    assert catalog(old_catalog)
+    assert_old_receipt_catalog_is_refused(old_catalog)
     for foreign_version in (8, 11, 12, 13, 14, 15, SCHEMA_VERSION + 1):
         con = sqlite3.connect(tmp_path / "machine" / "log.sqlite")
         con.execute(f"PRAGMA user_version = {foreign_version}")

@@ -39,13 +39,14 @@ from alphalattice.foundation.market_data_ops.sources.manifest import (
     qualification_obligation,
 )
 from alphalattice.foundation.market_data_ops.storage.duckdb import MarketDataRepository
+from tests._support.identity_fixtures import fixture_digest
 from tests.workspace_maintenance.acquisition_manifest import NOW, acquisition_manifest
 
 PROFILE = "us-current-index-research"
 T0 = date(2026, 7, 29)
 T1 = date(2026, 7, 30)
 T2 = date(2026, 7, 31)
-GATEWAY = qualification_obligation("feature_input_policy", "9" * 64)
+GATEWAY = qualification_obligation("feature_input_policy", fixture_digest("9"))
 SECTOR = qualification_obligation("sector", "YAHOO_CURRENT_SECTOR:require_nonempty")
 
 
@@ -76,12 +77,12 @@ def _published(*, as_of: date, qualified: bool) -> SimpleNamespace:
             safe_summary={
                 "quality_governance": {
                     "gateway_qualified": qualified,
-                    "quality_admission_hash": "7" * 64,
+                    "quality_admission_hash": fixture_digest("7"),
                 }
             },
             as_of_session=as_of,
             history_start=date(2016, 7, 29),
-            snapshot_hash="8" * 64,
+            snapshot_hash=fixture_digest("8"),
         ),
         materialized_at=datetime(2026, 7, 29, 22, tzinfo=UTC),
     )
@@ -155,7 +156,7 @@ def test_bound_manifests_journal_only_real_membership_changes_after_the_bootstra
     relabelled = build_quality_filtered_research_manifest(
         reduced,
         eligible_listing_ids=("listing-aapl",),
-        qualification_obligations=(qualification_obligation("review", "1" * 64),),
+        qualification_obligations=(qualification_obligation("review", fixture_digest("1")),),
     )
     assert relabelled.revision_sha256 != reduced.revision_sha256
     coordinator._bind_manifest(
@@ -174,7 +175,7 @@ def test_bound_manifests_journal_only_real_membership_changes_after_the_bootstra
         observed_at=datetime(2026, 7, 31, 18, tzinfo=UTC),
         effective_session=T2,
         authority="workspace_readiness",
-        reference_hash="5" * 64,
+        reference_hash=fixture_digest("5"),
     )
     assert market_data.membership_events(PROFILE) == ()  # Raw qualification is not ENTRY.
     with pytest.raises(ValueError, match="feature_candidate_admission_missing"):
@@ -183,7 +184,7 @@ def test_bound_manifests_journal_only_real_membership_changes_after_the_bootstra
             observed_at=datetime(2026, 7, 31, 18, tzinfo=UTC),
             effective_session=T2,
             authority="qualified_source_membership",
-            reference_hash="5" * 64,
+            reference_hash=fixture_digest("5"),
         )
     from alphalattice.foundation.feature_engine.contracts import TemporalKnowledgeBoundary
     from alphalattice.foundation.feature_engine.inputs.gateway import (
@@ -205,10 +206,10 @@ def test_bound_manifests_journal_only_real_membership_changes_after_the_bootstra
         candidate_manifest_revision=readmitted.revision_sha256,
         admitted_listing_ids=tuple(item.listing_id for item in readmitted.listings),
         quarantines=(),
-        quality_policy_hash="4" * 64,
+        quality_policy_hash=fixture_digest("4"),
         temporal_boundary=boundary,
         evidence_scope="BASE_FEATURE_CANDIDATES",
-        feature_qualification_hash="5" * 64,
+        feature_qualification_hash=fixture_digest("5"),
     )
     coordinator.panel_state.record_feature_input_gateway_result(
         candidate_manifest=readmitted,
@@ -223,13 +224,13 @@ def test_bound_manifests_journal_only_real_membership_changes_after_the_bootstra
         observed_at=boundary.knowledge_cutoff_at,
         effective_session=T2,
         authority="qualified_source_membership",
-        reference_hash="5" * 64,
+        reference_hash=fixture_digest("5"),
     )
     events = market_data.membership_events(PROFILE)
     assert [
         (e.sequence, e.listing_id, e.kind, e.effective_session, e.authority) for e in events
     ] == [(1, "listing-msft", "ENTRY", T2, "qualified_source_membership")]
-    assert events[0].reference_hash == "5" * 64
+    assert events[0].reference_hash == fixture_digest("5")
     assert events[0].manifest_revision == readmitted.revision_sha256
 
     # A current observation while catching up T1 is applied prospectively, not
@@ -267,9 +268,9 @@ def test_membership_invalidations_take_effect_at_the_session_not_history_start()
     assert by_kind["manifest_removal"].listing_id == "listing-old"
     sessions = (date(2026, 7, 27), date(2026, 7, 28), T0, T1, T2)
     request = FeatureBuildRequest.create(
-        manifest_revision="1" * 64,
+        manifest_revision=fixture_digest("1"),
         catalog=catalog.binding,
-        spy_revision="2" * 64,
+        spy_revision=fixture_digest("2"),
         history_start=sessions[0],
         as_of_session=T2,
         invalidations=plan.invalidations,

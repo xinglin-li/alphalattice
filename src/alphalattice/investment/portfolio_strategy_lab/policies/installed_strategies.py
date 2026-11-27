@@ -45,7 +45,6 @@ from alphalattice.investment.alpha_research.scores.heterogeneous_product import 
     COMPONENT_IDS,
     HETEROGENEOUS_STRATEGY_ID,
     INSTALLED_HETEROGENEOUS_ALPHA_STRATEGY,
-    SUCCESSOR_PACKAGE_HASH,
     ComponentId,
     HeterogeneousChildModelIdentity,
     HeterogeneousModelSetAuthority,
@@ -55,14 +54,15 @@ from alphalattice.investment.alpha_research.scores.heterogeneous_replay import (
     HeterogeneousReplayError,
     admit_heterogeneous_current_closure,
     admit_successor_evidence,
+    read_successor_evidence,
 )
 from alphalattice.investment.alpha_research.scores.product_recipe import (
     INSTALLED_ALPHA_PRODUCT_RECIPE,
 )
 from alphalattice.investment.alpha_research.scores.product_replay import (
-    INSTALLED_EVIDENCE_MANIFEST_SHA256,
     AdmittedProductEvidence,
     AlphaProductScoreProjection,
+    AlphaScoreReplayError,
     HeterogeneousFormationScoreInput,
     HeterogeneousLiveModel,
     HeterogeneousPredictionOwner,
@@ -124,7 +124,7 @@ from alphalattice.investment.risk_research.surfaces.decomposition import (
     RiskAllocationProjection,
     RiskAttributionProjection,
 )
-from alphalattice.kernel.identity import identity_sha256
+from alphalattice.kernel.identity import BLAKE3_PATTERN
 
 type FloatArray = npt.NDArray[np.float64]
 type BoolArray = npt.NDArray[np.bool_]
@@ -141,12 +141,7 @@ POST_OBSERVED_CONTROLS_FROZEN: Final = "portfolio_application.post_observed_cont
 REBOUND_RETURN_STRATEGY_ID: Final = "RETURN_G6_MU_ONLY"
 TREND_REBOUND_STRATEGY_ID: Final = "BALANCED_G2_G6_EQUAL_CAPITAL"
 _RECIPE_SEAL: Final = frozenset({"recipe_hash"})
-TREND_CANDIDATE_RESEARCH_RECIPE_HASH: Final = (
-    "145f2cdc492e2c12dae67426eb5753f8d73a4295681ae5bc474ab9aa17ae0e28"
-)
-FAST_REBOUND_RESEARCH_RECIPE_HASH: Final = (
-    "a2896193b0575e37d4ad99ed5b2bdbdd29bab9a333298e9bddaaaa5f251ee61f"
-)
+
 
 SHARED_CONTROL_IDS: Final[tuple[str, ...]] = (
     "cost_bps_per_side",
@@ -196,7 +191,7 @@ class ComponentBookRecipe(BaseModel):  # type: ignore[misc]
     )
     aggregate_name_cap: float = Field(default=0.06, gt=0.0, le=1.0)
     aggregate_cap_start_formation: Literal[525] = 525
-    recipe_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
+    recipe_hash: str = Field(pattern=BLAKE3_PATTERN)
 
     @classmethod
     def installed(cls) -> Self:
@@ -248,7 +243,7 @@ class HeterogeneousBookRecipe(BaseModel):  # type: ignore[misc]
     """The components' names; the strategy hash binds the components in their order (ID10)."""
 
     kind: Literal["HeterogeneousBookRecipe"] = "HeterogeneousBookRecipe"
-    strategy_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
+    strategy_hash: str = Field(pattern=BLAKE3_PATTERN)
     component_ids: tuple[ComponentId, ...] = COMPONENT_IDS
     allocation_basis_points: tuple[int, ...] = (2500, 2500, 2500, 2500)
     component_book_recipe: ComponentBookRecipe
@@ -259,7 +254,7 @@ class HeterogeneousBookRecipe(BaseModel):  # type: ignore[misc]
     risk_for_weights: Literal["NONE_EQUAL_WEIGHT_COMPONENT_BOOKS"] = (
         "NONE_EQUAL_WEIGHT_COMPONENT_BOOKS"
     )
-    recipe_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
+    recipe_hash: str = Field(pattern=BLAKE3_PATTERN)
 
     @classmethod
     def installed(cls) -> Self:
@@ -349,56 +344,59 @@ _SHARED_LANES: Final[tuple[str, ...]] = (
     "ELIGIBLE_UNIVERSE_EQUAL_WEIGHT_BENCHMARK",
 )
 
-BROAD_FEATURE_PACKAGE: Final = FrozenStrategyPackage.create(
-    strategy_id=BROAD_FEATURE_STRATEGY_ID,
-    alpha_recipe_hash=INSTALLED_ALPHA_PRODUCT_RECIPE.recipe_hash,
-    policy_binding="REQUEST_SELECTED",
-    frozen_policy=None,
-    component_plan=(
-        ComponentPlanEntry(
-            component_id=PRODUCT_COMPONENT_ID,
-            allocation_basis_points=10_000,
-            family_id="BROAD_ENSEMBLE_MODEL",
-            recipe_hash=INSTALLED_ALPHA_PRODUCT_RECIPE.recipe_hash,
-            target_recipe="HISTORICAL_ENSEMBLE_TARGET",
-            objective="ONE_AGGREGATED_PRODUCT_SCORE_PER_FORMATION",
+
+def broad_feature_package(evidence_identity_hash: str) -> FrozenStrategyPackage:
+    """Declare the predecessor over the manifest this installation verified."""
+    return FrozenStrategyPackage.create(
+        strategy_id=BROAD_FEATURE_STRATEGY_ID,
+        alpha_recipe_hash=INSTALLED_ALPHA_PRODUCT_RECIPE.recipe_hash,
+        policy_binding="REQUEST_SELECTED",
+        frozen_policy=None,
+        component_plan=(
+            ComponentPlanEntry(
+                component_id=PRODUCT_COMPONENT_ID,
+                allocation_basis_points=10_000,
+                family_id="BROAD_ENSEMBLE_MODEL",
+                recipe_hash=INSTALLED_ALPHA_PRODUCT_RECIPE.recipe_hash,
+                target_recipe="HISTORICAL_ENSEMBLE_TARGET",
+                objective="ONE_AGGREGATED_PRODUCT_SCORE_PER_FORMATION",
+            ),
         ),
-    ),
-    merge_semantics="SINGLE_COMPONENT_BOOK",
-    score_sources=(
-        ScoreSourceCapability(
-            mode="HISTORICAL_ARRAY_REPLAY",
-            evidence_identity_hash=INSTALLED_EVIDENCE_MANIFEST_SHA256,
-            description="Twelve admitted broad-ensemble models replayed per formation",
+        merge_semantics="SINGLE_COMPONENT_BOOK",
+        score_sources=(
+            ScoreSourceCapability(
+                mode="HISTORICAL_ARRAY_REPLAY",
+                evidence_identity_hash=evidence_identity_hash,
+                description="Twelve admitted broad-ensemble models replayed per formation",
+            ),
         ),
-    ),
-    default_score_source_mode="HISTORICAL_ARRAY_REPLAY",
-    required_shared_input_lanes=(
-        *_SHARED_LANES,
-        "RISK_ALLOCATION_AND_ATTRIBUTION",
-        "CAUSAL_RANK_RETURN_CURVE",
-    ),
-    risk_disposition="POLICY_CONSUMED_RISK_ALLOCATION_PLUS_REPORT_ONLY_DFD_PRIME_PLUS_E",
-    controls=PackageControlSurface(
-        frozen=(),
-        admitted=HOLDINGS_CONTROL_IDS,
-        shared=SHARED_CONTROL_IDS,
-    ),
-    claim_limits=(
-        "NO_INDEPENDENT_HOLDOUT_CLAIM",
-        "NO_CAPACITY_ESTIMATE",
-        "NO_CURRENT_OR_PRODUCTION_POINTER_MUTATION",
-    ),
-    provenance=(
-        "ALPHA_SCORES_REPLAYED_FROM_THE_ADMITTED_ENSEMBLE_EVIDENCE_MANIFEST",
-        "RISK_DECOMPOSITION_PRODUCED_PER_FORMATION_FROM_THE_CAUSAL_RETURN_SURFACE",
-    ),
-)
+        default_score_source_mode="HISTORICAL_ARRAY_REPLAY",
+        required_shared_input_lanes=(
+            *_SHARED_LANES,
+            "RISK_ALLOCATION_AND_ATTRIBUTION",
+            "CAUSAL_RANK_RETURN_CURVE",
+        ),
+        risk_disposition="POLICY_CONSUMED_RISK_ALLOCATION_PLUS_REPORT_ONLY_DFD_PRIME_PLUS_E",
+        controls=PackageControlSurface(
+            frozen=(),
+            admitted=HOLDINGS_CONTROL_IDS,
+            shared=SHARED_CONTROL_IDS,
+        ),
+        claim_limits=(
+            "NO_INDEPENDENT_HOLDOUT_CLAIM",
+            "NO_CAPACITY_ESTIMATE",
+            "NO_CURRENT_OR_PRODUCTION_POINTER_MUTATION",
+        ),
+        provenance=(
+            "ALPHA_SCORES_REPLAYED_FROM_THE_ADMITTED_ENSEMBLE_EVIDENCE_MANIFEST",
+            "RISK_DECOMPOSITION_PRODUCED_PER_FORMATION_FROM_THE_CAUSAL_RETURN_SURFACE",
+        ),
+    )
 
 
 def heterogeneous_package(
     *,
-    historical: bool = True,
+    historical_evidence_hash: str | None = None,
     current_authority: HeterogeneousModelSetAuthority | None = None,
 ) -> FrozenStrategyPackage:
     """Declare the successor over exactly the capabilities this desktop installs.
@@ -410,11 +408,11 @@ def heterogeneous_package(
     scoring binds -- never a mode without the authority behind it.
     """
     sources: list[ScoreSourceCapability] = []
-    if historical:
+    if historical_evidence_hash is not None:
         sources.append(
             ScoreSourceCapability(
                 mode="HISTORICAL_ARRAY_REPLAY",
-                evidence_identity_hash=SUCCESSOR_PACKAGE_HASH,
+                evidence_identity_hash=historical_evidence_hash,
                 description="Four sealed component score arrays, reopened exactly",
             )
         )
@@ -578,8 +576,10 @@ def installed_book_part_hash(book: str, part: str) -> str:
 
 
 _POST_OBSERVED_COMPONENT_ALPHA: Final = {
-    TREND_CANDIDATE_COMPONENT_ID: TREND_CANDIDATE_RESEARCH_RECIPE_HASH,
-    FAST_REBOUND_COMPONENT_ID: FAST_REBOUND_RESEARCH_RECIPE_HASH,
+    component_id: INSTALLED_HETEROGENEOUS_ALPHA_STRATEGY.component(
+        component_id
+    ).research_recipe_hash
+    for component_id in (TREND_CANDIDATE_COMPONENT_ID, FAST_REBOUND_COMPONENT_ID)
 }
 
 
@@ -867,6 +867,14 @@ class ProductScoreSource:
             alpha_evidence_root: Root of the exact replay evidence copy.
         """
         self._root = alpha_evidence_root.resolve()
+        try:
+            self._evidence_digest = AdmittedProductEvidence.admit(
+                self._root, INSTALLED_ALPHA_PRODUCT_RECIPE
+            ).expected_manifest_digest
+        except (OSError, AlphaScoreReplayError) as error:
+            raise StrategyPackageError(
+                "portfolio_application.installed_strategy_evidence_refused:" + str(error)
+            ) from error
 
     @property
     def mode(self) -> ScoreSourceMode:
@@ -882,16 +890,16 @@ class ProductScoreSource:
         """Read the installed replay evidence manifest identity.
 
         Returns:
-            Exact installed manifest SHA256.
+            Exact installed manifest BLAKE3 digest.
         """
-        return str(INSTALLED_EVIDENCE_MANIFEST_SHA256)
+        return cast(str, self._evidence_digest)
 
     def evidence(self) -> AdmittedProductEvidence:
         """The admitted predecessor evidence, opened from the installed root."""
         return AdmittedProductEvidence(
             root=self._root,
             recipe=INSTALLED_ALPHA_PRODUCT_RECIPE,
-            expected_manifest_sha256=INSTALLED_EVIDENCE_MANIFEST_SHA256,
+            expected_manifest_digest=self._evidence_digest,
         )
 
     def support(self, *, spec: PortfolioResearchSpec) -> ScoreSupport:
@@ -908,7 +916,7 @@ class ProductScoreSource:
         return ScoreSupport(
             owner_id="alpha_product_replay",
             lane="BROAD_ENSEMBLE_DEVELOPMENT_REPLAY_SCORE",
-            identity_hash=INSTALLED_EVIDENCE_MANIFEST_SHA256,
+            identity_hash=self._evidence_digest,
             formation_sessions=sessions,
             ordered_listing_ids=listings,
             # Unconditional, as it has always been for this package: the rank-`mu`
@@ -1037,17 +1045,17 @@ def product_evidence_closure_reader(
     grow a branch for the next one.
     """
 
-    def _read(*, root: Path, expected_manifest_sha256: str) -> tuple[str, str, int] | None:
+    def _read(*, root: Path, expected_manifest_digest: str) -> tuple[str, str, int] | None:
         try:
             closure = AdmittedProductEvidence(
                 root=root,
                 recipe=cast(Any, recipe),
-                expected_manifest_sha256=expected_manifest_sha256,
+                expected_manifest_digest=expected_manifest_digest,
             ).verify_closure()
         except Exception:
             return None
         return (
-            str(closure.manifest_sha256),
+            str(closure.manifest_digest),
             str(closure.closure_hash),
             int(closure.child_count),
         )
@@ -1066,10 +1074,7 @@ def component_formation_receipt(
     evidence_manifest_hash: str,
 ) -> str:
     """One receipt over every component row a formation consumed."""
-    row_hashes = [
-        identity_sha256(np.ascontiguousarray(row, dtype="<f8").tobytes()).hexdigest()
-        for row in component_rows
-    ]
+    row_hashes = [array_value_hash(row) for row in component_rows]
     return str(
         canonical_hash(
             {
@@ -1163,7 +1168,7 @@ class SuccessorComponentScoreSource:
         """
         if tuple(component_score_paths) != COMPONENT_IDS:
             raise StrategyPackageError("portfolio_application.package_component_set_invalid")
-        self._root = successor_root.resolve()
+        self._evidence = read_successor_evidence(successor_root.resolve())
         self._paths = {
             component: component_score_paths[component].resolve() for component in COMPONENT_IDS
         }
@@ -1184,7 +1189,7 @@ class SuccessorComponentScoreSource:
         Returns:
             Exact package hash.
         """
-        return str(SUCCESSOR_PACKAGE_HASH)
+        return cast(str, self._evidence.package_hash)
 
     def support(self, *, spec: PortfolioResearchSpec) -> ScoreSupport:
         """Declare the historical component-array lane without inventing support axes.
@@ -1199,7 +1204,7 @@ class SuccessorComponentScoreSource:
         return ScoreSupport(
             owner_id="heterogeneous_component_arrays",
             lane="COMPONENT_SCORE_ARRAY",
-            identity_hash=SUCCESSOR_PACKAGE_HASH,
+            identity_hash=self.evidence_identity_hash,
         )
 
     def resolve_components(
@@ -1216,7 +1221,7 @@ class SuccessorComponentScoreSource:
         """
         del spec
         evidence = admit_successor_evidence(
-            self._root,
+            self._evidence,
             formation_sessions=shared.formation_sessions,
             ordered_listing_ids=shared.ordered_listing_ids,
             component_score_paths=self._paths,
@@ -1226,7 +1231,7 @@ class SuccessorComponentScoreSource:
                 component: evidence.component(component) for component in COMPONENT_IDS
             },
             shared=shared,
-            evidence_manifest_hash=SUCCESSOR_PACKAGE_HASH,
+            evidence_manifest_hash=self.evidence_identity_hash,
         )
 
 
@@ -1619,7 +1624,7 @@ def install_frozen_strategies(
 
     The predecessor is installed from its admitted evidence root. The successor
     is installed only when at least one of its capabilities is: the historical
-    arrays from a Gate I package root plus one sealed score array per component,
+    arrays from a BLAKE3 evidence manifest plus one sealed score array per component,
     and current scoring only from a sealed local closure root whose manifest the
     reader verifies completely -- every pin, every file, every payload -- before
     the mode is declared. No closure root means no such capability; a named
@@ -1636,20 +1641,22 @@ def install_frozen_strategies(
         raise StrategyPackageError(
             f"portfolio_application.installed_strategy_artifact_absent:{PRODUCT_EVIDENCE_ROOT_KEY}"
         )
+    predecessor = (
+        None if evidence_root is None else ProductScoreSource(alpha_evidence_root=evidence_root)
+    )
     bindings = (
         []
-        if evidence_root is None
+        if predecessor is None
         else [
             InstalledPackageBinding(
-                package=BROAD_FEATURE_PACKAGE,
-                sources={
-                    "HISTORICAL_ARRAY_REPLAY": ProductScoreSource(alpha_evidence_root=evidence_root)
-                },
+                package=broad_feature_package(predecessor.evidence_identity_hash),
+                sources={"HISTORICAL_ARRAY_REPLAY": predecessor},
                 source_identity_hash=installed_strategy_source_hash(),
             )
         ]
     )
     successor: dict[ScoreSourceMode, StrategyScoreSource] = {}
+    historical_evidence_hash = None
     successor_root = artifacts.get(HETEROGENEOUS_SUCCESSOR_PACKAGE_ROOT_KEY)
     if successor_root is not None:
         score_paths: dict[ComponentId, Path] = {}
@@ -1661,9 +1668,11 @@ def install_frozen_strategies(
                     f"{HETEROGENEOUS_SUCCESSOR_SCORE_KEY_PREFIX}{component}"
                 )
             score_paths[component] = path
-        successor["HISTORICAL_ARRAY_REPLAY"] = SuccessorComponentScoreSource(
+        historical = SuccessorComponentScoreSource(
             successor_root=successor_root, component_score_paths=score_paths
         )
+        successor["HISTORICAL_ARRAY_REPLAY"] = historical
+        historical_evidence_hash = historical.evidence_identity_hash
     current_authority: HeterogeneousModelSetAuthority | None = None
     closure_root = artifacts.get(HETEROGENEOUS_CURRENT_CLOSURE_ROOT_KEY)
     if closure_root is not None:
@@ -1681,7 +1690,7 @@ def install_frozen_strategies(
         bindings.append(
             InstalledPackageBinding(
                 package=heterogeneous_package(
-                    historical="HISTORICAL_ARRAY_REPLAY" in successor,
+                    historical_evidence_hash=historical_evidence_hash,
                     current_authority=current_authority,
                 ),
                 sources=successor,
@@ -1740,7 +1749,6 @@ def install_frozen_strategies(
 
 __all__ = [
     "BOOK_PARTS",
-    "BROAD_FEATURE_PACKAGE",
     "BROAD_FEATURE_STRATEGY_ID",
     "HETEROGENEOUS_CONTROLS_FROZEN",
     "HETEROGENEOUS_CURRENT_CLOSURE_ROOT_KEY",
@@ -1768,6 +1776,7 @@ __all__ = [
     "ProductScoreSource",
     "SuccessorComponentScoreSource",
     "book_part_role",
+    "broad_feature_package",
     "build_replayed_formation_inputs",
     "component_formation_receipt",
     "heterogeneous_package",

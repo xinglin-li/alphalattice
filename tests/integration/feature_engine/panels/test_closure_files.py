@@ -3,7 +3,6 @@ for byte, the closure store then reads and writes there, and one switch reads th
 
 from __future__ import annotations
 
-import hashlib
 import os
 from pathlib import Path
 from types import SimpleNamespace
@@ -23,11 +22,13 @@ from alphalattice.foundation.feature_engine.panels.closure_files import (
     KeptFiles,
     closure_upgrade_family,
 )
+from alphalattice.kernel.identity import blake3_filename
+from tests._support.identity_fixtures import fixture_digest
 
 TEST_SOURCE = "src/alphalattice/foundation/feature_engine/panels/closure_files.py"
-HEAD = "feature-ledger/operational/heads/" + "a" * 64 + ".json"
+HEAD = f"feature-ledger/operational/heads/{blake3_filename(fixture_digest('head'))}.json"
 RUN = "0.2.8"
-PENDING = "feature-ledger/operational/pending/" + "b" * 64 + ".json"
+PENDING = f"feature-ledger/operational/pending/{blake3_filename(fixture_digest('pending'))}.json"
 
 
 def _old_workspace(workspace: Path) -> tuple[PanelClosureArtifactStore, str, object]:
@@ -40,7 +41,7 @@ def _old_workspace(workspace: Path) -> tuple[PanelClosureArtifactStore, str, obj
     )
     store = PanelClosureArtifactStore(ArtifactResolver(workspace / "artifacts"))
     store._files = FolderFiles(store.root)  # the 0.2.7 folder, written before the move
-    content = hashlib.sha256(b"map").hexdigest()
+    content = fixture_digest("map")
     store.publish_json(category="sector-maps", content_hash=content, payload={"map": 1})
     table = pa.table({"value": [1.0, 2.0]})
     reference = store.publish_parquet(
@@ -141,11 +142,11 @@ def test_after_the_move_writes_go_to_the_log_across_a_restart(
     for subject in (RUN, f"{RUN}/another"):
         assert _run(workspace, family, subject)
     assert restarted.read(HEAD) == b'{"head_hash":"h2"}' and not restarted.exists(PENDING)
-    added = hashlib.sha256(b"added").hexdigest()
+    added = fixture_digest("added")
     store.publish_json(category="sector-maps", content_hash=added, payload={"map": 2})
     folder = workspace / "artifacts" / "feature-panel" / "closure"
     assert (folder / HEAD).read_bytes() == b'{"head_hash":"h1"}'
-    assert not (folder / "sector-maps" / f"{added}.json").exists()
+    assert not (folder / "sector-maps" / f"{blake3_filename(added)}.json").exists()
     assert store.holds("sector-maps", added) and store.files.read(HEAD) == b'{"head_hash":"h2"}'
 
 

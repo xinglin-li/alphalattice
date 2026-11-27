@@ -30,6 +30,7 @@ from alphalattice.interface.local_application.portfolio_research import (
     PortfolioResearchOperationRequest,
     full_request_document,
 )
+from alphalattice.kernel.identity import BLAKE3_PATTERN
 
 OPERATIONS: Final[tuple[str, ...]] = tuple(get_args(PortfolioResearchOperation.__value__))
 
@@ -1266,7 +1267,8 @@ def _reference(spec: dict[str, Any]) -> bool:
             continue
         for typed in (option, option.get("items")):
             if isinstance(typed, dict) and (
-                typed.get("format") == "uuid" or typed.get("pattern") == r"^[0-9a-f]{64}$"
+                typed.get("format") == "uuid"
+                or typed.get("pattern") in (BLAKE3_PATTERN, r"^[0-9a-f]{64}$")
             ):
                 return True
     return False

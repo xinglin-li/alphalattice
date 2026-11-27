@@ -68,6 +68,7 @@ from alphalattice.foundation.feature_engine.producers.preprocessing.catalog impo
 )
 from alphalattice.interface.local_application.cli_contract import refusal_words
 from alphalattice.interface.local_application.failure_codes import public_failure
+from alphalattice.kernel.identity import blake3_from_filename
 
 _LISTING_PAGE = 50
 """Formula factors one page of `FEATURE_EXTENSIONS` lists: the Local Web's table page."""
@@ -187,8 +188,9 @@ class FeatureExtensions:
         for filename in definitions.store.files.names(CATEGORY):
             # A filename that is not a content identity was ignored by `find_models`; keep that
             # boundary while isolating each actual record read from its neighbours.
-            plan_hash, _, suffix = filename.rpartition(".")
-            if suffix != "json" or len(plan_hash) != 64:
+            stem, _, suffix = filename.rpartition(".")
+            plan_hash = blake3_from_filename(stem)
+            if suffix != "json" or plan_hash is None:
                 continue
             try:
                 name = definitions.store.load_model(

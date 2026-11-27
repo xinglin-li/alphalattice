@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 from datetime import date
-from io import BytesIO
 from typing import Literal, Self, cast
 
 import numpy as np
@@ -28,7 +27,7 @@ from alphalattice.investment.portfolio_strategy_lab.policies.contracts import (
 from alphalattice.investment.portfolio_strategy_lab.publication.artifacts import (
     PortfolioResearchArtifactStore,
 )
-from alphalattice.kernel.identity import identity_sha256
+from alphalattice.kernel.identity import BLAKE3_PATTERN, is_blake3
 
 type FloatArray = npt.NDArray[np.float64]
 type BoolArray = npt.NDArray[np.bool_]
@@ -70,7 +69,7 @@ class FrozenRankCalibrationRule(_Contract):
     return_recipe: Literal["NEXT_OPEN_TO_OPEN_ONE_SESSION"] = "NEXT_OPEN_TO_OPEN_ONE_SESSION"
     activation_session: date
     activation_position: Literal[521] = 521
-    content_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
+    content_hash: str = Field(pattern=BLAKE3_PATTERN)
 
 
 class CalibrationObservations(_Contract):
@@ -79,16 +78,16 @@ class CalibrationObservations(_Contract):
     kind: Literal["CalibrationObservations"] = "CalibrationObservations"
     purpose: Literal["POST_OBSERVED_CALIBRATION_QA"] = "POST_OBSERVED_CALIBRATION_QA"
     origin: Literal["FROZEN_RESEARCH_INPUTS", "SYNTHETIC_QA_INPUTS", "LOCAL_QA_OBSERVATIONS"]
-    strategy_package_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
-    component_recipe_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
+    strategy_package_hash: str = Field(pattern=BLAKE3_PATTERN)
+    component_recipe_hash: str = Field(pattern=BLAKE3_PATTERN)
     rule: FrozenRankCalibrationRule
     formation_sessions: tuple[date, ...]
     holding_end_sessions: tuple[date | None, ...]
     ordered_listing_ids: tuple[str, ...]
     source_hashes: tuple[str, ...]
     score_snapshot_hashes: tuple[str, ...] = ()
-    array_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
-    content_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
+    array_hash: str = Field(pattern=BLAKE3_PATTERN)
+    content_hash: str = Field(pattern=BLAKE3_PATTERN)
 
     @model_validator(mode="after")  # type: ignore[untyped-decorator]
     def validate_axes(self) -> Self:
@@ -114,8 +113,7 @@ class CalibrationObservations(_Contract):
                 for day, end in zip(self.formation_sessions, self.holding_end_sessions, strict=True)
             )
             or any(
-                len(value) != 64 or any(c not in "0123456789abcdef" for c in value)
-                for value in (*self.source_hashes, *self.score_snapshot_hashes)
+                not is_blake3(value) for value in (*self.source_hashes, *self.score_snapshot_hashes)
             )
         ):
             raise ValueError("portfolio_calibration.observation_axis_invalid")
@@ -123,13 +121,6 @@ class CalibrationObservations(_Contract):
 
 
 _ARRAY_NAMES = ("scores", "returns", "eligible")
-
-
-def _legacy_npz_digest(scores: FloatArray, returns: FloatArray, eligible: BoolArray) -> str:
-    # Legacy observations carry the digest of their arrays packed as one npz.
-    data = BytesIO()
-    np.savez(data, scores=scores, returns=returns, eligible=eligible)
-    return identity_sha256(data.getvalue()).hexdigest()
 
 
 def publish_observations(
@@ -233,7 +224,7 @@ def publish_consumed_observations(
 def load_observations(
     store: PortfolioResearchArtifactStore, content_hash: str
 ) -> tuple[CalibrationObservations, FloatArray, FloatArray, BoolArray]:
-    """Read exact calibration arrays with current columns or compatible historical NPZ.
+    """Read the exact stored calibration columns.
 
     Args:
         store: Portfolio artifact readback owner.
@@ -253,20 +244,12 @@ def load_observations(
         identity_field="content_hash",
     )
     shape = (len(value.formation_sessions), len(value.ordered_listing_ids))
-    if store.holds_array(category="calibration-arrays", content_hash=value.array_hash):
-        columns = store.load_columns(category="calibration-arrays", content_hash=value.array_hash)
-        if tuple(columns) != _ARRAY_NAMES or any(
-            v.size != shape[0] * shape[1] for v in columns.values()
-        ):
-            raise ValueError("portfolio_calibration.observation_fields_invalid")
-        scores, returns, eligible = (columns[name].reshape(shape) for name in _ARRAY_NAMES)
-    else:
-        # Legacy observations packed their arrays as one npz `.bin`.
-        data = store.load_packed_bytes(category="calibration-arrays", content_hash=value.array_hash)
-        with np.load(BytesIO(data), allow_pickle=False) as arrays:
-            if set(arrays.files) != set(_ARRAY_NAMES):
-                raise ValueError("portfolio_calibration.observation_fields_invalid")
-            scores, returns, eligible = (arrays[name] for name in _ARRAY_NAMES)
+    columns = store.load_columns(category="calibration-arrays", content_hash=value.array_hash)
+    if tuple(columns) != _ARRAY_NAMES or any(
+        v.size != shape[0] * shape[1] for v in columns.values()
+    ):
+        raise ValueError("portfolio_calibration.observation_fields_invalid")
+    scores, returns, eligible = (columns[name].reshape(shape) for name in _ARRAY_NAMES)
     _check_arrays(value, scores, returns, eligible)
     return value, scores, returns, eligible
 
@@ -278,11 +261,11 @@ class PreparedPortfolioComponentInput(_Contract):
     disposition: Literal["PORTFOLIO_INPUT_QA_NOT_RECOMMENDATION"] = (
         "PORTFOLIO_INPUT_QA_NOT_RECOMMENDATION"
     )
-    request_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
-    score_snapshot_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
-    observation_hash: str | None = Field(pattern=r"^[0-9a-f]{64}$")
-    strategy_package_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
-    component_recipe_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
+    request_hash: str = Field(pattern=BLAKE3_PATTERN)
+    score_snapshot_hash: str = Field(pattern=BLAKE3_PATTERN)
+    observation_hash: str | None = Field(pattern=BLAKE3_PATTERN)
+    strategy_package_hash: str = Field(pattern=BLAKE3_PATTERN)
+    component_recipe_hash: str = Field(pattern=BLAKE3_PATTERN)
     formation_session: date
     rule: FrozenRankCalibrationRule | None
     ordered_listing_ids: tuple[str, ...]
@@ -292,7 +275,7 @@ class PreparedPortfolioComponentInput(_Contract):
     selected_observation_sessions: tuple[date, ...]
     latest_holding_end_session: date | None
     sizing_rule: Literal["ew", "mu.iv0"]
-    content_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
+    content_hash: str = Field(pattern=BLAKE3_PATTERN)
 
     @model_validator(mode="after")  # type: ignore[untyped-decorator]
     def validate_input(self) -> Self:
@@ -430,7 +413,7 @@ class PreparedPortfolioBookInput(_Contract):
     kind: Literal["PreparedPortfolioBookInput"] = "PreparedPortfolioBookInput"
     component_ids: tuple[str, ...]
     components: tuple[PreparedPortfolioComponentInput, ...] = Field(min_length=1)
-    content_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
+    content_hash: str = Field(pattern=BLAKE3_PATTERN)
 
     @model_validator(mode="after")  # type: ignore[untyped-decorator]
     def validate_components(self) -> Self:
@@ -626,10 +609,9 @@ def compile_portfolio_calibration(
     )
 
     _check_arrays(observations, scores, returns, eligible)
-    if observations.array_hash not in {
-        columns_digest({"scores": scores, "returns": returns, "eligible": eligible}),
-        _legacy_npz_digest(scores, returns, eligible),
-    }:
+    if observations.array_hash != columns_digest(
+        {"scores": scores, "returns": returns, "eligible": eligible}
+    ):
         raise ValueError("portfolio_calibration.observation_content_mismatch")
     if (
         not set(score.ordered_listing_ids) <= set(observations.ordered_listing_ids)

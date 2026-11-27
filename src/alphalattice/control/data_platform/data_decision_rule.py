@@ -21,6 +21,7 @@ from alphalattice.foundation.market_data_ops.runtime.remediation import canonica
 from alphalattice.foundation.market_data_ops.sources.contracts import DataRemediationProposal
 from alphalattice.foundation.market_data_ops.storage.action_audit import ADJUSTMENT_SEGMENTS
 from alphalattice.foundation.market_data_ops.storage.rebase import RAW_REBASES
+from alphalattice.kernel.identity import blake3_hex, is_blake3
 from alphalattice.protocols.actor_execution.contracts import ActorKind
 
 SHIPPED_PRECISION = 1e-6
@@ -277,7 +278,7 @@ class DataDecisionRule:
                 **payload, submission_hash=canonical_hash(payload)
             ),
             actor_kind=ActorKind.HOST_FALLBACK,
-            actor_id=f"host-rule:{self.rule_hash[:16]}",
+            actor_id=rule_actor_id(self.rule_hash),
         )
 
 
@@ -308,6 +309,11 @@ PANEL_KEPT = "PANEL_CELLS_KEPT"
 """The Goal entry naming the count and agreement of Panel cells kept outside rewritten spans."""
 
 
+def rule_actor_id(rule_hash: str) -> str:
+    """The actor identifier a Host rule signs with."""
+    return f"host-rule:{blake3_hex(rule_hash)[:16]}"
+
+
 def rule_receipt(saved: Mapping[str, Any]) -> tuple[str, str] | None:
     """The option and rule hash of an applied choice a Host rule signed, else None."""
     receipt = saved.get("receipt")
@@ -317,9 +323,11 @@ def rule_receipt(saved: Mapping[str, Any]) -> tuple[str, str] | None:
     actor, proposal = receipt["actor_submission"], receipt["submission"]["proposal"]
     rule = proposal["rationale"].partition("; rule:")[2]
     signed = (
-        actor["actor_kind"] == "HOST_FALLBACK" and actor.get("actor_id") == f"host-rule:{rule[:16]}"
+        actor["actor_kind"] == "HOST_FALLBACK"
+        and is_blake3(rule)
+        and actor.get("actor_id") == rule_actor_id(rule)
     )
-    return (proposal["option_id"], rule) if rule and signed else None
+    return (proposal["option_id"], rule) if signed else None
 
 
 def held_decisions(

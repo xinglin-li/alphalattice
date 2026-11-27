@@ -19,6 +19,8 @@ from datetime import UTC, datetime
 import duckdb
 import pyarrow as pa
 
+from alphalattice.control.workspace_runtime.reader_threads import install_blake3_sql
+
 
 class PanelAvailabilityRepository:
     """Persist availability only; Panel values remain immutable artifacts."""
@@ -156,6 +158,7 @@ def _record(
 ) -> None:
     """Hash a staged set of cells under a catalog and record them, revisions first."""
     hashed_stage = "panel_availability_hashed_stage"
+    install_blake3_sql(connection)
     try:
         connection.execute(
             f"""
@@ -164,7 +167,7 @@ def _record(
                 ?::VARCHAR AS catalog_hash,
                 ?::VARCHAR AS policy_hash,
                 *,
-                sha256(to_json(struct_pack(
+                system.main.alphalattice_blake3(to_json(struct_pack(
                     cross_section := cross_section_identity,
                     catalog_hash := ?::VARCHAR,
                     policy_hash := ?::VARCHAR,
@@ -192,7 +195,7 @@ def _record(
             f"""
             INSERT INTO panel_cross_section_availability_revision
             SELECT
-                sha256(concat_ws('|', stage.cross_section_identity,
+                system.main.alphalattice_blake3(concat_ws('|', stage.cross_section_identity,
                     stage.catalog_hash, stage.policy_hash,
                     CAST(stage.session_date AS VARCHAR), stage.factor_id,
                     current.availability_hash, stage.availability_hash)),

@@ -9,6 +9,7 @@ from typing import Literal, Self
 from pydantic import Field, model_validator
 
 from alphalattice.capabilities.domain_contracts.identity import canonical_hash
+from alphalattice.kernel.identity import BLAKE3_PATTERN
 
 from ..contracts import PortfolioLabContract, SectorDeviationPenaltyPolicy
 from .contracts import PortfolioResearchAlphaSource
@@ -18,7 +19,7 @@ from .recovery_contracts import (
     PortfolioDevelopmentPlausibilitySummary,
 )
 
-_HASH = r"^[0-9a-f]{64}$"
+_HASH = BLAKE3_PATTERN
 
 
 def _identity(value: PortfolioLabContract, field: str) -> None:

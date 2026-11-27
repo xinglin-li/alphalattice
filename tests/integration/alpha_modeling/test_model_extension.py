@@ -25,6 +25,8 @@ from alphalattice.control.product_host.research_authoring.model_extensions impor
     ModelSandboxRecord,
     activated_models,
 )
+from alphalattice.kernel.identity import is_blake3
+from tests._support.identity_fixtures import fixture_digest
 
 ROOT = resolve_playpen_root(Path(__file__))
 MODEL = "numpy_ridge_probe"
@@ -159,7 +161,7 @@ def test_a_model_is_scaffolded_checked_and_passes_once_it_fits_and_predicts(
     _load(root, monkeypatch)
     written = check_model(MODEL, root=root)
     assert written["status"] == "PASSED", written["findings"]
-    assert len(written["contract_receipt_hash"]) == 64
+    assert is_blake3(written["contract_receipt_hash"])
 
 
 def test_an_incomplete_state_names_each_field_it_lacks(
@@ -505,7 +507,10 @@ def test_a_sandbox_trial_runs_the_model_it_names_whatever_study_declares_one(
     task_id = "00000000-0000-4000-8000-000000000001"
     ran = {"task_id": task_id, "model_adapter_id": "regularized_linear"}
     answers: dict[str, dict[str, Any]] = {
-        "EXPERIMENT_PLAN": {"status": "PLANNED", "plan_hash": "a" * 64},
+        "EXPERIMENT_PLAN": {
+            "status": "PLANNED",
+            "plan_hash": fixture_digest("planned-sandbox-experiment"),
+        },
         "EXPERIMENT_RUN": {"task_id": task_id},
         "STATUS": {"lifecycle": "SUCCEEDED"},
         "EXPERIMENT_READBACK": {"status": "EXPERIMENT_PUBLISHED"},

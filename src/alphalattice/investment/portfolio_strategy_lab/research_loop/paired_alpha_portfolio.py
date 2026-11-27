@@ -84,6 +84,7 @@ from alphalattice.investment.portfolio_strategy_lab.policies.score_risk_cost imp
 from alphalattice.investment.portfolio_strategy_lab.publication.artifacts import (
     PortfolioResearchArtifactStore,
 )
+from alphalattice.kernel.identity import BLAKE3_PATTERN, is_blake3
 
 from .paired_alpha_portfolio_evidence import (
     ControlledCovarianceRegressionEvidence,
@@ -100,7 +101,7 @@ from .paired_alpha_portfolio_evidence import (
 type FloatArray = npt.NDArray[np.float64]
 type BoolArray = npt.NDArray[np.bool_]
 
-_HASH = r"^[0-9a-f]{64}$"
+_HASH = BLAKE3_PATTERN
 _GRID = PAIRED_PANEL_PORTFOLIO_GRID
 _COST_ARMS = tuple(float(value) for value in _GRID.cost_stress_bps)
 _RISK_GRID = _GRID.risk_aversion_grid
@@ -361,7 +362,7 @@ class ImmutablePortfolioBenchmark:
                 np.asarray(self.economic_simple_returns, dtype=np.float64),
                 np.expm1(np.asarray(self.economic_log_returns, dtype=np.float64)),
             )
-            or len(self.surface_hash) != 64
+            or not is_blake3(self.surface_hash)
         ):
             raise PairedPortfolioError("portfolio_strategy_lab.benchmark_lane_invalid")
 
@@ -451,7 +452,7 @@ class PairedAlphaPortfolioInputs:
                 value.values.shape != (sessions, listings)
                 or value.values.flags.writeable
                 or not np.isfinite(value.values).all()
-                or len(value.surface_hash) != 64
+                or not is_blake3(value.surface_hash)
                 for value in self.declared_filtered_scores
             )
             or len({value.spec_id for value in self.declared_filtered_scores})
@@ -503,7 +504,7 @@ class PairedAlphaPortfolioInputs:
                 )
             )
             or any(
-                len(value) != 64
+                not is_blake3(value)
                 for value in (
                     self.dynamic_score_surface_hash,
                     self.control_score_surface_hash,

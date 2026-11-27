@@ -92,7 +92,7 @@ from alphalattice.foundation.market_data_ops.storage.universe_workspace import (
     _utc_aware,
 )
 from alphalattice.kernel.clock import observation_time, utc_now
-from alphalattice.kernel.identity import identity_sha256
+from alphalattice.kernel.identity import identity_blake3, tagged_blake3
 
 
 def _evidence_number(value: float | None) -> object:
@@ -350,7 +350,7 @@ class _SourcePrefixHashSink(RawIOBase):
 
     def __init__(self) -> None:
         super().__init__()
-        self.digest = identity_sha256()
+        self.digest = identity_blake3()
 
     def writable(self) -> bool:
         return True
@@ -367,7 +367,7 @@ def _source_prefix_arrow_hash(table: pa.Table) -> str:
     with _SourcePrefixHashSink() as sink:
         with pa.ipc.new_stream(sink, normalized.schema) as writer:
             writer.write_table(normalized)
-        return sink.digest.hexdigest()
+        return tagged_blake3(sink.digest)
 
 
 def _utc_naive(value: datetime) -> datetime:

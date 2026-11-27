@@ -35,6 +35,7 @@ from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 from alphalattice.capabilities.alpha_modeling.contracts import AlphaModelRecipeEnvelope
 from alphalattice.capabilities.domain_contracts.identity import canonical_hash
+from alphalattice.kernel.identity import BLAKE3_PATTERN
 
 type FloatArray = npt.NDArray[np.float64]
 
@@ -100,9 +101,9 @@ class AlphaTargetClippingDetail(_Contract):
     """
 
     kind: Literal["AlphaTargetClippingDetail"] = "AlphaTargetClippingDetail"
-    target_recipe_binding_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
+    target_recipe_binding_hash: str = Field(pattern=BLAKE3_PATTERN)
     rows: tuple[AlphaTargetClippingRow, ...]
-    detail_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
+    detail_hash: str = Field(pattern=BLAKE3_PATTERN)
 
     @classmethod
     def create(
@@ -147,7 +148,7 @@ class AlphaTargetPreprocessingReceipt(_Contract):
 
     kind: Literal["AlphaTargetPreprocessingReceipt"] = "AlphaTargetPreprocessingReceipt"
     target_recipe_id: str = Field(min_length=1, max_length=96)
-    target_recipe_binding_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
+    target_recipe_binding_hash: str = Field(pattern=BLAKE3_PATTERN)
     input_row_count: int = Field(ge=0)
     eligible_row_count: int = Field(ge=0)
     missing_row_count: int = Field(ge=0)
@@ -163,17 +164,17 @@ class AlphaTargetPreprocessingReceipt(_Contract):
     """Fixed at zero by type. A causal boundary that could report a nonzero count
     would be a boundary that admitted the violation and then described it."""
 
-    pre_bound_finite_identity: str = Field(pattern=r"^[0-9a-f]{64}$")
-    post_bound_finite_identity: str = Field(pattern=r"^[0-9a-f]{64}$")
-    raw_residual_identity: str = Field(pattern=r"^[0-9a-f]{64}$")
-    bounded_residual_identity: str = Field(pattern=r"^[0-9a-f]{64}$")
-    redemeaned_residual_identity: str = Field(pattern=r"^[0-9a-f]{64}$")
-    dispersion_identity: str = Field(pattern=r"^[0-9a-f]{64}$")
-    fit_target_identity: str = Field(pattern=r"^[0-9a-f]{64}$")
-    raw_log_return_identity: str = Field(pattern=r"^[0-9a-f]{64}$")
-    simple_economic_return_identity: str = Field(pattern=r"^[0-9a-f]{64}$")
-    clipping_detail_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
-    receipt_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
+    pre_bound_finite_identity: str = Field(pattern=BLAKE3_PATTERN)
+    post_bound_finite_identity: str = Field(pattern=BLAKE3_PATTERN)
+    raw_residual_identity: str = Field(pattern=BLAKE3_PATTERN)
+    bounded_residual_identity: str = Field(pattern=BLAKE3_PATTERN)
+    redemeaned_residual_identity: str = Field(pattern=BLAKE3_PATTERN)
+    dispersion_identity: str = Field(pattern=BLAKE3_PATTERN)
+    fit_target_identity: str = Field(pattern=BLAKE3_PATTERN)
+    raw_log_return_identity: str = Field(pattern=BLAKE3_PATTERN)
+    simple_economic_return_identity: str = Field(pattern=BLAKE3_PATTERN)
+    clipping_detail_hash: str = Field(pattern=BLAKE3_PATTERN)
+    receipt_hash: str = Field(pattern=BLAKE3_PATTERN)
 
     @model_validator(mode="after")  # type: ignore[untyped-decorator]
     def validate_identity(self) -> Self:
@@ -233,12 +234,12 @@ class AlphaComparisonArm(_Contract):
     kind: Literal["AlphaComparisonArm"] = "AlphaComparisonArm"
     arm_id: str = Field(min_length=1, max_length=96)
     target_recipe_id: str = Field(min_length=1, max_length=96)
-    target_method_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
+    target_method_hash: str = Field(pattern=BLAKE3_PATTERN)
     execution_outcome_recipe_id: str = Field(min_length=1, max_length=96)
-    causal_outcome_snapshot_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
-    outcome_method_binding_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
+    causal_outcome_snapshot_hash: str = Field(pattern=BLAKE3_PATTERN)
+    outcome_method_binding_hash: str = Field(pattern=BLAKE3_PATTERN)
     maturity_lag_sessions: int = Field(ge=2)
-    split_policy_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
+    split_policy_hash: str = Field(pattern=BLAKE3_PATTERN)
     evaluation_policy_id: str = Field(min_length=1, max_length=96)
     role: Literal[
         "CANONICAL_BOUNDED_REFERENCE",
@@ -260,11 +261,11 @@ class AlphaTargetPreprocessingComparisonProgram(_Contract):
         "AlphaTargetPreprocessingComparisonProgram"
     )
     ordered_arms: tuple[AlphaComparisonArm, ...] = Field(min_length=3, max_length=3)
-    common_authority_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
-    feature_panel_snapshot_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
-    factor_development_receipt_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
+    common_authority_hash: str = Field(pattern=BLAKE3_PATTERN)
+    feature_panel_snapshot_hash: str = Field(pattern=BLAKE3_PATTERN)
+    factor_development_receipt_hash: str = Field(pattern=BLAKE3_PATTERN)
     ordered_feature_ids: tuple[str, ...] = Field(min_length=1)
-    ordered_listing_ids_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
+    ordered_listing_ids_hash: str = Field(pattern=BLAKE3_PATTERN)
     model_capability_handle: str = Field(min_length=1, max_length=64)
     model_recipe: AlphaModelRecipeEnvelope
     """The complete Host-admitted adapter recipe for the one fixed model --
@@ -280,7 +281,7 @@ class AlphaTargetPreprocessingComparisonProgram(_Contract):
     There is still deliberately no separate parameters hash beside it: the
     envelope hashes its route *and* its parameters as one identity."""
 
-    model_search_domain_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
+    model_search_domain_hash: str = Field(pattern=BLAKE3_PATTERN)
     """The search domain the capability handle resolved to at admission. The
     admitted decision is "(domain, recipe)", not "recipe": re-verification
     compares this against the domain the installed mandate resolves for the
@@ -299,7 +300,7 @@ class AlphaTargetPreprocessingComparisonProgram(_Contract):
     measures the horizon.
     """
 
-    program_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
+    program_hash: str = Field(pattern=BLAKE3_PATTERN)
 
     @classmethod
     def create(
@@ -384,7 +385,7 @@ class AlphaComparisonArmResult(_Contract):
 
     kind: Literal["AlphaComparisonArmResult"] = "AlphaComparisonArmResult"
     arm_id: str = Field(min_length=1, max_length=96)
-    development_receipt_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
+    development_receipt_hash: str = Field(pattern=BLAKE3_PATTERN)
     preprocessing_receipt_hash: str | None = None
     """Absent for an arm with no bounding step. ``None`` is the honest value: a
     zero-row clipping receipt would assert that a bound ran and moved nothing."""
@@ -398,13 +399,13 @@ class AlphaTargetPreprocessingComparisonEvidence(_Contract):
     kind: Literal["AlphaTargetPreprocessingComparisonEvidence"] = (
         "AlphaTargetPreprocessingComparisonEvidence"
     )
-    program_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
+    program_hash: str = Field(pattern=BLAKE3_PATTERN)
     ordered_results: tuple[AlphaComparisonArmResult, ...] = Field(min_length=3, max_length=3)
     common_evaluation_rows: int = Field(ge=0)
     """Rows both paired arms scored. Reported rather than assumed equal to either
     arm's own count, because unavailable formations need not coincide."""
 
-    evidence_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
+    evidence_hash: str = Field(pattern=BLAKE3_PATTERN)
 
     @classmethod
     def create(

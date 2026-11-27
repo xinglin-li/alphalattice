@@ -1,0 +1,566 @@
+{
+ "schema": "identity-successors",
+ "version": 1,
+ "moves": [
+  {
+   "role": "alpha_research.campaign_decision_policy",
+   "predecessor": "681eed7b231ab42417ea44aacde1b2c46fc43d0103269772be0ec54edb3ea0d4",
+   "successor": "blake3:a91eabd195c767a22b9a61fc3f4dfddf6cc4389775aa4a8876a3d9ab4c5eabc1",
+   "change": "Use BLAKE3 identities with a fresh data root and workspace",
+   "reason": "Internal identities move to the tagged BLAKE3 format with recorded successors; this repair changes only the recorded Evidence binding tuple to match the installed owners, the identity readout is unchanged from the reviewed head, and the fresh-workspace replay reads every market value equal; earlier data roots need a fresh root, as the release text says"
+  },
+  {
+   "role": "alpha_research.campaign_scale_catalog",
+   "predecessor": "60848d42e69091447efdb3574c936c8374501a43b54e021d0d03404fc6f1e5f3",
+   "successor": "blake3:486d0964ab174952511bcc5d42840fb99359bb3dbe383376819e9e2a86205c3b",
+   "change": "Use BLAKE3 identities with a fresh data root and workspace",
+   "reason": "Internal identities move to the tagged BLAKE3 format with recorded successors; this repair changes only the recorded Evidence binding tuple to match the installed owners, the identity readout is unchanged from the reviewed head, and the fresh-workspace replay reads every market value equal; earlier data roots need a fresh root, as the release text says"
+  },
+  {
+   "role": "alpha_research.component_recipe.broad_feature",
+   "predecessor": "7c740dff79caa1faee5f0df369b25676c895e0473f87da52900257e4e043a10b",
+   "successor": "blake3:790e60f69bce202333ffc5a62d883d2b320045675241dfa7e3cbaaa27cd0654d",
+   "change": "Use BLAKE3 identities with a fresh data root and workspace",
+   "reason": "Internal identities move to the tagged BLAKE3 format with recorded successors; this repair changes only the recorded Evidence binding tuple to match the installed owners, the identity readout is unchanged from the reviewed head, and the fresh-workspace replay reads every market value equal; earlier data roots need a fresh root, as the release text says"
+  },
+  {
+   "role": "alpha_research.component_recipe.contextual_momentum",
+   "predecessor": "a4477148eb13491185f8b6a62600d89557e8aaf22729c639f4535d4ae739ab3b",
+   "successor": "blake3:6a5bebfa765ddebbfda61ad8497b90ca704eea408d027e800f4e33b2ea807152",
+   "change": "Use BLAKE3 identities with a fresh data root and workspace",
+   "reason": "Internal identities move to the tagged BLAKE3 format with recorded successors; this repair changes only the recorded Evidence binding tuple to match the installed owners, the identity readout is unchanged from the reviewed head, and the fresh-workspace replay reads every market value equal; earlier data roots need a fresh root, as the release text says"
+  },
+  {
+   "role": "alpha_research.component_recipe.fast_rebound",
+   "predecessor": "a179db4f1fed15e7a7402fcba161dff5b9556a0cf6eca32b75bf78e1f6451513",
+   "successor": "blake3:2047b16f505035d6427ee97aa3338d84f95a7c37060308ca79bfb4253873839d",
+   "change": "Use BLAKE3 identities with a fresh data root and workspace",
+   "reason": "Internal identities move to the tagged BLAKE3 format with recorded successors; this repair changes only the recorded Evidence binding tuple to match the installed owners, the identity readout is unchanged from the reviewed head, and the fresh-workspace replay reads every market value equal; earlier data roots need a fresh root, as the release text says"
+  },
+  {
+   "role": "alpha_research.component_recipe.trend_candidate",
+   "predecessor": "83dbe148f9158e5cc2800b832a2e0dc5554e4a935a249614f8cae15338901ab1",
+   "successor": "blake3:04c8dc7a2c3beece8f9f52ca5736a47c670764f7bcb63b64e9704584ceef4f04",
+   "change": "Use BLAKE3 identities with a fresh data root and workspace",
+   "reason": "Internal identities move to the tagged BLAKE3 format with recorded successors; this repair changes only the recorded Evidence binding tuple to match the installed owners, the identity readout is unchanged from the reviewed head, and the fresh-workspace replay reads every market value equal; earlier data roots need a fresh root, as the release text says"
+  },
+  {
+   "role": "alpha_research.model_lifecycle_replay",
+   "predecessor": "0e4033af9956d0ca76b90fd501d9683981c343b894feef1d52ae268b5b2c8243",
+   "successor": "blake3:d8ef361daed33f2df49ea9c356c652b29ac855cf55f15e027316c3bf207b978e",
+   "change": "Use BLAKE3 identities with a fresh data root and workspace",
+   "reason": "Internal identities move to the tagged BLAKE3 format with recorded successors; this repair changes only the recorded Evidence binding tuple to match the installed owners, the identity readout is unchanged from the reviewed head, and the fresh-workspace replay reads every market value equal; earlier data roots need a fresh root, as the release text says"
+  },
+  {
+   "role": "alpha_research.product_recipe",
+   "predecessor": "bc4d5c493bd5ab364a70816bc070b1fc471366683b366eb5ed1d16ad7bbc1310",
+   "successor": "blake3:f70b08583d2350e547b9f227ae73c6a1f55b059dde2fc1cf9d4d2bfc7e3369b6",
+   "change": "Use BLAKE3 identities with a fresh data root and workspace",
+   "reason": "Internal identities move to the tagged BLAKE3 format with recorded successors; this repair changes only the recorded Evidence binding tuple to match the installed owners, the identity readout is unchanged from the reviewed head, and the fresh-workspace replay reads every market value equal; earlier data roots need a fresh root, as the release text says"
+  },
+  {
+   "role": "alpha_research.return_unit_capability",
+   "predecessor": "600233254dac248bd63a3a0d1d35d91038c70d596b58be827e2907fa6a37bd3e",
+   "successor": "blake3:06a2fb8bb5aec5920e9e826e09cd178ef85f3ff62098a78ab4bae1fa00d592ef",
+   "change": "Use BLAKE3 identities with a fresh data root and workspace",
+   "reason": "Internal identities move to the tagged BLAKE3 format with recorded successors; this repair changes only the recorded Evidence binding tuple to match the installed owners, the identity readout is unchanged from the reviewed head, and the fresh-workspace replay reads every market value equal; earlier data roots need a fresh root, as the release text says"
+  },
+  {
+   "role": "alpha_research.scale_implementation.ASYMMETRIC_EWMA_XS_DISPERSION",
+   "predecessor": "06cf0938341f1ea839d38d811fff6ebd1c9d6f1d2c5200c1784abdcad8fac462",
+   "successor": "blake3:7a5a45cc2f3cc78f7b3edcd1e4adca3dc8db062111a3a4ec945af3ff9c7972f5",
+   "change": "Use BLAKE3 identities with a fresh data root and workspace",
+   "reason": "Internal identities move to the tagged BLAKE3 format with recorded successors; this repair changes only the recorded Evidence binding tuple to match the installed owners, the identity readout is unchanged from the reviewed head, and the fresh-workspace replay reads every market value equal; earlier data roots need a fresh root, as the release text says"
+  },
+  {
+   "role": "alpha_research.scale_implementation.EWMA_XS_DISPERSION",
+   "predecessor": "a9ab473214463458e17edb3c8d1abf242f873eac588d51de2d39eb7fa6e3e1d8",
+   "successor": "blake3:f0439a6bccb8ee1cd2a5fdf034b23fe42e933df89475cce621675c00a9eb6a2d",
+   "change": "Use BLAKE3 identities with a fresh data root and workspace",
+   "reason": "Internal identities move to the tagged BLAKE3 format with recorded successors; this repair changes only the recorded Evidence binding tuple to match the installed owners, the identity readout is unchanged from the reviewed head, and the fresh-workspace replay reads every market value equal; earlier data roots need a fresh root, as the release text says"
+  },
+  {
+   "role": "alpha_research.scale_implementation.HAR_XS_DISPERSION",
+   "predecessor": "23344213910d26b074b8c07657e3814ad2caafaf07ca81c8c25932bd807db267",
+   "successor": "blake3:e29e321897683372e943e99bef5e5474e09f250431f1e7717ec2a8a090191b15",
+   "change": "Use BLAKE3 identities with a fresh data root and workspace",
+   "reason": "Internal identities move to the tagged BLAKE3 format with recorded successors; this repair changes only the recorded Evidence binding tuple to match the installed owners, the identity readout is unchanged from the reviewed head, and the fresh-workspace replay reads every market value equal; earlier data roots need a fresh root, as the release text says"
+  },
+  {
+   "role": "alpha_research.scale_implementation.LAGGED_XS_DISPERSION",
+   "predecessor": "1353ca4292b72dc61f7bec733b0ede43542a5109117f1d87785e9df6b0190b85",
+   "successor": "blake3:04a12a40346790443a0e9eeaecd31cf31672a5bd1858748c5b399db4fd98eb3a",
+   "change": "Use BLAKE3 identities with a fresh data root and workspace",
+   "reason": "Internal identities move to the tagged BLAKE3 format with recorded successors; this repair changes only the recorded Evidence binding tuple to match the installed owners, the identity readout is unchanged from the reviewed head, and the fresh-workspace replay reads every market value equal; earlier data roots need a fresh root, as the release text says"
+  },
+  {
+   "role": "alpha_research.strategy_recipe",
+   "predecessor": "bc0b54b73520af5c40bafa8da8446e689a6d1e19b2044c504227e11e7f289647",
+   "successor": "blake3:aea75074b428d69d54e5cdcc0092d334364a52223d6a877c10954440edbac53d",
+   "change": "Use BLAKE3 identities with a fresh data root and workspace",
+   "reason": "Internal identities move to the tagged BLAKE3 format with recorded successors; this repair changes only the recorded Evidence binding tuple to match the installed owners, the identity readout is unchanged from the reviewed head, and the fresh-workspace replay reads every market value equal; earlier data roots need a fresh root, as the release text says"
+  },
+  {
+   "role": "alternative_evidence.acquisition_binding",
+   "predecessor": "782579b19f4d88a6f3d5aa1999e6710cec60de4f08b5e7ad96a73a94e9a3c91e",
+   "successor": "blake3:02cbca47334aaec71fe962a334e1207399e8ad169411f4514f56691ab69abdf5",
+   "change": "Use BLAKE3 identities with a fresh data root and workspace",
+   "reason": "Internal identities move to the tagged BLAKE3 format with recorded successors; this repair changes only the recorded Evidence binding tuple to match the installed owners, the identity readout is unchanged from the reviewed head, and the fresh-workspace replay reads every market value equal; earlier data roots need a fresh root, as the release text says"
+  },
+  {
+   "role": "alternative_evidence.analysis_policy",
+   "predecessor": "41beb4c8fcb2b576b10251501c7e413669321346520f97cfc2ba7f504100319a",
+   "successor": "blake3:2d95a4bf9e6d6a8ca9eff6acbafa624de1fd004a2c343ff5c9f51abf458e200f",
+   "change": "Use BLAKE3 identities with a fresh data root and workspace",
+   "reason": "Internal identities move to the tagged BLAKE3 format with recorded successors; this repair changes only the recorded Evidence binding tuple to match the installed owners, the identity readout is unchanged from the reviewed head, and the fresh-workspace replay reads every market value equal; earlier data roots need a fresh root, as the release text says"
+  },
+  {
+   "role": "alternative_evidence.canonicalization_binding",
+   "predecessor": "8e362d61cf83fc107930245fa2ba53d5f9eaafd0b0ff9124933c40f5024b42ae",
+   "successor": "blake3:ec4be0c1f9309cdfac08a2e9e84b1ce9cc1608e2a8b44c40ca16ab629e7df443",
+   "change": "Use BLAKE3 identities with a fresh data root and workspace",
+   "reason": "Internal identities move to the tagged BLAKE3 format with recorded successors; this repair changes only the recorded Evidence binding tuple to match the installed owners, the identity readout is unchanged from the reviewed head, and the fresh-workspace replay reads every market value equal; earlier data roots need a fresh root, as the release text says"
+  },
+  {
+   "role": "alternative_evidence.decision_policy",
+   "predecessor": "dfe40501d6c231503d221042c3c18cb61b8a5d30dcb4c787c6913a91ab6bf12b",
+   "successor": "blake3:ce2c85a7930e3336840d939a0ac98a08e691bd6ba2702799919965291b00830e",
+   "change": "Use BLAKE3 identities with a fresh data root and workspace",
+   "reason": "Internal identities move to the tagged BLAKE3 format with recorded successors; this repair changes only the recorded Evidence binding tuple to match the installed owners, the identity readout is unchanged from the reviewed head, and the fresh-workspace replay reads every market value equal; earlier data roots need a fresh root, as the release text says"
+  },
+  {
+   "role": "alternative_evidence.publication_binding",
+   "predecessor": "0297528e07c920f00c314f1eceb42aa84f524dc8f38ddab63690d1156df08505",
+   "successor": "blake3:b45031d606e0056ce6c8e5a080b4da82489dfbdd27384c2af223e02c03fa9bb7",
+   "change": "Use BLAKE3 identities with a fresh data root and workspace",
+   "reason": "Internal identities move to the tagged BLAKE3 format with recorded successors; this repair changes only the recorded Evidence binding tuple to match the installed owners, the identity readout is unchanged from the reviewed head, and the fresh-workspace replay reads every market value equal; earlier data roots need a fresh root, as the release text says"
+  },
+  {
+   "role": "alternative_evidence.retrieval_binding",
+   "predecessor": "5c5c6866dda6d846f8f0621b479adc19f1f7c84a78d140afcd17bef31b3e5b1c",
+   "successor": "blake3:1fb22f90bf1940aa09a0641e2f360b657ddb80fe37e06aee76d3c8970d09f5fb",
+   "change": "Use BLAKE3 identities with a fresh data root and workspace",
+   "reason": "Internal identities move to the tagged BLAKE3 format with recorded successors; this repair changes only the recorded Evidence binding tuple to match the installed owners, the identity readout is unchanged from the reviewed head, and the fresh-workspace replay reads every market value equal; earlier data roots need a fresh root, as the release text says"
+  },
+  {
+   "role": "chief_risk_officer.portfolio_review_policy",
+   "predecessor": "9923907fa1b4d6fd6c22fe69809180c64ee4e148e4a722f29191878e8b4cdb2f",
+   "successor": "blake3:b7b50cc7bc1caf346cfceb564fe44e46f7b4d92b04f06fa0c5c1969f77fb0054",
+   "change": "Use BLAKE3 identities with a fresh data root and workspace",
+   "reason": "Internal identities move to the tagged BLAKE3 format with recorded successors; this repair changes only the recorded Evidence binding tuple to match the installed owners, the identity readout is unchanged from the reviewed head, and the fresh-workspace replay reads every market value equal; earlier data roots need a fresh root, as the release text says"
+  },
+  {
+   "role": "factor_research.review_decision_policy",
+   "predecessor": "36fa373d7ddb45fae4f631ce140deb01ebf626f8735c6c115bcba2376ef2638f",
+   "successor": "blake3:a074bd833a4ef29cfe50283af0cf8a97fa881d1158ebd5508ddc7dfa6105501a",
+   "change": "Use BLAKE3 identities with a fresh data root and workspace",
+   "reason": "Internal identities move to the tagged BLAKE3 format with recorded successors; this repair changes only the recorded Evidence binding tuple to match the installed owners, the identity readout is unchanged from the reviewed head, and the fresh-workspace replay reads every market value equal; earlier data roots need a fresh root, as the release text says"
+  },
+  {
+   "role": "feature_engine.factor_value.ABSOLUTE_STATE",
+   "predecessor": "92902f5e628118bcbf7d4ae8bad65a415401cfb0bfb07101abf2f2e1437b69ab",
+   "successor": "blake3:c86db890de8d96a5ac780259e1a3e9e27e7af8023c5f0b0e4491d0417f26902a",
+   "change": "Use BLAKE3 identities with a fresh data root and workspace",
+   "reason": "Internal identities move to the tagged BLAKE3 format with recorded successors; this repair changes only the recorded Evidence binding tuple to match the installed owners, the identity readout is unchanged from the reviewed head, and the fresh-workspace replay reads every market value equal; earlier data roots need a fresh root, as the release text says"
+  },
+  {
+   "role": "feature_engine.factor_value.DOWNSIDE_TAIL",
+   "predecessor": "ae4ab4b42285c9647ff2a66be6569d30f8273f7c43d754a57b1c0b11f2840a5b",
+   "successor": "blake3:25a0de341ba7de83a6587a23445896da42e24e706a7cf5d4e764775f8e25e44d",
+   "change": "Use BLAKE3 identities with a fresh data root and workspace",
+   "reason": "Internal identities move to the tagged BLAKE3 format with recorded successors; this repair changes only the recorded Evidence binding tuple to match the installed owners, the identity readout is unchanged from the reviewed head, and the fresh-workspace replay reads every market value equal; earlier data roots need a fresh root, as the release text says"
+  },
+  {
+   "role": "feature_engine.factor_value.FACTOR_FORMULA",
+   "predecessor": "69c3e6938f20a7043b71d6ef1fb8ecbf1b43de79703da4af34079cbfb1cb15e9",
+   "successor": "blake3:7d7e87c49bd258fb6e07431529b25c9e7d1becf35a6b96ecbc6f0f14665ab373",
+   "change": "Use BLAKE3 identities with a fresh data root and workspace",
+   "reason": "Internal identities move to the tagged BLAKE3 format with recorded successors; this repair changes only the recorded Evidence binding tuple to match the installed owners, the identity readout is unchanged from the reviewed head, and the fresh-workspace replay reads every market value equal; earlier data roots need a fresh root, as the release text says"
+  },
+  {
+   "role": "feature_engine.factor_value.OPEN_INTRADAY",
+   "predecessor": "d86f8df4b7a20dd84c0eb34d74bd313a23b050913a5f7923df2f142df62d49d1",
+   "successor": "blake3:e16d5b391596574cc8a33f4fca3e81325cece66e33d5802b3dad350f6458721a",
+   "change": "Use BLAKE3 identities with a fresh data root and workspace",
+   "reason": "Internal identities move to the tagged BLAKE3 format with recorded successors; this repair changes only the recorded Evidence binding tuple to match the installed owners, the identity readout is unchanged from the reviewed head, and the fresh-workspace replay reads every market value equal; earlier data roots need a fresh root, as the release text says"
+  },
+  {
+   "role": "feature_engine.factor_value.RESIDUAL_REVERSAL",
+   "predecessor": "a1e21d99a471b1dd39d23536478f8963825b3bd933a5f9560e5fc21f27de3ffc",
+   "successor": "blake3:1fcedb2f8ac6e124a8d82622a67031e17a5e6549e8e264870de8ea5dd8f8b128",
+   "change": "Use BLAKE3 identities with a fresh data root and workspace",
+   "reason": "Internal identities move to the tagged BLAKE3 format with recorded successors; this repair changes only the recorded Evidence binding tuple to match the installed owners, the identity readout is unchanged from the reviewed head, and the fresh-workspace replay reads every market value equal; earlier data roots need a fresh root, as the release text says"
+  },
+  {
+   "role": "feature_engine.factor_value.SECTOR_LEADER_LAG",
+   "predecessor": "1131d81e5f9f69712ce91b93f4db2e282044d3845a208304cb5cf528fea9ce4f",
+   "successor": "blake3:685a78ceac8f94e19f14164e110dd5eb7327eae0d91fc985bc9612fc49334f99",
+   "change": "Use BLAKE3 identities with a fresh data root and workspace",
+   "reason": "Internal identities move to the tagged BLAKE3 format with recorded successors; this repair changes only the recorded Evidence binding tuple to match the installed owners, the identity readout is unchanged from the reviewed head, and the fresh-workspace replay reads every market value equal; earlier data roots need a fresh root, as the release text says"
+  },
+  {
+   "role": "feature_engine.factor_value.SESSION_LIQUIDITY",
+   "predecessor": "b292d9bfc25aee8bbf984d821d2162d98b62d4ded6ac88abf648d8b1d6ef143f",
+   "successor": "blake3:c05dd87857d6deacb780238bd0e562644b2666714faeffbe5178c7a631e4dc72",
+   "change": "Use BLAKE3 identities with a fresh data root and workspace",
+   "reason": "Internal identities move to the tagged BLAKE3 format with recorded successors; this repair changes only the recorded Evidence binding tuple to match the installed owners, the identity readout is unchanged from the reviewed head, and the fresh-workspace replay reads every market value equal; earlier data roots need a fresh root, as the release text says"
+  },
+  {
+   "role": "feature_engine.factor_value.SESSION_OBSERVATION",
+   "predecessor": "80cb9e94c1cb2ede517ee30d49f23f03419b6268fcc13188b5ccf783f9647f08",
+   "successor": "blake3:8927882c5e4a2afb3dff6fb21f0a14361d9b7bda8d152304c48736f415d148ed",
+   "change": "Use BLAKE3 identities with a fresh data root and workspace",
+   "reason": "Internal identities move to the tagged BLAKE3 format with recorded successors; this repair changes only the recorded Evidence binding tuple to match the installed owners, the identity readout is unchanged from the reviewed head, and the fresh-workspace replay reads every market value equal; earlier data roots need a fresh root, as the release text says"
+  },
+  {
+   "role": "feature_engine.factor_value.STATE_INTERACTION",
+   "predecessor": "aef5f55e03b6e40a3e77d53ed9ec65b3bae1d1f40017e1c3762d6d29b4942eb3",
+   "successor": "blake3:a37873eb6a0ea6f8ab111e7e388dab12ad6d501ac697665e14c5dde4e69a7ce7",
+   "change": "Use BLAKE3 identities with a fresh data root and workspace",
+   "reason": "Internal identities move to the tagged BLAKE3 format with recorded successors; this repair changes only the recorded Evidence binding tuple to match the installed owners, the identity readout is unchanged from the reviewed head, and the fresh-workspace replay reads every market value equal; earlier data roots need a fresh root, as the release text says"
+  },
+  {
+   "role": "feature_engine.factor_value.controls",
+   "predecessor": "7bc3ce1d89662038cf88b3490848839893e56e6253f0e0283a42369308403b4a",
+   "successor": "blake3:01eee097e672b554bf2a3ea164dcac51c35b70ea369078db7da8bfc4a438787c",
+   "change": "Use BLAKE3 identities with a fresh data root and workspace",
+   "reason": "Internal identities move to the tagged BLAKE3 format with recorded successors; this repair changes only the recorded Evidence binding tuple to match the installed owners, the identity readout is unchanged from the reviewed head, and the fresh-workspace replay reads every market value equal; earlier data roots need a fresh root, as the release text says"
+  },
+  {
+   "role": "feature_engine.preprocessing_catalog",
+   "predecessor": "5ec819eabead25a034df3cde74ab42d918f5f8a419b1112affb3f1f4e012acf8",
+   "successor": "blake3:6c3ce17c27fd7f40119770c4184be70ae96128c27d58df882aac6efb2af8996d",
+   "change": "Use BLAKE3 identities with a fresh data root and workspace",
+   "reason": "Internal identities move to the tagged BLAKE3 format with recorded successors; this repair changes only the recorded Evidence binding tuple to match the installed owners, the identity readout is unchanged from the reviewed head, and the fresh-workspace replay reads every market value equal; earlier data roots need a fresh root, as the release text says"
+  },
+  {
+   "role": "feature_engine.preprocessing_implementation.JOINT_PRIMARY_RELATIVE_FACTOR_STD_Z",
+   "predecessor": "52db5c3a725a0ba5535b97010a5837059a8187624d990da37201d7dd136ff496",
+   "successor": "blake3:68c004b90038633764740612c995357fd5907885a38e8b27254e511a917f7e28",
+   "change": "Use BLAKE3 identities with a fresh data root and workspace",
+   "reason": "Internal identities move to the tagged BLAKE3 format with recorded successors; this repair changes only the recorded Evidence binding tuple to match the installed owners, the identity readout is unchanged from the reviewed head, and the fresh-workspace replay reads every market value equal; earlier data roots need a fresh root, as the release text says"
+  },
+  {
+   "role": "feature_engine.preprocessing_implementation.JOINT_PRIMARY_STATE_INTERACTION_BLOCK",
+   "predecessor": "872cd9c2143c826a1461bddc0a01554eac4391e3224c98df0ed8576c75080fee",
+   "successor": "blake3:4ebba87ab5ee232b3b748ed2f689364652364d211d7e50e7dea361e3c64b4ebf",
+   "change": "Use BLAKE3 identities with a fresh data root and workspace",
+   "reason": "Internal identities move to the tagged BLAKE3 format with recorded successors; this repair changes only the recorded Evidence binding tuple to match the installed owners, the identity readout is unchanged from the reviewed head, and the fresh-workspace replay reads every market value equal; earlier data roots need a fresh root, as the release text says"
+  },
+  {
+   "role": "feature_engine.preprocessing_implementation.ROBUST_SECTOR_NEUTRAL_Z",
+   "predecessor": "a63f89846a748480b4f17a2bce8609898d7b83d83ee81f0a032b8b7f49996986",
+   "successor": "blake3:7d3e28df3c378851dc0e3fdca66f6c08f6b70593b639fba7336a1ec128b972d6",
+   "change": "Use BLAKE3 identities with a fresh data root and workspace",
+   "reason": "Internal identities move to the tagged BLAKE3 format with recorded successors; this repair changes only the recorded Evidence binding tuple to match the installed owners, the identity readout is unchanged from the reviewed head, and the fresh-workspace replay reads every market value equal; earlier data roots need a fresh root, as the release text says"
+  },
+  {
+   "role": "feature_engine.preprocessing_implementation.ROBUST_UNIVERSE_Z",
+   "predecessor": "82ae9cf5f90083f426e6c1df2ef5a0f67326893215c504c20d3821bd4c1a79eb",
+   "successor": "blake3:485ef42f3b2966c4d1e9db5866ca0e7c61889acf51df6118b3e3107d9978706b",
+   "change": "Use BLAKE3 identities with a fresh data root and workspace",
+   "reason": "Internal identities move to the tagged BLAKE3 format with recorded successors; this repair changes only the recorded Evidence binding tuple to match the installed owners, the identity readout is unchanged from the reviewed head, and the fresh-workspace replay reads every market value equal; earlier data roots need a fresh root, as the release text says"
+  },
+  {
+   "role": "feature_engine.preprocessing_implementation.STATE_INTERACTION_BLOCK",
+   "predecessor": "f5a22b9f160638adaacf4ef267f45f9ed9b914b7471c631a9fe408f3c2487ec9",
+   "successor": "blake3:722d7455ab52ca15dfc5cea6a77abef4bc98fad9f3b969b5a9d25c9412b90d40",
+   "change": "Use BLAKE3 identities with a fresh data root and workspace",
+   "reason": "Internal identities move to the tagged BLAKE3 format with recorded successors; this repair changes only the recorded Evidence binding tuple to match the installed owners, the identity readout is unchanged from the reviewed head, and the fresh-workspace replay reads every market value equal; earlier data roots need a fresh root, as the release text says"
+  },
+  {
+   "role": "feature_engine.preprocessing_implementation.TIME_SERIES_ABSOLUTE_STATE_ROBUST",
+   "predecessor": "32eecdbff0a04f1f2cd19e8effb12e10dc578611db472d5887ba4ec3fc688ef2",
+   "successor": "blake3:10366307d67708806bfcf79647729164d9c02cc4a1b11052b9bd0d5417364767",
+   "change": "Use BLAKE3 identities with a fresh data root and workspace",
+   "reason": "Internal identities move to the tagged BLAKE3 format with recorded successors; this repair changes only the recorded Evidence binding tuple to match the installed owners, the identity readout is unchanged from the reviewed head, and the fresh-workspace replay reads every market value equal; earlier data roots need a fresh root, as the release text says"
+  },
+  {
+   "role": "feature_engine.source_availability_catalog",
+   "predecessor": "0870b75626c8fa4a0ccf8d0fb25cda54b98aee2a079c239de5d1de68f0ecfed3",
+   "successor": "blake3:f7bb6c113c96bd5ce64e85629718f95cf91003ecf3f0f563775ddfe4c6e57c04",
+   "change": "Use BLAKE3 identities with a fresh data root and workspace",
+   "reason": "Internal identities move to the tagged BLAKE3 format with recorded successors; this repair changes only the recorded Evidence binding tuple to match the installed owners, the identity readout is unchanged from the reviewed head, and the fresh-workspace replay reads every market value equal; earlier data roots need a fresh root, as the release text says"
+  },
+  {
+   "role": "portfolio_strategy_lab.book_alpha_recipe.rebound_return",
+   "predecessor": "97c4d6bc326f5f7c3194537725312ff911acf0404905a1d9b181912a3395fa9e",
+   "successor": "blake3:ff304940c26bb80b2994126ffa4e10d2b30dd4e0c9a165ced28210bb5bce8f7b",
+   "change": "Use BLAKE3 identities with a fresh data root and workspace",
+   "reason": "Internal identities move to the tagged BLAKE3 format with recorded successors; this repair changes only the recorded Evidence binding tuple to match the installed owners, the identity readout is unchanged from the reviewed head, and the fresh-workspace replay reads every market value equal; earlier data roots need a fresh root, as the release text says"
+  },
+  {
+   "role": "portfolio_strategy_lab.book_alpha_recipe.trend_rebound",
+   "predecessor": "7b03d93fb70e43576e28873dd2b794308e35b766f13ca5f7b9c072e62c27f625",
+   "successor": "blake3:6dac0cd9dcfb69a4bef11f4392a7cfceda95d8f0ff1ace0feb61b346265cc86a",
+   "change": "Use BLAKE3 identities with a fresh data root and workspace",
+   "reason": "Internal identities move to the tagged BLAKE3 format with recorded successors; this repair changes only the recorded Evidence binding tuple to match the installed owners, the identity readout is unchanged from the reviewed head, and the fresh-workspace replay reads every market value equal; earlier data roots need a fresh root, as the release text says"
+  },
+  {
+   "role": "portfolio_strategy_lab.book_recipe.four_component",
+   "predecessor": "8d701a9716556992af26fa0a6fb9ff6437018752250d4bdfd1ad51fb60cdd1ef",
+   "successor": "blake3:4b5c963e095804592b59cadc0014a9826832847c49f8598feaeda30ddccd78cb",
+   "change": "Use BLAKE3 identities with a fresh data root and workspace",
+   "reason": "Internal identities move to the tagged BLAKE3 format with recorded successors; this repair changes only the recorded Evidence binding tuple to match the installed owners, the identity readout is unchanged from the reviewed head, and the fresh-workspace replay reads every market value equal; earlier data roots need a fresh root, as the release text says"
+  },
+  {
+   "role": "portfolio_strategy_lab.book_recipe.rebound_return",
+   "predecessor": "b4b7e55aeb7fab3559e473c6ab57ea45d7a5690593255c082035523bbc323df0",
+   "successor": "blake3:672131fdcd3525241c0a2d60078c27597774701570a6e521f525ce0b1c8db27d",
+   "change": "Use BLAKE3 identities with a fresh data root and workspace",
+   "reason": "Internal identities move to the tagged BLAKE3 format with recorded successors; this repair changes only the recorded Evidence binding tuple to match the installed owners, the identity readout is unchanged from the reviewed head, and the fresh-workspace replay reads every market value equal; earlier data roots need a fresh root, as the release text says"
+  },
+  {
+   "role": "portfolio_strategy_lab.book_recipe.trend_rebound",
+   "predecessor": "20fb0038c453aad30c3e9036de27a451bf45a1b087398137bce4d442eaf60da4",
+   "successor": "blake3:230ad6f413560f12fa8d8de67b468f3a1ca274a46446b0dea7f366626868bf63",
+   "change": "Use BLAKE3 identities with a fresh data root and workspace",
+   "reason": "Internal identities move to the tagged BLAKE3 format with recorded successors; this repair changes only the recorded Evidence binding tuple to match the installed owners, the identity readout is unchanged from the reviewed head, and the fresh-workspace replay reads every market value equal; earlier data roots need a fresh root, as the release text says"
+  },
+  {
+   "role": "portfolio_strategy_lab.policy_binding.four_component",
+   "predecessor": "dfe7909165b2961161a99bd0c3eb5d32ad9225db20440416b53675644f164b9f",
+   "successor": "blake3:491e5abe4d4e69675b7953a1d13c716f2b887fdc2117bf529fd09c18865f374c",
+   "change": "Use BLAKE3 identities with a fresh data root and workspace",
+   "reason": "Internal identities move to the tagged BLAKE3 format with recorded successors; this repair changes only the recorded Evidence binding tuple to match the installed owners, the identity readout is unchanged from the reviewed head, and the fresh-workspace replay reads every market value equal; earlier data roots need a fresh root, as the release text says"
+  },
+  {
+   "role": "portfolio_strategy_lab.policy_binding.rebound_return",
+   "predecessor": "64e107ad5f26c9b2b9b2afa955e46345f85118464f32b1082a70f2e763ff53d5",
+   "successor": "blake3:29a9fdb69793b72be5565329f09a02b04eb05f24d82ebbf348f49e2ab8646480",
+   "change": "Use BLAKE3 identities with a fresh data root and workspace",
+   "reason": "Internal identities move to the tagged BLAKE3 format with recorded successors; this repair changes only the recorded Evidence binding tuple to match the installed owners, the identity readout is unchanged from the reviewed head, and the fresh-workspace replay reads every market value equal; earlier data roots need a fresh root, as the release text says"
+  },
+  {
+   "role": "portfolio_strategy_lab.policy_binding.trend_rebound",
+   "predecessor": "d881c0eb06bad939b7c07e2aef63f27f51fdc06d8951ee95bb5df6996b54229b",
+   "successor": "blake3:415b825e402cb62514a135b8bb3032f47aa6328f78a95c35f672335c9d0e5640",
+   "change": "Use BLAKE3 identities with a fresh data root and workspace",
+   "reason": "Internal identities move to the tagged BLAKE3 format with recorded successors; this repair changes only the recorded Evidence binding tuple to match the installed owners, the identity readout is unchanged from the reviewed head, and the fresh-workspace replay reads every market value equal; earlier data roots need a fresh root, as the release text says"
+  },
+  {
+   "role": "portfolio_strategy_lab.policy_catalog.four_component",
+   "predecessor": "92457890fb3b02b8d0f39eea47ca766547b422343958ce5708c39977343218d7",
+   "successor": "blake3:928556dfff44c78a936eae71657cfbfb3f569448ed7bd2b3670dbd1214d0fd51",
+   "change": "Use BLAKE3 identities with a fresh data root and workspace",
+   "reason": "Internal identities move to the tagged BLAKE3 format with recorded successors; this repair changes only the recorded Evidence binding tuple to match the installed owners, the identity readout is unchanged from the reviewed head, and the fresh-workspace replay reads every market value equal; earlier data roots need a fresh root, as the release text says"
+  },
+  {
+   "role": "portfolio_strategy_lab.policy_catalog.rebound_return",
+   "predecessor": "c8b18b7f3edf32f42d921cf6b843a2618a3193581bf0b54b66e4bfc9c81e4fd7",
+   "successor": "blake3:ab7fc8193a6c129883d0d6bf31579f3e5911ade26302ff706c2f710993b4e8c1",
+   "change": "Use BLAKE3 identities with a fresh data root and workspace",
+   "reason": "Internal identities move to the tagged BLAKE3 format with recorded successors; this repair changes only the recorded Evidence binding tuple to match the installed owners, the identity readout is unchanged from the reviewed head, and the fresh-workspace replay reads every market value equal; earlier data roots need a fresh root, as the release text says"
+  },
+  {
+   "role": "portfolio_strategy_lab.policy_catalog.trend_rebound",
+   "predecessor": "f8d5518a8364397ece3c1965a1677f71b6c061adbb71bf650d11e163d09e6a97",
+   "successor": "blake3:3157be7b33e74011ceb7fa020cc07f0144fb6da799665f10be0b3581dc966745",
+   "change": "Use BLAKE3 identities with a fresh data root and workspace",
+   "reason": "Internal identities move to the tagged BLAKE3 format with recorded successors; this repair changes only the recorded Evidence binding tuple to match the installed owners, the identity readout is unchanged from the reviewed head, and the fresh-workspace replay reads every market value equal; earlier data roots need a fresh root, as the release text says"
+  },
+  {
+   "role": "portfolio_strategy_lab.public_path",
+   "predecessor": "0c661271bca4174c3b662f423959a3dfd6d74a072efd501129ead199ed1ef618",
+   "successor": "blake3:187d66fc2fb5fa0a824944d63940c75269bfd4631394bc171dcdf0a815283776",
+   "change": "Use BLAKE3 identities with a fresh data root and workspace",
+   "reason": "Internal identities move to the tagged BLAKE3 format with recorded successors; this repair changes only the recorded Evidence binding tuple to match the installed owners, the identity readout is unchanged from the reviewed head, and the fresh-workspace replay reads every market value equal; earlier data roots need a fresh root, as the release text says"
+  },
+  {
+   "role": "product_host.conditional_decision_advancement",
+   "predecessor": "a36e8f46c17d441e979a0d2088259df4bc0016ad2f2d90c54168302ac593fbcd",
+   "successor": "blake3:0bdb0377ce7e0c3b0a7daee2cc4376ccb7f6c1fbb7c25efb9b75a0b2b8715ae2",
+   "change": "Use BLAKE3 identities with a fresh data root and workspace",
+   "reason": "Internal identities move to the tagged BLAKE3 format with recorded successors; this repair changes only the recorded Evidence binding tuple to match the installed owners, the identity readout is unchanged from the reviewed head, and the fresh-workspace replay reads every market value equal; earlier data roots need a fresh root, as the release text says"
+  },
+  {
+   "role": "product_host.portfolio_updates",
+   "predecessor": "68505c572d31f6c51952ce3654de6344e099b5f6a91d54574260fa29ae0b892c",
+   "successor": "blake3:324c1cefb5367d4205ef4b40a8a990b797bcc2c1db021e47df3e137190927927",
+   "change": "Use BLAKE3 identities with a fresh data root and workspace",
+   "reason": "Internal identities move to the tagged BLAKE3 format with recorded successors; this repair changes only the recorded Evidence binding tuple to match the installed owners, the identity readout is unchanged from the reviewed head, and the fresh-workspace replay reads every market value equal; earlier data roots need a fresh root, as the release text says"
+  },
+  {
+   "role": "product_host.research_component_training_input",
+   "predecessor": "b9787c9e8636bdf77accbfe7661235dfdc4a862a8ea99083dee1e0df2c780a78",
+   "successor": "blake3:277898e863979410a3e1eb19d8a1671f7b33f72c4e390a2347c36dda30460165",
+   "change": "Use BLAKE3 identities with a fresh data root and workspace",
+   "reason": "Internal identities move to the tagged BLAKE3 format with recorded successors; this repair changes only the recorded Evidence binding tuple to match the installed owners, the identity readout is unchanged from the reviewed head, and the fresh-workspace replay reads every market value equal; earlier data roots need a fresh root, as the release text says"
+  },
+  {
+   "role": "product_host.research_feature_materialization",
+   "predecessor": "84e135a843304346039385b6042ec3c92a03a809a2c1c8fe5093db044f12f96d",
+   "successor": "blake3:c9c4afc468d8624a8c90a7bfd1324f6701964676484c6fdce1f9f4b65563756e",
+   "change": "Use BLAKE3 identities with a fresh data root and workspace",
+   "reason": "Internal identities move to the tagged BLAKE3 format with recorded successors; this repair changes only the recorded Evidence binding tuple to match the installed owners, the identity readout is unchanged from the reviewed head, and the fresh-workspace replay reads every market value equal; earlier data roots need a fresh root, as the release text says"
+  },
+  {
+   "role": "product_host.research_feature_materialization.prepared",
+   "predecessor": "5eed82a1f8a7b4dd25c7d86bf63dd5e370d8ad2a8881a6f927c753d6b8927017",
+   "successor": "blake3:e68915b4c1329cc834ee1b3ec9a608c4e45873000e591e567174fad5889dbe03",
+   "change": "Use BLAKE3 identities with a fresh data root and workspace",
+   "reason": "Internal identities move to the tagged BLAKE3 format with recorded successors; this repair changes only the recorded Evidence binding tuple to match the installed owners, the identity readout is unchanged from the reviewed head, and the fresh-workspace replay reads every market value equal; earlier data roots need a fresh root, as the release text says"
+  },
+  {
+   "role": "product_host.research_feature_source_projection",
+   "predecessor": "2778228d2cbb5212d4f4a2523c1d6f34bfc6b6539574d4e5ffd5a9592b7f63c2",
+   "successor": "blake3:1a31c473ccfbd20ce9f2456c9ad7b9c018feec7ca86dbf698d46ee5f286a15ea",
+   "change": "Use BLAKE3 identities with a fresh data root and workspace",
+   "reason": "Internal identities move to the tagged BLAKE3 format with recorded successors; this repair changes only the recorded Evidence binding tuple to match the installed owners, the identity readout is unchanged from the reviewed head, and the fresh-workspace replay reads every market value equal; earlier data roots need a fresh root, as the release text says"
+  },
+  {
+   "role": "product_host.research_input_capture",
+   "predecessor": "b0bca1e8a61a4f5ec5d4816f2cc9f618bd05743f362b798a267c0735146990c9",
+   "successor": "blake3:1bf376e4e4d8893647c08b21a081e0ce1c0c52cfc0a92b1d2863c9dfae1a6146",
+   "change": "Use BLAKE3 identities with a fresh data root and workspace",
+   "reason": "Internal identities move to the tagged BLAKE3 format with recorded successors; this repair changes only the recorded Evidence binding tuple to match the installed owners, the identity readout is unchanged from the reviewed head, and the fresh-workspace replay reads every market value equal; earlier data roots need a fresh root, as the release text says"
+  },
+  {
+   "role": "product_host.research_input_materializer",
+   "predecessor": "f301032aac8d5a9a71f8031d73ffb2e42a939712e46c4609a86a71b1c22e902f",
+   "successor": "blake3:e4be43fa8d05740c8b1fcf5e41d527390511aec22bb94c4ee6e7fb91769ddbae",
+   "change": "Use BLAKE3 identities with a fresh data root and workspace",
+   "reason": "Internal identities move to the tagged BLAKE3 format with recorded successors; this repair changes only the recorded Evidence binding tuple to match the installed owners, the identity readout is unchanged from the reviewed head, and the fresh-workspace replay reads every market value equal; earlier data roots need a fresh root, as the release text says"
+  },
+  {
+   "role": "product_host.research_strategy_preparation",
+   "predecessor": "64ef65e706367794e1b2e964f8fe88ff698d211aca3d7fed6128282200e733ed",
+   "successor": "blake3:c515537c4d819fda88761bf981dee55ad663ade4b792e58995a1a448e4c9bffd",
+   "change": "Use BLAKE3 identities with a fresh data root and workspace",
+   "reason": "Internal identities move to the tagged BLAKE3 format with recorded successors; this repair changes only the recorded Evidence binding tuple to match the installed owners, the identity readout is unchanged from the reviewed head, and the fresh-workspace replay reads every market value equal; earlier data roots need a fresh root, as the release text says"
+  },
+  {
+   "role": "product_host.strategy_calibration",
+   "predecessor": "530fce8edef9fe0d904f03121eb4c4ab4fcda69fcf9746b8160d454c33d448cb",
+   "successor": "blake3:d6fdf7b9859d32233088ec64a55af1a81bb25caea334c66f2afd6ded202dc1d2",
+   "change": "Use BLAKE3 identities with a fresh data root and workspace",
+   "reason": "Internal identities move to the tagged BLAKE3 format with recorded successors; this repair changes only the recorded Evidence binding tuple to match the installed owners, the identity readout is unchanged from the reviewed head, and the fresh-workspace replay reads every market value equal; earlier data roots need a fresh root, as the release text says"
+  },
+  {
+   "role": "product_host.strategy_scoring",
+   "predecessor": "80c0c9e30b8c054a265a57b69e7ae625e29cb2dea925664c77a4bd1dd82c8429",
+   "successor": "blake3:62b14eefc2931be1ca23ab7aac17e9ae0c3d47ab6765010c9ca9fcfae1955cc8",
+   "change": "Use BLAKE3 identities with a fresh data root and workspace",
+   "reason": "Internal identities move to the tagged BLAKE3 format with recorded successors; this repair changes only the recorded Evidence binding tuple to match the installed owners, the identity readout is unchanged from the reviewed head, and the fresh-workspace replay reads every market value equal; earlier data roots need a fresh root, as the release text says"
+  },
+  {
+   "role": "product_host.workspace_preparation",
+   "predecessor": "79b70952bc4334a25d6ab5ce535c2417bd369cb76bde7e2e8cf8928d0c4ca7fa",
+   "successor": "blake3:15f838d2416eff1d4cdda6e7a7e7177adc51bf9aa5d0e0ad8045c23535f154f1",
+   "change": "Use BLAKE3 identities with a fresh data root and workspace",
+   "reason": "Internal identities move to the tagged BLAKE3 format with recorded successors; this repair changes only the recorded Evidence binding tuple to match the installed owners, the identity readout is unchanged from the reviewed head, and the fresh-workspace replay reads every market value equal; earlier data roots need a fresh root, as the release text says"
+  },
+  {
+   "role": "research_experiment.alpha.model-development.implementation",
+   "predecessor": "7a0d1d67813f9f56f47b70f2a829b3d9c2b512a4e73574410a740646ec30f218",
+   "successor": "blake3:3176b9ef4eb43d3e2de51aad90f2a2bb225fe379b0db4295bbd210d63caed7ec",
+   "change": "Use BLAKE3 identities with a fresh data root and workspace",
+   "reason": "Internal identities move to the tagged BLAKE3 format with recorded successors; this repair changes only the recorded Evidence binding tuple to match the installed owners, the identity readout is unchanged from the reviewed head, and the fresh-workspace replay reads every market value equal; earlier data roots need a fresh root, as the release text says"
+  },
+  {
+   "role": "research_experiment.alpha.model-development.lifecycle.implementation",
+   "predecessor": "7a0d1d67813f9f56f47b70f2a829b3d9c2b512a4e73574410a740646ec30f218",
+   "successor": "blake3:3176b9ef4eb43d3e2de51aad90f2a2bb225fe379b0db4295bbd210d63caed7ec",
+   "change": "Use BLAKE3 identities with a fresh data root and workspace",
+   "reason": "Internal identities move to the tagged BLAKE3 format with recorded successors; this repair changes only the recorded Evidence binding tuple to match the installed owners, the identity readout is unchanged from the reviewed head, and the fresh-workspace replay reads every market value equal; earlier data roots need a fresh root, as the release text says"
+  },
+  {
+   "role": "research_experiment.alpha.qualification.implementation",
+   "predecessor": "3dd989318c797420d070759755ab331f4f3b09db40b9c5eefc37556ad40fc008",
+   "successor": "blake3:9e8394867368a40fb57c5e9cd220d5f99692157afd315ba63df349af7763126e",
+   "change": "Use BLAKE3 identities with a fresh data root and workspace",
+   "reason": "Internal identities move to the tagged BLAKE3 format with recorded successors; this repair changes only the recorded Evidence binding tuple to match the installed owners, the identity readout is unchanged from the reviewed head, and the fresh-workspace replay reads every market value equal; earlier data roots need a fresh root, as the release text says"
+  },
+  {
+   "role": "research_experiment.factor.screening-development.implementation",
+   "predecessor": "4cbf8b3f59793e9cd662dbafe0d0eba2f0a3817fa5a4891056d68931757c0def",
+   "successor": "blake3:37aff63db38dbbd2dd703b65eefa3f89594ff4b5337d8a6e0fadfbdd35b26a35",
+   "change": "Use BLAKE3 identities with a fresh data root and workspace",
+   "reason": "Internal identities move to the tagged BLAKE3 format with recorded successors; this repair changes only the recorded Evidence binding tuple to match the installed owners, the identity readout is unchanged from the reviewed head, and the fresh-workspace replay reads every market value equal; earlier data roots need a fresh root, as the release text says"
+  },
+  {
+   "role": "research_experiment.portfolio.policy-development.implementation",
+   "predecessor": "3d277c3588dc53de09bd6ca3c7aa8102cf93ba4d580ab7bf3476db2eb9798c14",
+   "successor": "blake3:f5c735fad0fe5b1c8e4d985dacf382abf871e69b0e945dd64dd150ec46445b12",
+   "change": "Use BLAKE3 identities with a fresh data root and workspace",
+   "reason": "Internal identities move to the tagged BLAKE3 format with recorded successors; this repair changes only the recorded Evidence binding tuple to match the installed owners, the identity readout is unchanged from the reviewed head, and the fresh-workspace replay reads every market value equal; earlier data roots need a fresh root, as the release text says"
+  },
+  {
+   "role": "research_experiment.risk.covariance-development.implementation",
+   "predecessor": "89dbd246f0952b7a11c4b4accc01850e34f4a1da792fe5b8fd77822ab0540235",
+   "successor": "blake3:95154eef6a594ebefa9c210afc81401fb9b8466e3d30bcd00f76774b604297b6",
+   "change": "Use BLAKE3 identities with a fresh data root and workspace",
+   "reason": "Internal identities move to the tagged BLAKE3 format with recorded successors; this repair changes only the recorded Evidence binding tuple to match the installed owners, the identity readout is unchanged from the reviewed head, and the fresh-workspace replay reads every market value equal; earlier data roots need a fresh root, as the release text says"
+  },
+  {
+   "role": "risk_research.estimator.risk-covariance-diagonal-shrunk-ledoit-wolf",
+   "predecessor": "d8a363aee74bc3e186e1ba5d03877f19651635d539474c93e1333075c3f241ca",
+   "successor": "blake3:2bcffb523239bd90b0bdc3bbabed849ca6ac5610b0f6c891130aa19317bfb859",
+   "change": "Use BLAKE3 identities with a fresh data root and workspace",
+   "reason": "Internal identities move to the tagged BLAKE3 format with recorded successors; this repair changes only the recorded Evidence binding tuple to match the installed owners, the identity readout is unchanged from the reviewed head, and the fresh-workspace replay reads every market value equal; earlier data roots need a fresh root, as the release text says"
+  },
+  {
+   "role": "risk_research.estimator.risk-covariance-ewma-standardized-ledoit-wolf",
+   "predecessor": "edb9046065fe7ecbf63b9822f148ecfb93e3703fa1b198d2a015d5003953f761",
+   "successor": "blake3:956c987a536fe2b64a201b79625ee0279ef43b7f1386dbf3ce5d651b785b271a",
+   "change": "Use BLAKE3 identities with a fresh data root and workspace",
+   "reason": "Internal identities move to the tagged BLAKE3 format with recorded successors; this repair changes only the recorded Evidence binding tuple to match the installed owners, the identity readout is unchanged from the reviewed head, and the fresh-workspace replay reads every market value equal; earlier data roots need a fresh root, as the release text says"
+  },
+  {
+   "role": "risk_research.estimator.risk-covariance-fast-slow-ledoit-wolf",
+   "predecessor": "85fce399e8749d16c96697eae3a28add36621492b85a04fe09322dac6409989c",
+   "successor": "blake3:ea7b790a6ecbcb810727c1b3693435b2b8e900f5fc8337a5313210d66f386183",
+   "change": "Use BLAKE3 identities with a fresh data root and workspace",
+   "reason": "Internal identities move to the tagged BLAKE3 format with recorded successors; this repair changes only the recorded Evidence binding tuple to match the installed owners, the identity readout is unchanged from the reviewed head, and the fresh-workspace replay reads every market value equal; earlier data roots need a fresh root, as the release text says"
+  },
+  {
+   "role": "risk_research.estimator_catalog",
+   "predecessor": "971a1c6177c9521f14587ac5c229abd29a72981ea0b4cd3e9c39343036ee159a",
+   "successor": "blake3:c934fc2d397cc0d54aa9db21b9dac2a71ee27bc40a3e9f420a8f8e83584132d1",
+   "change": "Use BLAKE3 identities with a fresh data root and workspace",
+   "reason": "Internal identities move to the tagged BLAKE3 format with recorded successors; this repair changes only the recorded Evidence binding tuple to match the installed owners, the identity readout is unchanged from the reviewed head, and the fresh-workspace replay reads every market value equal; earlier data roots need a fresh root, as the release text says"
+  },
+  {
+   "role": "sector_research.development_execution",
+   "predecessor": "34a5b73e0fa8cc3f1c5d1c786e103144238d27f5d8ecc92918039a7c03e13577",
+   "successor": "blake3:41ca001f89fdde6b6b14d06f50b231b9b095faf53048b8cca8638acb9294289c",
+   "change": "Use BLAKE3 identities with a fresh data root and workspace",
+   "reason": "Internal identities move to the tagged BLAKE3 format with recorded successors; this repair changes only the recorded Evidence binding tuple to match the installed owners, the identity readout is unchanged from the reviewed head, and the fresh-workspace replay reads every market value equal; earlier data roots need a fresh root, as the release text says"
+  },
+  {
+   "role": "sector_research.forecast_catalog",
+   "predecessor": "2c9678bf8de66f50d69e3606ed32d0241e40b9178e2cb9624e119d3b11550ae4",
+   "successor": "blake3:2341d7d6e080b58d5419adeac3a3663ffdbe009679e78c7d56bf472b34ab30f8",
+   "change": "Use BLAKE3 identities with a fresh data root and workspace",
+   "reason": "Internal identities move to the tagged BLAKE3 format with recorded successors; this repair changes only the recorded Evidence binding tuple to match the installed owners, the identity readout is unchanged from the reviewed head, and the fresh-workspace replay reads every market value equal; earlier data roots need a fresh root, as the release text says"
+  },
+  {
+   "role": "sector_research.method.DISTRIBUTED_LAG_ELASTIC_NET",
+   "predecessor": "3a2b66a88d5e45ee788250cda31af80b940da3c0c8bb5ce75d8379d117f59cc4",
+   "successor": "blake3:77fea2fb68feeab345ce2104f9f74274e952d97bffcf10d492650cf285cdf8cc",
+   "change": "Use BLAKE3 identities with a fresh data root and workspace",
+   "reason": "Internal identities move to the tagged BLAKE3 format with recorded successors; this repair changes only the recorded Evidence binding tuple to match the installed owners, the identity readout is unchanged from the reviewed head, and the fresh-workspace replay reads every market value equal; earlier data roots need a fresh root, as the release text says"
+  },
+  {
+   "role": "sector_research.method.EWMA_SECTOR_MEAN",
+   "predecessor": "07cfa2c31de4bc9a736f5c769ce3e2a5d126c93a60a9898bde67c5f0a9d7c9d0",
+   "successor": "blake3:82157ba52e90d3fabb616e228dd671742d641a60a888e7caba7aa5b8faa6a151",
+   "change": "Use BLAKE3 identities with a fresh data root and workspace",
+   "reason": "Internal identities move to the tagged BLAKE3 format with recorded successors; this repair changes only the recorded Evidence binding tuple to match the installed owners, the identity readout is unchanged from the reviewed head, and the fresh-workspace replay reads every market value equal; earlier data roots need a fresh root, as the release text says"
+  },
+  {
+   "role": "sector_research.method.SECTOR_RELATIVE_STRENGTH_126",
+   "predecessor": "d709c2937104730b246656d6b15463a9d4a4df84c3e0d5d068205da37d1d82ae",
+   "successor": "blake3:799e2add62ddea400a86b9c7b5189844bd82ea1e336cfbd69fe9ac53eb7746c0",
+   "change": "Use BLAKE3 identities with a fresh data root and workspace",
+   "reason": "Internal identities move to the tagged BLAKE3 format with recorded successors; this repair changes only the recorded Evidence binding tuple to match the installed owners, the identity readout is unchanged from the reviewed head, and the fresh-workspace replay reads every market value equal; earlier data roots need a fresh root, as the release text says"
+  },
+  {
+   "role": "sector_research.method.ZERO_SECTOR_FORECAST",
+   "predecessor": "4efb9f65b54659d7bceac9d75678219c57df27be5d95126996b3bcac454679fa",
+   "successor": "blake3:7dfb551d1fca4c326a0638121a7560ba044525f0503600a97bfb046ab1cdd2ae",
+   "change": "Use BLAKE3 identities with a fresh data root and workspace",
+   "reason": "Internal identities move to the tagged BLAKE3 format with recorded successors; this repair changes only the recorded Evidence binding tuple to match the installed owners, the identity readout is unchanged from the reviewed head, and the fresh-workspace replay reads every market value equal; earlier data roots need a fresh root, as the release text says"
+  }
+ ]
+}

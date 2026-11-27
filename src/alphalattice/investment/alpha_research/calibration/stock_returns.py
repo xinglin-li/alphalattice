@@ -11,6 +11,7 @@ import numpy.typing as npt
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 from alphalattice.capabilities.domain_contracts.identity import canonical_hash
+from alphalattice.kernel.identity import BLAKE3_PATTERN
 
 type FloatArray = npt.NDArray[np.float64]
 
@@ -34,7 +35,7 @@ class StockCalibrationRecipe(_Contract):
     prior_strength_observations: float = Field(default=20.0, gt=0.0)
     minimum_slope: float = Field(default=0.0, ge=0.0)
     maximum_slope: float = Field(default=2.0, gt=0.0)
-    recipe_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
+    recipe_hash: str = Field(pattern=BLAKE3_PATTERN)
 
     @classmethod
     def create(cls, *, prior_strength_observations: float = 20.0) -> Self:
@@ -106,13 +107,13 @@ class StockCalibrationEvidence(_Contract):
     kind: Literal["StockCalibrationEvidence"] = "StockCalibrationEvidence"
     recipe: StockCalibrationRecipe
     horizon_sessions: int = Field(ge=1)
-    target_identity: str = Field(pattern=r"^[0-9a-f]{64}$")
-    score_identity: str = Field(pattern=r"^[0-9a-f]{64}$")
+    target_identity: str = Field(pattern=BLAKE3_PATTERN)
+    score_identity: str = Field(pattern=BLAKE3_PATTERN)
     ordered_formation_sessions: tuple[date, ...] = Field(min_length=1)
     fold_states: tuple[StockCalibrationFoldState, ...] = Field(min_length=1)
     transformed_values_hex: tuple[str | None, ...] = Field(min_length=1)
-    transformed_value_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
-    evidence_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
+    transformed_value_hash: str = Field(pattern=BLAKE3_PATTERN)
+    evidence_hash: str = Field(pattern=BLAKE3_PATTERN)
 
     @model_validator(mode="after")  # type: ignore[untyped-decorator]
     def validate_identity(self) -> Self:

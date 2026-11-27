@@ -17,7 +17,7 @@ import numpy.typing as npt
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 from alphalattice.capabilities.domain_contracts.identity import canonical_hash
-from alphalattice.kernel.identity import identity_sha256
+from alphalattice.kernel.identity import BLAKE3_PATTERN, identity_blake3, tagged_blake3
 
 type FloatArray = npt.NDArray[np.float64]
 type BoolArray = npt.NDArray[np.bool_]
@@ -36,7 +36,7 @@ type DynamicPanelRole = Literal[
     "SECTOR_CATEGORY",
 ]
 
-_HASH = r"^[0-9a-f]{64}$"
+_HASH = BLAKE3_PATTERN
 
 
 class DynamicPanelBoundaryError(ValueError):
@@ -56,10 +56,14 @@ def dynamic_panel_array_identity(values: npt.NDArray[np.generic]) -> str:
             {
                 "dtype": array.dtype.str,
                 "shape": list(array.shape),
-                "finite_mask": identity_sha256(finite.tobytes()).hexdigest(),
-                "finite_values": identity_sha256(
-                    np.ascontiguousarray(np.where(finite, array, 0.0), dtype=array.dtype).tobytes()
-                ).hexdigest(),
+                "finite_mask": tagged_blake3(identity_blake3(finite.tobytes())),
+                "finite_values": tagged_blake3(
+                    identity_blake3(
+                        np.ascontiguousarray(
+                            np.where(finite, array, 0.0), dtype=array.dtype
+                        ).tobytes()
+                    )
+                ),
             }
         )
     )

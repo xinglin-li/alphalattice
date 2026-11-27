@@ -57,6 +57,7 @@ from alphalattice.investment.alpha_research.inputs.preprocessing.sector_context 
     SectorListingSessionScaleResult,
     scale_mapped_sector_context_by_listing_session,
 )
+from alphalattice.kernel.identity import is_blake3
 
 
 @dataclass(frozen=True, slots=True)
@@ -1351,7 +1352,7 @@ def materialize_panel_feature_projection(
     role_materialization_cache: dict[str, _FoldRoleMaterialization] | None = None,
 ) -> PanelFeatureProjection:
     """Fit exactly at one consuming boundary and transform its validation rows."""
-    if len(program_hash) != 64:
+    if not is_blake3(program_hash):
         raise PanelFeatureBoundaryError("alpha_research.feature_program_identity_invalid")
     if (
         not training_sessions

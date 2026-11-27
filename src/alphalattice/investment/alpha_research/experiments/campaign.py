@@ -53,6 +53,7 @@ from alphalattice.capabilities.alpha_modeling.contracts import (
 )
 from alphalattice.capabilities.domain_contracts.identity import canonical_hash
 from alphalattice.investment.alpha_research.scaling.catalog import CrossSectionalScaleCatalog
+from alphalattice.kernel.identity import BLAKE3_PATTERN
 from alphalattice.protocols.research_authoring.contracts import AuthoringError
 from alphalattice.protocols.research_authoring.selection import (
     load_safe_yaml_document,
@@ -309,10 +310,12 @@ class AlphaDevelopmentRequest(_Contract):
 
 
 class AlphaHorizonAuthority(_Contract):
+    """Bind one forecast horizon to its target evidence, maturity and embargo."""
+
     horizon_sessions: Literal[1, 5]
-    target_evidence_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
-    target_recipe_binding_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
-    outcome_method_binding_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
+    target_evidence_hash: str = Field(pattern=BLAKE3_PATTERN)
+    target_recipe_binding_hash: str = Field(pattern=BLAKE3_PATTERN)
+    outcome_method_binding_hash: str = Field(pattern=BLAKE3_PATTERN)
     maturity_lag_sessions: int = Field(ge=2)
     embargo_sessions: int = Field(ge=1)
 
@@ -325,17 +328,19 @@ class AlphaHorizonAuthority(_Contract):
 
 
 class AlphaTrialPlan(_Contract):
+    """Specify a candidate trial's ordered features, recipe and search domain."""
+
     trial_index: int = Field(ge=0)
     method_id: str
     feature_view: Literal["FULL_AXIS", "STATE_INTERACTION_VIEW", "FACTOR_AND_REGIME_CONTEXT"] = (
         "FULL_AXIS"
     )
     ordered_feature_ids: tuple[str, ...] = Field(min_length=1)
-    ordered_feature_axis_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
+    ordered_feature_axis_hash: str = Field(pattern=BLAKE3_PATTERN)
     recipe: AlphaModelRecipeEnvelope
     search_domain: AlphaModelSearchDomainEnvelope
     trigger_disposition: Literal["REQUIRED", "TRIGGERED", "NOT_TRIGGERED"] = "REQUIRED"
-    trial_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
+    trial_hash: str = Field(pattern=BLAKE3_PATTERN)
 
     @classmethod
     def create(cls, **values: Any) -> Self:
@@ -360,13 +365,15 @@ class AlphaTrialPlan(_Contract):
 
 
 class AlphaConditionalMethodPlan(_Contract):
+    """Describe a candidate method and the rule that triggers its trial."""
+
     method_id: Literal["HIST_GRADIENT_BOOSTING", "HUBER_LINEAR"]
     ordered_feature_ids: tuple[str, ...] = Field(min_length=1)
-    ordered_feature_axis_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
+    ordered_feature_axis_hash: str = Field(pattern=BLAKE3_PATTERN)
     recipe: AlphaModelRecipeEnvelope
     search_domain: AlphaModelSearchDomainEnvelope
     trigger_rule: str = Field(min_length=1)
-    plan_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
+    plan_hash: str = Field(pattern=BLAKE3_PATTERN)
 
     @classmethod
     def create(cls, **values: Any) -> Self:
@@ -402,19 +409,19 @@ class AlphaDevelopmentProgram(_Contract):
         return {key: value for key, value in serialized.items() if value is not None}
 
     kind: Literal["AlphaDevelopmentCampaignProgram"] = "AlphaDevelopmentCampaignProgram"
-    factor_checkpoint_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
-    feature_source_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
+    factor_checkpoint_hash: str = Field(pattern=BLAKE3_PATTERN)
+    feature_source_hash: str = Field(pattern=BLAKE3_PATTERN)
     feature_preprocessing_method_id: str | None = None
     target_method_id: str | None = None
     ordered_factor_ids: tuple[str, ...] = Field(min_length=1)
-    ordered_factor_axis_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
+    ordered_factor_axis_hash: str = Field(pattern=BLAKE3_PATTERN)
     context_axis_method_id: str | None = None
     ordered_context_ids: tuple[str, ...] | None = None
     context_source_hash: str | None = None
     horizons: tuple[AlphaHorizonAuthority, AlphaHorizonAuthority]
     catalog_binding: AlphaModelCatalogBinding
     model_method_ids: tuple[str, ...] = Field(min_length=1)
-    scale_catalog_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
+    scale_catalog_hash: str = Field(pattern=BLAKE3_PATTERN)
     scale_method_ids: tuple[str, ...] = Field(min_length=3)
     scale_parameter_domain: dict[str, object]
     ordered_trials: tuple[AlphaTrialPlan, ...] = Field(min_length=1)
@@ -427,7 +434,7 @@ class AlphaDevelopmentProgram(_Contract):
     refit_policy_id: Literal["EVERY_21_FORMATIONS"] = "EVERY_21_FORMATIONS"
     network_policy: Literal["DISABLED"] = "DISABLED"
     evidence_scope: Literal["DEVELOPMENT_ONLY_NO_HOLDOUT"] = "DEVELOPMENT_ONLY_NO_HOLDOUT"
-    program_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
+    program_hash: str = Field(pattern=BLAKE3_PATTERN)
 
     @model_validator(mode="after")  # type: ignore[untyped-decorator]
     def validate_identity(self) -> Self:

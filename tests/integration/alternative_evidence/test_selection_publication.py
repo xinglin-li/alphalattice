@@ -29,6 +29,8 @@ from alphalattice.evidence.alternative_evidence.runtime.reuse import (
 )
 from alphalattice.evidence.alternative_evidence.runtime.service import SUPERSESSION_CATEGORY
 from alphalattice.foundation.data_layer.encoders import RerankScores
+from alphalattice.kernel.identity import blake3_filename
+from tests._support.identity_fixtures import fixture_digest
 from tests.alternative_evidence_desk.document_intelligence_support import (
     _built,
     _counted_runtime,
@@ -48,8 +50,9 @@ class _FrozenNote(BaseModel):
     note_hash: str
 
 
-def _member(text: str, digit: str) -> tuple[str, str, _Note]:
-    return (SPAN_SET_CATEGORY, digit * 64, _Note(text=text, note_hash=digit * 64))
+def _member(text: str) -> tuple[str, str, _Note]:
+    identity = fixture_digest(text)
+    return (SPAN_SET_CATEGORY, identity, _Note(text=text, note_hash=identity))
 
 
 def _refuse(_additional: int) -> None:
@@ -62,10 +65,13 @@ def test_the_store_places_what_it_does_not_hold_and_verifies_what_it_holds(
     """The store places what it does not hold and verifies what it holds."""
 
     store = AlternativeEvidenceArtifactStore(tmp_path)
-    first, second = _member("the set", "1"), _member("its receipt", "2")
+    first, second = _member("the set"), _member("its receipt")
     members = (first, second)
     sizes = [len(store.serialized(model)) for _category, _identity, model in members]
-    paths = [store.root / category / f"{identity}.json" for category, identity, _m in members]
+    paths = [
+        store.root / category / f"{blake3_filename(identity)}.json"
+        for category, identity, _m in members
+    ]
     order: list[str] = []
     original_write = store._write
 
@@ -112,8 +118,8 @@ def test_an_operation_verifies_each_record_once(tmp_path: Path) -> None:
     """An operation verifies each record once."""
 
     store = AlternativeEvidenceArtifactStore(tmp_path)
-    note = _FrozenNote(text="the set", note_hash="1" * 64)
-    loose = _Note(text="its receipt", note_hash="2" * 64)
+    note = _FrozenNote(text="the set", note_hash=fixture_digest("the set"))
+    loose = _Note(text="its receipt", note_hash=fixture_digest("its receipt"))
     store.publish(SPAN_SET_CATEGORY, note.note_hash, note)
     store.publish(SPAN_SET_CATEGORY, loose.note_hash, loose)
     with verified_evidence_records():
@@ -123,8 +129,10 @@ def test_an_operation_verifies_each_record_once(tmp_path: Path) -> None:
         store.load(SPAN_SET_CATEGORY, loose.note_hash, _Note)
         store.load(SPAN_SET_CATEGORY, loose.note_hash, _Note)
     assert store.read_count == 3
-    path = store.root / SPAN_SET_CATEGORY / f"{note.note_hash}.json"
-    path.write_bytes(path.read_bytes().replace(b"1111", b"2222", 1))
+    path = store.root / SPAN_SET_CATEGORY / f"{blake3_filename(note.note_hash)}.json"
+    path.write_bytes(
+        path.read_bytes().replace(note.note_hash.encode(), loose.note_hash.encode(), 1)
+    )
     with pytest.raises(AlternativeEvidencePublicationError, match="artifact_tampered"):
         store.load(SPAN_SET_CATEGORY, note.note_hash, _FrozenNote)
 
@@ -144,8 +152,10 @@ def test_a_selection_is_published_only_over_verified_artifacts(
         )
         assert receipt.span_set_hash is not None
         store = runtime.artifacts
-        receipt_path = store.root / RECEIPT_CATEGORY / f"{receipt.receipt_hash}.json"
-        set_path = store.root / SPAN_SET_CATEGORY / f"{receipt.span_set_hash}.json"
+        receipt_path = (
+            store.root / RECEIPT_CATEGORY / f"{blake3_filename(receipt.receipt_hash)}.json"
+        )
+        set_path = store.root / SPAN_SET_CATEGORY / f"{blake3_filename(receipt.span_set_hash)}.json"
         assert receipt_path.is_file() and set_path.is_file()
         original_receipt, original_set = receipt_path.read_bytes(), set_path.read_bytes()
         assert len(original_receipt) + len(original_set) in admitted, "the pair, together"
@@ -198,7 +208,9 @@ def test_a_selection_is_published_only_over_verified_artifacts(
         assert other.span_set_hash != receipt.span_set_hash
         with pytest.raises(AlternativeEvidencePublicationError, match="selection_dependency"):
             runtime._publish_selection(other, receipt)
-        assert not (store.root / SPAN_SET_CATEGORY / f"{other.span_set_hash}.json").is_file()
+        assert not (
+            store.root / SPAN_SET_CATEGORY / f"{blake3_filename(other.span_set_hash)}.json"
+        ).is_file()
     finally:
         runtime.close()
 
@@ -230,7 +242,9 @@ def test_a_selection_is_published_only_over_verified_artifacts(
         assert recomputed.reused_from_receipt_hash is None
         assert admitted == [len(store.serialized(recomputed))]
         assert set_path.read_bytes() == original_set
-        assert (store.root / RECEIPT_CATEGORY / f"{recomputed.receipt_hash}.json").is_file()
+        assert (
+            store.root / RECEIPT_CATEGORY / f"{blake3_filename(recomputed.receipt_hash)}.json"
+        ).is_file()
     finally:
         later.close()
 
@@ -290,10 +304,14 @@ def test_a_selection_under_an_earlier_retrieval_binding_is_kept_or_recorded_besi
         ("deadline", "scored", "past the deadline"),
         ("twice", "reversed", "scored"),
     ):
-        earlier, prior = select(tmp_path / name, binding="e" * 64, rerank=before)
+        earlier, prior = select(
+            tmp_path / name, binding=fixture_digest("earlier retrieval binding"), rerank=before
+        )
         earlier.close()
         if name == "twice":  # changed under one binding, then equal under the next
-            earlier, prior = select(tmp_path / name, binding="9" * 64, rerank=now)
+            earlier, prior = select(
+                tmp_path / name, binding=fixture_digest("current retrieval binding"), rerank=now
+            )
             earlier.close()
         if name == "changed":
             with pytest.raises(RuntimeError, match="stop"):
