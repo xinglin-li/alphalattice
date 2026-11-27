@@ -163,10 +163,13 @@ def test_a_published_revision_and_snapshot_are_rebuilt_from_the_log(
                 == 0
             )
         store.optimize()
+        assert (root / "machine" / "knowledge-lexical-v1" / "meta.json").is_file()
+        log.knowledge_lexical = None  # Reopen the published view from disk.
         assert chunks == store.index_chunks(version_id=first, recipe_id=recipe, content=body)
         assert all(
             digest(body[chunk.start : chunk.end].encode()) == chunk.digest for chunk in chunks
         )
+        lexical_reads: list[str] = []
         refresh = knowledge._LexicalView.refresh
         with ThreadPoolExecutor(max_workers=1) as writer, monkeypatch.context() as patch:
 
@@ -186,6 +189,7 @@ def test_a_published_revision_and_snapshot_are_rebuilt_from_the_log(
                     ).fetchone()
                     is None
                 )
+                con.set_trace_callback(lexical_reads.append)
                 refresh(view, con)
 
             patch.setattr(knowledge._LexicalView, "refresh", refresh_with_commit)
@@ -193,6 +197,7 @@ def test_a_published_revision_and_snapshot_are_rebuilt_from_the_log(
                 hit.source_id
                 for hit in store.lexical("市场风险", store.scope(workspace="w2", cutoff_us=123))
             ] == [origin.source_id]
+        assert not any("knowledge_lexical_terms" in sql for sql in lexical_reads)
         assert [
             hit.source_id
             for hit in store.lexical("风险市场", store.scope(workspace="w2", cutoff_us=123))
@@ -682,7 +687,7 @@ def _corpus(rng: random.Random) -> str:
 
 
 @pytest.mark.proves("data_layer.recall_meets_its_speed_at_100k")
-def test_recall_answers_within_a_second_at_100k_chunks(tmp_path: Path) -> None:
+def test_recall_answers_within_a_second_at_100k_chunks(tmp_path: Path, record_property) -> None:
     """With the installed packs, a store of 100,000 chunks answers its first query in each
     language and the p95 of thirty more within one second, English reranked."""
     encoder_pack, reranker_pack, manifest = recall._packs()  # an absent pack is red, never a skip
@@ -715,6 +720,7 @@ def test_recall_answers_within_a_second_at_100k_chunks(tmp_path: Path) -> None:
             )
             held += len(chunks)
         store.optimize()
+        log.knowledge_lexical = None  # Time a cold view opened from disk.
         with store.vector_index(recipe_id=recipe, model_id=model, directory=root) as index:
             search = HybridSearch(
                 store, index, encoder, Reranker(reranker_pack), lambda hit, _: bodies[hit.source_id]
@@ -732,6 +738,8 @@ def test_recall_answers_within_a_second_at_100k_chunks(tmp_path: Path) -> None:
                     assert found.hits
                 measured[f"{language} cold"] = seconds[0]
                 measured[f"{language} warm p95"] = sorted(seconds[1:])[28]
+    for name, seconds in measured.items():
+        record_property(name.replace(" ", "_") + "_seconds", round(seconds, 3))
     # One verdict naming every measured second, so a nightly red reads as numbers.
     assert all(value < BUDGET for value in measured.values()), {
         name: round(value, 3) for name, value in measured.items()

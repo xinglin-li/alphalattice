@@ -23,11 +23,15 @@ from alphalattice.evidence.alternative_evidence.documents.canonicalization impor
     canonicalize_source_documents,
 )
 from alphalattice.evidence.alternative_evidence.documents.contracts import DocumentRejectionCode
+from alphalattice.evidence.alternative_evidence.retrieval.service import (
+    AlternativeEvidenceRetrievalService,
+)
 from alphalattice.evidence.alternative_evidence.retrieval.session import (
     _readable_source_span,
     _unit_declaration,
 )
 from alphalattice.evidence.alternative_evidence.sources.contracts import AcquiredEvidenceDocument
+from alphalattice.foundation.data_layer import knowledge
 from tests.alternative_evidence_desk import development_documents as development
 from tests.alternative_evidence_desk.document_intelligence_support import (
     _built,
@@ -53,16 +57,32 @@ class _SecDiscovery:
 
 
 def test_a_planted_claim_beyond_the_excerpt_is_retrievable_with_exact_span(
-    tmp_path: Path,
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
+    monkeypatch.setattr(knowledge, "SMALL_LEXICAL_BATCH", 1)
+    publications: list[None] = []
+    optimize = knowledge.KnowledgeStore.optimize
+
+    def publish_view(store: knowledge.KnowledgeStore) -> None:
+        optimize(store)
+        publications.append(None)
+
+    monkeypatch.setattr(knowledge.KnowledgeStore, "optimize", publish_view)
     runtime, request, _registry_value, snapshot, document_set, generation = _open_recorded(tmp_path)
     assert "supplier interruption" not in snapshot.citations[0].excerpt.casefold()
-    session = runtime.retrieval.open_session(
+    assert len(publications) == 1
+    reopened = AlternativeEvidenceRetrievalService(
+        workspace_root=runtime.retrieval.workspace.root,
+        retrieval_binding_hash=runtime.retrieval.retrieval_binding_hash,
+    )
+    session = reopened.open_session(
         document_set=document_set,
         generation=generation,
         evidence_as_of=request.evidence_as_of,
     )
     try:
+        assert len(publications) == 1, "reopening must not compact the published corpus"
+        assert reopened.embedded_chunk_count == 0
         result = session.search(query="supplier interruption capacity", top_k=3)
         spans = session.read_spans(span_handles=(result.hits[0].span_handle,))
     finally:

@@ -287,7 +287,7 @@ class _LexicalView:
     """Tantivy's derived view of the log's normalized terms. The log owns chunk identity."""
 
     def __init__(self, directory: Path) -> None:
-        import tantivy  # lazy: only lexical reads need the optional data dependency
+        import tantivy  # lazy: the lexical view needs the optional data dependency
 
         self.engine = tantivy
         self.schema = (
@@ -905,9 +905,21 @@ class KnowledgeStore:
             return tuple(Chunk(*row) for row in rows)
 
     def optimize(self) -> None:
-        """Compact the FTS segments after a bulk indexing build."""
+        """Finish a bulk indexing build by publishing its committed lexical view."""
         with self.log.unit() as con:
             con.execute("INSERT INTO knowledge_fts(knowledge_fts) VALUES ('optimize')")
+        with self.log.lexical_reading() as con:
+            self._lexical_view(con)
+
+    def _lexical_view(self, con: sqlite3.Connection) -> _LexicalView:
+        index = self.log.knowledge_lexical
+        if index is None:
+            database = str(con.execute("PRAGMA database_list").fetchone()[2])
+            index = self.log.knowledge_lexical = _LexicalView(
+                Path(database).parent / "knowledge-lexical-v1"
+            )
+        index.refresh(con)
+        return index
 
     def lexical(
         self,
@@ -958,13 +970,7 @@ class KnowledgeStore:
             rows = [tuple(row) for row in con.execute(admitted, filters)]
             if not rows:
                 return ()
-            index = self.log.knowledge_lexical
-            if index is None:
-                database = str(con.execute("PRAGMA database_list").fetchone()[2])
-                index = self.log.knowledge_lexical = _LexicalView(
-                    Path(database).parent / "knowledge-lexical-v1"
-                )
-            index.refresh(con)
+            index = self._lexical_view(con)
             common: frozenset[str] = frozenset()
             if not per_source and kind != SEALED_KIND:
                 common = index.words.common(

@@ -20,6 +20,7 @@ from alphalattice.capabilities.domain_contracts.host_stop import checkpoint
 from alphalattice.capabilities.domain_contracts.identity import canonical_hash, schema_structure
 from alphalattice.capabilities.domain_contracts.identity_successors import is_current
 from alphalattice.foundation.data_layer import history as data_history
+from alphalattice.foundation.data_layer import knowledge
 from alphalattice.protocols.actor_execution import ActorKind, AgentExecutionBinding
 from alphalattice.protocols.actor_execution.answers import AnswerProblem
 from alphalattice.protocols.actor_execution.usage import ProviderStageUsage
@@ -1211,6 +1212,8 @@ class AlternativeEvidenceDocumentIntelligenceRuntime:
             # shares: other units' stages run meanwhile.
             with self.writer.released():
                 value = self.retrieval.build(document_set=document_set, built_at=built_at)
+                if value.chunk_count >= knowledge.SMALL_LEXICAL_BATCH:
+                    self.documents.library.store.optimize()
             if chunks is not None:
                 chunks.expect(value.chunk_count)
                 chunks.advance(value.chunk_count)
