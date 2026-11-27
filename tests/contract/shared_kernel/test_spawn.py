@@ -30,6 +30,7 @@ from alphalattice.kernel.execution import (
     process_execution,
 )
 from alphalattice.kernel.execution import spawn as execution_spawn
+from tests._support.module_view import module_view
 
 TEST_SOURCE = "src/alphalattice/capabilities/domain_contracts/spawn.py"
 
@@ -96,14 +97,13 @@ def test_a_posix_group_is_killed_before_waiting_for_its_members(monkeypatch):
         events.append(("scan",))
         return [] if ("kill", 123) in events else [member]
 
-    monkeypatch.setattr(psutil, "process_iter", members)
-
     def wait(members, *, timeout):
         events.append(("wait", members[0].pid))
         return ([], members) if events.count(("wait", 456)) == 1 else (members, [])
 
-    monkeypatch.setattr(psutil, "wait_procs", wait)
-    execution_spawn._stop_group(123, processes=psutil)
+    execution_spawn._stop_group(
+        123, processes=module_view(psutil, process_iter=members, wait_procs=wait)
+    )
     assert events == [("scan",), ("kill", 123), ("scan",), ("wait", 456), ("wait", 456)]
 
     # A timeout stops the owned group once, even when final cleanup follows.
@@ -132,7 +132,7 @@ def test_a_posix_group_is_killed_before_waiting_for_its_members(monkeypatch):
     )
     monkeypatch.setattr(execution_spawn.subprocess, "Popen", lambda *args, **kwargs: Child())
     monkeypatch.setattr(execution_spawn.os, "killpg", stop)
-    monkeypatch.setattr(psutil, "process_iter", lambda: [])
+    monkeypatch.setattr(spawn, "psutil", module_view(psutil, process_iter=lambda: []))
     with pytest.raises(subprocess.TimeoutExpired):
         spawn.run([sys.executable, "-c", "pass"], timeout=1)
     assert stops == [123]
@@ -630,7 +630,7 @@ def test_an_interactive_session_names_its_stop_scope(monkeypatch):
         execution_spawn.os, "killpg", lambda pid, sig: calls.append(("group", pid)), raising=False
     )
     monkeypatch.setattr(execution_spawn.signal, "SIGKILL", 9, raising=False)
-    monkeypatch.setattr(psutil, "process_iter", lambda: [])
+    monkeypatch.setattr(spawn, "psutil", module_view(psutil, process_iter=lambda: []))
     root = spawn.InteractiveSession(timeout=1, stop_scope="root")
     root.child = Child()
     root.stop()

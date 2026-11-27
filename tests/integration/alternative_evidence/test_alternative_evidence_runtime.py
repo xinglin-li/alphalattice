@@ -37,6 +37,7 @@ from alphalattice.evidence.alternative_evidence.sources.sec_edgar import (
     SecOfficialResponse,
 )
 from tests._support.identity_fixtures import fixture_digest
+from tests._support.module_view import module_view
 from tests.alternative_evidence_desk.document_intelligence_support import live_admission
 from tests.alternative_evidence_desk.sec_fixture_transport import NOW, SecFixtureTransport
 
@@ -556,7 +557,9 @@ def test_auto_reads_the_load_on_the_processors_it_may_use(monkeypatch: pytest.Mo
         assert percpu
         return list(shares)
 
-    monkeypatch.setattr(process_metrics.psutil, "cpu_percent", cpu_percent)
+    monkeypatch.setattr(
+        process_metrics, "psutil", module_view(process_metrics.psutil, cpu_percent=cpu_percent)
+    )
     assert process_metrics.busy_logical_processors(0.0, processor_ids=(4, 5, 6, 7)) == 0.5
     capacity = process_metrics.runtime_machine_capacity().model_copy(
         update={"allowed_logical_processor_ids": (4, 5, 6, 7)}
@@ -586,7 +589,11 @@ def test_memory_is_read_by_each_platforms_own_measure(monkeypatch, system) -> No
 
     gib = 2**30
     memory = SimpleNamespace(total=16 * gib + 1, available=9 * gib)
-    monkeypatch.setattr(process_metrics.psutil, "virtual_memory", lambda: memory)
+    monkeypatch.setattr(
+        process_metrics,
+        "psutil",
+        module_view(process_metrics.psutil, virtual_memory=lambda: memory),
+    )
     if system == "win32":
         assert process_metrics.runtime_machine_capacity().total_memory_bytes != memory.total
         return
