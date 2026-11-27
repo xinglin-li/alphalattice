@@ -397,7 +397,8 @@ def _files(root: Path) -> dict[str, str]:
 @pytest.mark.proves("data_layer.root_created_twice_is_all_equal")
 def test_a_data_root_created_twice_is_all_equal_and_refuses_another_version(tmp_path):
     """The second creation makes and changes nothing; another schema version of a database or of
-    the catalog is refused by name. The catalog is made at its first use, not with the root."""
+    the catalog is refused by name. The catalog is made at its first use, not with the root, and
+    names every schema and table under its own data path, so a copy of the root reads its own."""
     older = tmp_path / "sha256-root"
     machine = older / "machine"
     machine.mkdir(parents=True)
@@ -414,6 +415,14 @@ def test_a_data_root_created_twice_is_all_equal_and_refuses_another_version(tmp_
     first = create_data_root(tmp_path)
     assert not (tmp_path / "machine" / "catalog.sqlite").exists()
     assert (catalog(tmp_path), catalog(tmp_path)) == (True, False)
+    with closing(sqlite3.connect(tmp_path / "machine" / "catalog.sqlite")) as lake:
+        assert (
+            lake.execute(
+                "SELECT schema_name FROM ducklake_schema WHERE NOT path_is_relative"
+                " UNION ALL SELECT table_name FROM ducklake_table WHERE NOT path_is_relative"
+            ).fetchall()
+            == []
+        )
     reading = reading_session(tmp_path)  # the Host's views over the log, the lake attached
     assert reading is not None
     with closing(reading):

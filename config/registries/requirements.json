@@ -1345,7 +1345,7 @@
       "seconds": 15
     },
     "data_layer.root_created_twice_is_all_equal": {
-      "description": "Creating a data root with installed data dependencies creates the SQLite DuckLake catalog and runs its views and macros offline; repeating creation leaves every file byte-identical, and another schema version is refused by name.",
+      "description": "Creating a data root creates the DuckLake catalog, every schema and table path relative to its data path, and runs its views offline; creating it again changes no file, and another schema version is refused by name.",
       "lower_layer": "Creation writes SQLite databases and folders on disk.",
       "owner": "alphalattice.foundation.data_layer",
       "layer": "integration",

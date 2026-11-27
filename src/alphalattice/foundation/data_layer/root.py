@@ -298,12 +298,16 @@ def catalog(root: Path, *, owner: Any = None, keep_attached: bool = False) -> bo
         attach_catalog(connection, root)
         attached = True
         connection.execute("USE lake").complete()
-        # Two commits, in file order: every schema and table, then every option call, each of
-        # which names a schema or table the first commit made. A DuckLake commit per statement
-        # made a catalog in two seconds; one per run of DDL and per option took 0.19 s, two 0.14.
+        # Three commits, each in file order: every schema, then every table, then every option
+        # call. A table made in its schema's own commit is stored at the absolute data path, so a
+        # backup or copy of the root would read the first root's files; made after it, its path
+        # stays relative to the root's. A commit per statement made a catalog in two seconds.
         written = statements(schema_text("catalog.sql"))
-        calls = [statement for statement in written if statement.upper().startswith("CALL ")]
-        for run in ([statement for statement in written if statement not in calls], calls):
+        runs: dict[str, list[str]] = {"CREATE SCHEMA": [], "": [], "CALL ": []}
+        for statement in written:
+            kind = next((kind for kind in runs if kind and statement.upper().startswith(kind)), "")
+            runs[kind].append(statement)
+        for run in runs.values():
             connection.execute("BEGIN TRANSACTION").complete()
             for statement in run:
                 connection.execute(statement).complete()
