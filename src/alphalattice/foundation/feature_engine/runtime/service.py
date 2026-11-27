@@ -1498,7 +1498,7 @@ class FeatureFoundationService:
                                 payload=record.model_dump(mode="json"),
                                 receipt_hash=record.receipt_hash,
                             )
-                            with self.mutation_gate.hold():
+                            with self.mutation_gate.hold(), span("write", "panel_availability"):
                                 panel_connection.execute("BEGIN TRANSACTION")
                                 try:
                                     availability_repository.upsert(

@@ -400,12 +400,15 @@ class WorkspaceConnection:
                     self._arm()
         return True
 
-    def _refuse_unguardable(self, query: object) -> set[duckdb.StatementType]:
+    def _refuse_unguardable(
+        self, query: object
+    ) -> tuple[set[duckdb.StatementType], duckdb.Statement | None]:
         """Refuse, by the engine's classification, what its read-only transaction cannot stop.
 
         The exposed methods accept SQL text (one or several statements) or a
         statement object the engine extracted earlier; both are classified
-        here before anything reaches the transaction.
+        here before anything reaches the transaction. A single text statement carries
+        its parsed form into execution.
         """
 
         if isinstance(query, str):
@@ -413,7 +416,7 @@ class WorkspaceConnection:
         elif isinstance(query, duckdb.Statement):
             statements = [query]
         else:
-            return set()
+            return set(), None
         for statement in statements:
             if not self._guarded and statement.type == duckdb.StatementType.LOAD:
                 raise RuntimeError(
@@ -425,7 +428,8 @@ class WorkspaceConnection:
                 raise RuntimeError(
                     f"workspace_database.read_only_handle_refuses_statement:{statement.type.name}"
                 )
-        return {statement.type for statement in statements}
+        single = statements[0] if isinstance(query, str) and len(statements) == 1 else None
+        return {statement.type for statement in statements}, single
 
     def _began(self, began: bool) -> None:
         """A guarded snapshot began on this handle, reading the file's catalog now, or ended."""
@@ -508,7 +512,12 @@ class WorkspaceConnection:
                 self._raw.complete()
         kinds: set[duckdb.StatementType] = set()
         if name in _SQL_DOORS:
-            kinds = self._refuse_unguardable(args[0] if args else kwargs.get("query"))
+            kinds, parsed = self._refuse_unguardable(args[0] if args else kwargs.get("query"))
+            if parsed is not None:
+                if args:
+                    args = (parsed, *args[1:])
+                else:
+                    kwargs = {**kwargs, "query": parsed}
         elif name in {"begin", "commit", "rollback"}:
             kinds = {duckdb.StatementType.TRANSACTION}
         if self._guarded:
