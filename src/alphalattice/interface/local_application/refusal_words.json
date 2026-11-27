@@ -998,7 +998,7 @@
   "next_action": "RESTORE_THE_WORKSPACE_FROM_A_BACKUP"
  },
  "research_workspace.manifest_before_blake3": {
-  "detail": "This workspace uses the earlier format. To use this release, start a fresh data root and research workspace.",
+  "detail": "This workspace uses the earlier format. Open it with the earlier release, or start a fresh data root and research workspace to use this release.",
   "next_action": "START_A_NEW_WORKSPACE"
  },
  "research_workspace.manifest_unreadable": {

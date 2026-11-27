@@ -1020,8 +1020,8 @@
       "kind": "MESSAGE",
       "arguments": [],
       "words": {
-        "en": "This workspace uses the earlier format. To use this release, start a fresh data root and research workspace.",
-        "zh-CN": "此工作区使用旧版格式。请新建数据根目录和研究工作区，再使用此版本。"
+        "en": "This workspace uses the earlier format. Open it with the earlier release, or start a fresh data root and research workspace to use this release.",
+        "zh-CN": "此工作区使用旧版格式。请用旧版本打开它，或新建数据根目录和研究工作区以使用此版本。"
       }
     },
     "goal.profile.operation": {

@@ -162,8 +162,6 @@ RULES = [
             "tests/integration/product_host/test_retrieval_product_acceptance.py",
             "tests/integration/feature_engine/test_feature_closure_genesis.py",
             "tests/integration/feature_engine/test_panel_runtime_authority.py",
-            "tests/integration/feature_engine/test_panel_upgrade.py",
-            "tests/feature_engine/panel_upgrade.py",
             "tests/integration/portfolio_strategy_lab/test_frozen_strategy_packages.py",
             "tests/integration/local_application/test_native_answer_route_class.py",
             "tests/integration/product_host/test_strategy_scoring.py",

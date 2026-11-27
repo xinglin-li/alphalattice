@@ -411,6 +411,7 @@ def test_a_workspace_manifest_from_the_sha256_format_is_refused_at_open(tmp_path
     assert manifest.read_bytes() == earlier
     wording = refusal_words("research_workspace.manifest_before_blake3")
     assert "fresh data root" in wording["detail"]
+    assert "earlier release" in wording["detail"]
 
     manifest.write_text(current.model_dump_json(), encoding="utf-8")
     assert read_research_workspace_manifest(tmp_path) == current

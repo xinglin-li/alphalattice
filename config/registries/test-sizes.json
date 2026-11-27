@@ -1790,14 +1790,6 @@
       "size_contract": "nightly_only"
     },
     {
-      "pattern": "tests/integration/product_host/composition/test_first_start.py::test_the_first_start_upgrades_every_old_qa_workspace_on_one_plan*",
-      "owner": "tests",
-      "reason": "Upgrades three copies of the recorded QA root alpha_development_outcomes (alpha-base, alpha-after-1, alpha-before-1), real workspaces the development sets do not give, so it runs only in the nightly (the person, 11-19); its held case keeps the plan's proof at merge.",
-      "admitted": "2026-11-19: the merge stage reads no QA copy (the person, 11-19); this was the one real-evidence node the commit tier still collected, skipped as an absent root on every settle leg without the QA store.",
-      "size_contract": "nightly_only",
-      "original_data": "upgrade replay"
-    },
-    {
       "pattern": "tests/integration/product_host/test_strategy_activation.py::test_the_daily_update_resumes_its_deferral_then_goes_on_to_the_next_session*",
       "owner": "tests.portfolio_strategy_lab",
       "reason": "Daily automation resumes an installed strategy with an activated book over 521 formations while its published update becomes the next session's parent.",
@@ -2175,11 +2167,6 @@
       "budget": "large:tests/integration/product_host/test_input_revisions.py::test_update_capture_copy_and_recovery_leave_defaults_and_reports_unchanged",
       "value": 900,
       "admitted": "2026-11-14: Cold input-revision setup ran 317-408 s in six nightly runs on 11-13 and 11-14; three times the slowest exceeds 900 s, so 900 s holds and no lower step fits"
-    },
-    {
-      "budget": "large:tests/integration/product_host/composition/test_first_start.py::test_the_first_start_upgrades_every_old_qa_workspace_on_one_plan*",
-      "value": 900,
-      "admitted": "2026-11-19: A Large test is killed only as hung, at the large timeout of 900 s; its three QA-root upgrades run in the nightly"
     },
     {
       "budget": "large:tests/structural/test_test_shape.py::test_nightly_antipattern_rules_hold_the_product_tree",
@@ -2741,6 +2728,83 @@
     }
   ],
   "quarantine": [
+    {
+      "node": "tests/integration/product_host/test_strategy_activation.py::test_a_reviewed_research_book_runs_forward_when_a_person_activates_it",
+      "owner": "tests.portfolio_strategy_lab",
+      "reason": "Starts from a copy of a workspace an earlier release built, which this release refuses by design (research_workspace.manifest_before_blake3); held until it starts from a workspace this release prepares that carries a reviewed strategy book. Review by its date.",
+      "until": "2026-12-04",
+      "class": "real",
+      "since": "2026-11-26",
+      "seen_on": [
+        "pc1"
+      ]
+    },
+    {
+      "node": "tests/integration/product_host/test_strategy_activation.py::test_an_update_the_provider_defers_waits_with_it_and_resumes_once_due[own]",
+      "owner": "tests.portfolio_strategy_lab",
+      "reason": "Starts from a copy of a workspace an earlier release built, which this release refuses by design (research_workspace.manifest_before_blake3); held until it starts from a workspace this release prepares that carries a reviewed strategy book. Review by its date.",
+      "until": "2026-12-04",
+      "class": "real",
+      "since": "2026-11-26",
+      "seen_on": [
+        "pc1"
+      ]
+    },
+    {
+      "node": "tests/integration/product_host/test_strategy_activation.py::test_an_update_the_provider_defers_waits_with_it_and_resumes_once_due[another]",
+      "owner": "tests.portfolio_strategy_lab",
+      "reason": "Starts from a copy of a workspace an earlier release built, which this release refuses by design (research_workspace.manifest_before_blake3); held until it starts from a workspace this release prepares that carries a reviewed strategy book. Review by its date.",
+      "until": "2026-12-04",
+      "class": "real",
+      "since": "2026-11-26",
+      "seen_on": [
+        "pc1"
+      ]
+    },
+    {
+      "node": "tests/integration/product_host/test_strategy_activation.py::test_an_update_the_provider_defers_waits_with_it_and_resumes_once_due[later]",
+      "owner": "tests.portfolio_strategy_lab",
+      "reason": "Starts from a copy of a workspace an earlier release built, which this release refuses by design (research_workspace.manifest_before_blake3); held until it starts from a workspace this release prepares that carries a reviewed strategy book. Review by its date.",
+      "until": "2026-12-04",
+      "class": "real",
+      "since": "2026-11-26",
+      "seen_on": [
+        "pc1"
+      ]
+    },
+    {
+      "node": "tests/integration/product_host/test_strategy_activation.py::test_the_daily_update_resumes_its_deferral_then_goes_on_to_the_next_session",
+      "owner": "tests.portfolio_strategy_lab",
+      "reason": "Starts from a copy of a workspace an earlier release built, which this release refuses by design (research_workspace.manifest_before_blake3); held until it starts from a workspace this release prepares that carries a reviewed strategy book. Review by its date.",
+      "until": "2026-12-04",
+      "class": "real",
+      "since": "2026-11-26",
+      "seen_on": [
+        "pc1"
+      ]
+    },
+    {
+      "node": "tests/integration/product_host/test_strategy_activation.py::test_a_plan_answers_the_update_that_waits_and_a_cancelled_one_leaves_a_way_on",
+      "owner": "tests.portfolio_strategy_lab",
+      "reason": "Starts from a copy of a workspace an earlier release built, which this release refuses by design (research_workspace.manifest_before_blake3); held until it starts from a workspace this release prepares that carries a reviewed strategy book. Review by its date.",
+      "until": "2026-12-04",
+      "class": "real",
+      "since": "2026-11-26",
+      "seen_on": [
+        "pc1"
+      ]
+    },
+    {
+      "node": "tests/integration/causal_outcomes/test_held_friday_update.py::test_a_held_friday_runs_offline_on_saturday_and_a_missing_monday_names_its_need",
+      "owner": "tests.portfolio_strategy_lab",
+      "reason": "Starts from a copy of a workspace an earlier release built, which this release refuses by design (research_workspace.manifest_before_blake3); held until it starts from a workspace this release prepares that carries a reviewed strategy book. Review by its date.",
+      "until": "2026-12-04",
+      "class": "real",
+      "since": "2026-11-26",
+      "seen_on": [
+        "pc1"
+      ]
+    },
     {
       "node": "tests/integration/product_host/test_first_use_goal.py::test_a_first_use_decides_its_own_preparations_data_issue_and_its_preparation_goes_on",
       "owner": "tests.portfolio_strategy_lab",

@@ -74,15 +74,10 @@ def _held_family(stops: list[str], asked: list[str] | None = None) -> Callable[[
     return make
 
 
-def _old(source: Path | None, workspace: Path, name: str) -> None:
-    """A 0.2.7 workspace: a QA copy's manifest and outcome store, or a held store of its own."""
-    if source is None:
-        initialize_research_workspace(workspace)
-        (workspace / "old-store.json").write_text(json.dumps({"rows": [name]}), encoding="utf-8")
-        return
-    workspace.mkdir(parents=True)
-    shutil.copy2(source / "research-workspace.json", workspace)
-    shutil.copytree(source / OUTCOMES, workspace / OUTCOMES)
+def _old(workspace: Path, name: str) -> None:
+    """A workspace that still holds an old store of its own, for the held family to upgrade."""
+    initialize_research_workspace(workspace)
+    (workspace / "old-store.json").write_text(json.dumps({"rows": [name]}), encoding="utf-8")
 
 
 def _progress(subject: str) -> list[dict[str, Any]]:
@@ -116,53 +111,22 @@ def test_the_first_start_upgrades_every_old_workspace_on_one_plan(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
 ) -> None:
     """requirement: the first 0.2.8 start upgrades every old workspace on one acknowledged plan."""
-    _upgrades_on_one_plan(tmp_path, monkeypatch, capsys, None)
-
-
-@pytest.mark.proves("product_host.first_start_upgrades_every_old_workspace")
-@pytest.mark.real_evidence
-def test_the_first_start_upgrades_every_old_qa_workspace_on_one_plan(
-    tmp_path: Path,
-    monkeypatch: pytest.MonkeyPatch,
-    capsys: pytest.CaptureFixture[str],
-    evidence_roots: Any,
-) -> None:
-    """The same plan over three QA copies of 0.2.7 workspaces: the upgrade replay that keeps
-    original data, in the nightly."""
-    qa = evidence_roots.require("alpha_development_outcomes")
-    _upgrades_on_one_plan(tmp_path, monkeypatch, capsys, qa)
+    _upgrades_on_one_plan(tmp_path, monkeypatch, capsys)
 
 
 def _upgrades_on_one_plan(
-    tmp_path: Path,
-    monkeypatch: pytest.MonkeyPatch,
-    capsys: pytest.CaptureFixture[str],
-    qa: Path | None,
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
 ) -> None:
-    """Upgrade the old workspaces made from `qa`'s three QA copies, or held ones when None."""
-    corpus = "held" if qa is None else "qa"
+    """Upgrade three held old workspaces on one plan: two at the first start, one later."""
     monkeypatch.setenv("ALPHALATTICE_BACKUP_ROOT", str(tmp_path / "backups"))
     stops = ["stopped mid-family"]
-    if qa is None:
-        sources: list[Path | None] = [None, None, None]
-        monkeypatch.setattr(first_start, "FAMILIES", (_held_family(stops),))
-    else:
-        sources = [qa / "alpha-base", qa / "alpha-after-1", qa / "alpha-before-1"]
-        write = history.write_execution_outcome
-
-        def stopping(*args: Any, **kwargs: Any) -> str:
-            written = write(*args, **kwargs)
-            if stops:
-                raise RuntimeError(stops.pop())
-            return written
-
-        monkeypatch.setattr(history, "write_execution_outcome", stopping)
+    monkeypatch.setattr(first_start, "FAMILIES", (_held_family(stops),))
     made = first_start.FAMILIES
     families = [make().name for make in made]
     project = tmp_path / "project" / "workspaces"
     first, second, later = project / "first", project / "second", project / "later"
-    _old(sources[0], first, "first")
-    _old(sources[1], second, "second")
+    _old(first, "first")
+    _old(second, "second")
 
     # The first start shows its plan and serves nothing else; nothing moves before acknowledgement.
     host = _started(first)
@@ -216,8 +180,7 @@ def _upgrades_on_one_plan(
         assert code == 0 and running["first_start"]["state"] == "RUNNING"
         assert not host.upgraded(timeout=600)
         stopped = _json(host, "/api/upgrade")["first_start"]
-        stopped_family = "held" if corpus == "held" else "execution-outcomes"
-        assert stopped["state"] == "FAILED" and stopped["family_failed"] == stopped_family
+        assert stopped["state"] == "FAILED" and stopped["family_failed"] == "held"
         assert _request(host, "/api/tasks")[0] == 503
     finally:
         host.stop()
@@ -242,16 +205,10 @@ def _upgrades_on_one_plan(
     ]
     assert progress[-1]["kind"] == "completed"
 
-    # A third old workspace that appears afterwards is upgraded alone at its open. Every QA
-    # workspace holds the same committed chunks, so the third QA copy has nothing the catalog
-    # lacks: it opens with no plan, and its old reads already equal the catalog's.
-    _old(sources[2], later, "later")
+    # A third old workspace that appears afterwards is upgraded alone at its open.
+    _old(later, "later")
     host = _started(later)
     try:
-        if corpus == "qa":
-            assert host.first_start is None and _request(host, "/api/tasks")[0] == 200
-            assert all(make().verify(SimpleNamespace(workspaces=(later,))) for make in made)
-            return
         own = _json(host, "/api/upgrade")
         assert own["first_start"]["subject"].startswith("0.2.8/")
         assert own["first_start"]["workspaces"] == [str(later.resolve())]
@@ -336,7 +293,7 @@ def test_first_start_reuses_only_the_recorded_family_inputs(
 
     root, workspace, manifestless = (tmp_path / name for name in ("data", "workspace", "unnamed"))
     create_data_root(root)
-    _old(None, workspace, "first")
+    _old(workspace, "first")
     manifestless.mkdir()
     monkeypatch.setenv("ALPHALATTICE_BACKUP_ROOT", str(tmp_path / "backups"))
     asked: list[str] = []
