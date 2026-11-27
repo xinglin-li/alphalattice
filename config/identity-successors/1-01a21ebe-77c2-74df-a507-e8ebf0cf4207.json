@@ -1,0 +1,139 @@
+{
+ "schema": "identity-successors",
+ "version": 1,
+ "moves": [
+  {
+   "role": "alpha_research.model_lifecycle_replay",
+   "predecessor": "blake3:8a9963fe5ee8404e3b783e0ea116adf8bebd1ccba2d3cca206ee5f50f1b7c98e",
+   "successor": "blake3:407c646df7091196328054208156e829ac68ae7f60243d611ac7b72af00141c1",
+   "change": "Compute Feature Panel availability faster",
+   "reason": "The robust cross-section kernel works by column with NumPy masks; nineteen roles rotate by source fingerprint and the development replay reads all equal (carried across composition on 96bb65340c4ee6fb5467748311f44169c6fbd16d)"
+  },
+  {
+   "role": "feature_engine.preprocessing_catalog",
+   "predecessor": "blake3:6c3ce17c27fd7f40119770c4184be70ae96128c27d58df882aac6efb2af8996d",
+   "successor": "blake3:18f5746cc6609297b95395e8a882b793f09b66e27a76f8ffb250f0d32cba0675",
+   "change": "Compute Feature Panel availability faster",
+   "reason": "The robust cross-section kernel works by column with NumPy masks; nineteen roles rotate by source fingerprint and the development replay reads all equal (carried across composition on 96bb65340c4ee6fb5467748311f44169c6fbd16d)"
+  },
+  {
+   "role": "feature_engine.preprocessing_implementation.JOINT_PRIMARY_RELATIVE_FACTOR_STD_Z",
+   "predecessor": "blake3:68c004b90038633764740612c995357fd5907885a38e8b27254e511a917f7e28",
+   "successor": "blake3:4aff741deaf0c85e4d25cd3b2e66159d4a92de2fa5334df6220207447bf6e75e",
+   "change": "Compute Feature Panel availability faster",
+   "reason": "The robust cross-section kernel works by column with NumPy masks; nineteen roles rotate by source fingerprint and the development replay reads all equal (carried across composition on 96bb65340c4ee6fb5467748311f44169c6fbd16d)"
+  },
+  {
+   "role": "feature_engine.preprocessing_implementation.JOINT_PRIMARY_STATE_INTERACTION_BLOCK",
+   "predecessor": "blake3:4ebba87ab5ee232b3b748ed2f689364652364d211d7e50e7dea361e3c64b4ebf",
+   "successor": "blake3:962f34bd74d58d26c7ddc03b368a39186e460f99a4a2b794d67cb5d20f11d802",
+   "change": "Compute Feature Panel availability faster",
+   "reason": "The robust cross-section kernel works by column with NumPy masks; nineteen roles rotate by source fingerprint and the development replay reads all equal (carried across composition on 96bb65340c4ee6fb5467748311f44169c6fbd16d)"
+  },
+  {
+   "role": "feature_engine.preprocessing_implementation.ROBUST_SECTOR_NEUTRAL_Z",
+   "predecessor": "blake3:7d3e28df3c378851dc0e3fdca66f6c08f6b70593b639fba7336a1ec128b972d6",
+   "successor": "blake3:c9f75318a40f81f5525b9b9fa2a58b91a322f3663632f2e366f32b1d2ad1435e",
+   "change": "Compute Feature Panel availability faster",
+   "reason": "The robust cross-section kernel works by column with NumPy masks; nineteen roles rotate by source fingerprint and the development replay reads all equal (carried across composition on 96bb65340c4ee6fb5467748311f44169c6fbd16d)"
+  },
+  {
+   "role": "feature_engine.preprocessing_implementation.ROBUST_UNIVERSE_Z",
+   "predecessor": "blake3:485ef42f3b2966c4d1e9db5866ca0e7c61889acf51df6118b3e3107d9978706b",
+   "successor": "blake3:5cb92251636279028eaa6b566c00cb2c4910fcaa324cb77dbaae493d3338492e",
+   "change": "Compute Feature Panel availability faster",
+   "reason": "The robust cross-section kernel works by column with NumPy masks; nineteen roles rotate by source fingerprint and the development replay reads all equal (carried across composition on 96bb65340c4ee6fb5467748311f44169c6fbd16d)"
+  },
+  {
+   "role": "feature_engine.preprocessing_implementation.STATE_INTERACTION_BLOCK",
+   "predecessor": "blake3:722d7455ab52ca15dfc5cea6a77abef4bc98fad9f3b969b5a9d25c9412b90d40",
+   "successor": "blake3:df668ad71727cae44934bef878b4ce8c7147a8c8fb3a546b62dabb4c5015488e",
+   "change": "Compute Feature Panel availability faster",
+   "reason": "The robust cross-section kernel works by column with NumPy masks; nineteen roles rotate by source fingerprint and the development replay reads all equal (carried across composition on 96bb65340c4ee6fb5467748311f44169c6fbd16d)"
+  },
+  {
+   "role": "feature_engine.preprocessing_implementation.TIME_SERIES_ABSOLUTE_STATE_ROBUST",
+   "predecessor": "blake3:10366307d67708806bfcf79647729164d9c02cc4a1b11052b9bd0d5417364767",
+   "successor": "blake3:d77bc5c4b3d70052abe2c941c6ddbbd5454f8331a886a28ec2d75969b64932c1",
+   "change": "Compute Feature Panel availability faster",
+   "reason": "The robust cross-section kernel works by column with NumPy masks; nineteen roles rotate by source fingerprint and the development replay reads all equal (carried across composition on 96bb65340c4ee6fb5467748311f44169c6fbd16d)"
+  },
+  {
+   "role": "product_host.conditional_decision_advancement",
+   "predecessor": "blake3:fa5073104764d33184eabbdf46089a065df3680852392dbba5157bf7200fc05a",
+   "successor": "blake3:0151c34b2ba687e59161dfb0dd9bc11f991b580e0947013d2137a7ff38301bd0",
+   "change": "Compute Feature Panel availability faster",
+   "reason": "The robust cross-section kernel works by column with NumPy masks; nineteen roles rotate by source fingerprint and the development replay reads all equal (carried across composition on 96bb65340c4ee6fb5467748311f44169c6fbd16d)"
+  },
+  {
+   "role": "product_host.portfolio_updates",
+   "predecessor": "blake3:cab40dc963370c232aec5628d2d9b0d3fac204f6d5ef47abfb116d4a780cea4e",
+   "successor": "blake3:0a6f3a84b8107b6459d2470fcad9036d3832c73a0ca4cd01ea4a273bc5e6a6e8",
+   "change": "Compute Feature Panel availability faster",
+   "reason": "The robust cross-section kernel works by column with NumPy masks; nineteen roles rotate by source fingerprint and the development replay reads all equal (carried across composition on 96bb65340c4ee6fb5467748311f44169c6fbd16d)"
+  },
+  {
+   "role": "product_host.research_component_training_input",
+   "predecessor": "blake3:854cf67b75fa045f8d02ed8123f0e028ebf06786a3ff741a51ec670aaa81b13a",
+   "successor": "blake3:e8486359df6a0ee073bfc5e4d20db2f6504d9f70e7cf36b99968c7ab5010af46",
+   "change": "Compute Feature Panel availability faster",
+   "reason": "The robust cross-section kernel works by column with NumPy masks; nineteen roles rotate by source fingerprint and the development replay reads all equal (carried across composition on 96bb65340c4ee6fb5467748311f44169c6fbd16d)"
+  },
+  {
+   "role": "product_host.research_feature_materialization.prepared",
+   "predecessor": "blake3:3261f6318d1155ac5bc2c0e09554ccd943326b8070f80669d9b4c0b6ae73442d",
+   "successor": "blake3:98183f581893ee2a565337607e258823a872ba8a0a7e7369dd2b7a5198e08d16",
+   "change": "Compute Feature Panel availability faster",
+   "reason": "The robust cross-section kernel works by column with NumPy masks; nineteen roles rotate by source fingerprint and the development replay reads all equal (carried across composition on 96bb65340c4ee6fb5467748311f44169c6fbd16d)"
+  },
+  {
+   "role": "product_host.research_strategy_preparation",
+   "predecessor": "blake3:0987e4364ea8867472cd9935e09d3288867aa2a66cd430a7f58b88944a683356",
+   "successor": "blake3:7e3facba12bf1ae13c47abddbd4ad55a0c3dbfd2777da00ac67de8d5d25cc3ae",
+   "change": "Compute Feature Panel availability faster",
+   "reason": "The robust cross-section kernel works by column with NumPy masks; nineteen roles rotate by source fingerprint and the development replay reads all equal (carried across composition on 96bb65340c4ee6fb5467748311f44169c6fbd16d)"
+  },
+  {
+   "role": "product_host.strategy_calibration",
+   "predecessor": "blake3:1926b0321e4f44e9fb3ff3fa8a060ea517f7accb934e1a5498675d38b8ec95f6",
+   "successor": "blake3:98b4c1ee2a4e9922ee4d25df91b9dd899499933c5807e4fc842b683f0df1a171",
+   "change": "Compute Feature Panel availability faster",
+   "reason": "The robust cross-section kernel works by column with NumPy masks; nineteen roles rotate by source fingerprint and the development replay reads all equal (carried across composition on 96bb65340c4ee6fb5467748311f44169c6fbd16d)"
+  },
+  {
+   "role": "product_host.strategy_scoring",
+   "predecessor": "blake3:d6d111b59a38450478981b2788235c40b44dfbb04f7ec565fe3f24e565ad4126",
+   "successor": "blake3:e50136ba8180a07bc38ec72bddc737986265550f175e3245a9e26b7a13c20cb1",
+   "change": "Compute Feature Panel availability faster",
+   "reason": "The robust cross-section kernel works by column with NumPy masks; nineteen roles rotate by source fingerprint and the development replay reads all equal (carried across composition on 96bb65340c4ee6fb5467748311f44169c6fbd16d)"
+  },
+  {
+   "role": "product_host.workspace_preparation",
+   "predecessor": "blake3:a860e6f546a1f7e6b540b295d513387f064c9b967f812ad4182585443716c5ae",
+   "successor": "blake3:fe7248d54208fbd48ba34ef5cb3e07cb25f098fc1a6172371030557234ef70db",
+   "change": "Compute Feature Panel availability faster",
+   "reason": "The robust cross-section kernel works by column with NumPy masks; nineteen roles rotate by source fingerprint and the development replay reads all equal (carried across composition on 96bb65340c4ee6fb5467748311f44169c6fbd16d)"
+  },
+  {
+   "role": "research_experiment.alpha.model-development.implementation",
+   "predecessor": "blake3:65b459bc4deb94093e6727f1956c7229303aa6d521bc5bf36bf6a60469c07097",
+   "successor": "blake3:bb13bc2c7888663d02080a46767d90fe267dcfff5b4abe78ae4e53dcbf11eace",
+   "change": "Compute Feature Panel availability faster",
+   "reason": "The robust cross-section kernel works by column with NumPy masks; nineteen roles rotate by source fingerprint and the development replay reads all equal (carried across composition on 96bb65340c4ee6fb5467748311f44169c6fbd16d)"
+  },
+  {
+   "role": "research_experiment.alpha.model-development.lifecycle.implementation",
+   "predecessor": "blake3:65b459bc4deb94093e6727f1956c7229303aa6d521bc5bf36bf6a60469c07097",
+   "successor": "blake3:bb13bc2c7888663d02080a46767d90fe267dcfff5b4abe78ae4e53dcbf11eace",
+   "change": "Compute Feature Panel availability faster",
+   "reason": "The robust cross-section kernel works by column with NumPy masks; nineteen roles rotate by source fingerprint and the development replay reads all equal (carried across composition on 96bb65340c4ee6fb5467748311f44169c6fbd16d)"
+  },
+  {
+   "role": "research_experiment.alpha.qualification.implementation",
+   "predecessor": "blake3:4a044bf8a3f6e9f88efaa341508e38280971585bba26e0e4c636ecf5ba0014b0",
+   "successor": "blake3:3fb47a73fd7daa0d30eb18b2419f54850801b571eaa1d3f65e7eee61297bf7d4",
+   "change": "Compute Feature Panel availability faster",
+   "reason": "The robust cross-section kernel works by column with NumPy masks; nineteen roles rotate by source fingerprint and the development replay reads all equal (carried across composition on 96bb65340c4ee6fb5467748311f44169c6fbd16d)"
+  }
+ ]
+}

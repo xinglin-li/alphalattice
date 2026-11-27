@@ -1820,33 +1820,50 @@ def test_a_panel_is_the_same_whatever_its_workers(tmp_path) -> None:
     assert written[1] == written[3]
 
 
-def test_panel_fails_closed_below_coverage_and_small_sector() -> None:
+@pytest.mark.parametrize(
+    ("values", "sector_sizes", "reason"),
+    [
+        pytest.param(tuple(range(8)), (4, 4), "sector_sample_below_5", id="small-sector"),
+        pytest.param((1,), (1,), "sector_sample_below_5", id="one-listing"),
+        pytest.param(tuple(range(8)), (4, 3), "missing-sector", id="missing-sector"),
+        pytest.param((2,) * 10, (5, 5), "feature_mad_zero", id="ties"),
+        pytest.param((*range(11), float("nan")), (6, 6), "coverage_below_98_percent", id="nan"),
+    ],
+)
+def test_panel_fails_closed_below_coverage_and_small_sector(
+    values: tuple[float, ...], sector_sizes: tuple[int, ...], reason: str
+) -> None:
     catalog = FeatureCatalog.load()
     materializer = SectorNeutralPanelMaterializer(catalog)
-    rows = []
-    for index in range(8):
-        rows.append(
+    axis = tuple(f"l{index}" for index in range(len(values)))
+    sectors = [f"sector-{index}" for index, size in enumerate(sector_sizes) for _ in range(size)]
+    inputs = dict(
+        feature_rows=[
             {
-                "listing_id": f"l{index}",
+                "listing_id": listing_id,
                 "session_date": "2026-08-03",
-                **{factor: float(index) for factor in catalog.factor_ids},
+                **dict.fromkeys(catalog.factor_ids, float(value)),
             }
-        )
-    panel = materializer.materialize(
-        feature_rows=rows,
-        active_listing_ids=tuple(f"l{index}" for index in range(8)),
+            for listing_id, value in zip(axis, values, strict=True)
+        ],
+        active_listing_ids=axis,
         manifest_revision=fixture_digest("a"),
         sector_revision=fixture_digest("s"),
-        sector_by_listing_id={
-            f"l{index}": "sector-a" if index < 4 else "sector-b" for index in range(8)
-        },
+        sector_by_listing_id=dict(zip(axis, sectors, strict=False)),
         spy_revision=fixture_digest("p"),
     )
+    if reason == "missing-sector":
+        with pytest.raises(ValueError, match="no complete active sector revision"):
+            materializer.materialize(**inputs)
+        return
+    panel = materializer.materialize(**inputs)
     assert not panel.complete
     assert not panel.admission.research_admissible
-    assert "active_sector_sample_below_5" in panel.admission.structural_failure_reasons
     assert {item["status"] for item in panel.availability} == {"unavailable"}
-    assert {item["reason"] for item in panel.availability} == {"sector_sample_below_5"}
+    assert {item["reason"] for item in panel.availability} == {reason}
+    assert panel.rows.loc[:, list(catalog.factor_ids)].isna().all().all()
+    if reason == "sector_sample_below_5":
+        assert "active_sector_sample_below_5" in panel.admission.structural_failure_reasons
 
 
 def test_sector_token_budget_defers_without_sleep(tmp_path) -> None:

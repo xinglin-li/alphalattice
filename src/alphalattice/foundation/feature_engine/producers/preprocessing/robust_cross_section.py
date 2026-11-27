@@ -291,15 +291,13 @@ class PanelCrossSectionKernel:
         # The producers screen their own; the kernel does not rely on them.
         factor_cube = np.where(np.isfinite(factor_cube), factor_cube, np.nan)
         universe_size = member_mask.sum(axis=1)
+        universe_counts = universe_size.tolist()
+        session_dates = [session.isoformat() for session in sessions]
         member_sessions, member_positions = np.nonzero(member_mask)
-        rows = pd.DataFrame(
-            {
-                "listing_id": np.asarray(active_listing_ids, dtype=object)[member_positions],
-                "session_date": np.asarray(
-                    [session.isoformat() for session in sessions], dtype=object
-                )[member_sessions],
-            }
-        )
+        row_columns = {
+            "listing_id": np.asarray(active_listing_ids, dtype=object)[member_positions],
+            "session_date": np.asarray(session_dates, dtype=object)[member_sessions],
+        }
         availability: list[dict[str, object]] = []
         clip_observations: list[PanelFactorClipObservation] = []
         raw_input_digests: list[tuple[str, str]] = []
@@ -320,19 +318,23 @@ class PanelCrossSectionKernel:
             clipped_mask: np.ndarray = np.zeros((len(sessions), universe), dtype=bool)
             small_sector: np.ndarray = np.zeros(len(sessions), dtype=bool)
             small_sector_warning: np.ndarray = np.zeros(len(sessions), dtype=bool)
-            sector_counts_by_session: list[dict[str, int]] = [{} for _ in sessions]
+            sector_counts_by_session: list[dict[str, int]] = []
             for start, stop, positions in epochs:
                 sectors = epoch_sectors[start]
                 block = matrix[start:stop][:, positions]
                 block_valid = np.isfinite(block)
+                counts_by_sector = {}
                 for sector, compact in sectors.items():
                     count = block_valid[:, compact].sum(axis=1)
                     small_sector[start:stop] |= count < MIN_SECTOR_SAMPLE
                     small_sector_warning[start:stop] |= (count >= MIN_SECTOR_SAMPLE) & (
                         count < SMALL_SECTOR_WARNING_BELOW
                     )
-                    for offset, value in enumerate(count):
-                        sector_counts_by_session[start + offset][sector] = int(value)
+                    counts_by_sector[sector] = count.tolist()
+                sector_counts_by_session.extend(
+                    dict(zip(counts_by_sector, counts, strict=True))
+                    for counts in zip(*counts_by_sector.values(), strict=True)
+                )
                 winsor, block_median, block_mad, block_lower, block_upper = median_mad_winsor(block)
                 median[start:stop] = block_median
                 mad[start:stop] = block_mad
@@ -378,6 +380,8 @@ class PanelCrossSectionKernel:
                 residual_mad[start:stop] = block_residual_mad
                 score_view = score[start:stop]
                 score_view[:, positions] = block_score
+            winsor_lower = _finite_values(lower)
+            winsor_upper = _finite_values(upper)
             clip_observations.append(
                 PanelFactorClipObservation(
                     factor_id=factor_id,
@@ -392,66 +396,55 @@ class PanelCrossSectionKernel:
                             {
                                 "kind": "PanelFactorClipBoundaries",
                                 "factor_id": factor_id,
-                                "bounds": [
-                                    (
-                                        float(lower[index]) if np.isfinite(lower[index]) else None,
-                                        float(upper[index]) if np.isfinite(upper[index]) else None,
-                                    )
-                                    for index in range(len(sessions))
-                                ],
+                                "bounds": list(zip(winsor_lower, winsor_upper, strict=True)),
                             }
                         ),
                     ),
                 )
             )
             raw_input_digests.append((factor_id, panel_array_digest(matrix)))
-            available = (
-                (present | session_local)
-                & (coverage >= MIN_COVERAGE)
-                & ~small_sector
-                & np.isfinite(mad)
-                & (mad != 0.0)
-                & np.isfinite(residual_mad)
-                & (residual_mad != 0.0)
+            failures = np.select(
+                [
+                    ~(present | session_local),
+                    coverage < MIN_COVERAGE,
+                    small_sector,
+                    ~np.isfinite(mad) | (mad == 0.0),
+                    ~np.isfinite(residual_mad) | (residual_mad == 0.0),
+                ],
+                [
+                    "active_manifest_base_row_missing",
+                    "coverage_below_98_percent",
+                    "sector_sample_below_5",
+                    "feature_mad_zero",
+                    "residual_mad_zero",
+                ],
+                default=None,
             )
+            available = np.equal(failures, None)
             score[~available, :] = np.nan
-            for index, session in enumerate(sessions):
-                if not present[index] and not session_local:
-                    reason = "active_manifest_base_row_missing"
-                elif coverage[index] < MIN_COVERAGE:
-                    reason = "coverage_below_98_percent"
-                elif small_sector[index]:
-                    reason = "sector_sample_below_5"
-                elif not np.isfinite(mad[index]) or mad[index] == 0.0:
-                    reason = "feature_mad_zero"
-                elif not np.isfinite(residual_mad[index]) or residual_mad[index] == 0.0:
-                    reason = "residual_mad_zero"
-                else:
-                    reason = None
-                sector_counts = sector_counts_by_session[index]
+            reasons = failures.tolist()
+            statuses = np.where(available, "available", "unavailable").tolist()
+            warnings = (available & small_sector_warning).tolist()
+            counts = computed.tolist()
+            coverages = coverage.tolist()
+            residual_medians = _finite_values(residual_median)
+            residual_mads = _finite_values(residual_mad)
+            for index, sector_counts in enumerate(sector_counts_by_session):
                 availability.append(
                     {
-                        "session_date": session.isoformat(),
+                        "session_date": session_dates[index],
                         "factor_id": factor_id,
-                        "universe_size": int(universe_size[index]),
-                        "computed_count": int(computed[index]),
-                        "coverage": float(coverage[index]),
-                        "sector_counts": dict(sector_counts),
-                        "winsor_lower": float(lower[index]) if np.isfinite(lower[index]) else None,
-                        "winsor_upper": float(upper[index]) if np.isfinite(upper[index]) else None,
-                        "residual_median": (
-                            float(residual_median[index])
-                            if np.isfinite(residual_median[index])
-                            else None
-                        ),
-                        "residual_mad": (
-                            float(residual_mad[index]) if np.isfinite(residual_mad[index]) else None
-                        ),
-                        "status": "available" if available[index] else "unavailable",
-                        "reason": reason,
-                        "small_sector_warning": bool(
-                            available[index] and small_sector_warning[index]
-                        ),
+                        "universe_size": universe_counts[index],
+                        "computed_count": counts[index],
+                        "coverage": coverages[index],
+                        "sector_counts": sector_counts,
+                        "winsor_lower": winsor_lower[index],
+                        "winsor_upper": winsor_upper[index],
+                        "residual_median": residual_medians[index],
+                        "residual_mad": residual_mads[index],
+                        "status": statuses[index],
+                        "reason": reasons[index],
+                        "small_sector_warning": warnings[index],
                         "small_sector_names": tuple(
                             sector
                             for sector, count in sector_counts.items()
@@ -462,8 +455,9 @@ class PanelCrossSectionKernel:
                 )
             transformed_digests.append((factor_id, panel_array_digest(score)))
             member_scores = score[member_mask]
-            rows[factor_id] = pd.Series(member_scores).where(np.isfinite(member_scores), np.nan)
-        latest_session = max(cast(str, item["session_date"]) for item in availability)
+            row_columns[factor_id] = np.where(np.isfinite(member_scores), member_scores, np.nan)
+        rows = pd.DataFrame(row_columns)
+        latest_session = max(session_dates)
         sector_distribution = {
             sector: len(compact) for sector, compact in epoch_sectors[epochs[-1][0]].items()
         }
@@ -478,14 +472,7 @@ class PanelCrossSectionKernel:
             {
                 "binding": binding.panel_binding_hash,
                 "row_count": len(rows),
-                "availability": [
-                    {
-                        key: value
-                        for key, value in item.items()
-                        if key not in {"sector_counts", "small_sector_names"}
-                    }
-                    for item in availability
-                ],
+                "availability": [_availability_receipt(item) for item in availability],
                 "admission": admission.summary_hash(),
             }
         )
@@ -510,10 +497,22 @@ class PanelCrossSectionKernel:
             ),
             ordered_sessions_hash=cast(
                 str,
-                canonical_hash([session.isoformat() for session in sessions]),
+                canonical_hash(session_dates),
             ),
             ordered_listing_ids_hash=ordered_listing_ids_hash,
         )
+
+
+def _finite_values(values: np.ndarray) -> list[float | None]:
+    """Project finite session statistics to the receipt's numbers and nulls."""
+    return cast("list[float | None]", np.where(np.isfinite(values), values, None).tolist())
+
+
+def _availability_receipt(item: dict[str, object]) -> dict[str, object]:
+    """Project one availability row to the fields sealed in the receipt."""
+    fields = item.copy()
+    del fields["sector_counts"], fields["small_sector_names"]
+    return fields
 
 
 def _membership_epochs(member_mask: np.ndarray) -> tuple[tuple[int, int, np.ndarray], ...]:
