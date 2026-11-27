@@ -2131,6 +2131,20 @@
       "layer": "unit",
       "seconds": 1
     },
+    "market_data_ops.a_late_split_through_the_wire_refuses_the_continuation": {
+      "description": "A split the provider reports late, stored through the real HTTP client after approval, leaves the issued observations unable to continue: the continuation refuses it.",
+      "owner": "alphalattice.foundation.market_data_ops",
+      "layer": "integration",
+      "seconds": 20,
+      "lower_layer": "Its proof is the real HTTP client, yfinance's parser, the per-acquisition cache and the store together, which no unit test of one function holds.",
+      "exception": {
+        "kinds": [
+          "growth"
+        ],
+        "why": "The provider's realistic cases must pass through the real HTTP client and cache, which only test support below the client can serve.",
+        "decided": "2026-11-27: granted: test support only with no product source change, and one integration test per listed provider case through the real client and cache, so the net source is zero"
+      }
+    },
     "market_data_ops.a_membership_transition_is_its_exits_then_entries": {
       "description": "A move from one member set to the next is recorded as its exits and then its entries, numbered on from the given sequence.",
       "owner": "alphalattice.foundation.market_data_ops",
@@ -2239,6 +2253,88 @@
       "owner": "alphalattice.foundation.market_data_ops",
       "layer": "integration",
       "seconds": 25
+    },
+    "market_data_ops.membership_changes_through_the_universe_fetcher": {
+      "description": "An index membership change read through the real universe fetcher and parser, after the source's Retry-After, is stored as the workspace's pending manifest update.",
+      "owner": "alphalattice.foundation.market_data_ops",
+      "layer": "integration",
+      "seconds": 5,
+      "lower_layer": "Its proof is the real universe fetch loop, its Retry-After wait and the HTML parser feeding the readiness gate's stored proposal, which no unit test of one function holds.",
+      "exception": {
+        "kinds": [
+          "growth"
+        ],
+        "why": "The provider's realistic cases must pass through the real HTTP client and cache, which only test support below the client can serve.",
+        "decided": "2026-11-27: granted: test support only with no product source change, and one integration test per listed provider case through the real client and cache, so the net source is zero"
+      }
+    },
+    "market_data_ops.provider_actions_reach_the_store_through_the_wire": {
+      "description": "A dividend or split the provider shows, new, late, corrected or several in one history, reaches the store through the real HTTP client and cache.",
+      "owner": "alphalattice.foundation.market_data_ops",
+      "layer": "integration",
+      "seconds": 20,
+      "lower_layer": "Its proof is the real HTTP client, yfinance's parser, the per-acquisition cache and the store together, which no unit test of one function holds.",
+      "exception": {
+        "kinds": [
+          "growth"
+        ],
+        "why": "The provider's realistic cases must pass through the real HTTP client and cache, which only test support below the client can serve.",
+        "decided": "2026-11-27: granted: test support only with no product source change, and one integration test per listed provider case through the real client and cache, so the net source is zero"
+      }
+    },
+    "market_data_ops.provider_exceptions_map_to_failure_codes": {
+      "description": "A provider exception becomes its stable failure code and retry flag: an egress refusal keeps its own, timeouts, rate limits and session instability retry, others do not.",
+      "owner": "alphalattice.foundation.market_data_ops",
+      "layer": "unit",
+      "seconds": 1
+    },
+    "market_data_ops.provider_frame_actions_inside_the_window": {
+      "description": "A history frame's split, dividend and capital gain inside the window become actions with their ratio and amounts, and a negative dividend is refused by name.",
+      "owner": "alphalattice.foundation.market_data_ops",
+      "layer": "unit",
+      "seconds": 1
+    },
+    "market_data_ops.provider_outages_end_as_their_failure_through_the_wire": {
+      "description": "A rate limit, a server error or a timed-out transfer from the provider, seen through the real HTTP client, ends as its retry or its day's failure, and the next daily updates.",
+      "owner": "alphalattice.foundation.market_data_ops",
+      "layer": "integration",
+      "seconds": 15,
+      "lower_layer": "Its proof is the real HTTP client, yfinance's parser, the per-acquisition cache and the store together, which no unit test of one function holds.",
+      "exception": {
+        "kinds": [
+          "growth"
+        ],
+        "why": "The provider's realistic cases must pass through the real HTTP client and cache, which only test support below the client can serve.",
+        "decided": "2026-11-27: granted: test support only with no product source change, and one integration test per listed provider case through the real client and cache, so the net source is zero"
+      }
+    },
+    "market_data_ops.provider_rerounding_stands_through_the_wire": {
+      "description": "Adjusted closes the provider re-sends re-rounded within the data rule's precision stand as stored through the real HTTP client, and the daily discloses the difference it kept.",
+      "owner": "alphalattice.foundation.market_data_ops",
+      "layer": "integration",
+      "seconds": 15,
+      "lower_layer": "Its proof is the real HTTP client, yfinance's parser, the per-acquisition cache and the store together, which no unit test of one function holds.",
+      "exception": {
+        "kinds": [
+          "growth"
+        ],
+        "why": "The provider's realistic cases must pass through the real HTTP client and cache, which only test support below the client can serve.",
+        "decided": "2026-11-27: granted: test support only with no product source change, and one integration test per listed provider case through the real client and cache, so the net source is zero"
+      }
+    },
+    "market_data_ops.provider_sessions_follow_the_calendar_through_the_wire": {
+      "description": "A first use through the real HTTP client stores exactly the exchange calendar's sessions, its half days included and its holidays left out.",
+      "owner": "alphalattice.foundation.market_data_ops",
+      "layer": "integration",
+      "seconds": 15,
+      "lower_layer": "Its proof is the real HTTP client, yfinance's parser, the per-acquisition cache and the store together, which no unit test of one function holds.",
+      "exception": {
+        "kinds": [
+          "growth"
+        ],
+        "why": "The provider's realistic cases must pass through the real HTTP client and cache, which only test support below the client can serve.",
+        "decided": "2026-11-27: granted: test support only with no product source change, and one integration test per listed provider case through the real client and cache, so the net source is zero"
+      }
     },
     "market_data_ops.reference_rows_are_known_from_their_valid_date": {
       "description": "StorePort reads the lag rule world admits listings, provider symbols and universe members under as counted from their valid date, and the bars' and corporate actions' from their session's close.",

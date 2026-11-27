@@ -1,17 +1,11 @@
-"""Offline Data fixtures with explicit clocks, universes and recorded chart bytes."""
+"""Offline Data fixtures with explicit clocks and universes."""
 
 from __future__ import annotations
 
-import json
 from collections.abc import Callable, Mapping, Sequence
-from copy import deepcopy
 from datetime import UTC, date, datetime, time, timedelta
 from hashlib import sha256
 from pathlib import Path
-from types import SimpleNamespace
-from typing import Any
-
-import pandas as pd
 
 from alphalattice.capabilities.data.calendar import materialize_calendar_schedule
 from alphalattice.foundation.feature_engine.storage.repositories import FeatureStateRepository
@@ -43,7 +37,7 @@ def reset_yfinance_cache(cache_root: Path) -> None:
     """Isolate successive test workspaces before any provider in this test starts."""
     from yfinance import cache
 
-    # yfinance 1.5.1 moves its DB managers but retains singleton cache objects.
+    # yfinance 1.8.0 moves its DB managers but retains singleton cache objects.
     cache.set_cache_location(str(cache_root))
     for name in ("get_tz_cache", "get_cookie_cache", "get_isin_cache"):
         instance = getattr(cache, name)()
@@ -305,7 +299,6 @@ __all__ = [
     "NOW",
     "PRODUCT_QA_SYMBOLS",
     "HeldDataProvider",
-    "HistoricalChartReplay",
     "RecordingProvider",
     "recording_provider",
     "unchanged_membership_source",
@@ -325,81 +318,3 @@ def flat_adjusted_close_history(
         for session in self.sessions
         if start <= session <= end
     )
-
-
-class HistoricalChartReplay:
-    """Replay synthetic chart bytes without replacing the native response cache."""
-
-    def __init__(
-        self, source: RecordingProvider, *, start: date, through: date, paid: date
-    ) -> None:
-        self.source, self.start, self.through = source, start, through
-        self.cash, self.paid = 0.5, paid
-        self.requests: list[dict[str, Any]] = []
-
-    def rows(self, start: date, end: date) -> list[dict[str, Any]]:
-        return [
-            dict(row, open=100.0, high=101.0, low=99.0, close=100.0)
-            for row in self.source.fetch_daily(("AAPL",), start=start, end=end)["AAPL"]
-        ]
-
-    def get(self, url: str, params: Mapping[str, Any] | None = None, timeout: int = 30) -> Any:
-        assert "/finance/chart/AAPL" in url
-        params = dict(params or {})
-        assert params.get("interval") == "1d"
-        self.requests.append(dict(params=params, cash=self.cash, timeout=timeout))
-        start = (
-            datetime.fromtimestamp(params["period1"], UTC).date()
-            if "period1" in params
-            else self.start
-        )
-        end = (
-            datetime.fromtimestamp(params["period2"], UTC).date() - timedelta(days=1)
-            if "period2" in params
-            else self.through
-        )
-        rows = self.rows(start, min(end, self.through))
-        stamps = [
-            int(pd.Timestamp(row["session_date"], tz="America/New_York").timestamp()) + 34200
-            for row in rows
-        ]
-        quotes = {
-            name: [row[name] for row in rows] for name in ("open", "high", "low", "close", "volume")
-        }
-        adjusted = [
-            100.0 / (1.0 + self.cash / 100.0)
-            if date.fromisoformat(row["session_date"]) < self.paid
-            else 100.0
-            for row in rows
-        ]
-        paid = int(pd.Timestamp(self.paid.isoformat(), tz="America/New_York").timestamp()) + 34200
-        events = (
-            {"dividends": {str(paid): {"amount": self.cash, "date": paid}}}
-            if start <= self.paid <= end
-            else {}
-        )
-        periods = [
-            [dict(start=stamp, end=stamp + 23400, gmtoffset=-14400, timezone="EDT")]
-            for stamp in stamps
-        ]
-        chart = dict(
-            timestamp=stamps,
-            events=events,
-            meta=dict(
-                currency="USD",
-                symbol="AAPL",
-                instrumentType="EQUITY",
-                exchangeName="NMS",
-                exchangeTimezoneName="America/New_York",
-                priceHint=2,
-                validRanges=["1d", "max"],
-                regularMarketTime=stamps[-1],
-                regularMarketPrice=100.0,
-                tradingPeriods=periods,
-            ),
-            indicators=dict(quote=[quotes], adjclose=[dict(adjclose=adjusted)]),
-        )
-        payload = {"chart": {"result": [chart], "error": None}}
-        return SimpleNamespace(
-            url=url, status_code=200, text=json.dumps(payload), json=lambda: deepcopy(payload)
-        )

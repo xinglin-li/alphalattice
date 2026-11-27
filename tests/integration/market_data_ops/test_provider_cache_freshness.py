@@ -24,32 +24,22 @@ from alphalattice.foundation.market_data_ops.sources.sanitization import sanitiz
 from alphalattice.foundation.market_data_ops.storage.duckdb import MarketDataRepository
 from tests.workspace_maintenance.acquisition_manifest import acquisition_manifest
 from tests.workspace_maintenance.audit_workspace import audit_one
-from tests.workspace_maintenance.local_data_provider import (
-    HistoricalChartReplay,
-    recording_provider,
-    reset_yfinance_cache,
-)
+from tests.workspace_maintenance.wire_replay import WireReplay, install
 
 START = date(2025, 10, 1)
-PAID = date(2026, 1, 15)
 FIRST = date(2026, 8, 3)
 NEXT = date(2026, 8, 4)
+CHART = "/v8/finance/chart/"
 
 
-@pytest.mark.parametrize("held", (date(2026, 1, 30), FIRST), ids=("catchup", "daily"))
+@pytest.mark.parametrize("case", ("catchup", "daily"))
 def test_a_daily_catchup_sees_a_dividend_restatement_behind_a_cached_chunk(
-    tmp_path, monkeypatch, record_property, held
+    tmp_path, monkeypatch, request, record_property, case
 ) -> None:
     """A catch-up daily sees a restated dividend in a previously fetched history chunk.
     Real yfinance parsing and DuckDB audits can exceed ten seconds.
     """
-    monkeypatch.setattr(
-        "alphalattice.foundation.market_data_ops.sources.providers.require_network",
-        lambda _source: None,
-    )
-    source = recording_provider(
-        now=datetime(2026, 8, 4, 23, tzinfo=UTC), symbols=("AAPL",), start=START
-    )
+    held = date(2026, 1, 30) if case == "catchup" else FIRST
     data = YfData()
     calls = {}
     provider_failures = []
@@ -62,16 +52,13 @@ def test_a_daily_catchup_sees_a_dividend_restatement_behind_a_cached_chunk(
     window = normal_refresh_plan(held, FIRST).windows[0]
     try:
         for fresh_control in (False, True):
-            replay = HistoricalChartReplay(source, start=START, through=FIRST, paid=PAID)
-            if held == FIRST:
-                replay.paid = FIRST - timedelta(days=7)
-            monkeypatch.setattr(YfData, "get", replay.get)
-            data.cache_get.cache_clear()
-            market = MarketDataRepository(tmp_path / f"workspace-{fresh_control}")
+            replay = WireReplay.load(case, scenario="restatement")
+            replay.today = FIRST
+            root = tmp_path / f"run-{fresh_control}"
+            install(request, replay, root)
+            market = MarketDataRepository(root / "workspace")
             market.bootstrap(manifest)
-            cache_root = tmp_path / f"provider-cache-{fresh_control}"
-            reset_yfinance_cache(cache_root)
-            provider = YFinanceMarketDataProvider(cache_root)
+            provider = YFinanceMarketDataProvider(root / "provider-cache")
             read_hydration = provider.fetch_hydration
 
             def record_hydration(_read=read_hydration, **kwargs):
@@ -105,7 +92,7 @@ def test_a_daily_catchup_sees_a_dividend_restatement_behind_a_cached_chunk(
             warm = provider.fetch_hydration(**identity, start=window.start, end=window.end)
             assert warm.actions[0].cash_amount == 0.5
             assert market.actions("listing-aapl")[0].cash_amount == 0.5
-            replay.cash, replay.through = 1.0, NEXT
+            replay.today = NEXT  # the provider restates the dividend to 1.0
             if fresh_control:
                 data.cache_get.cache_clear()
             daily_start = len(replay.requests)
@@ -117,7 +104,9 @@ def test_a_daily_catchup_sees_a_dividend_restatement_behind_a_cached_chunk(
                 max_workers=1,
             )
             second = runner.run(observed_at=datetime(2026, 8, 4, 23, tzinfo=UTC))
-            calls[fresh_control] = len(replay.requests) - daily_start
+            calls[fresh_control] = sum(
+                path.startswith(CHART) for _host, path, _query in replay.requests[daily_start:]
+            )
             state = market.current_universe_maintenance_listings(runner.maintenance_id)[0]
             record_property("provider_failures", json.dumps(provider_failures))
             assert (second.updated, second.failed, state.failure_code) == (

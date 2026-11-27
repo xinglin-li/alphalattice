@@ -1,7 +1,7 @@
 """The market-data provider ports' conformance suites: each implementation keeps the port's shape.
 
 One suite per port, in the form of dbt's adapter tests: each test below runs once per registered
-implementation, the yfinance adapter (real yfinance parsing replayed chart bytes, offline) and the
+implementation, the yfinance adapter (real yfinance and its HTTP client on the wire replay) and the
 shared fakes other suites stand on, so a fake cannot drift from what the adapter guarantees. A new
 provider adds one row to its port's registry and inherits the whole suite.
 """
@@ -20,7 +20,6 @@ from typing import Any
 
 import pandas as pd
 import pytest
-from yfinance.data import YfData
 
 from alphalattice.foundation.market_data_ops.sources.contracts import (
     CorporateActionEvent,
@@ -42,10 +41,10 @@ from tests.feature_engine.panel_workspace import FixtureProvider
 from tests.researcher_methodology_surface.real_workspace import SeededWalkProvider
 from tests.workspace_maintenance.bounded_provider_support import RecordingBoundedProvider
 from tests.workspace_maintenance.local_data_provider import (
-    HistoricalChartReplay,
     recording_provider,
     reset_yfinance_cache,
 )
+from tests.workspace_maintenance.wire_replay import WireReplay, install
 
 TEST_SOURCE = "src/alphalattice/foundation/market_data_ops/sources/providers.py"
 
@@ -55,7 +54,7 @@ FIELDS = (
     *("split_ratio", "cash_dividend", "capital_gain"),
 )
 """The daily row the port promises: the adapter's own row, field for field."""
-REPLAY_START, REPLAY_THROUGH, REPLAY_PAID = date(2025, 10, 1), date(2026, 8, 3), date(2026, 1, 15)
+REPLAY_START = date(2025, 10, 1)
 SESSIONS = tuple(pd.bdate_range("2026-01-02", "2026-02-27").date)
 
 
@@ -70,36 +69,26 @@ class Scenario:
     reopen: Callable[[], Any] | None = None
 
 
-def _replayed_yahoo(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
-    """Real yfinance, its HTTP answered from synthetic chart bytes: no network, a paid dividend."""
-    reset_yfinance_cache(tmp_path / "yahoo-cache")
-    source = recording_provider(
-        now=datetime(2026, 8, 4, 23, tzinfo=UTC), symbols=("AAPL",), start=REPLAY_START
-    )
-    replay = HistoricalChartReplay(
-        source, start=REPLAY_START, through=REPLAY_THROUGH, paid=REPLAY_PAID
-    )
-    monkeypatch.setattr(YfData, "get", replay.get)
-    YfData().cache_get.cache_clear()
-    monkeypatch.setattr(
-        "alphalattice.foundation.market_data_ops.sources.providers.require_network",
-        lambda _source: None,
-        raising=False,
-    )
+def _replayed_yahoo(tmp_path: Path, request: pytest.FixtureRequest) -> WireReplay:
+    """Real yfinance on its real HTTP client, each transfer answered by the wire replay: no
+    network, a dividend, a split and another dividend in one history."""
+    replay = WireReplay.load("actions-in-one-history")
+    install(request, replay, tmp_path)
+    return replay
 
 
-def _yahoo(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> tuple[Any, Scenario]:
-    _replayed_yahoo(tmp_path, monkeypatch)
-    window = Scenario(("AAPL",), "listing-aapl", date(2026, 1, 5), date(2026, 1, 30))
-    return YFinanceMarketDataProvider(tmp_path / "yahoo-cache"), window
+def _yahoo(tmp_path: Path, request: pytest.FixtureRequest) -> tuple[Any, Scenario]:
+    _replayed_yahoo(tmp_path, request)
+    window = Scenario(("AAPL",), "listing-aapl", date(2026, 2, 2), date(2026, 3, 27))
+    return YFinanceMarketDataProvider(tmp_path / "provider-cache"), window
 
 
-def _bounded(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> tuple[Any, Scenario]:
-    _replayed_yahoo(tmp_path, monkeypatch)
+def _bounded(tmp_path: Path, request: pytest.FixtureRequest) -> tuple[Any, Scenario]:
+    replay = _replayed_yahoo(tmp_path, request)
     provider = RecordingBoundedProvider(
-        tmp_path / "yahoo-cache", earliest_allowed=REPLAY_START, target=REPLAY_THROUGH
+        tmp_path / "provider-cache", earliest_allowed=replay.start, target=replay.today
     )
-    return provider, Scenario(("AAPL",), "listing-aapl", date(2026, 1, 5), date(2026, 1, 30))
+    return provider, Scenario(("AAPL",), "listing-aapl", date(2026, 2, 2), date(2026, 3, 27))
 
 
 @pytest.mark.proves("egress.market_session_checks_native_requests")
@@ -232,28 +221,28 @@ def test_the_native_market_session_enforces_egress(
     assert [urlsplit(url).hostname for url in urls] == sent
 
 
-def _seeded(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> tuple[Any, Scenario]:
-    del tmp_path, monkeypatch
+def _seeded(tmp_path: Path, request: pytest.FixtureRequest) -> tuple[Any, Scenario]:
+    del tmp_path, request
     window = Scenario(("AAA", "BBB"), "listing-aaa", date(2026, 1, 12), date(2026, 2, 6))
     return SeededWalkProvider(("AAA", "BBB"), SESSIONS), window
 
 
-def _recording(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> tuple[Any, Scenario]:
-    del tmp_path, monkeypatch
+def _recording(tmp_path: Path, request: pytest.FixtureRequest) -> tuple[Any, Scenario]:
+    del tmp_path, request
     provider = recording_provider(
         now=datetime(2026, 2, 27, 23, tzinfo=UTC), symbols=("AAA", "BBB"), start=SESSIONS[0]
     )
     return provider, Scenario(("AAA", "BBB"), "listing-aaa", date(2026, 1, 12), date(2026, 2, 6))
 
 
-def _fixture(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> tuple[Any, Scenario]:
-    del tmp_path, monkeypatch
+def _fixture(tmp_path: Path, request: pytest.FixtureRequest) -> tuple[Any, Scenario]:
+    del tmp_path, request
     window = Scenario(("AAA", "BBB"), "listing-aaa", date(2018, 3, 5), date(2018, 3, 30))
     return FixtureProvider(("AAA", "BBB")), window
 
 
-def _local_file(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> tuple[Any, Scenario]:
-    del monkeypatch
+def _local_file(tmp_path: Path, request: pytest.FixtureRequest) -> tuple[Any, Scenario]:
+    del request
     folder = tmp_path / "market-bars"
     folder.mkdir(exist_ok=True)
     bars = [
@@ -286,9 +275,9 @@ def _local_file(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> tuple[Any, S
     )
 
 
-def _yahoo_info(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> tuple[Any, Scenario]:
+def _yahoo_info(tmp_path: Path, request: pytest.FixtureRequest) -> tuple[Any, Scenario]:
     """The adapter's normalisation of Yahoo's info object, its runtime module stood in for."""
-    del monkeypatch
+    del request
     provider = YFinanceMarketDataProvider(tmp_path / "yahoo-cache")
     info = {"AAPL": {"sector": " Technology ", "sectorKey": "technology"}}
     provider._runtime_module = SimpleNamespace(
@@ -299,7 +288,7 @@ def _yahoo_info(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> tuple[Any, S
     return provider, Scenario(("AAPL",), "listing-aapl", date(2026, 1, 5), date(2026, 1, 30))
 
 
-Factory = Callable[[Path, pytest.MonkeyPatch], tuple[Any, Scenario]]
+Factory = Callable[[Path, pytest.FixtureRequest], tuple[Any, Scenario]]
 DAILY: dict[str, Factory] = {
     "yfinance": _yahoo,
     "local-file": _local_file,
@@ -365,20 +354,20 @@ def _closes(points: Sequence[object], provider: Any, window: Scenario) -> list[d
 
 
 @pytest.mark.proves("market_data_ops.daily_provider_conformance")
-@pytest.mark.parametrize("implementation", DAILY)
-def test_every_daily_provider_answers_in_the_ports_shape(tmp_path, monkeypatch, implementation):
+@pytest.mark.parametrize("implementation", DAILY, ids=tuple(DAILY))
+def test_every_daily_provider_answers_in_the_ports_shape(tmp_path, request, implementation):
     """Daily bars, actions and adjusted closes keep the port's shape, whichever provider answers."""
-    provider, window = DAILY[implementation](tmp_path, monkeypatch)
+    provider, window = DAILY[implementation](tmp_path, request)
     assert isinstance(provider.name, str) and provider.name
     answer = provider.fetch_daily(window.symbols, start=window.start, end=window.end)
     assert set(answer) == set(window.symbols)
     sessions = {symbol: _rows(rows, window, symbol) for symbol, rows in answer.items()}
     first = window.symbols[0]
-    request = dict(
+    asked = dict(
         listing_id=window.listing_id, provider_symbol=first, start=window.start, end=window.end
     )
-    _actions(provider.fetch_action_history(**request), provider, window)
-    closes = _closes(provider.fetch_adjusted_close_history(**request), provider, window)
+    _actions(provider.fetch_action_history(**asked), provider, window)
+    closes = _closes(provider.fetch_adjusted_close_history(**asked), provider, window)
     assert set(closes) <= set(sessions[first]), "an adjusted close for a session with no bar"
     backwards = dict(start=window.end, end=window.start)  # the adapter's ValueError is the port's
     with pytest.raises(ValueError, match="start is after end"):
@@ -391,28 +380,26 @@ def test_every_daily_provider_answers_in_the_ports_shape(tmp_path, monkeypatch, 
 @pytest.mark.proves("market_data_ops.daily_provider_research_laws")
 @pytest.mark.parametrize("implementation", DAILY, ids=tuple(DAILY))
 def test_every_daily_provider_supplies_replayable_point_in_time_bars(
-    tmp_path, monkeypatch, implementation
+    tmp_path, request, implementation
 ):
     """A provider includes its cutoff session and reopens the same evidence."""
-    provider, window = DAILY[implementation](tmp_path, monkeypatch)
+    provider, window = DAILY[implementation](tmp_path, request)
     symbol = window.symbols[0]
     whole = provider.fetch_daily((symbol,), start=window.start, end=window.end)[symbol]
     bar = next(row for row in whole[:-1] if row["close"] is not None)
     cutoff = date.fromisoformat(str(bar["session_date"]))
-    request = dict(start=window.start, end=cutoff)
-    held = provider.fetch_daily((symbol,), **request)[symbol]
-    reopened = window.reopen() if window.reopen else DAILY[implementation](tmp_path, monkeypatch)[0]
-    replay = reopened.fetch_daily((symbol,), **request)[symbol]
+    asked = dict(start=window.start, end=cutoff)
+    held = provider.fetch_daily((symbol,), **asked)[symbol]
+    reopened = window.reopen() if window.reopen else DAILY[implementation](tmp_path, request)[0]
+    replay = reopened.fetch_daily((symbol,), **asked)[symbol]
     assert_provider_research_laws(whole, cutoff, held, replay)
 
 
 @pytest.mark.proves("market_data_ops.hydration_provider_conformance")
 @pytest.mark.parametrize("implementation", HYDRATION, ids=tuple(HYDRATION))
-def test_every_hydration_provider_answers_one_consistent_history(
-    tmp_path, monkeypatch, implementation
-):
+def test_every_hydration_provider_answers_one_consistent_history(tmp_path, request, implementation):
     """One hydration response holds the daily port's own rows, its actions and its closes."""
-    provider, window = HYDRATION[implementation](tmp_path, monkeypatch)
+    provider, window = HYDRATION[implementation](tmp_path, request)
     symbol = window.symbols[0]
     evidence = provider.fetch_hydration(
         listing_id=window.listing_id, provider_symbol=symbol, start=window.start, end=window.end
@@ -434,11 +421,9 @@ def test_every_hydration_provider_answers_one_consistent_history(
 
 @pytest.mark.proves("market_data_ops.sector_provider_conformance")
 @pytest.mark.parametrize("implementation", SECTOR, ids=tuple(SECTOR))
-def test_every_sector_provider_answers_one_named_current_sector(
-    tmp_path, monkeypatch, implementation
-):
+def test_every_sector_provider_answers_one_named_current_sector(tmp_path, request, implementation):
     """A current sector names its provider and symbol, and an unknown symbol is a typed failure."""
-    provider, window = SECTOR[implementation](tmp_path, monkeypatch)
+    provider, window = SECTOR[implementation](tmp_path, request)
     symbol = window.symbols[0]
     observed = provider.fetch_current_sector(provider_symbol=symbol)
     assert isinstance(observed, SectorObservation)

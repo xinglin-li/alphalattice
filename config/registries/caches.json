@@ -3147,31 +3147,22 @@
     "src/alphalattice/foundation/market_data_ops/sources/providers.py::YFinanceMarketDataProvider.fetch_daily.frame::yfinance-historical-http-responses-delegated": {
       "owner": "alphalattice.foundation.market_data_ops",
       "defined_by": [
-        "src/alphalattice/foundation/market_data_ops/sources/providers.py::YFinanceMarketDataProvider.fetch_daily.frame"
+        "src/alphalattice/foundation/market_data_ops/sources/providers.py::YFinanceMarketDataProvider._ticker"
       ],
-      "definition_line": 250,
-      "key": "YfData singleton, URL, frozen params, timeout",
-      "dependency_coverage": "No provider revision, request observation time or TTL; past-range history uses cache_get",
-      "invalidation_rule": "LRU replacement/process end; no product clear caller",
-      "size_bound": "64 responses",
-      "bound_scope": "64 responses",
-      "eviction": "LRU",
-      "safe_to_drop": "Conditional: refetch permitted; provider can return corrected values, so equal values are not guaranteed",
+      "definition_line": 220,
+      "key": "yf.data.lru_cache_freezeargs(cache(ticker._data.get)): URL, frozen params, timeout and other GET arguments of one acquisition's Ticker",
+      "dependency_coverage": "Only GETs repeated inside one acquisition coalesce; a later acquisition builds a new Ticker and fetches again, so a provider correction is seen on the next fetch",
+      "invalidation_rule": "Dropped with its Ticker at the end of the acquisition; never shared with a later acquisition",
+      "size_bound": "1 acquisition's responses",
+      "bound_scope": "one Ticker in one acquisition",
+      "eviction": "dropped with the Ticker",
+      "safe_to_drop": "Yes: the acquisition fetches again",
       "location": {
         "scope": "process",
-        "path_expression": "Delegated yfinance YfData.cache_get historical-response LRU shared in the measured base; fetch_daily.frame is its materialized return value."
+        "path_expression": "The Ticker's own _data facade in YFinanceMarketDataProvider._ticker; yfinance's YfData.cache_get singleton is not reached"
       },
       "source_commit": "4e29de787036643360b3448d9cddba114f06d739",
-      "fixed_successor": {
-        "source_commit": "cdbb72ee6e3e3aff3e3ebc49202b5f452788ad49",
-        "defined_by": "src/alphalattice/foundation/market_data_ops/sources/providers.py::YFinanceMarketDataProvider._ticker",
-        "key": "yf.data.lru_cache_freezeargs(cache(ticker._data.get)); acquisition-local bound GET arguments (URL, frozen params, timeout and supplied GET arguments)",
-        "scope": "one acquisition ticker, never shared across later acquisitions",
-        "size_bound": "unbounded",
-        "invalidation_rule": "Each _ticker construction creates a fresh cache; entries live only with that acquisition cache, no LRU quota.",
-        "installed_in_this_base": false
-      },
-      "description": "Caches Yahoo historical HTTP responses by URL, frozen parameters and timeout, rebuilding after LRU eviction or process restart."
+      "description": "Coalesces repeated Yahoo GETs within one acquisition's Ticker by URL, frozen parameters and timeout, never keeping a body for a later acquisition."
     },
     "src/alphalattice/capabilities/data/calendar.py::materialize_calendar_schedule.calendar::exchange-calendar-dispatcher-schedule-reuse-delegated": {
       "owner": "alphalattice.capabilities.data",
