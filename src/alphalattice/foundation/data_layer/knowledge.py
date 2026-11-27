@@ -51,6 +51,12 @@ COMMON_WORDS_FROM = 10_000
 # read keeps every word and, in English, its cross-encoder rerank; recall's reads may leave out
 # common words and answer in the fused order.
 SEALED_KIND = "reference"
+# Below this many new chunks the lexical view writes with one native worker. Each worker
+# writes its own segment's files and takes documents as they come, so several leave a layout
+# that differs from build to build, and the native cutoff orders equal scores by that layout;
+# one worker writes the chunks in rowid order, so a tie at the cutoff keeps the lowest rowids.
+# On pc1, one wrote 18 chunks in 0.09-0.11 s, eight in 0.25-0.27 s.
+SMALL_LEXICAL_BATCH = 10_000
 
 
 def _spaced(text: str) -> str:
@@ -347,7 +353,11 @@ class _LexicalView:
             (after,),
         )
         # The native writer divides its 128 MB arena across workers, at least 15 MB each.
-        writer = self.index.writer(num_threads=min(worker_width(cpu_width()), 8))
+        (adding,) = con.execute(
+            "SELECT count(*) FROM knowledge_chunk WHERE rowid > ?", (after,)
+        ).fetchone()
+        width = 1 if adding < SMALL_LEXICAL_BATCH else min(worker_width(cpu_width()), 8)
+        writer = self.index.writer(num_threads=width)
         if rebuild:
             writer.delete_all_documents()
         tokens = next(terms, None)

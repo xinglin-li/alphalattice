@@ -5,7 +5,7 @@
 "count": 1,
 "description": "Audit-only untagged SHA-256 predecessors have 64 hexadecimal characters."
 },
-"src/alphalattice/foundation/data_layer/knowledge.py::num_threads::8": {
+"src/alphalattice/foundation/data_layer/knowledge.py::width::8": {
 "class": "LIMIT",
 "count": 1,
 "description": "Tantivy divides its default 128 MB writer arena across admitted workers and requires 15 MB per worker; eight is the largest valid width without growing the arena."
@@ -12697,6 +12697,11 @@
 "class": "LIMIT",
 "count": 1,
 "description": "The most candidates one source contributes to a precise search's single fused shortlist."
+},
+"src/alphalattice/foundation/data_layer/knowledge.py::SMALL_LEXICAL_BATCH::10000": {
+"class": "METHOD",
+"count": 1,
+"description": "Below this many new chunks the lexical view writes with one native worker: one worker writes the chunks in rowid order, so a tie at the read's cutoff keeps the lowest rowids, where several leave a layout that differs from build to build (pc1: one wrote 18 chunks in 0.09-0.11 s, eight in 0.25-0.27 s)."
 },
 "src/alphalattice/foundation/data_layer/knowledge.py::WINDOW::32": {
 "class": "LIMIT",

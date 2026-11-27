@@ -204,6 +204,13 @@
       "seconds": 5,
       "lower_layer": "The check opens sealed workspace authority and computes the runtime capability through the product verifier."
     },
+    "alternative_evidence.source_objects_kept_under_one_lock": {
+      "description": "A set of documents' original bytes is kept under one acquisition of the workspace writer lock, with the same references and bytes as one document at a time.",
+      "lower_layer": "The writer lock is a real OS file lock whose owner record is written and synced, which a unit double cannot prove.",
+      "owner": "alphalattice.evidence.alternative_evidence",
+      "layer": "integration",
+      "seconds": 1
+    },
     "alternative_evidence.store_hits_delivered_by_matched_line": {
       "description": "A store hit is cut to the lines its question states, one candidate a line, so over the development evidence set every issuer-topic cell the line chunks reached holds evidence and a delivered span is the matched sentence.",
       "owner": "alphalattice.evidence.alternative_evidence",

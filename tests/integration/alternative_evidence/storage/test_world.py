@@ -16,6 +16,7 @@ from blake3 import blake3
 
 from alphalattice.capabilities.data.errors import DataError
 from alphalattice.capabilities.domain_contracts.identity import canonical_hash
+from alphalattice.control.workspace_runtime.lock import WorkspaceLock
 from alphalattice.evidence.alternative_evidence.contracts import (
     AlternativeEvidenceClass,
     seal_contract,
@@ -362,19 +363,30 @@ def test_an_acquisition_admits_its_documents_and_they_are_read_through_world(
 
 
 @pytest.mark.proves("alternative_evidence.evidence_reads_through_world")
-def test_a_source_set_and_its_originals_find_their_world_versions_in_one_statement_each(
+@pytest.mark.proves("alternative_evidence.source_objects_kept_under_one_lock")
+def test_a_source_set_is_kept_under_one_lock_and_read_in_one_statement_each_step(
     tmp_path, host, monkeypatch
 ):
-    """Canonicalizing a source set finds its references' world versions in one statement, and its
-    document set's original reader in one more: the same bytes one reference at a time reads."""
+    """A source set's bytes are kept under one acquisition of the store's writer lock;
+    canonicalizing it finds its references' world versions in one statement, and its document
+    set's original reader in one more: the same bytes one reference at a time reads."""
     runtime = _runtime(tmp_path / "evidence")
     plan(runtime.artifacts)
     request = _request(("AAPL",))
     second = _recorded_document(revision="issuer-release-2026-q2", claims=())  # its own body
+    locks = []
+    acquire = WorkspaceLock.acquire
+
+    def counted(lock):
+        locks.append(lock.path)
+        return acquire(lock)
+
+    monkeypatch.setattr(WorkspaceLock, "acquire", counted)
     _, source_set = runtime.acquire_recorded(
         request=request, registry=_registry(("AAPL",)), published_at=_NOW,
         documents=(_recorded_document(), second),
     )  # fmt: skip
+    assert locks.count(runtime.documents.workspace.lock().path) == 1
     as_of = request.evidence_as_of
     alone = [
         runtime.documents.resolve_source_object(value, as_of=as_of).content

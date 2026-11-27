@@ -945,13 +945,10 @@ class AlternativeEvidenceDocumentIntelligenceRuntime:
         """Keep each document's bytes once and seal this request's references to them."""
 
         port = self._world_port or world_reads.serving()
-        references = tuple(
-            self.documents.publish_source_object(
-                document,
-                admit=self.storage_admission,
-                world_root=None if port is None else port.root,
-            )
-            for document in acquired
+        references = self.documents.publish_source_objects(
+            acquired,
+            admit=self.storage_admission,
+            world_root=None if port is None else port.root,
         )
         source_set = seal_contract(
             AcquiredEvidenceSourceReferenceSet,

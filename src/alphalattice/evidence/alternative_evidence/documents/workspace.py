@@ -69,31 +69,52 @@ class AlternativeEvidenceDocumentPublisher:
         and canonical text are different assets -- a normalization is not
         reversible -- so both are kept, each once.
         """
+        return self.publish_source_objects((document,), admit=admit, world_root=world_root)[0]
+
+    def publish_source_objects(
+        self,
+        documents: Sequence[AcquiredEvidenceDocument],
+        *,
+        admit: Callable[[int], None] | None = None,
+        world_root: Path | None = None,
+    ) -> tuple[AcquiredEvidenceDocumentReference, ...]:
+        """Keep each document's original bytes as `publish_source_object` does, under one
+        acquisition of the workspace's writer lock: each acquisition writes and syncs the lock's
+        owner record, 50 ms on pc1's disk."""
+        with self.workspace.lock():
+            return tuple(self._place(document, admit, world_root) for document in documents)
+
+    def _place(
+        self,
+        document: AcquiredEvidenceDocument,
+        admit: Callable[[int], None] | None,
+        world_root: Path | None,
+    ) -> AcquiredEvidenceDocumentReference:
+        """Place one document's bytes at its content address; the caller holds the lock."""
         reference = self.source_reference_of(document)
         relative = reference.content_object_path
-        with self.workspace.lock():
-            target = make_confined_parents(self.workspace.root, relative)
-            target = resolve_confined(self.workspace.root, relative)
-            if target.exists():
-                try:
-                    if not target.is_file():
-                        raise ValueError("not a file")
-                    world_reads.workspace_body(target, reference, root=world_root)
-                except ValueError as error:
-                    raise ValueError("alternative_evidence.source_object_integrity") from error
-            else:
-                if admit is not None:
-                    admit(len(document.content))
-                staged = target.with_name(f".{target.name}.{os.getpid()}.staging")
-                staged.unlink(missing_ok=True)
-                stored = (
-                    document.content
-                    if world_root is None
-                    else world.keep_original(world_root, document.content)
-                )
-                write_new(staged, stored)
-                os.replace(staged, target)
-                fsync_directory(target.parent)
+        target = make_confined_parents(self.workspace.root, relative)
+        target = resolve_confined(self.workspace.root, relative)
+        if target.exists():
+            try:
+                if not target.is_file():
+                    raise ValueError("not a file")
+                world_reads.workspace_body(target, reference, root=world_root)
+            except ValueError as error:
+                raise ValueError("alternative_evidence.source_object_integrity") from error
+        else:
+            if admit is not None:
+                admit(len(document.content))
+            staged = target.with_name(f".{target.name}.{os.getpid()}.staging")
+            staged.unlink(missing_ok=True)
+            stored = (
+                document.content
+                if world_root is None
+                else world.keep_original(world_root, document.content)
+            )
+            write_new(staged, stored)
+            os.replace(staged, target)
+            fsync_directory(target.parent)
         return reference
 
     def source_reference_of(

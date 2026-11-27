@@ -1,0 +1,27 @@
+{
+ "schema": "identity-successors",
+ "version": 1,
+ "moves": [
+  {
+   "role": "alternative_evidence.analysis_policy",
+   "predecessor": "blake3:2d95a4bf9e6d6a8ca9eff6acbafa624de1fd004a2c343ff5c9f51abf458e200f",
+   "successor": "blake3:6fda3648093257a1b70ee63cdcc3d784986d6aeae6e54273918907589e81d755",
+   "change": "Evidence runs faster: one lock per source set, faster line matching",
+   "reason": "Evidence parses source identities once per process and writes a small lexical batch with one native worker so tied chunks break at the lowest rowids deterministically; the same passages and citations"
+  },
+  {
+   "role": "alternative_evidence.canonicalization_binding",
+   "predecessor": "blake3:6ac5cb506dc9960c346874973467afea7d543ac0c04f557d49c61c122f9aa5a2",
+   "successor": "blake3:eff603f5e6a874bcee540bc2f2c83d37fdf0d152dcc51015684cf04c081c8df7",
+   "change": "Evidence runs faster: one lock per source set, faster line matching",
+   "reason": "Evidence parses source identities once per process and writes a small lexical batch with one native worker so tied chunks break at the lowest rowids deterministically; the same passages and citations"
+  },
+  {
+   "role": "alternative_evidence.retrieval_binding",
+   "predecessor": "blake3:1fb22f90bf1940aa09a0641e2f360b657ddb80fe37e06aee76d3c8970d09f5fb",
+   "successor": "blake3:a5518935874d045eeae270408991721ac332b3ae46d3c560fb4cb87999d21751",
+   "change": "Evidence runs faster: one lock per source set, faster line matching",
+   "reason": "Evidence parses source identities once per process and writes a small lexical batch with one native worker so tied chunks break at the lowest rowids deterministically; the same passages and citations"
+  }
+ ]
+}

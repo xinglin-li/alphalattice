@@ -1246,6 +1246,7 @@ def _matched_lines(
     that starts in the admitted ranges, clipped to the end of its range.
     """
     stems = {word[:5] for word in _QUERY_WORD.findall(query.casefold()) if len(word) > 3}
+    sizes = {len(stem) for stem in stems}
     lines: list[tuple[int, int, set[str]]] = []
     for start, end in bounds:
         line_start = start
@@ -1253,9 +1254,11 @@ def _matched_lines(
             first = line_start + len(line) - len(line.lstrip())
             last = line_start + len(line.rstrip())
             if first < last:
-                words = _QUERY_WORD.findall(line.casefold())
-                stated = {stem for stem in stems if any(word.startswith(stem) for word in words)}
-                lines.append((first, last, stated))
+                # a word starts with a stem when its own first letters, as many, are the stem
+                heads = {
+                    word[:size] for word in _QUERY_WORD.findall(line.casefold()) for size in sizes
+                }
+                lines.append((first, last, stems & heads))
             line_start += len(line) + 1
     if not lines:
         return []
