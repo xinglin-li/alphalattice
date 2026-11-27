@@ -168,6 +168,7 @@ def _publish_feature_lineage(
         FeatureClosureLedger,
         identified,
     )
+    from alphalattice.kernel.identity import blake3_filename
 
     listing_ids = tuple(sorted(sector_by_listing_id))
     entries = tuple(
@@ -211,9 +212,11 @@ def _publish_feature_lineage(
         "schema_hash": canonical_hash({"schema": "case-study"}),
         "chunks": [],
     }
-    staging = artifact_root / "feature-panel" / "composition-staging" / panel_binding_hash
+    staging = (
+        artifact_root / "feature-panel/composition-staging" / blake3_filename(panel_binding_hash)
+    )
     staging.mkdir(parents=True, exist_ok=True)
-    (staging / f"{panel_content_hash}.json").write_text(
+    (staging / f"{blake3_filename(panel_content_hash)}.json").write_text(
         json.dumps(
             {**identity, "composition_hash": canonical_hash(identity)},
             sort_keys=True,
@@ -232,7 +235,7 @@ def _publish_feature_lineage(
     snapshot_hash = canonical_hash(manifest)
     manifests = artifact_root / "feature-panel" / "manifests"
     manifests.mkdir(parents=True, exist_ok=True)
-    (manifests / f"{snapshot_hash}.json").write_text(
+    (manifests / f"{blake3_filename(snapshot_hash)}.json").write_text(
         json.dumps(
             {**manifest, "snapshot_hash": snapshot_hash}, sort_keys=True, separators=(",", ":")
         ),

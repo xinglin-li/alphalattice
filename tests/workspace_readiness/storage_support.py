@@ -67,12 +67,13 @@ def future_sample(
 
 def published_panel_chunks(root: Path, panel_hashes: list[str]) -> set[str]:
     """Chunk paths for the given published generations, as the storage plan names them."""
+    from alphalattice.kernel.identity import blake3_filename
 
     manifests = root / "artifacts/feature-panel/manifests"
     return {
-        f"artifacts/feature-panel/chunks/{chunk['chunk_hash']}.parquet"
+        f"artifacts/feature-panel/chunks/{blake3_filename(chunk['chunk_hash'])}.parquet"
         for panel_hash in panel_hashes
-        for chunk in json.loads((manifests / f"{panel_hash}.json").read_text(encoding="utf-8"))[
-            "chunks"
-        ]
+        for chunk in json.loads(
+            (manifests / f"{blake3_filename(panel_hash)}.json").read_text(encoding="utf-8")
+        )["chunks"]
     }

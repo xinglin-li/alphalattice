@@ -118,6 +118,11 @@ CLASSIFIED: dict[str, str] = {
     "AlphaRuntimeHeterogeneousPredictionOwner.__call__": NOT_MOVED,
     "investment/alpha_research/scores/heterogeneous_replay.py::"
     "HeterogeneousCurrentClosureManifest.validate_identity": SELF,
+    "investment/alpha_research/scores/heterogeneous_replay.py::"
+    "HeterogeneousHistoricalScoreEvidence.validate_evidence": (
+        "the replay reader refuses a pre-BLAKE3 seal before validation; the tagged manifest "
+        "must name the installed strategy exactly and match its own recomputed seal"
+    ),
     "investment/alpha_research/scores/model_renewal.py::"
     "AlphaModelLifecycleAdmission.planned_refits": NOT_MOVED,
     "investment/alpha_research/scores/model_renewal.py::"
@@ -126,6 +131,11 @@ CLASSIFIED: dict[str, str] = {
     "investment/alpha_research/scores/model_renewal.py::_read_lifecycle_estimator": NOT_MOVED,
     "investment/alpha_research/scores/model_renewal.py::reuse_refit_child": NOT_MOVED,
     "investment/alpha_research/scores/model_renewal.py::verify_model_set": WORKSPACE,
+    "investment/alpha_research/scores/product_replay.py::"
+    "AdmittedProductEvidence._validate_manifest": (
+        "after the manifest seal and version are checked, its tagged recipe must match the "
+        "installed replay recipe and the definition fields that recipe admits"
+    ),
     "investment/portfolio_strategy_lab/application/calibration.py::"
     "PreparedPortfolioBookInput.validate_components": SELF,
     "investment/portfolio_strategy_lab/application/calibration.py::"

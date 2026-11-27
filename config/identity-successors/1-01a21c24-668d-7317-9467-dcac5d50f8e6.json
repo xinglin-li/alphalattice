@@ -1,0 +1,20 @@
+{
+ "schema": "identity-successors",
+ "version": 1,
+ "moves": [
+  {
+   "role": "product_host.research_strategy_preparation",
+   "predecessor": "blake3:c515537c4d819fda88761bf981dee55ad663ade4b792e58995a1a448e4c9bffd",
+   "successor": "blake3:a8739463ba679273619eddf28f5994f521a8eda1dd6363146e9a58ed5c46d2d5",
+   "change": "Fix Portfolio handoffs on Windows",
+   "reason": "A Portfolio handoff now names its market input folder with a portable file name, so it works on Windows, where a colon in a folder name failed; the market inputs, their identity and every result are unchanged"
+  },
+  {
+   "role": "research_experiment.portfolio.policy-development.implementation",
+   "predecessor": "blake3:f5c735fad0fe5b1c8e4d985dacf382abf871e69b0e945dd64dd150ec46445b12",
+   "successor": "blake3:6610d5032e8db41f211b77d31abd1ba68087a74ad12e9bf85fd4945d475e5aa8",
+   "change": "Fix Portfolio handoffs on Windows",
+   "reason": "A Portfolio handoff now names its market input folder with a portable file name, so it works on Windows, where a colon in a folder name failed; the market inputs, their identity and every result are unchanged"
+  }
+ ]
+}

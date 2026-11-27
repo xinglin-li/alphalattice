@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+from uuid import UUID
 
 import pytest
 
@@ -46,10 +47,10 @@ def test_portfolio_promotion_keeps_its_upstream_stop_and_exact_recovery(
         live.dispatcher.drain_for_tests()
         portfolio_id = sent.get("task_id") or sent["publication_task_id"]
         report = _json(live, f"/api/experiments/readback?task_id={portfolio_id}")
-        assert (report["status"], report["research_lane"]) == (
-            "EXPERIMENT_PUBLISHED",
-            "EXPLORATION",
-        ), report
+        assert report["status"] == "EXPERIMENT_PUBLISHED", (
+            live.dispatcher.failure(UUID(portfolio_id)) or report
+        )
+        assert report["research_lane"] == "EXPLORATION", report
         before = len(live.session.task_control_registry.tasks())
         monkeypatch.setattr(
             resource_estimates.ResourceGate,

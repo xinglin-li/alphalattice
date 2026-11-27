@@ -1480,7 +1480,7 @@ def test_daily_append_reuses_closed_years_and_keeps_provenance_recovery_and_rete
         workspace=workspace.market_data.workspace, resolver=workspace.resolver
     ).close(
         protected_panel_snapshot_hashes=(str(manifest_two["snapshot_hash"]),),
-        cutover_acceptance_marker_hash="c" * 64,
+        cutover_acceptance_marker_hash=fixture_digest("cutover acceptance"),
         completed_at=NOW + timedelta(days=1, hours=1),
     )
     assert availability_bindings() == before
@@ -1515,7 +1515,7 @@ def test_daily_append_reuses_closed_years_and_keeps_provenance_recovery_and_rete
                 affected_sessions=(correction_session,),
                 source_fields=("provider_adjusted_close",),
                 factor_ids=("rev_21",),
-                source_receipt_hash="e" * 64,
+                source_receipt_hash=fixture_digest("adjusted return correction"),
             ),
         ),
         refresh_sector=False,

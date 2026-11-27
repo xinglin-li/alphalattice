@@ -29,6 +29,7 @@ from alphalattice.control.product_host.research_authoring.factor_inputs import (
 from alphalattice.investment.risk_research.experiments.execution import (
     RiskDevelopmentExecution,
 )
+from alphalattice.kernel.identity import blake3_from_filename
 from alphalattice.protocols.research_authoring.contracts import (
     ResearchExecutionEvidence,
     ResolvedResearchAuthority,
@@ -290,7 +291,9 @@ def alpha_seed(factor_seed, tmp_path_factory):
         copy_workspace(factor_seed[0], root)
         factor_task, report, _export = factor_seed[1:]
         baseline = Path(report["document"]["experiment"]["baseline_workspace"])
-        original = read_factor_bundle(root, baseline.parent.name)
+        binding_hash = blake3_from_filename(baseline.parent.name)
+        assert binding_hash is not None, baseline
+        original = read_factor_bundle(root, binding_hash)
         source, _ = factor_input_paths(root, original.binding_hash)
         manifest = read_research_workspace_manifest(root)
         history.open_history(manifest.workspace_id, manifest.workspace_id, root)

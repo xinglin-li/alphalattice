@@ -283,8 +283,8 @@ def exercise_single_action_catchup(workspace, daily, monkeypatch, *, symbols):
         print("CU_C2_CATCHUP_SECONDS", perf_counter() - started, flush=True)
         body = _json(service, "/api/research-update?task_id=" + sent["task_id"])
         # A published update remains a verified closure on every cache hit.
-        report = (
-            service.application.ledger.root / "html" / (body["publication"]["html_hash"] + ".html")
+        report = service.application.ledger.content.artifact_path(
+            category="html", content_hash=body["publication"]["html_hash"], extension="html"
         )
         original_report = report.read_bytes()
         try:

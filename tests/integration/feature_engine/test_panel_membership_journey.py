@@ -30,6 +30,7 @@ from alphalattice.foundation.market_data_ops.sources.membership import (
     UniverseBootstrapRecord,
 )
 from tests._support.development_universe import DENSE_LISTINGS, LISTINGS
+from tests._support.identity_fixtures import fixture_digest
 from tests.feature_engine.panel_workspace import (
     NOW,
     SESSIONS,
@@ -72,7 +73,7 @@ def _event(sequence: int, listing_id: str, kind: str, effective, manifest_revisi
         observed_at=datetime.combine(effective, datetime.min.time(), tzinfo=UTC),
         decided_at=datetime.combine(effective, datetime.min.time(), tzinfo=UTC),
         authority="feature_input_gateway",
-        reference_hash="5" * 64,
+        reference_hash=fixture_digest("membership decision"),
         manifest_revision=manifest_revision,
     )
 
@@ -95,7 +96,10 @@ def test_members_join_and_leave_from_their_effective_session_and_the_rest_is_reu
     # The helper's dense business-day axis ends on Presidents' Day; member
     # decisions use actual exchange sessions, unlike that numerical fixture.
     t0, t1, t2 = SESSIONS[-4], SESSIONS[-3], SESSIONS[-2]
-    workspace = panel_workspace(tmp_path / "journey", full, end=t2, spy="a" * 64, provider=provider)
+    spy_revision = fixture_digest("market reference revision")
+    workspace = panel_workspace(
+        tmp_path / "journey", full, end=t2, spy=spy_revision, provider=provider
+    )
     workspace.market_data.bootstrap(initial)
     workspace.market_data.bootstrap(with_entrant)
     resolver = workspace.resolver
@@ -104,7 +108,7 @@ def test_members_join_and_leave_from_their_effective_session_and_the_rest_is_reu
     # at the first qualified publication.
     workspace.service.manifest = initial
     _one, day_one = build_and_publish(
-        workspace, initial, spy="a" * 64, as_of=t0, observed_at=NOW, refresh_sector=True
+        workspace, initial, spy=spy_revision, as_of=t0, observed_at=NOW, refresh_sector=True
     )
     membership_one = day_one["safe_summary"]["membership"]
     assert membership_one["bootstrap_record_hash"] is None
@@ -118,9 +122,11 @@ def test_members_join_and_leave_from_their_effective_session_and_the_rest_is_reu
             cohort_listing_ids=tuple(item.listing_id for item in initial.listings),
             cohort_hash="",
             manifest_revision=initial.revision_sha256,
-            candidate_manifest_hash=initial.membership_fingerprint or "1" * 64,
-            qualification_policy_hash=initial.qualification_policy_hash or "2" * 64,
-            feature_input_policy_hash="3" * 64,
+            candidate_manifest_hash=initial.membership_fingerprint
+            or fixture_digest("candidate manifest"),
+            qualification_policy_hash=initial.qualification_policy_hash
+            or fixture_digest("qualification policy"),
+            feature_input_policy_hash=fixture_digest("feature input policy"),
             source_observed_at=NOW,
             admitted_at=NOW,
             panel_snapshot_hash=str(day_one["snapshot_hash"]),
@@ -141,7 +147,7 @@ def test_members_join_and_leave_from_their_effective_session_and_the_rest_is_reu
     _two, day_two = build_and_publish(
         workspace,
         with_entrant,
-        spy="a" * 64,
+        spy=spy_revision,
         as_of=t1,
         observed_at=NOW + timedelta(days=1),
         invalidations=(
@@ -206,7 +212,7 @@ def test_members_join_and_leave_from_their_effective_session_and_the_rest_is_reu
     _three, day_three = build_and_publish(
         workspace,
         after_exit,
-        spy="a" * 64,
+        spy=spy_revision,
         as_of=t2,
         observed_at=NOW + timedelta(days=2),
         invalidations=(
@@ -231,7 +237,7 @@ def test_members_join_and_leave_from_their_effective_session_and_the_rest_is_reu
     regoverned = build_quality_filtered_research_manifest(
         after_exit,
         eligible_listing_ids=tuple(item.listing_id for item in after_exit.listings),
-        qualification_obligations=(qualification_obligation("review", "6" * 64),),
+        qualification_obligations=(qualification_obligation("review", fixture_digest("review")),),
     )
     assert regoverned.revision_sha256 != after_exit.revision_sha256
     workspace.market_data.bootstrap(regoverned)
@@ -239,7 +245,7 @@ def test_members_join_and_leave_from_their_effective_session_and_the_rest_is_reu
     _four, day_four = build_and_publish(
         workspace,
         regoverned,
-        spy="a" * 64,
+        spy=spy_revision,
         as_of=t2,
         observed_at=NOW + timedelta(days=3),
         invalidations=(FeatureInvalidation("panel_binding_change", earliest_session=SESSIONS[0]),),

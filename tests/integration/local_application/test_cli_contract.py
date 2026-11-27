@@ -59,6 +59,7 @@ from alphalattice.kernel.door import (
 from alphalattice.kernel.door import port as door_port
 from devtools.evaluation.forms import Scenario
 from tests._support.history_fixtures import recording_history as recording_history
+from tests._support.identity_fixtures import fixture_digest
 from tests.portfolio_strategy_lab.cli_support import (
     _agent_project,
     _cli,
@@ -1117,12 +1118,17 @@ def test_an_operation_only_a_person_completes_is_marked_so(
         "committee_daily_enabled": "true",
         "analyst_reads_mode": "SUBAGENTS",
         "analyst_reads_bundles": "3",
+        "data_issue_option_id": "recoverable_quarantine",
+        "feature_factor_id": "fixture_factor",
         "input_pinned": "true",
+        "model_id": "fixture_model",
+        "strategy_package_id": "fixture_strategy",
         "task_id": str(uuid4()),
         "automation_enabled": "true",
         "automation_package_ids": '["a-package"]',
     }
     names = {op: command for command, ops in COMMANDS.items() for op in ops}
+    digest = fixture_digest("person-only operation")
     for operation in sorted(PERSON_ONLY):
         noun, verb = names[operation]
         shown = GRAMMAR[operation].positional
@@ -1130,8 +1136,8 @@ def test_an_operation_only_a_person_completes_is_marked_so(
             part
             for name in sorted(fields(operation)[0])
             if name != shown
-            for part in (f"--{flag_name(name)}", values.get(name, "a" * 64))
-        ] + ([values.get(shown, "a" * 64)] if shown in fields(operation)[0] else [])
+            for part in (f"--{flag_name(name)}", values.get(name, digest))
+        ] + ([values.get(shown, digest)] if shown in fields(operation)[0] else [])
         code, body, _ = _inprocess_cli(live.workspace, noun, verb, *arguments, capsys=capsys)
         assert body["outcome"] == "REFUSED" and "human" in body["failure_code"], (operation, body)
 

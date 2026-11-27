@@ -40,6 +40,8 @@ from alphalattice.control.product_host.storage.plan_previews import (
     PreviewRegistry,
 )
 from alphalattice.interface.local_application.cli import main
+from alphalattice.kernel.identity import blake3_filename
+from tests._support.identity_fixtures import fixture_digest
 from tests.portfolio_strategy_lab.host_requests import _json
 from tests.portfolio_strategy_lab.local_web_support import _manifest, _resolved, _Resolver
 from tests.researcher_methodology_surface.session_workspace import copy_workspace, on_seed_machine
@@ -173,7 +175,7 @@ def test_competing_previews_expiry_and_restart_keep_every_plan_addressable(
     found = restarted.get(hash_a)
     assert found is not None and found.plan.plan_hash == hash_a
     assert found.plan.document == plan_a["document"] and found.caller == "EXTERNAL_AUTOMATION"
-    sealed = sealed_root / f"{hash_a}.json"
+    sealed = sealed_root / f"{blake3_filename(hash_a)}.json"
     kept = sealed.read_text(encoding="utf-8")
     changed = json.loads(kept)
     changed["plan"]["execution_preview"] = {**changed["plan"]["execution_preview"], "moved": 1}
@@ -217,10 +219,11 @@ def test_competing_previews_expiry_and_restart_keep_every_plan_addressable(
     )  # reads add nothing
 
     # An unknown hash is MISSING and never resolved to the latest preview.
-    missing = _preview(host, "f" * 64)
+    unknown = fixture_digest("unknown plan")
+    missing = _preview(host, unknown)
     assert missing["status"] == "MISSING" and "document" not in missing
     assert missing["next_action"] == "EXPERIMENT_PLAN"
-    code, refused = _cli(host, "study", "run", "--plan", "f" * 64)
+    code, refused = _cli(host, "study", "run", "--plan", unknown)
     assert code == 2 and refused["data"]["failure_code"] == "research_experiment.preview_required"
 
     # Expiry: readable, not runnable; the refusal carries the exact re-PLAN request.

@@ -20,6 +20,7 @@ from alphalattice.foundation.market_data_ops.storage.duckdb import MarketDataRep
 from alphalattice.interface.local_application.portfolio_research import (
     PortfolioResearchRequestDocument as PortfolioResearchAgentRequest,
 )
+from alphalattice.kernel.identity import blake3_filename
 from tests._support import development_universe
 from tests.feature_engine.panel_workspace import capture_panel_closure, clipping_evidence
 from tests.portfolio_strategy_lab.host_requests import _json
@@ -94,7 +95,11 @@ def year_end(tmp_path_factory):
 
 
 def _chunk_file(workspace: Path, chunk: dict) -> Path:
-    return workspace / "artifacts" / "feature-panel" / "chunks" / f"{chunk['chunk_hash']}.parquet"
+    return (
+        workspace
+        / "artifacts/feature-panel/chunks"
+        / f"{blake3_filename(chunk['chunk_hash'])}.parquet"
+    )
 
 
 def _row_hashes(workspace: Path, chunk: dict) -> dict[tuple[date, str], str]:

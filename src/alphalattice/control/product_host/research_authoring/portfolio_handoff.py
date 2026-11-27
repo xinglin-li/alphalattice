@@ -423,7 +423,9 @@ def prepare_portfolio_handoff(
             "listings": scores.listings,
         }
     )
-    market_root = confined(workspace, f"artifacts/research-market-inputs/{market_key}")
+    market_root = confined(
+        workspace, f"artifacts/research-market-inputs/{blake3_filename(market_key)}"
+    )
     executor = PortfolioExperimentExecutor(
         source,
         lambda output: prepare_portfolio_market_inputs(

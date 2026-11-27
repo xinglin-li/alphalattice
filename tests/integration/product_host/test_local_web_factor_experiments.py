@@ -41,11 +41,13 @@ from alphalattice.interface.local_application.portfolio_research import (
 from alphalattice.interface.local_application.portfolio_research import (
     PortfolioResearchRequestDocument as PortfolioResearchAgentRequest,
 )
+from alphalattice.kernel.identity import blake3_filename
 from alphalattice.protocols.actor_execution.contracts import AgentExecutionBinding
 from alphalattice.protocols.research_authoring.contracts import AuthoringError
 from tests._support.alternative_evidence_desk_fixtures import (
     review_on_the_store as review_on_the_store,
 )
+from tests._support.identity_fixtures import fixture_digest
 from tests.portfolio_strategy_lab.host_requests import _json
 from tests.portfolio_strategy_lab.local_web_support import (
     InstalledAgent,
@@ -208,7 +210,9 @@ def test_completed_alpha_hands_off_to_portfolio_without_refitting(
         live.dispatcher.drain_for_tests()
         task_id = sent.get("task_id") or sent["publication_task_id"]
         body = _json(live, f"/api/experiments/readback?task_id={task_id}")
-        assert body["status"] == "EXPERIMENT_PUBLISHED", body
+        assert body["status"] == "EXPERIMENT_PUBLISHED", (
+            live.dispatcher.failure(UUID(task_id)) or body
+        )
         assert body["portfolio_source"]["alpha_task_id"] == parent_id
         assert "risk_surface_hash" not in body["portfolio_source"]  # no Risk study is linked
         holds = [r for r in body["series"] if r["decision_mode"] == "HOLD"]
@@ -370,7 +374,7 @@ def _exercise_authored_review(root, selected, tmp_path):
             before = len(service.registry.tasks())
             for wrong, refused in (
                 (
-                    {"experiment_receipt_hash": "0" * 64},
+                    {"experiment_receipt_hash": fixture_digest("wrong experiment receipt")},
                     "product_host.evidence_review_experiment_receipt_mismatch",
                 ),
                 ({"portfolio_session": "1900-01-01"}, "portfolio_research.session_outside_report"),
@@ -384,7 +388,8 @@ def _exercise_authored_review(root, selected, tmp_path):
             # A result beside the study's book is refused in words, with the history to choose
             # one from.
             status, body = service.request(
-                "/api/evidence-cro?" + urlencode({**selector, "result_hash": "0" * 64})
+                "/api/evidence-cro?"
+                + urlencode({**selector, "result_hash": fixture_digest("wrong result")})
             )
             assert (status, body["status"], body["failure_code"]) == (
                 200,
@@ -576,11 +581,11 @@ def test_foundation_seal_consumption_readback_and_refusals(alpha_case, monkeypat
         actor = AgentExecutionBinding(
             profile_id="scripted-curator",
             mode="fixture",
-            profile_hash="a" * 64,
-            document_hash="b" * 64,
+            profile_hash=fixture_digest("profile"),
+            document_hash=fixture_digest("document"),
             response_protocol="research-experiment",
-            response_protocol_hash="c" * 64,
-            concrete_schema_hash="d" * 64,
+            response_protocol_hash=fixture_digest("response protocol"),
+            concrete_schema_hash=fixture_digest("concrete schema"),
         )
         bridge = InstalledAgent(live.operations, agent_execution=actor)
         agent = json.loads(
@@ -597,7 +602,7 @@ def test_foundation_seal_consumption_readback_and_refusals(alpha_case, monkeypat
                     (
                         root
                         / "artifacts/factor-research/research-desk/foundation-confirmations"
-                        / identity
+                        / blake3_filename(identity)
                     ).glob("*.json")
                 )
             )
@@ -690,7 +695,7 @@ def test_foundation_seal_consumption_readback_and_refusals(alpha_case, monkeypat
         path = (
             root
             / "artifacts/factor-research/research-desk/foundation-admissions"
-            / f"{identity}.json"
+            / f"{blake3_filename(identity)}.json"
         )
         original = path.read_bytes()
         try:
@@ -719,7 +724,7 @@ def test_foundation_seal_consumption_readback_and_refusals(alpha_case, monkeypat
             return next(
                 v
                 for v in _json(live, list_url)["foundations"]
-                if v["admission"]["admission_hash"] == identity
+                if "admission" in v and v["admission"]["admission_hash"] == identity
             )
 
         current = listed()
@@ -729,8 +734,8 @@ def test_foundation_seal_consumption_readback_and_refusals(alpha_case, monkeypat
 
         from alphalattice.control.task_control.registry import TaskNotFoundError
 
-        bad_id = "f" * 64
-        bad_path = path.with_stem(bad_id)
+        bad_id = fixture_digest("unreadable saved study")
+        bad_path = path.with_stem(blake3_filename(bad_id))
         bad_path.write_text("{", encoding="utf-8")
         try:
             collection = _json(live, list_url)
@@ -813,7 +818,11 @@ def test_foundation_seal_consumption_readback_and_refusals(alpha_case, monkeypat
         # policy check names the uninstalled policy.
         not_installed = "factor_research.review_decision_policy_not_installed"
         with monkeypatch.context() as m:
-            m.setattr(decisions, "factor_research_decision_policy_hash", lambda *_a, **_k: "f" * 64)
+            m.setattr(
+                decisions,
+                "factor_research_decision_policy_hash",
+                lambda *_a, **_k: fixture_digest("new Factor decision policy"),
+            )
             historical = listed()
             assert historical["standing"] == "HISTORICAL", historical
             assert historical["standing_code"] == not_installed
@@ -1150,7 +1159,7 @@ def test_alpha_declared_model_runs_reopens_and_reuses_existing_owners(
         assert _facts(json.loads(exported["json"])) == _facts(body)
         child = body["receipt"]["child_lineage"][0]["numerical_result_hash"]
         folder = root / body["document"]["experiment"]["output_workspace"]
-        paths = list(folder.rglob(f"{child}.json"))
+        paths = list(folder.rglob(f"{blake3_filename(child)}.json"))
         assert len(paths) == 1
         original = paths[0].read_bytes()
         try:
@@ -1232,7 +1241,7 @@ def test_alpha_refuses_invalid_authority_and_work_before_admitting_a_task(alpha_
         del payload[field]
         invalid.append(payload)
     payload = deepcopy(original)
-    payload["curation_receipt_hash"] = "a" * 64
+    payload["curation_receipt_hash"] = fixture_digest("unknown curation receipt")
     invalid.append(payload)
     for field, value in (
         ("ordered_feature_ids", ["NOT_IN_THE_FACTOR_DECISION"]),
@@ -1642,7 +1651,10 @@ def test_controls_and_a_missing_prerequisite_name_the_flows_way_on(inputs: Path,
         # a binding the workspace does not hold is refused by its field, with the held
         # bindings and each one's feature controls (AX13: a typed binding met a bare code).
         unknown = live.operations.execute(
-            Request(operation="FEATURE_CATALOG_CONTROLS", input_binding_hash="f" * 64)
+            Request(
+                operation="FEATURE_CATALOG_CONTROLS",
+                input_binding_hash=fixture_digest("unknown input binding"),
+            )
         )
         assert unknown["failure_code"] == "feature_research.input_binding_unresolved", unknown
         assert factor_binding in unknown["expected"]["input_binding_hash"]
@@ -1722,7 +1734,7 @@ def test_factor_curation_and_alpha_handoff_are_durable_actor_neutral_and_never_t
         )
         assert denied["status"] == "REFUSED", denied
         for replacement in (
-            {"expected_receipt_hash": "0" * 64},
+            {"expected_receipt_hash": fixture_digest("wrong curation receipt")},
             {"limitations_acknowledged": []},
             {
                 "choices": [
@@ -1756,11 +1768,11 @@ def test_factor_curation_and_alpha_handoff_are_durable_actor_neutral_and_never_t
         actor = AgentExecutionBinding(
             profile_id="scripted-curator",
             mode="fixture",
-            profile_hash="a" * 64,
-            document_hash="b" * 64,
+            profile_hash=fixture_digest("profile"),
+            document_hash=fixture_digest("document"),
             response_protocol="research-experiment",
-            response_protocol_hash="c" * 64,
-            concrete_schema_hash="d" * 64,
+            response_protocol_hash=fixture_digest("response protocol"),
+            concrete_schema_hash=fixture_digest("concrete schema"),
         )
         admitted_agent = InstalledAgent(session.operations, agent_execution=actor)
         agent_result = json.loads(
@@ -1869,7 +1881,7 @@ def test_factor_curation_and_alpha_handoff_are_durable_actor_neutral_and_never_t
         mapping = (
             target
             / "artifacts/feature-panel/closure/logical/operational/snapshot-mappings"
-            / f"{bundle.panel_snapshot_hash}.json"
+            / f"{blake3_filename(bundle.panel_snapshot_hash)}.json"
         )
         saved = mapping.read_bytes()
         try:
@@ -1924,11 +1936,11 @@ def test_agent_and_yaml_use_the_same_program_but_cannot_claim_provenance(inputs:
         actor = AgentExecutionBinding(
             profile_id="scripted-research-author",
             mode="fixture",
-            profile_hash="a" * 64,
-            document_hash="b" * 64,
+            profile_hash=fixture_digest("profile"),
+            document_hash=fixture_digest("document"),
             response_protocol="research-experiment",
-            response_protocol_hash="c" * 64,
-            concrete_schema_hash="d" * 64,
+            response_protocol_hash=fixture_digest("response protocol"),
+            concrete_schema_hash=fixture_digest("concrete schema"),
         )
         agent = InstalledAgent(session.operations, agent_execution=actor)
         run = json.loads(
@@ -2076,7 +2088,7 @@ def test_an_alpha_studys_full_verification_is_kept_on_disk_across_a_restart(
     monkeypatch.setattr(
         owner.ResearchExperimentApplication,
         "installed_implementation",
-        lambda _self, _kind, **_options: "0" * 64,
+        lambda _self, _kind, **_options: fixture_digest("new installed implementation"),
     )
     with _session(root) as upgraded:
         assert _json(upgraded, readback)["verification_basis"] == "FULL"
@@ -2118,10 +2130,11 @@ def test_the_sweep_is_due_after_a_week_or_an_upgrade_and_takes_up_what_it_left(
         monkeypatch.setattr(sweep, "clock", lambda: later)
         assert sweep.due()  # a week passed
         monkeypatch.setattr(sweep, "clock", lambda: week_on)
-        monkeypatch.setattr(sweep, "installed", lambda: "0" * 64)
+        monkeypatch.setattr(sweep, "installed", lambda: fixture_digest("new installed study code"))
         assert sweep.due()  # the installed study code moved
         assert all(
-            path.stem == canonical_hash(json.loads(path.read_text(encoding="utf-8")))
+            path.stem
+            == blake3_filename(canonical_hash(json.loads(path.read_text(encoding="utf-8"))))
             for path in sweep.root.glob("*.json")
         )
 
@@ -2770,12 +2783,13 @@ def test_a_formula_factor_is_reviewed_and_a_person_activates_it(completed_alpha_
 
         # Plant two malformed neighbours in the same closure store as the readable plan.
         plan_files = ops.trials.feature_builds.definitions().store.files
-        corrupt_hash = "0" * 64 if plan_hash != "0" * 64 else "1" * 64
-        mismatch_hash = "f" * 64 if plan_hash != "f" * 64 else "e" * 64
-        mismatch_target = "d" * 64 if mismatch_hash != "d" * 64 else "c" * 64
-        plan_files.write(f"{CATEGORY}/{corrupt_hash}.json", b"{")
+        corrupt_hash = fixture_digest("corrupt plan")
+        mismatch_hash = fixture_digest("mismatched plan contents")
+        mismatch_target = fixture_digest("mismatched plan filename")
+        plan_files.write(f"{CATEGORY}/{blake3_filename(corrupt_hash)}.json", b"{")
         plan_files.write(
-            f"{CATEGORY}/{mismatch_target}.json", json.dumps({"plan_hash": mismatch_hash}).encode()
+            f"{CATEGORY}/{blake3_filename(mismatch_target)}.json",
+            json.dumps({"plan_hash": mismatch_hash}).encode(),
         )
         mixed = _json(live, "/api/feature-research")
         assert set(mixed) == healthy_shape | {"refused_plans"}
@@ -3049,7 +3063,9 @@ def _published(link, plan):
     link.live.dispatcher.drain_for_tests()
     task_id = run.get("task_id") or run["publication_task_id"]
     body = _json(link.live, f"/api/experiments/readback?task_id={task_id}")
-    assert body["status"] == "EXPERIMENT_PUBLISHED", body
+    assert body["status"] == "EXPERIMENT_PUBLISHED", (
+        link.live.dispatcher.failure(UUID(task_id)) or body
+    )
     return body
 
 
