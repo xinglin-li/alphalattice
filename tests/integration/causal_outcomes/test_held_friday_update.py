@@ -49,7 +49,9 @@ def test_prior_positions_keep_the_updates_own_next_requests(
     from alphalattice.control.product_host.composition import portfolio_result_context as ops
     from alphalattice.oversight.chief_risk_officer.decision import book_evidence
 
-    publication = SimpleNamespace(content_hash="a" * 64)
+    publication = SimpleNamespace(
+        content_hash="a" * 64, review_name="a" * 64
+    )  # a pre-digest publication is named by its content hash
     monkeypatch.setattr(ops.PortfolioUpdatePublication, "model_validate", lambda _doc: publication)
     monkeypatch.setattr(
         ops,
