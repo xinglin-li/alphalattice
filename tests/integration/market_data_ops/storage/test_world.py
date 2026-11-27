@@ -29,6 +29,7 @@ from alphalattice.control.workspace_runtime.database import release_workspace_da
 from alphalattice.foundation.data_layer import history
 from alphalattice.foundation.data_layer.chain import digest as text_digest
 from alphalattice.foundation.data_layer.store import KNOWN
+from alphalattice.foundation.feature_engine.producers.reference_data import MarketReference
 from alphalattice.foundation.market_data_ops.sources.contracts import (
     CorporateActionEvent,
     ProviderAdjustedClosePoint,
@@ -140,6 +141,31 @@ def workspace(tmp_path: Path) -> Iterator[tuple[MarketDataRepository, UniverseMa
         yield store, manifest, tmp_path / "workspace" / "market-data.duckdb"
     finally:
         history.release_history()
+
+
+def _market_reference_reuses_one_manifest(
+    store: MarketDataRepository, parent: UniverseManifest, *, membership_changes: bool
+) -> None:
+    """The world admits the same SPY manifest before and after a parent membership change."""
+    first = MarketReference.spy(parent).manifest
+    store.bootstrap(first)
+    world.admit(store.path, "w1")
+    later = parent
+    if membership_changes:
+        later = replace(
+            parent,
+            profile=replace(parent.profile, manifest_as_of=NOW.date() + timedelta(days=4)),
+            listings=parent.listings[:-1],
+        )
+    second = MarketReference.spy(later).manifest
+    try:
+        store.bootstrap(second)
+        world.admit(store.path, "w1")
+    except ValueError as exc:
+        pytest.fail(f"The SPY manifest was refused on readmission: {exc}")
+    assert second == first
+    cutoff = int((NOW + timedelta(days=5)).timestamp() * 1_000_000)
+    assert world.load_universe_manifest(first.manifest_id, cutoff, workspace_id="w1") == first
 
 
 def _provider_summary(dataset: str, providers: list[str]) -> dict[str, Any]:
@@ -435,6 +461,8 @@ def _compose_upgraded_market(store, database, tmp_path, focus):
         "absent-file",
         "resent",
         "delta",
+        "reference-same-parent",
+        "reference-later-membership",
         *_UPGRADE_PUBLICATION_CASES,
     ),
     ids=lambda focus: focus,
@@ -448,6 +476,11 @@ def test_a_workspace_open_admits_its_market_tables_once_and_a_correction_from_it
     """A workspace open admits its market tables into world once, equal row for row, and a
     later correction is seen only from its admission."""
     store, manifest, database = workspace
+    if focus in {"reference-same-parent", "reference-later-membership"}:
+        _market_reference_reuses_one_manifest(
+            store, manifest, membership_changes=focus == "reference-later-membership"
+        )
+        return
     if focus in _UPGRADE_PUBLICATION_CASES:
         _compose_upgraded_market(store, database, tmp_path, focus)
         return

@@ -4244,6 +4244,16 @@
 "class": "METHOD",
 "count": 1
 },
+"src/alphalattice/foundation/feature_engine/producers/reference_data.py::_SPY_MANIFEST_AS_OF::1993": {
+"class": "METHOD",
+"count": 1,
+"description": "The market-reference manifest uses SPY's published inception date, January 22, 1993."
+},
+"src/alphalattice/foundation/feature_engine/producers/reference_data.py::_SPY_MANIFEST_AS_OF::22": {
+"class": "METHOD",
+"count": 1,
+"description": "The day of SPY's published inception date, January 22, 1993."
+},
 "src/alphalattice/foundation/feature_engine/producers/reference_data.py::__post_init__::2": {
 "class": "METHOD",
 "count": 1

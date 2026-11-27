@@ -1,0 +1,20 @@
+{
+ "schema": "identity-successors",
+ "version": 1,
+ "moves": [
+  {
+   "role": "portfolio_strategy_lab.public_path",
+   "predecessor": "blake3:08df7fe14b9e8862f37e3d326d9a99b4ef240886d36eb0f8f55c5690c95003db",
+   "successor": "blake3:584c7bd3f3b32ba423c6d0a424342cbd24cb736d54740906976a3502b6024191",
+   "change": "Keep SPY data available when index membership changes",
+   "reason": "The market reference manifest stores only what its revision covers, so a membership change leaves it admitted; two owners' source fingerprints rotate and no stored identity changes"
+  },
+  {
+   "role": "product_host.workspace_preparation",
+   "predecessor": "blake3:aef04f25e1b40a3b0d7d63a41c395858d3ee28e456447714cdb37044aaa87f73",
+   "successor": "blake3:0f262f33e5fcc08d222b29e3453e4f2853dcf3d7b309d5026ff6f4e1c4ed9d44",
+   "change": "Keep SPY data available when index membership changes",
+   "reason": "The market reference manifest stores only what its revision covers, so a membership change leaves it admitted; two owners' source fingerprints rotate and no stored identity changes"
+  }
+ ]
+}

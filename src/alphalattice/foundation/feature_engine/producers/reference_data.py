@@ -7,7 +7,7 @@ import logging
 import os
 from collections.abc import Sequence
 from concurrent.futures import ThreadPoolExecutor
-from dataclasses import dataclass, field, replace
+from dataclasses import asdict, dataclass, field, replace
 from datetime import UTC, date, datetime, timedelta
 from pathlib import Path
 from uuid import UUID, uuid5
@@ -48,6 +48,8 @@ from alphalattice.kernel.resources import worker_width
 
 _REFERENCE_NAMESPACE = UUID("15bf0e17-4d4f-4a5e-8aae-026a01aa7f0d")
 SPY_REFERENCE_ID = "SPY"
+# State Street's published inception date for SPY.
+_SPY_MANIFEST_AS_OF = date(1993, 1, 22)
 SECTOR_SOURCE = "YAHOO_CURRENT_SECTOR"
 SECTOR_BUCKET_ID = "yahoo-current-sector"
 
@@ -64,7 +66,8 @@ class MarketReference:
     @classmethod
     def spy(cls, parent: UniverseManifest) -> MarketReference:
         """Derive the SPY reference manifest from the parent market profile."""
-        listing_id = str(uuid5(_REFERENCE_NAMESPACE, f"{parent.profile.market_profile_id}:SPY"))
+        profile = replace(parent.profile, manifest_as_of=_SPY_MANIFEST_AS_OF)
+        listing_id = str(uuid5(_REFERENCE_NAMESPACE, f"{profile.market_profile_id}:SPY"))
         listing = ManifestListing(
             listing_id=listing_id,
             symbol="SPY",
@@ -75,14 +78,13 @@ class MarketReference:
             {
                 "kind": "market-reference",
                 "reference": SPY_REFERENCE_ID,
-                "profile": parent.profile.market_profile_id,
-                "provider": parent.profile.provider,
+                "profile": asdict(profile),
                 "listing": listing.__dict__,
             }
         )
         manifest = UniverseManifest(
-            manifest_id=f"{parent.profile.market_profile_id}:market-reference:SPY",
-            profile=parent.profile,
+            manifest_id=f"{profile.market_profile_id}:market-reference:SPY:{blake3_filename(revision)}",
+            profile=profile,
             listings=(listing,),
             revision_sha256=revision,
             universe_membership_basis="MARKET_REFERENCE_ONLY",
