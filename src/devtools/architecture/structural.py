@@ -11,13 +11,13 @@ import re
 import sqlite3
 import sys
 from collections import Counter
-from collections.abc import Callable, Iterable, Iterator, Mapping, Sequence
+from collections.abc import Callable, Collection, Iterable, Iterator, Mapping, Sequence
 from enum import StrEnum
 from functools import partial
 from importlib.util import resolve_name
 from pathlib import Path
 from types import CodeType, FunctionType, ModuleType
-from typing import Annotated, Any, Literal
+from typing import Annotated, Any, Final, Literal
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
@@ -261,12 +261,22 @@ class ImportHygiene(_Contract):
     legacy_lazy_imports: dict[str, Annotated[int, Field(strict=True, ge=1)]]
 
 
+class OwnerBypass(_Contract):
+    """A converged owner's bypass that stays, by its unit ``path::scope::kind``: how many sites
+    of the kind that scope holds and why each stays outside its owner."""
+
+    count: Annotated[int, Field(strict=True, ge=1)]
+    reason: str = Field(min_length=1)
+
+
 class PackageArchitectureRegistry(_Contract):
     schema_id: Literal["alphalattice.playpen.package-architecture"] = Field(alias="schema")
     note: str = ""
     packages: tuple[PackageArchitecture, ...] = Field(min_length=1)
     deferred_imports: dict[str, str] = Field(default_factory=dict)
     legacy_lazy_imports: dict[str, int] = Field(default_factory=dict)
+    owner_bypasses: dict[str, OwnerBypass] = Field(default_factory=dict)
+    """Each converged owner's bypass that stays (``_BYPASS_OWNERS``), named with its reason."""
     private_import_fences: dict[str, dict[str, str]] = Field(default_factory=dict)
     owned_product_imports: dict[str, str] = Field(default_factory=dict)
     """A backend's root module and the sole product package ID that may import it."""
@@ -1560,6 +1570,62 @@ _FILE_TRUST_OWNERS = {
     f"{_FILE_TRUST_ROOT}.file_facts",
     "alphalattice.control.workspace_runtime.verified_facts",
 }
+_IDENTITY_OWNERS = frozenset(
+    {_FILE_TRUST_ROOT, f"{_FILE_TRUST_ROOT}._digests", f"{_FILE_TRUST_ROOT}.file_facts"}
+)
+_BYPASS_OWNERS: Final[Mapping[str, frozenset[str]]] = {
+    "connect": frozenset(
+        {
+            "alphalattice.control.workspace_runtime.reader_threads",  # the workspace DuckDB
+            "alphalattice.foundation.data_layer.log",  # the Host log
+            "alphalattice.foundation.data_layer.root",  # the data root's catalog
+            "alphalattice.foundation.data_layer.backup",  # the data root's copies
+            "alphalattice.kernel.door.decisions",  # the decisions door
+        }
+    ),
+    "digest-tag": _IDENTITY_OWNERS,
+    "canonical-json": _IDENTITY_OWNERS,
+    "file-verification": frozenset(_FILE_TRUST_OWNERS),
+    "unrecorded-seal": _IDENTITY_OWNERS,
+    "catalog-write": frozenset(  # StorePort's ordered writers, by module::function
+        f"alphalattice.foundation.data_layer.store::{writer}"
+        for writer in (
+            "StorePort._statements",
+            "StorePort._supersede",
+            "StorePort._derived",  # derive's insert, inside its BEGIN and commit message
+            "StorePort._collect",  # collect's delete of unrooted cache parts, one snapshot
+            "StorePort._carried",
+            "remove_bodies",
+        )
+    ),
+}
+"""Each converged owner's bypass kind and the only modules (or ``module::function`` units)
+credited with that form; every other site of the kind is refused by name unless
+``owner_bypasses`` names its unit and reason."""
+_BYPASS_REPAIRS: Final[Mapping[str, str]] = {
+    "connect": "open the database through its store's owner",
+    "digest-tag": "tag or match a digest through kernel.identity (tagged_blake3, is_blake3)",
+    "canonical-json": "hash a value through kernel.identity's canonical_hash",
+    "file-verification": "verify the file through verified_facts.verified_file_digest",
+    "unrecorded-seal": "record the placed file's digest with record_sealed",
+    "catalog-write": "write the catalog through StorePort's commit, publish or carry",
+}
+_CATALOG_WRITES = frozenset({("INSERT", "INTO"), ("DELETE", "FROM"), ("MERGE", "INTO")})
+_BYTE_DIGESTS = frozenset(
+    {
+        "identity_blake3",
+        "integrity_blake3",
+        "change_blake3",
+        "blake3_digest",
+        "tagged_blake3",
+        "integrity_blake3_stream",
+        "integrity_blake3_path",
+        "whole_digest",
+    }
+)
+_SEAL_RECORDS = frozenset({"record_sealed", "record_sealed_file", "written"})
+"""The trust record's writer ports; ``verified_file_digest`` and ``record_file_fact`` record only
+when called with ``written``."""
 
 
 def import_contract_violations(
@@ -1583,6 +1649,7 @@ def import_contract_violations(
 
     out: list[str] = []
     retained = Counter(registry.legacy_lazy_imports)
+    owner_sites: dict[str, list[list[Any]]] = {}  # each product module's bypass sites
 
     this = sys.modules[__name__]
 
@@ -1605,12 +1672,14 @@ def import_contract_violations(
             partial(_import_sites, qualified=qualified),
             lambda value: isinstance(value, list) and all(len(row) == 8 for row in value),
         )
+        product = module.partition(".")[0] == "alphalattice"  # the package root included
+        check_owner_sites(qualified, source)  # the judge keeps the product's modules
         seen.clear()
         eager.clear()
         eager.update(imported_module(site[1], t) for site in sites if site[6] for t in site[7])
         for line, kind, scope, deferred, lazy, text, _top, targets in sites:
             located = f"{module}:{line}"
-            if module.startswith("alphalattice.") and module not in _FILE_TRUST_OWNERS:
+            if product and module not in _FILE_TRUST_OWNERS:
                 out.extend(
                     f"{located}: file-verification-owner-required {target}"
                     for target in targets
@@ -1630,6 +1699,15 @@ def import_contract_violations(
                 if kind == "call":
                     check_kernel_load(module, located, deferred, target)
                     check_owned_import(module, located, target)
+
+    def check_owner_sites(qualified: str, source: str) -> None:
+        owner_sites[qualified] = kept_fact(
+            this,
+            "owner-sites " + qualified,
+            source.encode("utf-8"),
+            _owner_sites,
+            lambda value: isinstance(value, list) and all(len(row) == 3 for row in value),
+        )
 
     def check_kernel_load(module: str, located: str, deferred: bool, target: str) -> None:
         # Import Linter sees statements. Apply the same boundaries to literal load calls
@@ -1705,7 +1783,58 @@ def import_contract_violations(
         for k, n in retained.items()
         if n > 0 and k.split("::", 1)[0][4:-3].replace("/", ".") in sources
     )
+    out.extend(owner_bypass_refusals(owner_sites, registry.owner_bypasses))
     return tuple(sorted(out))
+
+
+def owner_bypass_refusals(
+    sites: Mapping[str, Sequence[Sequence[Any]]], named: Mapping[str, OwnerBypass]
+) -> list[str]:
+    """Each product module's converged-owner bypass site (``_owner_sites``, by module; the
+    ``alphalattice`` package root included) its owner's modules and the units ``named`` do not
+    credit, refused by kind, scope and repair; and each named unit of these modules left with no
+    site, stale."""
+    left = Counter({key: row.count for key, row in named.items()})
+    out = []
+    for qualified, rows in sites.items():
+        module = qualified.removesuffix(".__init__")
+        if module.partition(".")[0] != "alphalattice":  # the package root is the product's too
+            continue
+        path = f"src/{qualified.replace('.', '/')}.py"
+        for line, kind, scope in rows:
+            if module in _BYPASS_OWNERS[kind] or f"{module}::{scope}" in _BYPASS_OWNERS[kind]:
+                continue
+            key = f"{path}::{scope}::{kind}"
+            if left[key] < 1:
+                out.append(f"{module}:{line}: owner-bypass {kind} {scope}; {_BYPASS_REPAIRS[kind]}")
+            left[key] -= 1
+    paths = {f"src/{qualified.replace('.', '/')}.py" for qualified in sites}
+    out.extend(
+        f"stale-owner-bypass {key}"
+        for key, count in left.items()
+        if count > 0 and key.split("::", 1)[0] in paths
+    )
+    return out
+
+
+def vacated_bypasses(named: Iterable[str], present: Collection[str]) -> list[str]:
+    """Each named unit whose file the tree no longer holds, stale: a deleted file's exemption
+    is never kept for a later file at its path, and a moved one is named again at its new path
+    (its parent's count carried by the move)."""
+    return [f"stale-owner-bypass {key}" for key in named if key.split("::", 1)[0] not in present]
+
+
+def grown_bypasses(
+    named: Mapping[str, Mapping[str, Any]], before: Mapping[str, int] | None
+) -> list[str]:
+    """Each named bypass above its parent's count (``before``, each unit's count, carried across
+    moves): a named bypass only shrinks, so a new unit or a higher count is a new bypass. A parent
+    that names none holds the first list."""
+    return [
+        f"owner-bypass: a named bypass grew {key}"
+        for key, row in named.items()
+        if before is not None and row["count"] > before.get(key, 0)
+    ]
 
 
 def _import_sites(data: bytes, qualified: str) -> list[list[Any]]:
@@ -1790,6 +1919,269 @@ def _import_sites(data: bytes, qualified: str) -> list[list[Any]]:
                 [node.lineno, "file-trust-reference", "", False, False, "", False, [target]]
             )
     return sites
+
+
+def _owner_sites(data: bytes) -> list[list[Any]]:
+    """One module's converged-owner bypass sites from its bytes: [line, kind, scope], each kind
+    one form read with ast. ``connect``: a ``sqlite3.connect`` or ``duckdb.connect`` call, its
+    name resolved through the module's imports. ``digest-tag``: a ``blake3:`` string written in
+    code (a tag, a prefix test or a pattern; a docstring is none). ``canonical-json``: a byte
+    digest taken of ``json.dumps`` text, directly or through a name the function assigned it to.
+    ``file-verification``: a byte digest compared in place, one taken of ``read_bytes()``, or an
+    ``update_mmap`` read. ``unrecorded-seal``: a function that takes a byte digest or a digest
+    filename and places a file (``os.replace``, a one-argument ``replace`` or ``rename``, or the
+    store's ``atomic_write``) without recording its seal. ``catalog-write``: an SQL text that
+    inserts, updates, deletes or merges into the catalog (``lake.``)."""
+    tree = ast.parse(data.decode("utf-8"))
+    nodes = list(ast.walk(tree))
+    parents = {child: parent for parent in nodes for child in ast.iter_child_nodes(parent)}
+    bindings: dict[str, str] = {}
+    for node in nodes:
+        if isinstance(node, ast.Import):
+            for alias in node.names:
+                root = alias.name.partition(".")[0]
+                bindings[alias.asname or root] = alias.name if alias.asname else root
+        elif isinstance(node, ast.ImportFrom) and node.module and not node.level:
+            bindings.update({a.asname or a.name: f"{node.module}.{a.name}" for a in node.names})
+    docstrings = {
+        id(node.value)
+        for node in nodes
+        if isinstance(node, ast.Expr) and isinstance(node.value, ast.Constant)
+    }
+
+    def called(node: ast.AST) -> str | None:
+        func = node.func if isinstance(node, ast.Call) else None
+        return getattr(func, "attr", None) or getattr(func, "id", None)
+
+    def resolved(node: ast.Call) -> str:
+        head, _, rest = ast.unparse(node.func).partition(".")
+        bound = bindings.get(head, head)
+        return f"{bound}.{rest}" if rest else bound
+
+    def scope(node: ast.AST) -> str:
+        names = []
+        parent = parents.get(node)
+        while parent is not None:
+            if isinstance(parent, ast.FunctionDef | ast.AsyncFunctionDef | ast.ClassDef):
+                names.append(parent.name)
+            parent = parents.get(parent)
+        return ".".join(reversed(names)) or "<module>"
+
+    def operation(node: ast.AST) -> bool:  # a digest taken, or a file read by mapping
+        return isinstance(node, ast.Call) and called(node) in _DIGEST_OPERATIONS
+
+    def text(node: ast.AST) -> str | None:  # a string's text, a formatted part as {name}
+        if isinstance(node, ast.Constant) and isinstance(node.value, str):
+            return node.value
+        if not isinstance(node, ast.JoinedStr):
+            return None
+        return "".join(
+            str(part.value)
+            if isinstance(part, ast.Constant)
+            else "{" + ast.unparse(getattr(part, "value", part)) + "}"
+            for part in node.values
+        )
+
+    bodies: dict[str, list[ast.AST]] = {}  # each function's, class's or the module's own code
+    for node in nodes:
+        bodies.setdefault(scope(node), []).append(node)
+    sites: list[list[Any]] = []
+    for own, body in bodies.items():
+        values: dict[str, list[ast.AST]] = {}  # each local name's assigned values
+        for n in body:
+            pairs: list[tuple[ast.AST, ast.AST]] = []
+            if isinstance(n, ast.Assign):
+                pairs = [(target, n.value) for target in n.targets]
+            elif isinstance(n, ast.AnnAssign | ast.NamedExpr) and n.value is not None:
+                pairs = [(n.target, n.value)]
+            for target, value in pairs:
+                if isinstance(target, ast.Tuple) and isinstance(value, ast.Tuple):
+                    pairs.extend(zip(target.elts, value.elts, strict=False))
+                elif isinstance(target, ast.Name):
+                    values.setdefault(target.id, []).append(value)
+
+        def carried(seed: Callable[[ast.AST], bool], names: dict[str, list[ast.AST]]) -> set[str]:
+            held: set[str] = set()
+            grew = True
+            while grew:  # a name bound to the form, or to a name already bound to it
+                grew = False
+                for name, assigned in names.items():
+                    if name not in held and any(
+                        seed(c) or (isinstance(c, ast.Name) and c.id in held)
+                        for value in assigned
+                        for c in ast.walk(value)
+                    ):
+                        held.add(name)
+                        grew = True
+            return held
+
+        def holds(node: ast.AST, seed: Callable[[ast.AST], bool], held: set[str]) -> bool:
+            return any(
+                seed(c) or (isinstance(c, ast.Name) and c.id in held) for c in ast.walk(node)
+            )
+
+        for n in body:
+            if isinstance(n, ast.Call) and resolved(n) in {"sqlite3.connect", "duckdb.connect"}:
+                sites.append([n.lineno, "connect", own])
+            spelled = text(n)
+            if spelled is None or id(n) in docstrings or not _inside_text(n, parents):
+                continue
+            if "blake3:" in spelled:
+                sites.append([_line(n), "digest-tag", own])
+            if _catalog_target(spelled, values, text):
+                sites.append([_line(n), "catalog-write", own])
+
+        def dumps(c: ast.AST) -> bool:
+            return isinstance(c, ast.Call) and resolved(c) == "json.dumps"
+
+        dumped = carried(dumps, values)
+        for n in body:
+            if (
+                isinstance(n, ast.Call)
+                and called(n) in _BYTE_DIGESTS
+                and not _within(n, parents, operation)  # the outermost digest, once
+                and any(holds(argument, dumps, dumped) for argument in n.args)
+            ):
+                sites.append([n.lineno, "canonical-json", own])
+
+        def read(c: ast.AST) -> bool:
+            return isinstance(c, ast.Call) and called(c) == "read_bytes"
+
+        reads = carried(read, values)
+        compared = [
+            side
+            for n in body
+            if isinstance(n, ast.Compare) and any(isinstance(o, ast.Eq | ast.NotEq) for o in n.ops)
+            for side in (n.left, *n.comparators)
+        ]
+        bound = {  # each name a compared side reads, and the names it only aliases
+            c.id for side in compared for c in ast.walk(side) if isinstance(c, ast.Name)
+        }
+        while grew := {
+            value.id
+            for name in bound
+            for value in values.get(name, [])
+            if isinstance(value, ast.Name) and value.id not in bound
+        }:
+            bound |= grew
+        for n in body:  # one site per digest operation: the outermost of a nested spelling
+            if not operation(n) or _within(n, parents, operation):
+                continue
+            inner = list(ast.walk(n))
+            verified = (
+                any(isinstance(c, ast.Call) and called(c) == "update_mmap" for c in inner)
+                or holds(n, read, reads)
+                or _within(n, parents, lambda p: isinstance(p, ast.Compare))
+                or any(
+                    name in bound and any(v is n for v in assigned)
+                    for name, assigned in values.items()
+                )
+            )
+            if verified:
+                sites.append([_line(n), "file-verification", own])
+        if not any(isinstance(n, ast.Call) and called(n) in _SEALS for n in body):
+            continue  # a function that takes no byte digest places no seal
+        open_: dict[str, list[ast.Call]] = {}  # each destination's placements not yet sealed
+        calls = sorted(
+            (n for n in body if isinstance(n, ast.Call)),
+            key=lambda c: (c.lineno, c.col_offset),  # write order
+        )
+        for n in calls:
+            destination = _placed(n, resolved)
+            if destination is not None:
+                open_.setdefault(ast.unparse(destination), []).append(n)
+            elif (path := _argument(n, 0, "path")) is not None and (
+                called(n) in _SEAL_RECORDS
+                or (
+                    called(n) in {"verified_file_digest", "record_file_fact"}
+                    and any(
+                        k.arg == "written"
+                        and isinstance(k.value, ast.Constant)
+                        and k.value.value is True
+                        for k in n.keywords
+                    )
+                )
+            ):
+                held = open_.get(ast.unparse(path))
+                if held:  # a record seals its own destination's latest placement, once
+                    held.pop()
+        sites.extend(
+            [_line(n), "unrecorded-seal", own] for placed in open_.values() for n in placed
+        )
+    return sorted(sites)
+
+
+_DIGEST_OPERATIONS = _BYTE_DIGESTS | {"hexdigest", "update_mmap"}
+_SEALS = _BYTE_DIGESTS | {"blake3_filename"}
+
+
+def _line(node: ast.AST) -> int:
+    return int(getattr(node, "lineno", 0))
+
+
+def _within(
+    node: ast.AST, parents: Mapping[ast.AST, ast.AST], test: Callable[[ast.AST], bool]
+) -> bool:
+    """Whether an enclosing node of the same statement passes ``test``."""
+    parent = parents.get(node)
+    while parent is not None and not isinstance(parent, ast.stmt):
+        if test(parent):
+            return True
+        parent = parents.get(parent)
+    return False
+
+
+def _inside_text(node: ast.AST, parents: Mapping[ast.AST, ast.AST]) -> bool:
+    """A string that is not a part of a larger formatted string, which is read whole."""
+    return not isinstance(parents.get(node), ast.JoinedStr)
+
+
+def _catalog_target(
+    spelled: str,
+    values: Mapping[str, Sequence[ast.AST]],
+    text: Callable[[ast.AST], str | None],
+) -> bool:
+    """Whether SQL text inserts, updates, deletes or merges into a catalog table: one spelled
+    ``lake.``, in any case, or a formatted name the scope bound to such a table's text."""
+    words = spelled.split(maxsplit=3)
+    keywords = tuple(word.upper() for word in words[:2])
+    if keywords in _CATALOG_WRITES and len(words) > 2:
+        target = words[2]
+    elif words[:1] and words[0].upper() == "UPDATE" and len(words) > 1:
+        target = words[1]
+    else:
+        return False
+    if target.lower().startswith("lake."):
+        return True
+    name = target[1:-1] if target.startswith("{") and target.endswith("}") else None
+    return name is not None and any(
+        (bound := text(value)) is not None and bound.lower().startswith("lake.")
+        for value in values.get(name, ())
+    )
+
+
+def _argument(call: ast.Call, position: int, keyword: str) -> ast.AST | None:
+    if len(call.args) > position:
+        return call.args[position]
+    return next((k.value for k in call.keywords if k.arg == keyword), None)
+
+
+def _placed(call: ast.Call, resolved: Callable[[ast.Call], str]) -> ast.AST | None:
+    """The destination a call places a file at: ``os.replace``'s second argument, the store's
+    ``atomic_write`` path, or a one-argument path ``replace`` or ``rename``'s target."""
+    if resolved(call) == "os.replace":
+        return _argument(call, 1, "dst")
+    func = call.func
+    if (getattr(func, "attr", None) or getattr(func, "id", None)) == "atomic_write":
+        return _argument(call, 0, "path")
+    if (
+        isinstance(func, ast.Attribute)
+        and func.attr in {"replace", "rename"}
+        and len(call.args) == 1
+        and not call.keywords
+    ):
+        return call.args[0]
+    return None
 
 
 def physical_namespace_violations(

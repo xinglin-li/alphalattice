@@ -197,7 +197,10 @@ def mentions(source: str, words: Collection[str]) -> set[str]:
 
 _HAND = frozenset({"OrderedDict", "WeakKeyDictionary", "WeakValueDictionary"})
 """Stateful maps evicted by hand: their bound is not a count the scan reads."""
-_MAPS = frozenset({"BoundedMemo", "dict", "Dict", *_HAND})
+_MAPS = frozenset({"BoundedMemo", "dict", "Dict", "Mapping", "MutableMapping", *_HAND})
+_PLAIN = frozenset({"dict", "defaultdict"})
+"""A module-level map spelled as an empty literal or one of these calls: a cache once a function
+writes it, holding no bound the scan can read."""
 
 # What a cache's source holds its size to: a count, an owner's capacity it does not spell as a
 # number ("capacity"), a hand-written eviction the scan cannot read ("hand"), or None for none.
@@ -278,11 +281,105 @@ def _context_held(
     return dict.fromkeys(names, bound)
 
 
+def _written_maps(tree: ast.Module) -> set[str]:
+    """The module names a function writes into by key: an item assigned or a map method that
+    stores one (``setdefault``, ``update``)."""
+    written: set[str] = set()
+    for function in ast.walk(tree):
+        if not isinstance(function, ast.FunctionDef | ast.AsyncFunctionDef):
+            continue
+        for node in ast.walk(function):
+            targets = (
+                node.targets
+                if isinstance(node, ast.Assign)
+                else [node.target]
+                if isinstance(node, ast.AugAssign | ast.AnnAssign)
+                else []
+            )
+            written.update(
+                t.value.id
+                for t in targets
+                if isinstance(t, ast.Subscript) and isinstance(t.value, ast.Name)
+            )
+            if (
+                isinstance(node, ast.Call)
+                and isinstance(node.func, ast.Attribute)
+                and node.func.attr in {"setdefault", "update"}
+                and isinstance(node.func.value, ast.Name)
+            ):
+                written.add(node.func.value.id)
+    return written
+
+
+def _sized(node: ast.AST) -> str | None:
+    """The map a ``len(name)`` call measures."""
+    if (
+        isinstance(node, ast.Call)
+        and _named(node) == "len"
+        and len(node.args) == 1
+        and isinstance(node.args[0], ast.Name)
+    ):
+        return node.args[0].id
+    return None
+
+
+def _over_capacity(node: ast.If | ast.While) -> tuple[str, list[ast.stmt]] | None:
+    """The map a single size comparison tests and the statements that run once it is at or
+    over its limit: the body for ``len(m) >= n`` (``>``, ``n <= len(m)``, ``n < len(m)``), an
+    if's else for ``len(m) < n`` (``<=``, ``n > len(m)``, ``n >= len(m)``). Any other test
+    names none, so it earns nothing."""
+    test = node.test
+    if not (isinstance(test, ast.Compare) and len(test.ops) == 1):
+        return None
+    left, right, op = test.left, test.comparators[0], test.ops[0]
+    name, growing = _sized(left), isinstance(op, ast.Gt | ast.GtE)
+    if name is None:
+        name, growing = _sized(right), isinstance(op, ast.Lt | ast.LtE)
+    if name is None or not isinstance(op, ast.Gt | ast.GtE | ast.Lt | ast.LtE):
+        return None
+    if growing:
+        return name, node.body
+    return (name, node.orelse) if isinstance(node, ast.If) else None
+
+
+def _measured_maps(tree: ast.Module) -> set[str]:
+    """The names evicted by hand: a branch or loop whose single ``len(name)`` comparison's
+    at-or-over-limit side evicts from that map (``pop``, ``popitem``, ``clear`` or
+    ``del name[key]``). A size compared only to log or warn, or an eviction on the side below
+    the limit, earns nothing."""
+    held: set[str] = set()
+    for node in ast.walk(tree):
+        if not isinstance(node, ast.If | ast.While):
+            continue
+        over = _over_capacity(node)
+        if over is None:
+            continue
+        measured, side = {over[0]}, over[1]
+        evicted = set()
+        for inner in (c for statement in side for c in ast.walk(statement)):
+            if (
+                isinstance(inner, ast.Call)
+                and isinstance(inner.func, ast.Attribute)
+                and inner.func.attr in {"pop", "popitem", "clear"}
+                and isinstance(inner.func.value, ast.Name)
+            ):
+                evicted.add(inner.func.value.id)
+            elif isinstance(inner, ast.Delete):
+                evicted.update(
+                    t.value.id
+                    for t in inner.targets
+                    if isinstance(t, ast.Subscript) and isinstance(t.value, ast.Name)
+                )
+        held |= measured & evicted
+    return held
+
+
 def cache_holdings(source: str) -> set[tuple[str, CacheBound, str]]:
     """Each cache a module holds, by the name the cache register's ``defined_by`` gives it after
     its path, with the bound its source declares and the kind that declares it: functools caches
     by their dotted scope (kind ``functools``), and module-level stateful maps (their class's name)
-    and the context variables that hold one (``ContextVar``) by their name. The cache census
+    and the context variables that hold one (``ContextVar``) by their name, and a plain map a
+    function writes by key (``dict``, no bound the scan can read). The cache census
     builds its answer from this, so it selects exactly the edits that change the answer: a bound
     named through a module constant or a type alias, or a map's kind, included."""
     tree = ast.parse(source)
@@ -317,10 +414,22 @@ def cache_holdings(source: str) -> set[tuple[str, CacheBound, str]]:
             aliases[node.name.id] = node.value
         elif isinstance(node, ast.Assign) and isinstance(node.targets[0], ast.Name):
             aliases[node.targets[0].id] = node.value
+    written, measured = _written_maps(tree), _measured_maps(tree)
     for node in tree.body:
         value = node.value if isinstance(node, ast.Assign | ast.AnnAssign) else None
         targets = node.targets if isinstance(node, ast.Assign) else [getattr(node, "target", None)]
         names = [t.id for t in targets if isinstance(t, ast.Name)]
+        if (isinstance(value, ast.Dict) and not value.keys) or (
+            isinstance(value, ast.Call)
+            and _named(value) in _PLAIN
+            and (_named(value) == "defaultdict" or not (value.args or value.keywords))
+        ):
+            held.update(
+                {name: ("hand" if name in measured else None, "dict") for name in names}
+                if set(names) <= written
+                else {}
+            )
+            continue
         if not isinstance(value, ast.Call):
             continue
         kind = _named(value)

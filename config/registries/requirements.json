@@ -244,6 +244,12 @@
         "decided": "2026-11-15: the excess is shared build-once fixtures and tool stubs that remove child processes; every case kept"
       }
     },
+    "architecture.converged_owners_refuse_a_new_bypass": {
+      "description": "A connection, digest tag, second canonical JSON, file verification, unrecorded placement or catalog write outside its owner is refused by name, a named unit with its reason passes, and a named unit only shrinks.",
+      "owner": "devtools.architecture",
+      "layer": "unit",
+      "seconds": 1
+    },
     "architecture.discovered_imports_kept_by_place_and_bytes": {
       "description": "A module's discovered imports are kept in the process by its place under the source root and its bytes, so changed bytes or another place miss and a read or parse error is raised every time.",
       "owner": "devtools.architecture",
@@ -287,6 +293,12 @@
       "owner": "devtools.architecture",
       "layer": "integration",
       "seconds": 5
+    },
+    "architecture.row_crossings_only_fall": {
+      "description": "A commit is refused when a file's to_pylist or fetchall count rises above its baseline, or the baseline rose above its base; an Arrow fetch or a name in a string is not counted.",
+      "owner": "devtools.architecture",
+      "layer": "unit",
+      "seconds": 1
     },
     "architecture.scan_facts_kept_by_bytes_under_seal_and_byte_cap": {
       "description": "A scan's kept per-file fact is served only for the bytes it came from under a valid seal and shape, and its store stays bounded and rebuildable.",

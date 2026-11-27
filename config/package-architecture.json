@@ -1188,5 +1188,467 @@
     "workspace_runtime.pre_research_reconciliation": "retired by a cutover; its absence was asserted by test_factor_and_research_foundation_package_cutover_is_complete",
     "workspace_runtime.process_metrics": "retired by a cutover; its absence was asserted by test_data_feature_package_cutover_is_complete",
     "workspace_runtime.storage_contracts": "retired by a cutover; its absence was asserted by test_data_feature_package_cutover_is_complete"
+  },
+  "owner_bypasses": {
+    "src/alphalattice/capabilities/alpha_modeling/model_contract.py::contract_key::file-verification": {
+      "count": 1,
+      "reason": "a model module's source bytes hashed into its contract key: the trust door holds stamped store files, not source modules"
+    },
+    "src/alphalattice/capabilities/alpha_modeling/runtime/lightgbm_threads.py::<module>::digest-tag": {
+      "count": 1,
+      "reason": "the sealed LightGBM thread canaries' pinned digests"
+    },
+    "src/alphalattice/capabilities/knowledge/catalog.py::SystemResourceCatalog._load_from_root::file-verification": {
+      "count": 2,
+      "reason": "shipped resources checked against the package's declared digests: a release boundary"
+    },
+    "src/alphalattice/capabilities/portfolio_inputs/tradability/surface.py::TradabilityArtifactStore.publish_chunk::canonical-json": {
+      "count": 1,
+      "reason": "an identity recorded in its own JSON encoding, not proved equal to canonical_json; a move would move recorded identities"
+    },
+    "src/alphalattice/capabilities/portfolio_inputs/tradability/surface.py::TradabilityArtifactStore.publish_json::canonical-json": {
+      "count": 1,
+      "reason": "an identity recorded in its own JSON encoding, not proved equal to canonical_json; a move would move recorded identities"
+    },
+    "src/alphalattice/capabilities/portfolio_inputs/tradability/surface.py::TradabilityArtifactStore.resolve_chunk::canonical-json": {
+      "count": 1,
+      "reason": "an identity recorded in its own JSON encoding, not proved equal to canonical_json; a move would move recorded identities"
+    },
+    "src/alphalattice/capabilities/portfolio_inputs/tradability/surface.py::TradabilityArtifactStore.resolve_chunk::file-verification": {
+      "count": 1,
+      "reason": "a stored file proved against its recorded digest outside the trust door, which holds no stamp record for this store"
+    },
+    "src/alphalattice/control/guanyin/tasks/supervision.py::IncidentStore.put::unrecorded-seal": {
+      "count": 1,
+      "reason": "a file named by a digest of its data or of a key, not of its bytes: there is no byte seal to record without a second hash"
+    },
+    "src/alphalattice/control/product_host/composition/evidence_review_bundles.py::EvidenceReviewBundles.prepare_specialist_bundle::digest-tag": {
+      "count": 1,
+      "reason": "a pinned digest literal or a blake3: tag built or tested in place, whose accepted forms are not proved equal to kernel.identity's"
+    },
+    "src/alphalattice/control/product_host/composition/strategy_score_inputs.py::<module>::digest-tag": {
+      "count": 1,
+      "reason": "a pinned digest literal or a blake3: tag built or tested in place, whose accepted forms are not proved equal to kernel.identity's"
+    },
+    "src/alphalattice/control/product_host/composition/verification_sweep.py::StudyVerificationSweep._seal::unrecorded-seal": {
+      "count": 1,
+      "reason": "a file named by a digest of its data or of a key, not of its bytes: there is no byte seal to record without a second hash"
+    },
+    "src/alphalattice/control/product_host/publication/goals.py::GoalStore.declare::unrecorded-seal": {
+      "count": 1,
+      "reason": "a file named by a digest of its data or of a key, not of its bytes: there is no byte seal to record without a second hash"
+    },
+    "src/alphalattice/control/product_host/research_authoring/factor_inputs.py::FactorInputBundle::digest-tag": {
+      "count": 1,
+      "reason": "a pinned digest literal or a blake3: tag built or tested in place, whose accepted forms are not proved equal to kernel.identity's"
+    },
+    "src/alphalattice/control/product_host/research_authoring/factor_inputs.py::_record_input_publication::unrecorded-seal": {
+      "count": 1,
+      "reason": "a file named by a digest of its data or of a key, not of its bytes: there is no byte seal to record without a second hash"
+    },
+    "src/alphalattice/control/product_host/research_authoring/feature_activations.py::_keep::unrecorded-seal": {
+      "count": 1,
+      "reason": "a file named by a digest of its data or of a key, not of its bytes: there is no byte seal to record without a second hash"
+    },
+    "src/alphalattice/control/product_host/research_authoring/input_revisions.py::ResearchInputRevisions.publish::unrecorded-seal": {
+      "count": 1,
+      "reason": "a file named by a digest of its data or of a key, not of its bytes: there is no byte seal to record without a second hash"
+    },
+    "src/alphalattice/control/product_host/research_authoring/model_training.py::<module>::digest-tag": {
+      "count": 1,
+      "reason": "a pinned digest literal or a blake3: tag built or tested in place, whose accepted forms are not proved equal to kernel.identity's"
+    },
+    "src/alphalattice/control/product_host/research_authoring/portfolio_handoff.py::prepare_portfolio_market_inputs::file-verification": {
+      "count": 1,
+      "reason": "a stored file proved against its recorded digest outside the trust door, which holds no stamp record for this store"
+    },
+    "src/alphalattice/control/product_host/storage/backup.py::WorkspaceBackups._capture::connect": {
+      "count": 1,
+      "reason": "the backup reads the decisions door's file read-only in one transaction while it hashes and copies it: a copy of the file, not a use of the door"
+    },
+    "src/alphalattice/control/product_host/storage/backup.py::WorkspaceBackups._generation::digest-tag": {
+      "count": 1,
+      "reason": "a pinned digest literal or a blake3: tag built or tested in place, whose accepted forms are not proved equal to kernel.identity's"
+    },
+    "src/alphalattice/control/product_host/storage/backup.py::WorkspaceBackups._generation_file_refusal::digest-tag": {
+      "count": 1,
+      "reason": "a pinned digest literal or a blake3: tag built or tested in place, whose accepted forms are not proved equal to kernel.identity's"
+    },
+    "src/alphalattice/control/product_host/storage/plan_previews.py::PreviewRegistry._seal::unrecorded-seal": {
+      "count": 1,
+      "reason": "a file named by a digest of its data or of a key, not of its bytes: there is no byte seal to record without a second hash"
+    },
+    "src/alphalattice/control/product_host/storage/retention.py::BoundedStorageRetentionOwner._publish::unrecorded-seal": {
+      "count": 1,
+      "reason": "a file named by a digest of its data or of a key, not of its bytes: there is no byte seal to record without a second hash"
+    },
+    "src/alphalattice/control/research_program/authoring/workflow.py::ResearchProgramStore.publish::unrecorded-seal": {
+      "count": 1,
+      "reason": "a file named by a digest of its data or of a key, not of its bytes: there is no byte seal to record without a second hash"
+    },
+    "src/alphalattice/control/task_control/runner.py::TaskHeartbeatReader._read_store::connect": {
+      "count": 1,
+      "reason": "reads a Task heartbeat file another process writes, read-only, outside any workspace store"
+    },
+    "src/alphalattice/control/task_control/upgrade.py::_stored_heartbeats::connect": {
+      "count": 1,
+      "reason": "the upgrade reads an older heartbeat store once to carry its rows"
+    },
+    "src/alphalattice/control/task_control/upgrade.py::carry_tasks::unrecorded-seal": {
+      "count": 1,
+      "reason": "a file named by a digest of its data or of a key, not of its bytes: there is no byte seal to record without a second hash"
+    },
+    "src/alphalattice/control/workspace_runtime/artifacts.py::ArtifactResolver._load_feature_panel_lifecycle_projection::canonical-json": {
+      "count": 1,
+      "reason": "an identity recorded in its own JSON encoding, not proved equal to canonical_json; a move would move recorded identities"
+    },
+    "src/alphalattice/control/workspace_runtime/artifacts.py::ArtifactResolver._load_feature_panel_lifecycle_projection::file-verification": {
+      "count": 1,
+      "reason": "a stored file proved against its recorded digest outside the trust door, which holds no stamp record for this store"
+    },
+    "src/alphalattice/control/workspace_runtime/artifacts.py::ArtifactResolver.load_feature_panel_manifest::canonical-json": {
+      "count": 1,
+      "reason": "an identity recorded in its own JSON encoding, not proved equal to canonical_json; a move would move recorded identities"
+    },
+    "src/alphalattice/control/workspace_runtime/artifacts.py::ArtifactResolver.load_feature_panel_manifest::file-verification": {
+      "count": 1,
+      "reason": "a stored file proved against its recorded digest outside the trust door, which holds no stamp record for this store"
+    },
+    "src/alphalattice/control/workspace_runtime/artifacts.py::ArtifactResolver.publish_adjusted_return_semantic_revision::canonical-json": {
+      "count": 1,
+      "reason": "an identity recorded in its own JSON encoding, not proved equal to canonical_json; a move would move recorded identities"
+    },
+    "src/alphalattice/control/workspace_runtime/artifacts.py::ArtifactResolver.publish_adjusted_return_semantic_revision::unrecorded-seal": {
+      "count": 2,
+      "reason": "a file named by a digest of its data or of a key, not of its bytes: there is no byte seal to record without a second hash"
+    },
+    "src/alphalattice/control/workspace_runtime/artifacts.py::ArtifactResolver.publish_feature_panel_lifecycle_projection::canonical-json": {
+      "count": 1,
+      "reason": "an identity recorded in its own JSON encoding, not proved equal to canonical_json; a move would move recorded identities"
+    },
+    "src/alphalattice/control/workspace_runtime/artifacts.py::ArtifactResolver.publish_feature_panel_lifecycle_projection::unrecorded-seal": {
+      "count": 1,
+      "reason": "a file named by a digest of its data or of a key, not of its bytes: there is no byte seal to record without a second hash"
+    },
+    "src/alphalattice/control/workspace_runtime/artifacts.py::ArtifactResolver.publish_feature_panel_manifest::canonical-json": {
+      "count": 1,
+      "reason": "an identity recorded in its own JSON encoding, not proved equal to canonical_json; a move would move recorded identities"
+    },
+    "src/alphalattice/control/workspace_runtime/artifacts.py::ArtifactResolver.publish_feature_panel_manifest::unrecorded-seal": {
+      "count": 1,
+      "reason": "a file named by a digest of its data or of a key, not of its bytes: there is no byte seal to record without a second hash"
+    },
+    "src/alphalattice/control/workspace_runtime/artifacts.py::ArtifactResolver.publish_feature_panel_semantic_index::canonical-json": {
+      "count": 1,
+      "reason": "an identity recorded in its own JSON encoding, not proved equal to canonical_json; a move would move recorded identities"
+    },
+    "src/alphalattice/control/workspace_runtime/artifacts.py::ArtifactResolver.publish_feature_panel_semantic_index::unrecorded-seal": {
+      "count": 1,
+      "reason": "a file named by a digest of its data or of a key, not of its bytes: there is no byte seal to record without a second hash"
+    },
+    "src/alphalattice/control/workspace_runtime/artifacts.py::ArtifactResolver.publish_panel_clip_observation::canonical-json": {
+      "count": 1,
+      "reason": "an identity recorded in its own JSON encoding, not proved equal to canonical_json; a move would move recorded identities"
+    },
+    "src/alphalattice/control/workspace_runtime/artifacts.py::ArtifactResolver.publish_panel_clip_observation::unrecorded-seal": {
+      "count": 1,
+      "reason": "a file named by a digest of its data or of a key, not of its bytes: there is no byte seal to record without a second hash"
+    },
+    "src/alphalattice/control/workspace_runtime/artifacts.py::ArtifactResolver.publish_panel_clipping_evidence::canonical-json": {
+      "count": 1,
+      "reason": "an identity recorded in its own JSON encoding, not proved equal to canonical_json; a move would move recorded identities"
+    },
+    "src/alphalattice/control/workspace_runtime/artifacts.py::ArtifactResolver.publish_panel_clipping_evidence::unrecorded-seal": {
+      "count": 1,
+      "reason": "a file named by a digest of its data or of a key, not of its bytes: there is no byte seal to record without a second hash"
+    },
+    "src/alphalattice/control/workspace_runtime/artifacts.py::ArtifactResolver.publish_panel_preprocessing_binding::canonical-json": {
+      "count": 1,
+      "reason": "an identity recorded in its own JSON encoding, not proved equal to canonical_json; a move would move recorded identities"
+    },
+    "src/alphalattice/control/workspace_runtime/artifacts.py::ArtifactResolver.publish_panel_preprocessing_binding::unrecorded-seal": {
+      "count": 1,
+      "reason": "a file named by a digest of its data or of a key, not of its bytes: there is no byte seal to record without a second hash"
+    },
+    "src/alphalattice/control/workspace_runtime/artifacts.py::ArtifactResolver.publish_panel_preprocessing_marker::canonical-json": {
+      "count": 1,
+      "reason": "an identity recorded in its own JSON encoding, not proved equal to canonical_json; a move would move recorded identities"
+    },
+    "src/alphalattice/control/workspace_runtime/artifacts.py::ArtifactResolver.publish_panel_preprocessing_marker::file-verification": {
+      "count": 1,
+      "reason": "a stored file proved against its recorded digest outside the trust door, which holds no stamp record for this store"
+    },
+    "src/alphalattice/control/workspace_runtime/artifacts.py::ArtifactResolver.publish_panel_preprocessing_marker::unrecorded-seal": {
+      "count": 1,
+      "reason": "a file named by a digest of its data or of a key, not of its bytes: there is no byte seal to record without a second hash"
+    },
+    "src/alphalattice/control/workspace_runtime/artifacts.py::_metadata_hash::canonical-json": {
+      "count": 1,
+      "reason": "an identity recorded in its own JSON encoding, not proved equal to canonical_json; a move would move recorded identities"
+    },
+    "src/alphalattice/control/workspace_runtime/content_store.py::ContentAddressedStore.load_document::file-verification": {
+      "count": 1,
+      "reason": "a document read by its content name and proved in full against it, the store's full proof (EV2)"
+    },
+    "src/alphalattice/evidence/alternative_evidence/documents/library.py::EvidenceLibrary.read_revision::file-verification": {
+      "count": 1,
+      "reason": "an Evidence body read from the World store or a source object and checked as read: the trust door holds files on disk, not stored bodies"
+    },
+    "src/alphalattice/evidence/alternative_evidence/retrieval/session.py::AlternativeEvidenceRetrievalSession._read_table_views::file-verification": {
+      "count": 1,
+      "reason": "an Evidence body read from the World store or a source object and checked as read: the trust door holds files on disk, not stored bodies"
+    },
+    "src/alphalattice/evidence/alternative_evidence/retrieval/session.py::AlternativeEvidenceRetrievalSession._table_view_refusals::file-verification": {
+      "count": 1,
+      "reason": "an Evidence body read from the World store or a source object and checked as read: the trust door holds files on disk, not stored bodies"
+    },
+    "src/alphalattice/evidence/alternative_evidence/runtime/task_adapter.py::_verify_table_view::file-verification": {
+      "count": 1,
+      "reason": "an Evidence body read from the World store or a source object and checked as read: the trust door holds files on disk, not stored bodies"
+    },
+    "src/alphalattice/evidence/alternative_evidence/sources/campaign.py::_line_hash::canonical-json": {
+      "count": 1,
+      "reason": "an identity recorded in its own JSON encoding, not proved equal to canonical_json; a move would move recorded identities"
+    },
+    "src/alphalattice/evidence/alternative_evidence/sources/contracts.py::source_object_bytes::file-verification": {
+      "count": 2,
+      "reason": "an Evidence body read from the World store or a source object and checked as read: the trust door holds files on disk, not stored bodies"
+    },
+    "src/alphalattice/evidence/alternative_evidence/storage/world.py::_import_original::file-verification": {
+      "count": 2,
+      "reason": "an Evidence body read from the World store or a source object and checked as read: the trust door holds files on disk, not stored bodies"
+    },
+    "src/alphalattice/evidence/alternative_evidence/storage/world.py::carry_originals::file-verification": {
+      "count": 1,
+      "reason": "an Evidence body read from the World store or a source object and checked as read: the trust door holds files on disk, not stored bodies"
+    },
+    "src/alphalattice/evidence/alternative_evidence/storage/world.py::original_locator_bodies::file-verification": {
+      "count": 2,
+      "reason": "an Evidence body read from the World store or a source object and checked as read: the trust door holds files on disk, not stored bodies"
+    },
+    "src/alphalattice/evidence/alternative_evidence/storage/world_reads.py::body::file-verification": {
+      "count": 1,
+      "reason": "an Evidence body read from the World store or a source object and checked as read: the trust door holds files on disk, not stored bodies"
+    },
+    "src/alphalattice/evidence/alternative_evidence/storage/world_reads.py::exact::file-verification": {
+      "count": 1,
+      "reason": "an Evidence body read from the World store or a source object and checked as read: the trust door holds files on disk, not stored bodies"
+    },
+    "src/alphalattice/evidence/alternative_evidence/storage/world_reads.py::locator_body::file-verification": {
+      "count": 1,
+      "reason": "an Evidence body read from the World store or a source object and checked as read: the trust door holds files on disk, not stored bodies"
+    },
+    "src/alphalattice/evidence/alternative_evidence/storage/world_reads.py::workspace_body::file-verification": {
+      "count": 1,
+      "reason": "an Evidence body read from the World store or a source object and checked as read: the trust door holds files on disk, not stored bodies"
+    },
+    "src/alphalattice/foundation/causal_outcomes/execution/artifacts.py::_ExecutionOutcomeArtifactStore._read_local_qa_table::file-verification": {
+      "count": 2,
+      "reason": "a stored file proved against its recorded digest outside the trust door, which holds no stamp record for this store"
+    },
+    "src/alphalattice/foundation/causal_outcomes/execution/artifacts.py::_ExecutionOutcomeArtifactStore.publish_chunk::canonical-json": {
+      "count": 1,
+      "reason": "an identity recorded in its own JSON encoding, not proved equal to canonical_json; a move would move recorded identities"
+    },
+    "src/alphalattice/foundation/causal_outcomes/execution/artifacts.py::_ExecutionOutcomeArtifactStore.publish_json::canonical-json": {
+      "count": 1,
+      "reason": "an identity recorded in its own JSON encoding, not proved equal to canonical_json; a move would move recorded identities"
+    },
+    "src/alphalattice/foundation/causal_outcomes/execution/artifacts.py::_ExecutionOutcomeArtifactStore.publish_local_qa_preparation::file-verification": {
+      "count": 1,
+      "reason": "a stored file proved against its recorded digest outside the trust door, which holds no stamp record for this store"
+    },
+    "src/alphalattice/foundation/data_layer/arrays.py::_artifact_seal::digest-tag": {
+      "count": 1,
+      "reason": "a pinned digest literal or a blake3: tag built or tested in place, whose accepted forms are not proved equal to kernel.identity's"
+    },
+    "src/alphalattice/foundation/data_layer/arrays.py::_prove::file-verification": {
+      "count": 1,
+      "reason": "an array's identity is the digest of its decoded column buffers, not of its file's bytes"
+    },
+    "src/alphalattice/foundation/data_layer/experiences.py::_keep::digest-tag": {
+      "count": 1,
+      "reason": "a pinned digest literal or a blake3: tag built or tested in place, whose accepted forms are not proved equal to kernel.identity's"
+    },
+    "src/alphalattice/foundation/data_layer/history_carried_results.py::_carry_results::unrecorded-seal": {
+      "count": 1,
+      "reason": "a file named by a digest of its data or of a key, not of its bytes: there is no byte seal to record without a second hash"
+    },
+    "src/alphalattice/foundation/data_layer/inputs.py::file_digest::file-verification": {
+      "count": 1,
+      "reason": "the Factor input binder seals the file it binds, read once by mmap: a seal at write, not a verify"
+    },
+    "src/alphalattice/foundation/data_layer/inputs.py::manifest_held::file-verification": {
+      "count": 2,
+      "reason": "proves a binding document against the member seal the log's relation holds, in memory"
+    },
+    "src/alphalattice/foundation/data_layer/inputs.py::view::unrecorded-seal": {
+      "count": 2,
+      "reason": "a file named by a digest of its data or of a key, not of its bytes: there is no byte seal to record without a second hash"
+    },
+    "src/alphalattice/foundation/data_layer/knowledge.py::KnowledgeStore._experience_body::digest-tag": {
+      "count": 2,
+      "reason": "a pinned digest literal or a blake3: tag built or tested in place, whose accepted forms are not proved equal to kernel.identity's"
+    },
+    "src/alphalattice/foundation/data_layer/store.py::StorePort.telemetry_batch::catalog-write": {
+      "count": 1,
+      "reason": "a native export's one atomic catalog snapshot, which owes no admission event and so has nothing for repair to append, named by design"
+    },
+    "src/alphalattice/foundation/data_layer/store.py::feature_table::digest-tag": {
+      "count": 1,
+      "reason": "a pinned digest literal or a blake3: tag built or tested in place, whose accepted forms are not proved equal to kernel.identity's"
+    },
+    "src/alphalattice/foundation/factor_research/experiments/development_evidence.py::_publish_json::unrecorded-seal": {
+      "count": 1,
+      "reason": "a file named by a digest of its data or of a key, not of its bytes: there is no byte seal to record without a second hash"
+    },
+    "src/alphalattice/foundation/feature_engine/panels/development_overlay.py::DevelopmentFeatureOverlayService.materialize::unrecorded-seal": {
+      "count": 1,
+      "reason": "a file named by a digest of its data or of a key, not of its bytes: there is no byte seal to record without a second hash"
+    },
+    "src/alphalattice/foundation/feature_engine/panels/materialization_identity.py::_canonical_hash::canonical-json": {
+      "count": 1,
+      "reason": "an identity recorded in its own JSON encoding, not proved equal to canonical_json; a move would move recorded identities"
+    },
+    "src/alphalattice/foundation/feature_engine/panels/materialization_identity.py::feature_row_content_hash_from_canonical::canonical-json": {
+      "count": 1,
+      "reason": "an identity recorded in its own JSON encoding, not proved equal to canonical_json; a move would move recorded identities"
+    },
+    "src/alphalattice/foundation/feature_engine/panels/rematerialization.py::_metadata_hash::canonical-json": {
+      "count": 1,
+      "reason": "an identity recorded in its own JSON encoding, not proved equal to canonical_json; a move would move recorded identities"
+    },
+    "src/alphalattice/foundation/feature_engine/panels/retention_residue.py::PanelRetentionResidueOwner._publish_receipt::unrecorded-seal": {
+      "count": 1,
+      "reason": "a file named by a digest of its data or of a key, not of its bytes: there is no byte seal to record without a second hash"
+    },
+    "src/alphalattice/foundation/market_data_ops/publication/projection.py::<module>::canonical-json": {
+      "count": 1,
+      "reason": "an identity recorded in its own JSON encoding, not proved equal to canonical_json; a move would move recorded identities"
+    },
+    "src/alphalattice/foundation/market_data_ops/publication/projection.py::_canonical_hash::canonical-json": {
+      "count": 1,
+      "reason": "an identity recorded in its own JSON encoding, not proved equal to canonical_json; a move would move recorded identities"
+    },
+    "src/alphalattice/foundation/market_data_ops/publication/projection.py::action_set_hash::canonical-json": {
+      "count": 1,
+      "reason": "an identity recorded in its own JSON encoding, not proved equal to canonical_json; a move would move recorded identities"
+    },
+    "src/alphalattice/foundation/market_data_ops/publication/projection.py::provider_adjusted_close_evidence_hash::canonical-json": {
+      "count": 1,
+      "reason": "an identity recorded in its own JSON encoding, not proved equal to canonical_json; a move would move recorded identities"
+    },
+    "src/alphalattice/foundation/market_data_ops/publication/session_marks.py::_metadata_identity::canonical-json": {
+      "count": 1,
+      "reason": "an identity recorded in its own JSON encoding, not proved equal to canonical_json; a move would move recorded identities"
+    },
+    "src/alphalattice/foundation/market_data_ops/returns/sector_revision_identity.py::sector_revision_hash::canonical-json": {
+      "count": 1,
+      "reason": "an identity recorded in its own JSON encoding, not proved equal to canonical_json; a move would move recorded identities"
+    },
+    "src/alphalattice/foundation/market_data_ops/runtime/remediation.py::canonical_hash::canonical-json": {
+      "count": 1,
+      "reason": "an identity recorded in its own JSON encoding, not proved equal to canonical_json; a move would move recorded identities"
+    },
+    "src/alphalattice/foundation/market_data_ops/runtime/universe_onboarding.py::CurrentUniverseOnboarding._defer_hydration::canonical-json": {
+      "count": 2,
+      "reason": "an identity recorded in its own JSON encoding, not proved equal to canonical_json; a move would move recorded identities"
+    },
+    "src/alphalattice/foundation/market_data_ops/runtime/universe_onboarding.py::CurrentUniverseOnboarding._quality_admission_hash::canonical-json": {
+      "count": 1,
+      "reason": "an identity recorded in its own JSON encoding, not proved equal to canonical_json; a move would move recorded identities"
+    },
+    "src/alphalattice/foundation/market_data_ops/sources/manifest.py::_canonical_hash::canonical-json": {
+      "count": 1,
+      "reason": "an identity recorded in its own JSON encoding, not proved equal to canonical_json; a move would move recorded identities"
+    },
+    "src/alphalattice/foundation/market_data_ops/sources/providers.py::<module>::canonical-json": {
+      "count": 1,
+      "reason": "an identity recorded in its own JSON encoding, not proved equal to canonical_json; a move would move recorded identities"
+    },
+    "src/alphalattice/foundation/market_data_ops/sources/providers.py::YFinanceMarketDataProvider.fetch_current_sector::canonical-json": {
+      "count": 1,
+      "reason": "an identity recorded in its own JSON encoding, not proved equal to canonical_json; a move would move recorded identities"
+    },
+    "src/alphalattice/foundation/market_data_ops/sources/universe.py::_canonical_hash::canonical-json": {
+      "count": 1,
+      "reason": "an identity recorded in its own JSON encoding, not proved equal to canonical_json; a move would move recorded identities"
+    },
+    "src/alphalattice/foundation/market_data_ops/storage/rebase.py::RawBarRebase.receipt_hash::canonical-json": {
+      "count": 1,
+      "reason": "an identity recorded in its own JSON encoding, not proved equal to canonical_json; a move would move recorded identities"
+    },
+    "src/alphalattice/interface/local_application/client.py::<module>::digest-tag": {
+      "count": 1,
+      "reason": "a pinned digest literal or a blake3: tag built or tested in place, whose accepted forms are not proved equal to kernel.identity's"
+    },
+    "src/alphalattice/interface/local_application/native_bridge.py::_digest::canonical-json": {
+      "count": 1,
+      "reason": "an identity recorded in its own JSON encoding, not proved equal to canonical_json; a move would move recorded identities"
+    },
+    "src/alphalattice/investment/alpha_research/experiments/development_artifacts.py::AlphaDevelopmentArtifactStore._frozen_payload_with_identity::file-verification": {
+      "count": 1,
+      "reason": "a stored file proved against its recorded digest outside the trust door, which holds no stamp record for this store"
+    },
+    "src/alphalattice/investment/alpha_research/experiments/development_artifacts.py::AlphaDevelopmentArtifactStore.import_packed::file-verification": {
+      "count": 1,
+      "reason": "the development artifact store, which no Daily reads"
+    },
+    "src/alphalattice/investment/alpha_research/experiments/development_artifacts.py::AlphaDevelopmentArtifactStore.publish_panel_score_authority_group::file-verification": {
+      "count": 1,
+      "reason": "the development artifact store, which no Daily reads"
+    },
+    "src/alphalattice/investment/alpha_research/experiments/development_artifacts.py::AlphaDevelopmentArtifactStore.publish_staged_development::file-verification": {
+      "count": 1,
+      "reason": "the development artifact store, which no Daily reads"
+    },
+    "src/alphalattice/investment/alpha_research/scores/heterogeneous_replay.py::_immutable_scores::file-verification": {
+      "count": 1,
+      "reason": "a stored file proved against its recorded digest outside the trust door, which holds no stamp record for this store"
+    },
+    "src/alphalattice/investment/alpha_research/scores/product_recipe.py::<module>::digest-tag": {
+      "count": 1,
+      "reason": "a pinned digest literal or a blake3: tag built or tested in place, whose accepted forms are not proved equal to kernel.identity's"
+    },
+    "src/alphalattice/investment/risk_research/surfaces/returns.py::RiskReturnArtifactStore.publish_chunk::canonical-json": {
+      "count": 1,
+      "reason": "an identity recorded in its own JSON encoding, not proved equal to canonical_json; a move would move recorded identities"
+    },
+    "src/alphalattice/investment/risk_research/surfaces/returns.py::RiskReturnArtifactStore.publish_chunk::unrecorded-seal": {
+      "count": 1,
+      "reason": "a file named by a digest of its data or of a key, not of its bytes: there is no byte seal to record without a second hash"
+    },
+    "src/alphalattice/investment/risk_research/surfaces/returns.py::RiskReturnArtifactStore.publish_manifest::canonical-json": {
+      "count": 1,
+      "reason": "an identity recorded in its own JSON encoding, not proved equal to canonical_json; a move would move recorded identities"
+    },
+    "src/alphalattice/investment/risk_research/surfaces/returns.py::RiskReturnArtifactStore.resolve_chunk::canonical-json": {
+      "count": 1,
+      "reason": "an identity recorded in its own JSON encoding, not proved equal to canonical_json; a move would move recorded identities"
+    },
+    "src/alphalattice/investment/risk_research/surfaces/returns.py::RiskReturnArtifactStore.resolve_chunk::file-verification": {
+      "count": 1,
+      "reason": "a stored file proved against its recorded digest outside the trust door, which holds no stamp record for this store"
+    },
+    "src/alphalattice/investment/sector_research/inputs/storage.py::SectorContextStore.publish::file-verification": {
+      "count": 1,
+      "reason": "a stored file proved against its recorded digest outside the trust door, which holds no stamp record for this store"
+    },
+    "src/alphalattice/oversight/chief_risk_officer/publication/portfolio_review.py::PortfolioReviewPublicationService._write_register::unrecorded-seal": {
+      "count": 1,
+      "reason": "a file named by a digest of its data or of a key, not of its bytes: there is no byte seal to record without a second hash"
+    },
+    "src/alphalattice/oversight/chief_risk_officer/publication/portfolio_review.py::_digest::canonical-json": {
+      "count": 1,
+      "reason": "an identity recorded in its own JSON encoding, not proved equal to canonical_json; a move would move recorded identities"
+    },
+    "src/alphalattice/protocols/actor_execution/projections.py::<module>::digest-tag": {
+      "count": 1,
+      "reason": "the shipped tiktoken rank file's pinned digest"
+    },
+    "src/alphalattice/protocols/actor_execution/projections.py::verified_rank_bytes::file-verification": {
+      "count": 1,
+      "reason": "the shipped tiktoken rank file checked against its pinned digest: a release boundary"
+    }
   }
 }

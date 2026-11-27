@@ -1,5 +1,5 @@
 """The commit's count ratchets: each wait rule refuses its unbounded wait and passes its repair,
-and a wait finding or a type: ignore only falls (scripts/check_counts.py)."""
+and a wait finding, a type: ignore or a row-wise crossing only falls (scripts/check_counts.py)."""
 
 import json
 import shutil
@@ -8,7 +8,7 @@ import subprocess
 import pytest
 
 from alphalattice.capabilities.domain_contracts import spawn
-from devtools.architecture import type_ignores, waits
+from devtools.architecture import row_crossings, type_ignores, waits
 
 TEST_SCOPE = "whole-tree"
 
@@ -287,3 +287,41 @@ FINDING_CASES = {
 def test_a_type_ignore_is_counted_per_error_code(text, found):
     """An ignore comment is one finding per error code, an uncoded one its own; a string none."""
     assert [(f.line, f.rule) for f in type_ignores.findings("a.py", text)] == found
+
+
+ROW_CROSSING_CASES = {  # a source, its crossings, and whether a baseline of one finding holds it
+    "a-new-fetchall-is-refused": (
+        "rows = cursor.fetchall()\n",
+        [(1, "row-crossing[fetchall]")],
+        False,
+    ),
+    "a-second-to_pylist-is-refused": (
+        "ids = table.column('id').to_pylist()\nkept = other.to_pylist()\n",
+        [(1, "row-crossing[to_pylist]"), (2, "row-crossing[to_pylist]")],
+        False,
+    ),
+    "an-arrow-fetch-is-not-one": ("table = relation.to_arrow_table()\n", [], True),
+    "a-name-in-a-string-is-not-one": ('note = "fetchall() and to_pylist()"\n', [], True),
+    "the-held-crossing-passes": (
+        "ids = table.to_pylist()\n",
+        [(1, "row-crossing[to_pylist]")],
+        True,
+    ),
+}
+
+
+@pytest.mark.proves("architecture.row_crossings_only_fall")
+@pytest.mark.parametrize(
+    ("text", "found", "held"), ROW_CROSSING_CASES.values(), ids=list(ROW_CROSSING_CASES)
+)
+def test_a_row_wise_crossing_count_only_falls(text, found, held):
+    """A to_pylist or fetchall call is one finding, an Arrow fetch or a string none; a file with
+    more than its baseline's one to_pylist, or a baseline above its base, is refused."""
+    from scripts import check_counts
+
+    rows = row_crossings.findings("src/alphalattice/a.py", text)
+    assert [(f.line, f.rule) for f in rows] == found
+    baseline = {"src/alphalattice/a.py::row-crossing[to_pylist]": 1}
+    kept = dict(on_file=baseline, scanned={"src/alphalattice/a.py"}, gone=set(), update=False)
+    assert check_counts.judge(check_counts.ROW_CROSSINGS, rows, baseline, baseline, **kept) is held
+    assert not check_counts.judge(check_counts.ROW_CROSSINGS, [], baseline, {}, **kept)

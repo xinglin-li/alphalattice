@@ -336,10 +336,7 @@ def _parsed_payload(
     key = (*_bytes_key(payload, package), bindings)
     kept = _PARSED.get(key)
     if kept is None:
-        try:
-            tree = ast.parse(payload, filename=filename)
-        except (SyntaxError, ValueError) as error:
-            raise ValueError("shared_kernel.source_syntax_unreadable") from error
+        tree = _tree(payload, filename)
         imported = _imports(tree, package=package)
         if bindings:
             _bind_syntax_imports(tree, dict(bindings))
@@ -757,7 +754,7 @@ def _canonical(path: Path, package: str) -> _Canonical:
     key, payload = _keyed(path, package)
     kept = _CANONICAL.get(key)
     if kept is None:
-        kept = _CANONICAL[key] = _canonical_tree(_tree(payload, path), key)
+        kept = _CANONICAL[key] = _canonical_tree(_tree(payload, path.name), key)
     return kept
 
 
@@ -769,9 +766,10 @@ def _keyed(path: Path, package: str) -> tuple[tuple[str, str], bytes]:
     return _bytes_key(payload, package), payload
 
 
-def _tree(payload: bytes, path: Path) -> ast.Module:
+def _tree(payload: bytes, filename: str) -> ast.Module:
+    """A source module's one parse, which the work census names by its bytes."""
     try:
-        return ast.parse(payload, filename=path.name)
+        return ast.parse(payload, filename=filename)
     except (SyntaxError, ValueError) as error:
         raise ValueError("shared_kernel.source_syntax_unreadable") from error
 

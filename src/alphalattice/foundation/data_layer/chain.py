@@ -12,7 +12,7 @@ import json
 from collections.abc import Callable, Iterable
 from typing import Any, Final, Protocol
 
-from alphalattice.kernel.identity import integrity_blake3
+from alphalattice.kernel.identity import blake3_digest
 
 CHAIN_VERSION: Final = 1
 """The canonical encoding new events are folded with."""
@@ -51,7 +51,7 @@ class Event(Protocol):
 
 def digest(data: bytes) -> str:
     """Content identity of `data`, tagged with its algorithm."""
-    return f"blake3:{integrity_blake3(data).hexdigest()}"
+    return blake3_digest(data)
 
 
 def canonical(value: Any) -> bytes:

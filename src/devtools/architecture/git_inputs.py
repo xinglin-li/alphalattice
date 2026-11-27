@@ -249,6 +249,7 @@ class CensusInputs:
         self.blobs: dict[str, str] = {}
         self.objects: dict[str, str] = {}
         self.known: set[str] = set()
+        self._bases: dict[tuple[str, ...], str | None] = {}
         self.load(
             [
                 *(
@@ -282,6 +283,20 @@ class CensusInputs:
             text=True,
             creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0),
         ).split()
+
+    def merge_base(self, *refs: str) -> str | None:
+        """The best common ancestor of ``develop`` and ``refs``, read once per census; none when
+        Git finds none."""
+        if refs not in self._bases:
+            found = spawn.run(
+                ["git", "merge-base", "develop", *refs],
+                cwd=self.root,
+                capture_output=True,
+                text=True,
+                creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0),
+            )
+            self._bases[refs] = found.stdout.strip() if found.returncode == 0 else None
+        return self._bases[refs]
 
     @cached_property
     def changes(self) -> list[tuple[list[str], str]]:

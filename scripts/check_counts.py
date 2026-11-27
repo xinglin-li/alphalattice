@@ -1,10 +1,13 @@
-"""Refuse a count that grew where it is written: the wait rules and strict typing's escapes.
+"""Refuse a count that grew where it is written: the wait rules, strict typing's escapes and the
+row-wise crossings out of the engines.
 
 Each ratchet counts its findings per ``path::rule`` against its own baseline: the wait rules
-(devtools.architecture.waits, over src/ and scripts/) and each ``type: ignore`` per error code
-(devtools.architecture.type_ignores, over every tracked Python file). A commit's staged files are
-read as staged, in one Git read for both; a file's findings above its baseline are refused, each by
-line with its repair. A baseline holds the cases that existed when its rules came in: it only falls,
+(devtools.architecture.waits, over src/ and scripts/), each ``type: ignore`` per error code
+(devtools.architecture.type_ignores, over every tracked Python file) and each ``to_pylist()`` and
+``fetchall()`` call (devtools.architecture.row_crossings, over src/alphalattice/). A commit's
+staged files are read as staged, in one Git read for all; a file's findings above its baseline are
+refused, each by line with its repair. A baseline holds the cases that existed when its rules came
+in: it only falls,
 a change that raises it above its base (HEAD for a commit, the merge base with --base otherwise) is
 refused, and ``--update`` lowers it. A byte-identical move keeps its old path's counts; the commit
 that moves a counted file carries them to its new path with ``--update``. A file the public
@@ -31,7 +34,7 @@ sys.path.insert(0, str(ROOT / "src"))
 from scripts.release.public_manifest import classify  # noqa: E402
 
 from alphalattice.capabilities.domain_contracts import spawn  # noqa: E402
-from devtools.architecture import type_ignores, waits  # noqa: E402
+from devtools.architecture import row_crossings, type_ignores, waits  # noqa: E402
 from devtools.architecture.git_inputs import read_blobs, staged_changes, staged_moves  # noqa: E402
 
 
@@ -73,7 +76,16 @@ TYPE_IGNORES = Ratchet(
     "path::type-ignore[code] counts; lower only",
     "type the code instead of suppressing it, never raise the baseline",
 )
-RATCHETS = (WAITS, TYPE_IGNORES)
+ROW_CROSSINGS = Ratchet(
+    "row_crossings",
+    "config/row-crossing-baseline.json",
+    ("src/alphalattice/",),
+    row_crossings.findings,
+    "devtools.architecture.row_crossings over src/alphalattice/; "
+    "path::row-crossing[call] counts; lower only",
+    "keep the result columnar (Arrow or NumPy), never raise the baseline",
+)
+RATCHETS = (WAITS, TYPE_IGNORES, ROW_CROSSINGS)
 
 
 def _git(*words: str) -> str:

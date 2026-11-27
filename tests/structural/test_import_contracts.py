@@ -12,11 +12,16 @@ import pytest
 from alphalattice.capabilities.domain_contracts import spawn
 from devtools.architecture import import_contracts
 from devtools.architecture.structural import (
+    OwnerBypass,
     PackageArchitectureRegistry,
+    _owner_sites,
     discover_module_dependencies,
     discover_package_dependencies,
+    grown_bypasses,
     import_contract_violations,
     load_package_architecture_registry,
+    owner_bypass_refusals,
+    vacated_bypasses,
 )
 
 
@@ -489,3 +494,257 @@ def _tree(tmp_path):
     (tree / "src/alphalattice/kernel/low/keep.py").write_text("", encoding="utf-8")
     spawn.run(["git", "init", "-q"], cwd=tree, check=True)
     return tree
+
+
+_STORE = "alphalattice.control.high.store"
+_RECORDS = "from alphalattice.kernel.identity import blake3_digest, record_sealed\n"
+OWNER_BYPASS_CASES = {  # case: (module, its source, the refusals, the units the registry names)
+    "a-new-sqlite-connect-is-refused": (
+        _STORE,
+        "import sqlite3\nsqlite3.connect(path)\n",
+        [f"{_STORE}:2: owner-bypass connect <module>; open the database through its store's owner"],
+        {},
+    ),
+    "a-duckdb-connect-under-another-name-is-refused": (
+        _STORE,
+        "from duckdb import connect as open_db\ndef read():\n    return open_db(path)\n",
+        [f"{_STORE}:3: owner-bypass connect read; open the database through its store's owner"],
+        {},
+    ),
+    "the-log-opens-its-own-database": (
+        "alphalattice.foundation.data_layer.log",
+        "import sqlite3\nsqlite3.connect(path)\n",
+        [],
+        {},
+    ),
+    "a-digest-tag-written-in-place-is-refused": (
+        _STORE,
+        'def tag(digest):\n    return "blake3:" + digest.hexdigest()\n',
+        [
+            f"{_STORE}:2: owner-bypass digest-tag tag; tag or match a digest through "
+            "kernel.identity (tagged_blake3, is_blake3)"
+        ],
+        {},
+    ),
+    "a-docstring-naming-the-tag-is-none": (_STORE, '"""Digests read blake3:<hex>."""\n', [], {}),
+    "a-second-canonical-json-is-refused": (
+        _STORE,
+        "import json\nfrom alphalattice.kernel.identity import identity_blake3\ndef key(v):\n"
+        "    text = json.dumps(v, sort_keys=True)\n    return identity_blake3(text.encode())\n",
+        [
+            f"{_STORE}:5: owner-bypass canonical-json key; hash a value through "
+            "kernel.identity's canonical_hash"
+        ],
+        {},
+    ),
+    "the-package-root-is-the-products": (
+        "alphalattice.__init__",
+        "import sqlite3\nsqlite3.connect(path)\n",
+        [
+            "alphalattice:2: owner-bypass connect <module>; open the database through its "
+            "store's owner"
+        ],
+        {},
+    ),
+    "a-devtools-module-is-not-the-products": (
+        "devtools.probe",
+        "import sqlite3\nsqlite3.connect(path)\n",
+        [],
+        {},
+    ),
+    "a-canonical-json-under-an-alias-is-refused": (
+        _STORE,
+        "import json as j\nfrom alphalattice.kernel.identity import identity_blake3\ndef key(v):\n"
+        "    return identity_blake3(j.dumps(v).encode())\n",
+        [
+            f"{_STORE}:4: owner-bypass canonical-json key; hash a value through "
+            "kernel.identity's canonical_hash"
+        ],
+        {},
+    ),
+    "an-encoded-canonical-json-assigned-first-is-refused": (
+        _STORE,
+        "from json import dumps\nfrom alphalattice.kernel.identity import identity_blake3\n"
+        "def key(v):\n    payload = dumps(v).encode()\n    return identity_blake3(payload)\n",
+        [
+            f"{_STORE}:5: owner-bypass canonical-json key; hash a value through "
+            "kernel.identity's canonical_hash"
+        ],
+        {},
+    ),
+    "a-file-digest-compared-in-place-is-refused-once": (
+        _STORE,
+        _RECORDS + "def held(path, seal):\n    return blake3_digest(path.read_bytes()) == seal\n",
+        [
+            f"{_STORE}:3: owner-bypass file-verification held; verify the file through "
+            "verified_facts.verified_file_digest"
+        ],
+        {},
+    ),
+    "a-file-verification-split-across-names-is-refused-once": (
+        _STORE,
+        _RECORDS + "def held(path, seal):\n    data = path.read_bytes()\n"
+        "    actual = blake3_digest(data)\n    return actual == seal\n",
+        [
+            f"{_STORE}:4: owner-bypass file-verification held; verify the file through "
+            "verified_facts.verified_file_digest"
+        ],
+        {},
+    ),
+    "a-digest-that-only-names-a-path-is-no-verification": (
+        _STORE,
+        _RECORDS + "def place(root, body, held):\n    name = blake3_digest(body)\n"
+        "    target = root / name\n    return target == held\n",
+        [],
+        {},
+    ),
+    "an-mmap-read-is-refused": (
+        _STORE,
+        "def seal(digest, path):\n    return digest.update_mmap(path)\n",
+        [
+            f"{_STORE}:2: owner-bypass file-verification seal; verify the file through "
+            "verified_facts.verified_file_digest"
+        ],
+        {},
+    ),
+    "a-placement-that-records-no-seal-is-refused": (
+        _STORE,
+        _RECORDS + "import os\ndef put(staged, path, body):\n"
+        "    os.replace(staged, path)\n    return blake3_digest(body)\n",
+        [
+            f"{_STORE}:4: owner-bypass unrecorded-seal put; record the placed file's digest "
+            "with record_sealed"
+        ],
+        {},
+    ),
+    "a-placement-that-records-its-seal-passes": (
+        _STORE,
+        _RECORDS + "import os\ndef put(staged, path, body):\n    os.replace(staged, path)\n"
+        "    record_sealed(path, blake3_digest(body))\n",
+        [],
+        {},
+    ),
+    "one-seal-covers-only-its-own-placement": (
+        _STORE,
+        _RECORDS + "import os\ndef put(a, b, first, second, body):\n    os.replace(a, first)\n"
+        "    os.replace(b, second)\n    record_sealed(first, blake3_digest(body))\n",
+        [
+            f"{_STORE}:5: owner-bypass unrecorded-seal put; record the placed file's digest "
+            "with record_sealed"
+        ],
+        {},
+    ),
+    "a-path-replaced-after-its-record-needs-its-own-seal": (
+        _STORE,
+        _RECORDS + "import os\ndef put(a, b, path, body):\n    os.replace(a, path)\n"
+        "    record_sealed(path, blake3_digest(body))\n    os.replace(b, path)\n",
+        [
+            f"{_STORE}:6: owner-bypass unrecorded-seal put; record the placed file's digest "
+            "with record_sealed"
+        ],
+        {},
+    ),
+    "a-fact-not-written-records-no-seal": (
+        _STORE,
+        _RECORDS + "import os\nfrom alphalattice.kernel.identity import verified_file_digest\n"
+        "def put(staged, path, body):\n    os.replace(staged, path)\n"
+        "    verified_file_digest(path, written=False)\n    return blake3_digest(body)\n",
+        [
+            f"{_STORE}:5: owner-bypass unrecorded-seal put; record the placed file's digest "
+            "with record_sealed"
+        ],
+        {},
+    ),
+    "a-lowercase-catalog-update-is-refused": (
+        _STORE,
+        'def keep(lake):\n    lake.execute("update lake.world.bars set close = 1")\n',
+        [
+            f"{_STORE}:2: owner-bypass catalog-write keep; write the catalog through "
+            "StorePort's commit, publish or carry"
+        ],
+        {},
+    ),
+    "a-catalog-target-held-in-a-local-name-is-refused": (
+        _STORE,
+        "def keep(lake, table):\n    target = f'lake.derived.{table}'\n"
+        "    lake.execute(f'INSERT INTO {target} BY NAME SELECT 1')\n",
+        [
+            f"{_STORE}:3: owner-bypass catalog-write keep; write the catalog through "
+            "StorePort's commit, publish or carry"
+        ],
+        {},
+    ),
+    "a-catalog-write-outside-the-order-is-refused": (
+        _STORE,
+        'def keep(lake):\n    lake.execute("INSERT INTO lake.world.bars SELECT * FROM rows")\n',
+        [
+            f"{_STORE}:2: owner-bypass catalog-write keep; write the catalog through "
+            "StorePort's commit, publish or carry"
+        ],
+        {},
+    ),
+    "the-ordered-writer-writes-the-catalog": (
+        "alphalattice.foundation.data_layer.store",
+        "class StorePort:\n    def _statements(self, lake):\n"
+        '        lake.execute(f"DELETE FROM lake.world.{table} WHERE 1")\n',
+        [],
+        {},
+    ),
+    "a-named-unit-passes-and-its-surplus-is-stale": (
+        _STORE,
+        "import sqlite3\nsqlite3.connect(path)\n",
+        ["stale-owner-bypass src/alphalattice/control/high/store.py::<module>::connect"],
+        {"src/alphalattice/control/high/store.py::<module>::connect": 2},
+    ),
+}
+
+
+@pytest.mark.proves("architecture.converged_owners_refuse_a_new_bypass")
+@pytest.mark.parametrize(
+    ("module", "source", "refusals", "named"),
+    OWNER_BYPASS_CASES.values(),
+    ids=list(OWNER_BYPASS_CASES),
+)
+def test_each_converged_owner_refuses_a_new_bypass_by_name(module, source, refusals, named):
+    """A connection, digest tag, canonical JSON, file verification, placement or catalog write
+    outside its owner is refused by kind, scope and repair; its owner's own form and a named unit
+    pass, and a named unit with no site left is stale."""
+    rows = {key: OwnerBypass(count=count, reason="fixture") for key, count in named.items()}
+    found = owner_bypass_refusals({module: _owner_sites(source.encode("utf-8"))}, rows)
+    assert sorted(found) == refusals
+
+
+@pytest.mark.proves("architecture.converged_owners_refuse_a_new_bypass")
+def test_a_named_bypass_only_shrinks() -> None:
+    """A named unit above its parent's count, or one the parent did not name, is a new bypass;
+    a lower count passes, and the first list is held when the parent names none."""
+    unit = "src/alphalattice/control/high/store.py::<module>::connect"
+    row = {"count": 1, "reason": "fixture"}
+    grown = [f"owner-bypass: a named bypass grew {unit}"]
+    assert grown_bypasses({unit: row}, None) == []
+    assert grown_bypasses({unit: row}, {unit: 2}) == []
+    assert grown_bypasses({unit: {**row, "count": 2}}, {unit: 1}) == grown
+    assert grown_bypasses({unit: row}, {}) == grown
+
+
+@pytest.mark.proves("architecture.converged_owners_refuse_a_new_bypass")
+def test_an_owners_own_write_is_seen_before_it_is_credited() -> None:
+    """The ordered writer's insert into a catalog table its local name holds is a catalog write
+    the scan sees, and the owner's unit credits it; it passes because it is credited, not unseen."""
+    source = (
+        "class StorePort:\n    def _derived(self, lake, table):\n"
+        "        target = f'lake.derived.{table}'\n"
+        "        return lake.execute(f'INSERT INTO {target} BY NAME SELECT 1')\n"
+    )
+    sites = _owner_sites(source.encode("utf-8"))
+    assert sites == [[4, "catalog-write", "StorePort._derived"]]
+    assert owner_bypass_refusals({"alphalattice.foundation.data_layer.store": sites}, {}) == []
+
+
+@pytest.mark.proves("architecture.converged_owners_refuse_a_new_bypass")
+def test_a_deleted_files_named_unit_is_stale() -> None:
+    """A named unit whose file the tree no longer holds is stale, so its count is never kept for
+    a later file at that path; a unit whose file is present passes."""
+    unit = "src/alphalattice/control/high/store.py::<module>::connect"
+    assert vacated_bypasses([unit], {"src/alphalattice/control/high/store.py"}) == []
+    assert vacated_bypasses([unit], set()) == [f"stale-owner-bypass {unit}"]

@@ -25,7 +25,6 @@ from __future__ import annotations
 
 import json
 import os
-import re
 import shutil
 from collections.abc import Callable, Iterable, Mapping
 from contextlib import closing
@@ -40,7 +39,14 @@ from alphalattice.foundation.data_layer.log import drop as drop_lock
 from alphalattice.foundation.data_layer.log import hold as hold_lock
 from alphalattice.foundation.data_layer.project import UNIVERSE_TEXT, uuid7
 from alphalattice.kernel import storage
-from alphalattice.kernel.identity import blake3_filename, blake3_from_filename, integrity_blake3
+from alphalattice.kernel.identity import (
+    blake3_digest,
+    blake3_filename,
+    blake3_from_filename,
+    integrity_blake3,
+    is_blake3,
+    tagged_blake3,
+)
 
 if TYPE_CHECKING:
     from alphalattice.foundation.data_layer.log import HostLog
@@ -65,10 +71,7 @@ _MEANING: Final = {
 
 def file_digest(path: Path) -> str:
     """The BLAKE3 seal of a file's bytes, read once without loading it whole."""
-    return "blake3:" + integrity_blake3(threaded=True).update_mmap(path).hexdigest()
-
-
-_DIGEST: Final = re.compile(r"blake3:[0-9a-f]{64}")
+    return tagged_blake3(integrity_blake3(threaded=True).update_mmap(path))
 
 
 def _confined(relative: str) -> str:
@@ -277,7 +280,7 @@ def import_carried(
             )
         files = []
         for relative, digest in json.loads((carried / name).read_bytes()):
-            if not isinstance(digest, str) or not _DIGEST.fullmatch(digest):
+            if not is_blake3(digest):
                 raise DataError(
                     f"a carried file of the research input {binding_hash} has no seal: {digest}",
                     code="data_layer.input_invalid",
@@ -362,10 +365,10 @@ def manifest_held(root: Path, read: Any, binding_hash: str, payload: bytes) -> b
     if body is None:
         return False
     listed = body.read_bytes()
-    if "blake3:" + integrity_blake3(listed).hexdigest() != digest:
+    if blake3_digest(listed) != digest:
         return False
     wanted = f"{blake3_filename(binding_hash)}/manifest.json"
-    actual = "blake3:" + integrity_blake3(payload).hexdigest()
+    actual = blake3_digest(payload)
     return [seal for name, seal in json.loads(listed) if name == wanted] == [actual]
 
 

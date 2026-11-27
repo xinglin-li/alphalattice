@@ -17,14 +17,12 @@ import json
 import os
 import re
 import string
-import subprocess
 import sys
 from collections import Counter
 from collections.abc import Callable, Iterable, Mapping, Sequence
 from pathlib import Path
 from typing import Any
 
-from alphalattice.capabilities.domain_contracts import spawn
 from alphalattice.interface.local_application.message_catalog import english_message_ids
 from alphalattice.kernel.resources import cache_bound
 from devtools.architecture.git_inputs import CensusInputs, Moves, carried, staged_moves
@@ -35,9 +33,11 @@ from devtools.architecture.structural import (
     data_family_violations,
     discover_persistence_sites,
     discover_table_writes,
+    grown_bypasses,
     import_contract_violations,
     load_storage_authority_registry,
     table_writer_violations,
+    vacated_bypasses,
 )
 
 REGISTRIES = Path("config") / "registries"
@@ -1280,16 +1280,10 @@ def _debt_census(
     bootstrap = dimension not in base
     basis = "HEAD:"
     if inputs.pending or len(inputs.parents) > 2:
-        ancestor = spawn.run(
-            ["git", "merge-base", "develop", "HEAD", *([inputs.pending] if inputs.pending else [])],
-            cwd=root,
-            capture_output=True,
-            text=True,
-            creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0),
-        )
-        if ancestor.returncode == 0:
+        ancestor = inputs.merge_base("HEAD", *([inputs.pending] if inputs.pending else []))
+        if ancestor is not None:
             # Develop owns its existing rows, even if its recorded census is stale.
-            basis, bootstrap = ancestor.stdout.strip() + ":", True
+            basis, bootstrap = ancestor + ":", True
     requested = [
         prefix + path for path in paths for prefix in ([stage, basis] if bootstrap else [stage])
     ]
@@ -1392,6 +1386,21 @@ def census_check(
         for key, count in legacy.items()
         if count > prior.get(key, 0)
     )
+    architecture = "config/package-architecture.json"
+    # The named bypasses shrink against the target the change merges into: a card's own
+    # commits correct its first list, and develop's rows only fall.
+    target = inputs.merge_base("HEAD")
+    basis = target + ":" if target is not None else "HEAD:"
+    held = inputs.view([basis + architecture]).get(basis + architecture, "{}")
+    parent = json.loads(held).get("owner_bypasses")
+    out.extend(
+        grown_bypasses(
+            data[architecture].get("owner_bypasses", {}),
+            None
+            if parent is None
+            else moved_allowances({k: r["count"] for k, r in parent.items()}, pairing),
+        )
+    )
     if "HEAD:" + baseline not in blobs and base["source_sha"] != inputs.objects["HEAD"]:
         return [f"registry-census: {baseline} must name the reviewed bootstrap source SHA."]
     facts: dict[str, Any] = {}
@@ -1412,6 +1421,7 @@ def census_check(
     for path in sorted(sources):
         facts[path] = _census_file_facts(path, blobs[stage + path])
     gaps = _census_gaps(facts, data, blobs[stage + "config/package-architecture.json"])
+    out.extend(vacated_bypasses(data[architecture].get("owner_bypasses", {}), facts.keys()))
 
     def check_imports(prefix: str = stage) -> list[str]:
         checked = {p for p in facts if p.startswith("src/") and p.endswith(".py")}

@@ -33,6 +33,58 @@ _CONTEXT_STATE = {
     "src/alphalattice/interface/local_application/call_span.py::_REPLACED",  # span names
     "src/alphalattice/foundation/market_data_ops/storage/world_reads.py::_UPDATES",  # callbacks
     "src/alphalattice/foundation/data_layer/history_alpha_arrays.py::_ALPHA_PARTS",  # parts
+    # a read-only view of the registered _VERIFIED_ARRAY_SCOPE's decodes, handed to its checks
+    "src/alphalattice/control/workspace_runtime/content_store.py::_VERIFIED_SOURCE_CHECK_NPZ",
+}
+_MODULE_STATE = {
+    # Module maps a function writes that hold live state, not a derived value: each entry is the
+    # state itself (a worker, an open instance, a count), so it caches nothing.
+    "src/alphalattice/control/task_control/child.py::_TASK_WORKERS": "a Task's live workers",
+    "src/alphalattice/control/task_control/child.py::_BUSY": "each worker pool's running calls",
+    "src/alphalattice/control/task_control/child.py::_IDLE": "each idle worker pool's retire time",
+    "src/alphalattice/control/workspace_runtime/database.py::_INSTANCES": "open DuckDB instances",
+    "src/alphalattice/control/workspace_runtime/database.py::_IDLE": "instances kept idle",
+    "src/alphalattice/control/workspace_runtime/database.py::_CLOSING": "closes in flight",
+    "src/alphalattice/control/workspace_runtime/database.py::_HANDOFFS": "handed-off opens",
+    "src/alphalattice/control/workspace_runtime/database.py::_HOLDS": "scopes holding a file",
+    "src/alphalattice/control/workspace_runtime/database.py::_RETENTIONS": "held retentions",
+    "src/alphalattice/control/workspace_runtime/database.py::_REVISIONS": "schema revisions",
+    "src/alphalattice/control/workspace_runtime/database.py::_WRITERS_WAITING": "waiting writers",
+    "src/alphalattice/control/workspace_runtime/database.py::_WRITES": "declared writers",
+    "src/alphalattice/control/workspace_runtime/content_store.py::_VERIFIED_SOURCE_BUILDS": (
+        "builds in flight, each removed when it completes"
+    ),
+    "src/alphalattice/control/workspace_runtime/verified_facts.py::_TRUST_LINES": (
+        "each kept workspace's trust journal line count"
+    ),
+    "src/alphalattice/foundation/data_layer/arrays.py::_unplaced": "bodies awaiting their batch",
+    "src/alphalattice/foundation/data_layer/history_runtime.py::_calls": "live CLI calls",
+    "src/alphalattice/foundation/data_layer/history_runtime.py::_conversations": "last calls",
+    "src/alphalattice/foundation/data_layer/history_runtime.py::_open": "the open data root's log",
+    "src/alphalattice/foundation/data_layer/history_runtime.py::_catalog_surfaces": (
+        "the one catalog session held per data root"
+    ),
+    "src/alphalattice/foundation/data_layer/recall.py::_held": "the open log's loaded models",
+    "src/alphalattice/foundation/data_layer/project.py::HANDLERS": "the projection registry",
+    "src/alphalattice/kernel/execution/cancel.py::_RUNNING": "running cancellable calls",
+}
+_NAMED_MEMOS = {
+    # Memos outside the register, each named with why it stays: its key domain bounds it.
+    "src/alphalattice/capabilities/domain_contracts/source_identity.py::_CANONICAL": (
+        "one template per source module, bounded by the installed source tree"
+    ),
+    "src/alphalattice/capabilities/domain_contracts/source_identity.py::_DIGESTS": (
+        "one digest per source module, bounded by the installed source tree"
+    ),
+    "src/alphalattice/capabilities/alpha_modeling/runtime/lightgbm_threads.py::_INHERITED": (
+        "one entry per installed LightGBM version"
+    ),
+    "src/alphalattice/capabilities/knowledge/model_store.py::_verified": (
+        "one entry per installed model pack"
+    ),
+    "src/alphalattice/investment/portfolio_strategy_lab/publication/artifacts.py::_AUTHORITY": (
+        "one entry per workspace a process opens, cleared at a move"
+    ),
 }
 
 type Declared = CacheBound
@@ -45,8 +97,13 @@ def _entries() -> dict[str, dict[str, object]]:
 def _held(relative: str, source: str) -> dict[str, Declared]:
     """Each cache a module holds, named as the registry's ``defined_by`` names it, with the bound
     its source declares (the census's own facet, ``cache_holdings``), less an owner's weak pool
-    directory while it stays a WeakKeyDictionary and the context state that caches nothing."""
-    exempt = {"WeakKeyDictionary": _WEAK_OWNER_DIRECTORIES, "ContextVar": _CONTEXT_STATE}
+    directory while it stays a WeakKeyDictionary, the context and module state that caches
+    nothing, and the memos named with their reason."""
+    exempt = {
+        "WeakKeyDictionary": _WEAK_OWNER_DIRECTORIES,
+        "ContextVar": _CONTEXT_STATE,
+        "dict": _MODULE_STATE.keys() | _NAMED_MEMOS.keys(),
+    }
     return {
         f"{relative}::{name}": bound
         for name, bound, kind in cache_holdings(source)
@@ -180,6 +237,41 @@ def starred(key):
 _SCOPE: ContextVar[dict[str, object] | None] = ContextVar("scope", default=None)
 _CALLBACK: ContextVar[Callable[[dict[str, str]], None] | None] = ContextVar("callback")
 _WEAK_CACHE = WeakKeyDictionary()
+_VIEW: ContextVar[Mapping[str, object] | None] = ContextVar("view", default=None)
+_MEMO: dict[str, str] = {}
+_KEPT = dict()
+_TABLE = {"constant": 1}
+
+
+def memoized(key):
+    _MEMO[key] = key
+    _KEPT.setdefault(key, key)
+    return _TABLE[key]
+
+
+_WARNED = {}
+_EVICTED = {}
+
+
+def warned(key):
+    if len(_WARNED) > 64:  # its size only logged: no eviction, no bound
+        log.warning("large")
+    _WARNED[key] = key
+    if len(_EVICTED) >= 64:  # evicted at its bound: held by hand
+        _EVICTED.clear()
+    _EVICTED[key] = key
+    if len(_BELOW) < 64:  # cleared below its limit only: no bound
+        _BELOW.clear()
+    _BELOW[key] = key
+    if len(_ELSE) < 64:
+        pass
+    else:  # evicted once the limit is reached: held by hand
+        _ELSE.popitem()
+    _ELSE[key] = key
+
+
+_BELOW = {}
+_ELSE = {}
 """
 
 
@@ -193,7 +285,14 @@ def _refused() -> None:
     assert _held(pools, "_POOLS = OrderedDict()") == {f"{pools}::_POOLS": "hand"}
     held = _held(_NEW_MODULE, _NEW_SOURCE)
     names = [
+        "_BELOW",
+        "_ELSE",
+        "_EVICTED",
+        "_KEPT",
+        "_MEMO",
         "_SCOPE",
+        "_VIEW",
+        "_WARNED",
         "_WEAK_CACHE",
         "keyed",
         "sized",
@@ -209,7 +308,12 @@ def _refused() -> None:
         for name in names
     }
     assert _unreconciled(held, rows) == [
+        "_BELOW: names '64 entries', but its source holds no bound",
+        "_KEPT: names '64 entries', but its source holds no bound",
+        "_MEMO: names '64 entries', but its source holds no bound",
         "_SCOPE: names '64 entries', but its source holds no bound",
+        "_VIEW: names '64 entries', but its source holds no bound",
+        "_WARNED: names '64 entries', but its source holds no bound",
         "keyed: names '64 entries', but its source holds no bound",
         "sized: names 64, but its source holds 32",
         "starred: names '64 entries', but its source holds no bound",

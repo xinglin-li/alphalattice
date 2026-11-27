@@ -1,0 +1,27 @@
+{
+ "schema": "identity-successors",
+ "version": 1,
+ "moves": [
+  {
+   "role": "product_host.conditional_decision_advancement",
+   "predecessor": "blake3:0bdb0377ce7e0c3b0a7daee2cc4376ccb7f6c1fbb7c25efb9b75a0b2b8715ae2",
+   "successor": "blake3:31ff0798048b223e915c79561edc748a3878777be004933f924ffd2fdec933fc",
+   "change": "Native telemetry exports now count only the events they add",
+   "reason": "Three Host roles rotate by source fingerprint alone, since the content store now records a seal after its write and the source identity names its parses for the census; digests that moved into their owners keep equal values, successors are recorded, and no number moves"
+  },
+  {
+   "role": "product_host.portfolio_updates",
+   "predecessor": "blake3:324c1cefb5367d4205ef4b40a8a990b797bcc2c1db021e47df3e137190927927",
+   "successor": "blake3:7b812832b171be4491510cd23f88699bc85f284a209813fd77ab8d4acdc41ac6",
+   "change": "Native telemetry exports now count only the events they add",
+   "reason": "Three Host roles rotate by source fingerprint alone, since the content store now records a seal after its write and the source identity names its parses for the census; digests that moved into their owners keep equal values, successors are recorded, and no number moves"
+  },
+  {
+   "role": "product_host.strategy_calibration",
+   "predecessor": "blake3:d6fdf7b9859d32233088ec64a55af1a81bb25caea334c66f2afd6ded202dc1d2",
+   "successor": "blake3:277db4eedfcb7f90f3757d50cf9df5882f36456c38ccadae28d92c3edd39d85b",
+   "change": "Native telemetry exports now count only the events they add",
+   "reason": "Three Host roles rotate by source fingerprint alone, since the content store now records a seal after its write and the source identity names its parses for the census; digests that moved into their owners keep equal values, successors are recorded, and no number moves"
+  }
+ ]
+}

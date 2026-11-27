@@ -17,7 +17,7 @@ from alphalattice.control.workspace_runtime.database import bind_each_connection
 from alphalattice.foundation.data_layer import history
 from alphalattice.foundation.data_layer.root import sql_path
 from alphalattice.kernel import storage
-from alphalattice.kernel.identity import canonical_json, identity_blake3
+from alphalattice.kernel.identity import canonical_json, identity_blake3, tagged_blake3
 
 VERSIONS = "market_catalog_version"
 """The workspace's exact current market version per local market key."""
@@ -179,7 +179,7 @@ def content_hash(connection: Any, catalog: str) -> str:
             for column in table.column_names
         }
     encoded = canonical_json({"version": _CONTENT_VERSION, "tables": contents}).encode("utf-8")
-    return "blake3:" + identity_blake3(encoded).hexdigest()
+    return tagged_blake3(identity_blake3(encoded))
 
 
 def _column_digest(name: str, column: pa.Array) -> str:
@@ -209,7 +209,7 @@ def _column_digest(name: str, column: pa.Array) -> str:
     digest = identity_blake3()
     for part in (name.encode("utf-8"), str(kind).encode("utf-8"), valid, values):
         digest.update(struct.pack("<Q", len(part)) + part)
-    return "blake3:" + digest.hexdigest()
+    return tagged_blake3(digest)
 
 
 def _text_bytes(text: pa.LargeStringArray) -> bytes:

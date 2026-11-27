@@ -72,6 +72,7 @@ from alphalattice.kernel.identity import (
     change_xxh3_128_hex,
     integrity_blake3,
     is_blake3,
+    record_sealed,
     tagged_blake3,
 )
 from alphalattice.kernel.resources import worker_width
@@ -1094,6 +1095,7 @@ class ContentAddressedStore:
             raise ContentAddressedStoreError("content_store.identity_reused")
         if not target.is_file():
             self.atomic_write(target, payload)
+            record_sealed(target, content_hash)  # the digest of the very bytes it placed
         return content_hash
 
     def load_document(self, *, category: str, content_hash: str, extension: str) -> bytes:

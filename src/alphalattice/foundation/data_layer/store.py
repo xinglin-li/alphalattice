@@ -395,15 +395,13 @@ class StorePort:
             lake.register("agent_batch", batch)
             try:
                 lake.execute("BEGIN TRANSACTION").complete()
-                ((before,),) = lake.execute("SELECT count(*) FROM lake.telemetry.event").fetchall()
-                lake.execute(
+                (added,) = lake.execute(  # the insert's own count: the table is never counted
                     "INSERT INTO lake.telemetry.event BY NAME"
                     " SELECT DISTINCT b.* FROM agent_batch b WHERE NOT EXISTS"
                     " (SELECT 1 FROM lake.telemetry.event e WHERE e.event_id = b.event_id)"
-                ).complete()
-                ((after,),) = lake.execute("SELECT count(*) FROM lake.telemetry.event").fetchall()
+                ).fetchone()
                 lake.execute("COMMIT").complete()
-                return int(after - before)
+                return int(added)
             finally:
                 # The private cursor closes and rolls back any transaction left open.
                 lake.unregister("agent_batch")
