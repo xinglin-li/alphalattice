@@ -991,9 +991,12 @@ class AlternativeEvidenceDocumentIntelligenceRuntime:
             for document in source_set.documents:
                 self.documents.require_known(document.content, as_of=as_of)
             return source_set.documents
+        found = self.documents.source_versions(source_set.documents, as_of=as_of)
         return tuple(
-            self.documents.resolve_source_object(reference, as_of=as_of)
-            for reference in source_set.documents
+            self.documents.resolve_source_object(
+                reference, as_of=as_of, versions=None if found is None else found[index]
+            )
+            for index, reference in enumerate(source_set.documents)
         )
 
     def acquire_live(
@@ -1443,11 +1446,22 @@ class AlternativeEvidenceDocumentIntelligenceRuntime:
                 ):
                     references[document.workspace_document_id] = found
 
+        held: dict[str, Any] = {}
+
         def original_for(document_id: str) -> tuple[bytes, str, str] | None:
             reference = references.get(document_id)
             if reference is None:
                 return None
-            resolved = self.documents.resolve_source_object(reference, as_of=as_of)
+            if not held:  # every original's world versions, in one statement at the first read
+                found = self.documents.source_versions(tuple(references.values()), as_of=as_of)
+                held.update(
+                    dict.fromkeys(references)
+                    if found is None
+                    else zip(references, found, strict=True)
+                )
+            resolved = self.documents.resolve_source_object(
+                reference, as_of=as_of, versions=held[document_id]
+            )
             return resolved.content, reference.content_digest, reference.media_type
 
         return original_for

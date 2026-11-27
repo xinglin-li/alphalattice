@@ -5,6 +5,7 @@ workspaces hold one document."""
 from __future__ import annotations
 
 import json
+import sys
 from collections.abc import Iterator
 from datetime import UTC, date, datetime, timedelta
 from pathlib import Path
@@ -358,6 +359,43 @@ def test_an_acquisition_admits_its_documents_and_they_are_read_through_world(
     refused.append(runtime.documents.holds_source_object(reference, as_of=before))
     assert "blake3:" + blake3(served).hexdigest() == reference.content_digest
     assert refused == [False, False]
+
+
+@pytest.mark.proves("alternative_evidence.evidence_reads_through_world")
+def test_a_source_set_and_its_originals_find_their_world_versions_in_one_statement_each(
+    tmp_path, host, monkeypatch
+):
+    """Canonicalizing a source set finds its references' world versions in one statement, and its
+    document set's original reader in one more: the same bytes one reference at a time reads."""
+    runtime = _runtime(tmp_path / "evidence")
+    plan(runtime.artifacts)
+    request = _request(("AAPL",))
+    second = _recorded_document(revision="issuer-release-2026-q2", claims=())  # its own body
+    _, source_set = runtime.acquire_recorded(
+        request=request, registry=_registry(("AAPL",)), published_at=_NOW,
+        documents=(_recorded_document(), second),
+    )  # fmt: skip
+    as_of = request.evidence_as_of
+    alone = [
+        runtime.documents.resolve_source_object(value, as_of=as_of).content
+        for value in source_set.documents
+    ]
+    statements = []  # each world read's own cursor, by the read that opens it
+
+    def opened(cursor):
+        statements.append(sys._getframe(1).f_code.co_name)
+        return closing(cursor)
+
+    closing = world_reads.closing
+    monkeypatch.setattr(world_reads, "closing", opened)
+    document_set = runtime.canonicalize(source_set=source_set, published_at=as_of, as_of=as_of)
+    canonicalized = len(statements)
+    original = runtime.original_reader(document_set, as_of=as_of)
+    read = [original(value.workspace_document_id) for value in document_set.documents]
+    # The version reads alone: before them, "body" read its own for each reference.
+    found = [name in ("versions", "body") for name in statements]
+    assert (sum(found[:canonicalized]), sum(found)) == (1, 2)
+    assert len(set(alone)) == 2 and sorted(value[0] for value in read) == sorted(alone)
 
 
 @pytest.mark.proves("alternative_evidence.world_holds_each_document_once")

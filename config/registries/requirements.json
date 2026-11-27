@@ -224,6 +224,12 @@
       "lower_layer": "The admission reads the workspace's sealed artifacts and source objects and commits through StorePort into a real DuckLake catalog.",
       "seconds": 20
     },
+    "alternative_evidence.world_versions_read_once_per_batch": {
+      "description": "References find their candidate world versions in one statement per batch, each its own rows in order.",
+      "owner": "alphalattice.evidence.alternative_evidence",
+      "layer": "unit",
+      "seconds": 1
+    },
     "architecture.an_unlisted_persisting_writer_is_refused": {
       "description": "A writer that persists bytes and no data family lists is refused by name at commit, while a read and an in-memory database are not.",
       "owner": "devtools.architecture",

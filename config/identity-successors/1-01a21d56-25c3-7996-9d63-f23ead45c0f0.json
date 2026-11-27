@@ -1,0 +1,13 @@
+{
+ "schema": "identity-successors",
+ "version": 1,
+ "moves": [
+  {
+   "role": "alternative_evidence.canonicalization_binding",
+   "predecessor": "blake3:ec4be0c1f9309cdfac08a2e9e84b1ce9cc1608e2a8b44c40ca16ab629e7df443",
+   "successor": "blake3:6ac5cb506dc9960c346874973467afea7d543ac0c04f557d49c61c122f9aa5a2",
+   "change": "Evidence finds its source documents' versions in one query per batch",
+   "reason": "An Evidence run resolves its source bodies in one read per batch instead of one per document; the same verified bytes, passages and citations"
+  }
+ ]
+}

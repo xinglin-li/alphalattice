@@ -73,3 +73,29 @@ def test_a_missing_body_blob_is_refused_by_name(tmp_path):
         world_reads._blob(missing)
     assert refused.value.failure.code == "alternative_evidence.world_body_missing"
     assert "ALPHALATTICE_EVIDENCE_READS" not in str(refused.value)
+
+
+@pytest.mark.proves("alternative_evidence.world_versions_read_once_per_batch")
+def test_references_find_their_world_versions_in_one_statement():
+    """Any number of references find their candidate versions in one statement, each its own rows
+    in order, known ones as world sorted them; no reference reads nothing."""
+
+    class Counted(_Lake):
+        statements = 0
+
+        def execute(self, *_: object) -> _Lake:
+            self.statements += 1
+            return self
+
+    def reference(revision: str) -> SimpleNamespace:
+        return SimpleNamespace(
+            source_name="SEC_EDGAR", source_document_name=None, revision=revision, content_bytes=4
+        )
+
+    rows = [(0, "a" * 64, True), (1, "f" * 64, False), (1, "b" * 64, True)]
+    lake = Counted(rows)
+    port = SimpleNamespace(lake=lake, log=SimpleNamespace(lineage=lambda *_: "provider"))
+    found = world_reads.versions(port, (reference("a"), reference("b")), as_of=None)
+    assert lake.statements == 1
+    assert found == ((("a" * 64, True),), (("f" * 64, False), ("b" * 64, True)))
+    assert world_reads.versions(port, (), as_of=None) == () and lake.statements == 1

@@ -11,6 +11,7 @@ the workspace's own source-object store answers, as 0.2.7 did.
 from __future__ import annotations
 
 import re
+from collections.abc import Sequence
 from contextlib import closing
 from datetime import datetime
 from pathlib import Path
@@ -130,30 +131,61 @@ def exact(port: Any, doc_id: str, version_id: str, cutoff_us: int) -> bytes:
     return content
 
 
-def body(port: Any, reference: AcquiredEvidenceDocumentReference, as_of: datetime) -> Served:
-    """The reference's original bytes as world knew them at `as_of`: the version of its source
-    document whose body is the reference's own, known by then. A
-    reference names exact bytes, so a version known later does not hide the one a sealed
-    selection read. A document admitted from a reference sealed before its name was recorded, or
-    read by one, matches by its accession and its bytes."""
-    named = reference.source_document_name is not None
+Versions = tuple[tuple[str, bool], ...]
+"""A reference's candidate bodies in world: each version's body digest and whether world knew it by
+the cutoff, known ones first, then the latest known."""
+
+
+def versions(
+    port: Any, references: Sequence[AcquiredEvidenceDocumentReference], as_of: datetime
+) -> tuple[Versions, ...]:
+    """Each reference's candidate versions, in order, from one statement for them all: a version of
+    its source document with the reference's byte count. A document admitted from a reference
+    sealed before its name was recorded, or read by one, matches by its accession."""
+    if not references:
+        return ()
     with closing(port.lake.cursor()) as cursor:  # its own: units read at once
-        versions = cursor.execute(
-            f"SELECT doc_digest, {KNOWN} AS known"
-            " FROM lake.world.evidence_doc d WHERE provider_id = ? AND byte_count = ?"
-            " AND (source_ref IN (?, ?) OR starts_with(source_ref, ?))"
-            " ORDER BY known DESC, known_asof DESC",
+        rows = cursor.execute(
+            f"SELECT w.i, d.doc_digest, {KNOWN} AS known FROM lake.world.evidence_doc d JOIN"
+            " (SELECT unnest(?::INTEGER[]) AS i, unnest(?::VARCHAR[]) AS provider,"
+            " unnest(?::BIGINT[]) AS size, unnest(?::VARCHAR[]) AS ref,"
+            " unnest(?::VARCHAR[]) AS revision, unnest(?::VARCHAR[]) AS prefix) w"
+            " ON d.provider_id = w.provider AND d.byte_count = w.size"
+            " AND (d.source_ref IN (w.ref, w.revision) OR starts_with(d.source_ref, w.prefix))"
+            " ORDER BY w.i, known DESC, d.known_asof DESC",
             [
                 as_of,
-                port.log.lineage("provider", reference.source_name),
-                reference.content_bytes,
-                source_ref(reference),
-                reference.revision,  # admitted from a reference without its document's name
-                "\n" if named else f"{reference.revision}/",  # no source_ref starts with a newline
+                list(range(len(references))),
+                [str(port.log.lineage("provider", value.source_name)) for value in references],
+                [value.content_bytes for value in references],
+                [source_ref(value) for value in references],
+                # admitted from a reference without its document's name
+                [value.revision for value in references],
+                # no source_ref starts with a newline
+                [
+                    "\n" if value.source_document_name is not None else f"{value.revision}/"
+                    for value in references
+                ],
             ],
         ).fetchall()
+    found: list[list[tuple[str, bool]]] = [[] for _ in references]
+    for index, digest, known in rows:
+        found[index].append((digest, known))
+    return tuple(tuple(candidates) for candidates in found)
+
+
+def body(
+    port: Any,
+    reference: AcquiredEvidenceDocumentReference,
+    as_of: datetime,
+    found: Versions | None = None,
+) -> Served:
+    """The reference's original bytes as world knew them at `as_of`: the version of its source
+    document whose body is the reference's own, known by then. A reference names exact bytes, so
+    a version known later does not hide the one a sealed selection read. `found` is its `versions`
+    read with others' in one statement; without it, this read makes its own."""
     held = False
-    for digest, known in versions:
+    for digest, known in versions(port, (reference,), as_of)[0] if found is None else found:
         content = _blob(port.root / "blobs" / digest)
         if blake3_digest(content) != reference.content_digest:
             continue  # another version's body, of the same length

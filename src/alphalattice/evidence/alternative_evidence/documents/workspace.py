@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import os
-from collections.abc import Callable
+from collections.abc import Callable, Sequence
 from datetime import datetime
 from pathlib import Path
 from uuid import UUID
@@ -135,16 +135,30 @@ class AlternativeEvidenceDocumentPublisher:
         if knew is False:
             raise ValueError("alternative_evidence.source_object_missing")
 
+    def source_versions(
+        self, references: Sequence[AcquiredEvidenceDocumentReference], *, as_of: datetime | None
+    ) -> tuple[world_reads.Versions, ...] | None:
+        """The references' candidate world versions at `as_of`, read in one statement, for
+        `resolve_source_object` to take each from; None when world does not serve the reads."""
+        port = None if as_of is None else world_reads.serving()
+        return (
+            None if port is None or as_of is None else world_reads.versions(port, references, as_of)
+        )
+
     def resolve_source_object(
-        self, reference: AcquiredEvidenceDocumentReference, *, as_of: datetime | None
+        self,
+        reference: AcquiredEvidenceDocumentReference,
+        *,
+        as_of: datetime | None,
+        versions: world_reads.Versions | None = None,
     ) -> AcquiredEvidenceDocument:
         """The document with its retained bytes, or a refusal that names what is wrong: read through
         world's `evidence_doc_asof` at `as_of` when world serves the evidence reads, a body world
         did not know then refused as missing; else from this workspace's store, as `as_of` None
-        always reads, for a store being imported."""
+        always reads, for a store being imported. `versions` is its `source_versions` entry."""
         port = None if as_of is None else world_reads.serving()
         if port is not None and as_of is not None:
-            served = world_reads.body(port, reference, as_of)
+            served = world_reads.body(port, reference, as_of, versions)
             if served.held:
                 if served.content is None:
                     raise ValueError("alternative_evidence.source_object_missing")
