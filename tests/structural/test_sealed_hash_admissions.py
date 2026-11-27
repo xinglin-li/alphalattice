@@ -334,6 +334,7 @@ def test_records_take_the_kind_their_job_names() -> None:
         "alphalattice/foundation/feature_engine/contracts.py::FeatureBuildOutcome.safe_hash",
         "alphalattice/foundation/feature_engine/contracts.py::PanelAdmissionSummary.summary_hash",
         "alphalattice/foundation/feature_engine/contracts.py::PanelTemporalRisk.risk_hash",
+        "alphalattice/foundation/feature_engine/producers/reference_data.py::MarketReference.spy",
         "alphalattice/foundation/market_data_ops/sources/manifest.py::default_qualification_policy_hash",
         "alphalattice/investment/portfolio_strategy_lab/research_loop/paired_alpha_portfolio.py::_audit_summary",
     }, sorted(hashed)
