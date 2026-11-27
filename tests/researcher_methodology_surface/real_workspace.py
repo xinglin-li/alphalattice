@@ -401,6 +401,8 @@ def build_real_risk_workspace(
     sector_size: int = 5,
     factory: Any = None,
     standard: ResearchWhitelistStandard = development_universe.STANDARD,
+    provider: Any = None,
+    source_loader: Any = None,
 ) -> RealRiskWorkspace:
     """Drive onboarding, features, the panel, and the return surface for real.
 
@@ -438,6 +440,10 @@ def build_real_risk_workspace(
     whole (20 session copies held 2.3 GB at pc1's full-run peak, 11-07); a write through them
     fails, and seeds_changed names the seed at the session's end.
 
+    ``provider`` and ``source_loader`` replace the walk's provider and universe source, for a
+    first use through another provider's real client; they need ``fresh``, since a cached build
+    is keyed by the walk's inputs alone.
+
     ``fresh`` bypasses the cache and drives the writers into ``root`` directly.
     It is for the one suite whose claim is the build itself: a workspace the
     product wrote is only proved real by writing it, so that suite pays the
@@ -452,9 +458,17 @@ def build_real_risk_workspace(
     installed_kernels = (
         feature_kernels if feature_kernels is not None else default_extension_kernel_registry()
     )
+    if (provider is not None or source_loader is not None) and not fresh:
+        raise ValueError("a supplied provider or universe source builds only a fresh workspace")
     if fresh:
         return _build_workspace(
-            root / "workspace", installed_catalog, installed_kernels, symbols, sector_size, standard
+            root / "workspace",
+            installed_catalog,
+            installed_kernels,
+            symbols,
+            sector_size,
+            standard,
+            supplied=(provider, source_loader) if provider is not None else None,
         )
     key = _golden_key(installed_catalog, installed_kernels, symbols, sector_size, standard)
     golden = _golden_root() / key
@@ -1326,15 +1340,19 @@ def _build_workspace(
     symbols: Sequence[str],
     sector_size: int = 5,
     standard: ResearchWhitelistStandard = development_universe.STANDARD,
+    supplied: tuple[Any, Any] | None = None,
 ) -> RealRiskWorkspace:
     """Drive onboarding, features, the panel and the return surface for real, into ``workspace``,
-    over the history `standard` names (the walk's; the development universe declares its own)."""
+    over the history `standard` names (the walk's; the development universe declares its own),
+    or through the `supplied` provider and universe source."""
 
     # The product's own layout: artifacts live under the workspace, which is what
     # every reader that takes only a workspace path assumes. A sibling directory
     # works only for callers that are told about it separately.
     artifact_root = workspace / "artifacts"
-    if tuple(symbols) == SUFFICIENT_SYMBOLS:
+    if supplied is not None:
+        provider, load = supplied
+    elif tuple(symbols) == SUFFICIENT_SYMBOLS:
         provider = sufficient_universe.sufficient_provider()
         load = sufficient_universe.source_loader
     elif "DVA" in symbols and set(symbols).issubset(SUFFICIENT_SYMBOLS):

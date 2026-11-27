@@ -29,6 +29,7 @@ from types import SimpleNamespace
 from typing import Any
 from urllib.parse import parse_qsl, urlsplit
 
+import numpy as np
 import pandas as pd
 import yfinance._http
 import yfinance.cache
@@ -66,6 +67,9 @@ CRUMB = "replay-crumb"
 """What the replayed getcrumb endpoint answers."""
 _TIMEOUT = 28
 """libcurl's CURLE_OPERATION_TIMEDOUT, which curl_cffi raises as its Timeout."""
+_COOKIE_EXPIRES = int(datetime(2100, 1, 1, tzinfo=UTC).timestamp())
+"""The replayed A3 cookie's expiry, fixed far past the machine's clock, which curl's cookie jar
+reads: an expiry a year after a scenario's day drops the cookie once that day is a year past."""
 Answer = tuple[int, list[tuple[str, str]], bytes, list[bytes]]
 """A transfer's status, headers, body and libcurl cookie changes."""
 
@@ -122,6 +126,7 @@ class WireReplay:
     """
 
     symbols: dict[str, float]
+    sectors: dict[str, str]
     sessions: tuple[date, ...]
     days: tuple[date, ...]
     events: tuple[Event, ...]
@@ -145,6 +150,7 @@ class WireReplay:
         )
         return cls(
             symbols={symbol: float(price) for symbol, price in raw["symbols"].items()},
+            sectors=dict(raw.get("sectors", {})),
             sessions=tuple(row["session_date"] for row in schedule.to_pylist()),
             days=days,
             events=tuple(Event.read(item) for item in raw["cases"][case]) if case else (),
@@ -172,11 +178,20 @@ class WireReplay:
         if method != "GET":
             return 405, [], b"", []
         if host == "fc.yahoo.com":
-            expires = int(evening(self.today + timedelta(days=365)).timestamp())
-            cookie = f".yahoo.com\tTRUE\t/\tTRUE\t{expires}\tA3\treplay-cookie".encode()
+            cookie = f".yahoo.com\tTRUE\t/\tTRUE\t{_COOKIE_EXPIRES}\tA3\treplay-cookie".encode()
             return 404, [("Content-Type", "text/html")], b"<html></html>", [b"SET\t" + cookie]
         if host.endswith("finance.yahoo.com") and path == "/v1/test/getcrumb":
             return 200, [("Content-Type", "text/plain")], CRUMB.encode(), []
+        if host.endswith("finance.yahoo.com") and path.startswith("/v10/finance/quoteSummary/"):
+            return self._profile(path.rsplit("/", 1)[-1])
+        if host.endswith("finance.yahoo.com") and path == "/v7/finance/quote":
+            body: dict[str, Any] = {"quoteResponse": {"result": [], "error": None}}
+            return 200, [("Content-Type", "application/json")], json.dumps(body).encode(), []
+        if host.endswith("finance.yahoo.com") and path.startswith(
+            "/ws/fundamentals-timeseries/v1/finance/timeseries/"
+        ):
+            body = {"timeseries": {"result": [], "error": None}}
+            return 200, [("Content-Type", "application/json")], json.dumps(body).encode(), []
         if host.endswith("finance.yahoo.com") and path.startswith("/v8/finance/chart/"):
             symbol = path.rsplit("/", 1)[-1]
             fault = self._fault(symbol=symbol, url=url)
@@ -221,6 +236,17 @@ class WireReplay:
             reason = b"Too Many Requests" if event.status == 429 else b"Will be right back"
             return int(event.status), headers, b"<html>" + reason + b"</html>", []
         return None
+
+    def _profile(self, symbol: str) -> Answer:
+        """Yahoo's quote summary with the symbol's current sector, or its 404 for a symbol the
+        scenario names no sector for."""
+        sector = self.sectors.get(symbol)
+        if sector is None:
+            body = {"quoteSummary": {"result": None, "error": {"code": "Not Found"}}}
+            return 404, [("Content-Type", "application/json")], json.dumps(body).encode(), []
+        profile = {"sector": sector, "sectorKey": sector.lower().replace(" ", "-")}
+        body = {"quoteSummary": {"result": [{"assetProfile": profile}], "error": None}}
+        return 200, [("Content-Type", "application/json")], json.dumps(body).encode(), []
 
     # The chart ------------------------------------------------------------------------------
 
@@ -305,6 +331,16 @@ class WireReplay:
 
     # The index lists -----------------------------------------------------------------------
 
+    def members(self, index: str) -> dict[str, str]:
+        """`index`'s members and company names on `today`, after each join and leave so far."""
+        members = dict(self.membership[index])
+        for event in self.events:
+            if event.kind == "membership" and event.index == index and event.on <= self.today:
+                members.update({symbol: symbol.title() for symbol in event.join})
+                for symbol in event.leave:
+                    members.pop(symbol, None)
+        return members
+
     def universe_fetch(self, uri: str) -> SimpleNamespace:
         """The universe fetcher seam: an index page as its source shows it on `today`."""
         config = next(item for item in FROZEN_UNIVERSE_SOURCES.values() if item.uri == uri)
@@ -316,12 +352,7 @@ class WireReplay:
         if fault is not None:
             status, headers, body, _ = fault
             return SimpleNamespace(status_code=status, headers=dict(headers), content=body)
-        members = dict(self.membership[index])
-        for event in self.events:
-            if event.kind == "membership" and event.index == index and event.on <= self.today:
-                members.update({symbol: symbol.title() for symbol in event.join})
-                for symbol in event.leave:
-                    members.pop(symbol, None)
+        members = self.members(index)
         header = "".join(f"<th>{item}</th>" for item in config.header_prefix)
         rows = []
         for symbol, company in sorted(members.items()):
@@ -368,19 +399,33 @@ def _history(replay: WireReplay, symbol: str, today: date) -> dict[date, dict[st
             adjusted[index] *= factor
     for event in replay.events:
         if event.kind == "reround" and event.symbol == symbol and event.seen(today):
-            adjusted = [item * (1.0 + event.scale) for item in adjusted[:-1]] + adjusted[-1:]
+            # The history before the day it is first shown, once and for every later day.
+            shown = event.known or sessions[0]
+            adjusted = [
+                item * (1.0 + event.scale) if session < shown else item
+                for item, session in zip(adjusted, sessions, strict=True)
+            ]
     seed = sum(ord(char) for char in symbol)
-    return {
-        session: {
-            "open": close[index] * 0.999,
-            "high": close[index] * 1.004,
-            "low": close[index] * 0.996,
+    bars = {}
+    for index, session in enumerate(sessions):
+        opened, above, below = _offsets(seed, index)
+        bars[session] = {
+            "open": close[index] * (1.0 + opened),
+            "high": close[index] * (1.0 + above),
+            "low": close[index] * (1.0 - below),
             "close": close[index],
             "volume": 1_000_000 + (seed * 31 + index * 997) % 100_000,
             "adjclose": adjusted[index],
         }
-        for index, session in enumerate(sessions)
-    }
+    return bars
+
+
+def _offsets(seed: int, ordinal: int) -> tuple[float, float, float]:
+    """A session's open, high and low offsets from its close, seeded by the symbol and the
+    session and asymmetric, so no range or money-flow factor is constant across symbols."""
+    rng = np.random.default_rng((seed, ordinal))
+    above, below = float(rng.uniform(0.002, 0.020)), float(rng.uniform(0.002, 0.020))
+    return float(rng.uniform(-below * 0.8, above * 0.8)), above, below
 
 
 class ReplayCurl(Curl):

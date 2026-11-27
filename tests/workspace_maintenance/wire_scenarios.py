@@ -181,4 +181,85 @@ SCENARIOS: dict[str, dict[str, Any]] = {
         },
         "membership": {"SP500": [], "NASDAQ100": [], "DJIA": []},
     },
+    "five-days": {
+        "calendar": "XNYS",
+        "start": "2023-11-01",
+        "symbols": {
+            **{symbol: 60.0 + 9 * index for index, symbol in enumerate(("WTA", "WTB", "WTC"))},
+            **{symbol: 85.0 + 7 * index for index, symbol in enumerate(("WTD", "WTE", "WTF"))},
+            **{symbol: 40.0 + 11 * index for index, symbol in enumerate(("WHA", "WHB", "WHC"))},
+            **{symbol: 70.0 + 5 * index for index, symbol in enumerate(("WHD", "WHE", "WHF"))},
+            "WTN": 55.0,
+            "SPY": 450.0,
+        },
+        "sectors": {
+            **dict.fromkeys(("WTA", "WTB", "WTC", "WTD", "WTE", "WTF", "WTN"), "Technology"),
+            **dict.fromkeys(("WHA", "WHB", "WHC", "WHD", "WHE", "WHF"), "Healthcare"),
+        },
+        "days": [
+            "2025-11-21",
+            "2025-11-24",
+            "2025-11-25",
+            "2025-11-26",
+            "2025-11-27",
+            "2025-11-28",
+        ],
+        "cases": {
+            "five-days": [
+                # Monday: a new dividend, and a re-rounding of one history's adjusted closes.
+                {
+                    "kind": "dividend",
+                    "symbol": "WTA",
+                    "ex": "2025-11-24",
+                    "amount": 0.24,
+                    "known": "2025-11-24",
+                    "restated": {"known": "2025-11-27", "amount": 0.27},
+                },
+                {"kind": "reround", "symbol": "WHB", "scale": 4e-07, "known": "2025-11-24"},
+                # Tuesday: a leaver and a joiner whose source is down all day, and a split.
+                {"kind": "membership", "index": "SP500", "on": "2025-11-25", "leave": ["WHF"]},
+                {"kind": "membership", "index": "NASDAQ100", "on": "2025-11-25", "join": ["WTN"]},
+                {
+                    "kind": "outage",
+                    "symbol": "WTN",
+                    "on": "2025-11-25",
+                    "status": 503,
+                    "count": 1000,
+                },
+                {
+                    "kind": "split",
+                    "symbol": "WTB",
+                    "ex": "2025-11-25",
+                    "ratio": 2.0,
+                    "known": "2025-11-25",
+                },
+                # Wednesday: a dividend reported late, and a reverse split.
+                {
+                    "kind": "dividend",
+                    "symbol": "WHA",
+                    "ex": "2025-11-24",
+                    "amount": 0.3,
+                    "known": "2025-11-26",
+                },
+                {
+                    "kind": "split",
+                    "symbol": "WHC",
+                    "ex": "2025-11-26",
+                    "ratio": 0.5,
+                    "known": "2025-11-26",
+                },
+                # Thursday, the holiday: Monday's dividend is corrected (the `restated` above).
+                # Friday is the half day.
+            ]
+        },
+        "membership": {
+            "SP500": [
+                [symbol, symbol.title()] for symbol in ("WHA", "WHB", "WHC", "WHD", "WHE", "WHF")
+            ],
+            "NASDAQ100": [
+                [symbol, symbol.title()] for symbol in ("WTA", "WTB", "WTC", "WTD", "WTE", "WTF")
+            ],
+            "DJIA": [],
+        },
+    },
 }

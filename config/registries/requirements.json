@@ -451,6 +451,22 @@
       "seconds": 10,
       "lower_layer": "The named refusal traverses query parsing and the live feature-extension route."
     },
+    "composition.five_dailies_through_the_wire_store_each_days_events_within_the_daily_bound": {
+      "description": "A first use and five consecutive Dailies through the Host on the wire replay store each day's provider events, owe and run a failed candidate's recheck, and write at most the plan's daily bytes after the first.",
+      "owner": "alphalattice.control.product_host.composition",
+      "layer": "integration",
+      "seconds": 300,
+      "lower_layer": "Its proof is several Dailies in order through the Host's own update route over the real HTTP client, cache and store, which no single-day or single-module test holds.",
+      "exception": {
+        "kinds": [
+          "growth",
+          "large",
+          "over_budget"
+        ],
+        "why": "The one holder of 0.2.11's 5-day scenario and card 13's per-day bytes and admission: several minutes of real updates on the wire replay, with its test support and no product source change.",
+        "decided": "2026-11-27: 0.2.11's 5-day scenario is registered nightly-only in the large list; its growth is admitted as the scenario's single holder."
+      }
+    },
     "composition.goal_export_proves_its_sources": {
       "description": "If a Goal export answered from kept sources, a changed sealed result could leave the workspace without a fresh proof.",
       "owner": "alphalattice.control.product_host.composition",
