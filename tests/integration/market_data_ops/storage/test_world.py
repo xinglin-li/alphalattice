@@ -34,7 +34,10 @@ from alphalattice.foundation.market_data_ops.sources.contracts import (
     CorporateActionEvent,
     ProviderAdjustedClosePoint,
 )
-from alphalattice.foundation.market_data_ops.sources.manifest import UniverseManifest
+from alphalattice.foundation.market_data_ops.sources.manifest import (
+    UniverseManifest,
+    build_quality_filtered_research_manifest,
+)
 from alphalattice.foundation.market_data_ops.sources.sanitization import sanitize_payload
 from alphalattice.foundation.market_data_ops.storage import duckdb as market_storage
 from alphalattice.foundation.market_data_ops.storage import market_snapshots, world, world_reads
@@ -463,6 +466,7 @@ def _compose_upgraded_market(store, database, tmp_path, focus):
         "delta",
         "reference-same-parent",
         "reference-later-membership",
+        "qualified-membership-returns",
         *_UPGRADE_PUBLICATION_CASES,
     ),
     ids=lambda focus: focus,
@@ -480,6 +484,37 @@ def test_a_workspace_open_admits_its_market_tables_once_and_a_correction_from_it
         _market_reference_reuses_one_manifest(
             store, manifest, membership_changes=focus == "reference-later-membership"
         )
+        return
+    if focus == "qualified-membership-returns":
+        ids = tuple(listing.listing_id for listing in manifest.listings)
+        observations = ((0, ids), (2, ids[:-1]), (4, ids))
+        versions = []
+        for days_later, eligible in observations:
+            observed = NOW.date() + timedelta(days=days_later)
+            acquisition = replace(
+                manifest, profile=replace(manifest.profile, manifest_as_of=observed)
+            )
+            qualified = build_quality_filtered_research_manifest(
+                acquisition, eligible_listing_ids=eligible
+            )
+            try:
+                store.bootstrap(qualified)
+                world.admit_universe_manifest(qualified, "w1")
+            except ValueError as error:
+                raise AssertionError(
+                    f"World refused the membership on {observed}: {error}"
+                ) from error
+            versions.append(qualified)
+        assert len({qualified.revision_sha256 for qualified in versions}) == len(observations)
+        cutoff = int((NOW + timedelta(days=5)).timestamp() * 1_000_000)
+        for qualified in versions:
+            assert store.load_universe_manifest(qualified.manifest_id) == qualified
+            assert (
+                world.load_universe_manifest_revision(
+                    qualified.revision_sha256, cutoff, workspace_id="w1"
+                )
+                == qualified
+            )
         return
     if focus in _UPGRADE_PUBLICATION_CASES:
         _compose_upgraded_market(store, database, tmp_path, focus)

@@ -1,0 +1,160 @@
+{
+ "schema": "identity-successors",
+ "version": 1,
+ "moves": [
+  {
+   "role": "alpha_research.campaign_decision_policy",
+   "predecessor": "blake3:a84ab6a8cccfd11e836cb67dded53bf6011cc85880deb4b586302826c1b7aa59",
+   "successor": "blake3:504b410bce8850b5a3f33876b7adaeebdf24627cacac5fb9699360d32f93f9b4",
+   "change": "Preserve distinct revisions when qualified market membership returns",
+   "reason": "The qualified research manifest's revision now seals its acquisition date, so a membership returning to an earlier composition is admitted as a new revision; 22 roles rotate by source fingerprint and the development replay reads all equal"
+  },
+  {
+   "role": "alpha_research.model_lifecycle_replay",
+   "predecessor": "blake3:285bdf6db0371f669b832bfa7e43d17c7bd1ee228addea125d174aede9d447cc",
+   "successor": "blake3:8a9963fe5ee8404e3b783e0ea116adf8bebd1ccba2d3cca206ee5f50f1b7c98e",
+   "change": "Preserve distinct revisions when qualified market membership returns",
+   "reason": "The qualified research manifest's revision now seals its acquisition date, so a membership returning to an earlier composition is admitted as a new revision; 22 roles rotate by source fingerprint and the development replay reads all equal"
+  },
+  {
+   "role": "factor_research.review_decision_policy",
+   "predecessor": "blake3:67ac4df742284381d328a4a434a30dba3db52d3a2cc9f3c7c08a18f73ff500cd",
+   "successor": "blake3:30419a04eea900c3f35fc1a89c9b7dcca41e372d4b4c2da6b1ed58d8998e4164",
+   "change": "Preserve distinct revisions when qualified market membership returns",
+   "reason": "The qualified research manifest's revision now seals its acquisition date, so a membership returning to an earlier composition is admitted as a new revision; 22 roles rotate by source fingerprint and the development replay reads all equal"
+  },
+  {
+   "role": "portfolio_strategy_lab.public_path",
+   "predecessor": "blake3:584c7bd3f3b32ba423c6d0a424342cbd24cb736d54740906976a3502b6024191",
+   "successor": "blake3:3bceb563f67b4aa09ca2e7b6b641feb067dbd31376f40ea0f83143ed4f27a377",
+   "change": "Preserve distinct revisions when qualified market membership returns",
+   "reason": "The qualified research manifest's revision now seals its acquisition date, so a membership returning to an earlier composition is admitted as a new revision; 22 roles rotate by source fingerprint and the development replay reads all equal"
+  },
+  {
+   "role": "product_host.conditional_decision_advancement",
+   "predecessor": "blake3:d34838e4acd58aa4c1c1a2b00116272bfbd1aa6be7840ae17c9da3bd560e3156",
+   "successor": "blake3:fa5073104764d33184eabbdf46089a065df3680852392dbba5157bf7200fc05a",
+   "change": "Preserve distinct revisions when qualified market membership returns",
+   "reason": "The qualified research manifest's revision now seals its acquisition date, so a membership returning to an earlier composition is admitted as a new revision; 22 roles rotate by source fingerprint and the development replay reads all equal"
+  },
+  {
+   "role": "product_host.portfolio_updates",
+   "predecessor": "blake3:62a19638a4feab1584c3dce94edec982c4eaba978720d9a7c85d4a4e34b78e32",
+   "successor": "blake3:cab40dc963370c232aec5628d2d9b0d3fac204f6d5ef47abfb116d4a780cea4e",
+   "change": "Preserve distinct revisions when qualified market membership returns",
+   "reason": "The qualified research manifest's revision now seals its acquisition date, so a membership returning to an earlier composition is admitted as a new revision; 22 roles rotate by source fingerprint and the development replay reads all equal"
+  },
+  {
+   "role": "product_host.research_component_training_input",
+   "predecessor": "blake3:2fa67b67a57afedd30a6f18ee714e208e48f2e6d1e18b541d859d4b632e30cbe",
+   "successor": "blake3:854cf67b75fa045f8d02ed8123f0e028ebf06786a3ff741a51ec670aaa81b13a",
+   "change": "Preserve distinct revisions when qualified market membership returns",
+   "reason": "The qualified research manifest's revision now seals its acquisition date, so a membership returning to an earlier composition is admitted as a new revision; 22 roles rotate by source fingerprint and the development replay reads all equal"
+  },
+  {
+   "role": "product_host.research_feature_materialization",
+   "predecessor": "blake3:8ddd848a1ca1e1aadf75ed9f237a30f19a412bbd506fece648e65a1e09861f96",
+   "successor": "blake3:17573aec630a31adabef2c047ec708112b7ed52cde8a174177a8f6a7ff545991",
+   "change": "Preserve distinct revisions when qualified market membership returns",
+   "reason": "The qualified research manifest's revision now seals its acquisition date, so a membership returning to an earlier composition is admitted as a new revision; 22 roles rotate by source fingerprint and the development replay reads all equal"
+  },
+  {
+   "role": "product_host.research_feature_materialization.prepared",
+   "predecessor": "blake3:9e41f695356d630758c21bd8b3f00b7a743c70ed103eddab7089321b0bebfbfe",
+   "successor": "blake3:3261f6318d1155ac5bc2c0e09554ccd943326b8070f80669d9b4c0b6ae73442d",
+   "change": "Preserve distinct revisions when qualified market membership returns",
+   "reason": "The qualified research manifest's revision now seals its acquisition date, so a membership returning to an earlier composition is admitted as a new revision; 22 roles rotate by source fingerprint and the development replay reads all equal"
+  },
+  {
+   "role": "product_host.research_feature_source_projection",
+   "predecessor": "blake3:41bdcc347bdad9f8db3b7b6f4d668ebe5aad760063b2c404521634f2a4542abf",
+   "successor": "blake3:3664b9329cf9671c145b661c70788a366b0c5493c855787f0ddeb3692ba4122d",
+   "change": "Preserve distinct revisions when qualified market membership returns",
+   "reason": "The qualified research manifest's revision now seals its acquisition date, so a membership returning to an earlier composition is admitted as a new revision; 22 roles rotate by source fingerprint and the development replay reads all equal"
+  },
+  {
+   "role": "product_host.research_input_materializer",
+   "predecessor": "blake3:7468ff756e3ca9a791758a9abf309c440c14320ddc4638077c772edbf43c4b0e",
+   "successor": "blake3:4f1af9911bc687ff594724d1b699eac82bc8301ce742df262a88bc67ddea17c7",
+   "change": "Preserve distinct revisions when qualified market membership returns",
+   "reason": "The qualified research manifest's revision now seals its acquisition date, so a membership returning to an earlier composition is admitted as a new revision; 22 roles rotate by source fingerprint and the development replay reads all equal"
+  },
+  {
+   "role": "product_host.research_strategy_preparation",
+   "predecessor": "blake3:c1a05603dfce0c86c3693666052349c789350d84e5fe78e48aaaceac205fe172",
+   "successor": "blake3:0987e4364ea8867472cd9935e09d3288867aa2a66cd430a7f58b88944a683356",
+   "change": "Preserve distinct revisions when qualified market membership returns",
+   "reason": "The qualified research manifest's revision now seals its acquisition date, so a membership returning to an earlier composition is admitted as a new revision; 22 roles rotate by source fingerprint and the development replay reads all equal"
+  },
+  {
+   "role": "product_host.strategy_calibration",
+   "predecessor": "blake3:c778657e464fce555685224790759ca79e78cb62d415c1019fcddfbef40976e0",
+   "successor": "blake3:1926b0321e4f44e9fb3ff3fa8a060ea517f7accb934e1a5498675d38b8ec95f6",
+   "change": "Preserve distinct revisions when qualified market membership returns",
+   "reason": "The qualified research manifest's revision now seals its acquisition date, so a membership returning to an earlier composition is admitted as a new revision; 22 roles rotate by source fingerprint and the development replay reads all equal"
+  },
+  {
+   "role": "product_host.strategy_scoring",
+   "predecessor": "blake3:23ed2270caf645baed48736ab26f59ec8cedbefdd27fb9990b89d0693ed28ba6",
+   "successor": "blake3:d6d111b59a38450478981b2788235c40b44dfbb04f7ec565fe3f24e565ad4126",
+   "change": "Preserve distinct revisions when qualified market membership returns",
+   "reason": "The qualified research manifest's revision now seals its acquisition date, so a membership returning to an earlier composition is admitted as a new revision; 22 roles rotate by source fingerprint and the development replay reads all equal"
+  },
+  {
+   "role": "product_host.workspace_preparation",
+   "predecessor": "blake3:0f262f33e5fcc08d222b29e3453e4f2853dcf3d7b309d5026ff6f4e1c4ed9d44",
+   "successor": "blake3:533d23d37b4aef338a7e03ad8300a9bc1a9c3ebb6027169f82a8b8d988aca195",
+   "change": "Preserve distinct revisions when qualified market membership returns",
+   "reason": "The qualified research manifest's revision now seals its acquisition date, so a membership returning to an earlier composition is admitted as a new revision; 22 roles rotate by source fingerprint and the development replay reads all equal"
+  },
+  {
+   "role": "research_experiment.alpha.model-development.implementation",
+   "predecessor": "blake3:e4c023a0ac1339aebf66c5ea0521923ee0107d541765c8d2d856cdee2f256203",
+   "successor": "blake3:65b459bc4deb94093e6727f1956c7229303aa6d521bc5bf36bf6a60469c07097",
+   "change": "Preserve distinct revisions when qualified market membership returns",
+   "reason": "The qualified research manifest's revision now seals its acquisition date, so a membership returning to an earlier composition is admitted as a new revision; 22 roles rotate by source fingerprint and the development replay reads all equal"
+  },
+  {
+   "role": "research_experiment.alpha.model-development.lifecycle.implementation",
+   "predecessor": "blake3:e4c023a0ac1339aebf66c5ea0521923ee0107d541765c8d2d856cdee2f256203",
+   "successor": "blake3:65b459bc4deb94093e6727f1956c7229303aa6d521bc5bf36bf6a60469c07097",
+   "change": "Preserve distinct revisions when qualified market membership returns",
+   "reason": "The qualified research manifest's revision now seals its acquisition date, so a membership returning to an earlier composition is admitted as a new revision; 22 roles rotate by source fingerprint and the development replay reads all equal"
+  },
+  {
+   "role": "research_experiment.alpha.qualification.implementation",
+   "predecessor": "blake3:c5a2cef17d76f7699fa9d4c06c746d0eba799604d29ca37b155414e48711bd05",
+   "successor": "blake3:4a044bf8a3f6e9f88efaa341508e38280971585bba26e0e4c636ecf5ba0014b0",
+   "change": "Preserve distinct revisions when qualified market membership returns",
+   "reason": "The qualified research manifest's revision now seals its acquisition date, so a membership returning to an earlier composition is admitted as a new revision; 22 roles rotate by source fingerprint and the development replay reads all equal"
+  },
+  {
+   "role": "research_experiment.factor.screening-development.implementation",
+   "predecessor": "blake3:0bacaef098b052986e88d04e8092ed26107c319f8cf8364a0a436182836b9e19",
+   "successor": "blake3:b2e196a021b2657f9a60966cf607bd0523fd881f25751f9eb1d4851ad3655759",
+   "change": "Preserve distinct revisions when qualified market membership returns",
+   "reason": "The qualified research manifest's revision now seals its acquisition date, so a membership returning to an earlier composition is admitted as a new revision; 22 roles rotate by source fingerprint and the development replay reads all equal"
+  },
+  {
+   "role": "research_experiment.portfolio.policy-development.implementation",
+   "predecessor": "blake3:55635b5dc522ae581b233ccd513b037b16f61ed80b67ff3efa1f8dcf7ed459b9",
+   "successor": "blake3:b1876979842ac08837fe01a678197717f246564e7b64f1aab0340531afa277a2",
+   "change": "Preserve distinct revisions when qualified market membership returns",
+   "reason": "The qualified research manifest's revision now seals its acquisition date, so a membership returning to an earlier composition is admitted as a new revision; 22 roles rotate by source fingerprint and the development replay reads all equal"
+  },
+  {
+   "role": "research_experiment.risk.covariance-development.implementation",
+   "predecessor": "blake3:40c672bf49946b0b82f368978b10bb1d0f3781ebacc07b4b7b06285d8682575c",
+   "successor": "blake3:78fa9259c229fd3d2314ed1b9b2723fac740687138a15a285d88b16889e40281",
+   "change": "Preserve distinct revisions when qualified market membership returns",
+   "reason": "The qualified research manifest's revision now seals its acquisition date, so a membership returning to an earlier composition is admitted as a new revision; 22 roles rotate by source fingerprint and the development replay reads all equal"
+  },
+  {
+   "role": "sector_research.development_execution",
+   "predecessor": "blake3:41ca001f89fdde6b6b14d06f50b231b9b095faf53048b8cca8638acb9294289c",
+   "successor": "blake3:45cdcfc0b3a7aa7eba4e0572dd242f1699c43b6315081b95388a1bd078cbaa26",
+   "change": "Preserve distinct revisions when qualified market membership returns",
+   "reason": "The qualified research manifest's revision now seals its acquisition date, so a membership returning to an earlier composition is admitted as a new revision; 22 roles rotate by source fingerprint and the development replay reads all equal"
+  }
+ ]
+}

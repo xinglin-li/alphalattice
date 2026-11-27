@@ -381,6 +381,7 @@ def build_quality_filtered_research_manifest(
             "calendar_id": acquisition_manifest.profile.calendar_id,
             "provider": acquisition_manifest.profile.provider,
             "daily_price_basis": acquisition_manifest.profile.daily_price_basis,
+            "manifest_as_of": acquisition_manifest.profile.manifest_as_of.isoformat(),
             "data_validity_class": acquisition_manifest.profile.data_validity_class,
         },
         "listing_ids": requested,
