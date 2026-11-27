@@ -20,6 +20,7 @@ import pytest
 
 from alphalattice.capabilities.domain_contracts import spawn
 from alphalattice.capabilities.domain_contracts.bounded_memo import stage_digest
+from alphalattice.capabilities.domain_contracts.host_stop import HostStopping, host_stop_scope
 from alphalattice.capabilities.domain_contracts.source_identity import (
     open_source_role_acquisition,
     source_role_acquisition,
@@ -36,6 +37,7 @@ from alphalattice.foundation.data_layer import create_data_root, reading
 from alphalattice.foundation.data_layer.log import HostLog
 from alphalattice.kernel.execution import (
     CANCELLED,
+    ExecutionStopped,
     cancel_execution,
     execution_cancellation,
     interruptible,
@@ -831,14 +833,70 @@ def _check_idle_worker_retirement(monkeypatch) -> None:
         assert calls.answer()["value"] == 10
 
 
+def _check_bounded_host_calls(case: str) -> None:
+    """Two admitted tasks keep their calls and stop signals separate without spawning."""
+    first_stop = {
+        "host-call": None,
+        "host-call-cancelled": ExecutionStopped,
+        "host-call-stopped": HostStopping,
+    }[case]
+    first = UUID(int=5)
+    second = UUID(int=6)
+    stopping = threading.Event()
+    with (
+        use_resource_lease(ResourceLease(first, ResourceAmounts(cpu=1, workers=1))),
+        execution_cancellation(first),
+        host_stop_scope(stopping.is_set),
+        child_calls(
+            f"{HERE}:doubled", workers=1, preload_models=False, opens=(), in_host=True
+        ) as a,
+    ):
+        a.make({"value": 1})
+        with (
+            use_resource_lease(ResourceLease(second, ResourceAmounts(cpu=1, workers=1))),
+            execution_cancellation(second),
+            host_stop_scope(lambda: False),
+            child_calls(
+                f"{HERE}:doubled", workers=1, preload_models=False, opens=(), in_host=True
+            ) as b,
+        ):
+            b.make({"value": 2})
+            if first_stop is ExecutionStopped:
+                cancel_execution(first)
+            if first_stop is HostStopping:
+                stopping.set()
+            result = b.answer()
+            assert (result["value"], result["pid"]) == (4, os.getpid())
+        if first_stop is None:
+            assert a.answer()["value"] == 2
+        else:
+            with pytest.raises(first_stop):
+                a.answer()
+
+
 @pytest.mark.proves("task_control.ahead_children_follow_their_owner")
 @pytest.mark.parametrize(
-    "case", ["idle", "used", "unused", "cancelled-during-start", "worker-dies", "reader-dies"]
+    "case",
+    [
+        "idle",
+        "used",
+        "unused",
+        "cancelled-during-start",
+        "deferred-start",
+        "worker-dies",
+        "reader-dies",
+        "host-call",
+        "host-call-cancelled",
+        "host-call-stopped",
+    ],
 )
 def test_an_idle_kept_worker_retires_and_the_next_call_starts_it_again(tmp_path, monkeypatch, case):
     """Start ahead, use the same leased worker, and join or replace at the owner's boundary."""
     if case == "idle":
         _check_idle_worker_retirement(monkeypatch)
+        return
+    if case.startswith("host-call"):
+        _check_bounded_host_calls(case)
         return
     if case == "reader-dies":
         create_data_root(tmp_path)
@@ -896,6 +954,9 @@ def test_an_idle_kept_worker_retires_and_the_next_call_starts_it_again(tmp_path,
     lease = ResourceLease(execution, ResourceAmounts(cpu=4, workers=3))
     with use_resource_lease(lease), execution_cancellation(execution):
         with child.warm_child_workers(4, modules=("fixture",)) as start:
+            if case == "deferred-start":
+                assert not pools
+                child.warm_task_workers()
             start()
             assert len(pools) == 3 and all(pool.started for pool in pools)
             if case == "cancelled-during-start":

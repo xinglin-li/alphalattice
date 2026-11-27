@@ -52,6 +52,11 @@ from alphalattice.capabilities.domain_contracts.environment import (
     held_offline,
     numerical_thread_limit,
 )
+from alphalattice.capabilities.domain_contracts.host_stop import (
+    HostStopping,
+    checkpoint,
+    stop_requested,
+)
 from alphalattice.capabilities.domain_contracts.source_identity import (
     open_source_phase,
     source_role_acquisition,
@@ -109,8 +114,16 @@ An execution parameter: an idle Host keeps no workers the person would see for i
 
 _WORKERS: dict[int, ProcessPoolExecutor] = {}
 """Kept workers by position. The ordinary call owns 0 and spread calls own 1 onward."""
-_TASK_WORKERS: dict[ResourceLease, dict[int, ProcessPoolExecutor]] = {}
-"""Workers started ahead for a Task, owned by its exact grant until it ends."""
+
+
+@dataclass
+class _TaskWorkers:
+    pools: dict[int, ProcessPoolExecutor]
+    start: Callable[[], None] | None
+
+
+_TASK_WORKERS: dict[ResourceLease, _TaskWorkers] = {}
+"""Kept workers and their pending warm start belong to the Task's exact grant."""
 _WORKER_LOCK = threading.Lock()
 _BUSY: dict[ProcessPoolExecutor, int] = {}
 """Each kept worker's calls in flight; one with none retires after `KEPT_WORKER_IDLE_SECONDS`."""
@@ -341,6 +354,58 @@ class ChildCalls:
         self._folder.cleanup()
 
 
+class _HostCalls:
+    """Run a bounded, storage-free call at its answer boundary under the Task's grant."""
+
+    def __init__(self, target: str, cancelled: Callable[[], bool] | None) -> None:
+        module, _, name = target.partition(":")
+        self._function = getattr(importlib.import_module(module), name)
+        self._cancelled = cancelled
+        self._pending: deque[dict[str, Any]] = deque()
+
+    def make(
+        self, arguments: Mapping[str, Any], *, shared: Mapping[str, tuple[str, Any]] | None = None
+    ) -> None:
+        """Retain only this call's input until its answer is due."""
+        values = {name: value for name, (_, value) in (shared or {}).items()}
+        self._pending.append({**arguments, **values})
+
+    def _stop(self) -> str | None:
+        return stop_reason() or (CANCELLED if self._cancelled and self._cancelled() else None)
+
+    def answer(self) -> Any:
+        """Compute in call order with the same native thread width and failure projection."""
+        arguments = self._pending.popleft()
+        checkpoint()
+        if reason := self._stop():
+            raise ExecutionStopped(reason)
+        try:
+            with (
+                use_resource_lease(worker_resource_lease(1)),
+                held_offline(),
+                _numerical_threads(1, preload_models=False),
+                source_role_acquisition(),
+            ):
+                result = self._function(
+                    **arguments, cancelled=lambda: stop_requested() or self._stop() is not None
+                )
+        except (HostStopping, ExecutionStopped):
+            raise
+        except Exception as error:
+            checkpoint()
+            if reason := self._stop():
+                raise ExecutionStopped(reason) from error
+            return _answered(_failed_call(error))
+        checkpoint()
+        if reason := self._stop():
+            raise ExecutionStopped(reason)
+        return result
+
+    def close(self) -> None:
+        """Withdraw all calls that have not reached their answer boundary."""
+        self._pending.clear()
+
+
 @contextmanager
 def child_calls(
     target: str,
@@ -349,11 +414,18 @@ def child_calls(
     cancelled: Callable[[], bool] | None = None,
     preload_models: bool = True,
     opens: Iterable[Path] | None = None,
-) -> Iterator[ChildCalls]:
-    """`ChildCalls` of ``module:function`` over `workers` kept workers, closed on leaving."""
-    calls = ChildCalls(
-        target, workers=workers, cancelled=cancelled, preload_models=preload_models, opens=opens
-    )
+    in_host: bool = False,
+) -> Iterator[ChildCalls | _HostCalls]:
+    """Hold an ordered call set in the Host for bounded numerical work or in kept workers."""
+    calls: ChildCalls | _HostCalls
+    if in_host:
+        if opens != () or preload_models or current_resource_lease() is None:
+            raise ValueError("task_control.host_call_requires_storage_free_task")
+        calls = _HostCalls(target, cancelled)
+    else:
+        calls = ChildCalls(
+            target, workers=workers, cancelled=cancelled, preload_models=preload_models, opens=opens
+        )
     try:
         yield calls
     finally:
@@ -574,9 +646,21 @@ def _answered(answer: dict[str, Any]) -> Any:
     )
 
 
+def _failed_call(error: BaseException) -> dict[str, Any]:
+    declared = getattr(error, "failure_class", None)
+    return {
+        "status": "FAILED",
+        "kind": "REFUSED" if isinstance(error, ValueError) else "INTERRUPTED",
+        "type": type(error).__name__,
+        "message": str(error)[:2000],
+        "failure_class": declared if isinstance(declared, str) else None,
+    }
+
+
 def _kept_workers() -> dict[int, ProcessPoolExecutor]:
     lease = current_resource_lease()
-    return _WORKERS if lease is None else _TASK_WORKERS.get(lease, _WORKERS)
+    owned = _TASK_WORKERS.get(lease) if lease is not None else None
+    return _WORKERS if owned is None else owned.pools
 
 
 def _task_owns_pool(pool: ProcessPoolExecutor) -> bool:
@@ -584,7 +668,8 @@ def _task_owns_pool(pool: ProcessPoolExecutor) -> bool:
     if lease is None:
         return False
     with _WORKER_LOCK:
-        return pool in _TASK_WORKERS.get(lease, {}).values()
+        owned = _TASK_WORKERS.get(lease)
+        return owned is not None and pool in owned.pools.values()
 
 
 def stop_task_workers() -> None:
@@ -592,14 +677,28 @@ def stop_task_workers() -> None:
     lease = current_resource_lease()
     with _WORKER_LOCK:
         owned = _TASK_WORKERS.get(lease) if lease is not None else None
-        pools = tuple(owned.values()) if owned is not None else ()
+        pools = tuple(owned.pools.values()) if owned is not None else ()
     for pool in pools:
         _terminate_processes(pool)
     for pool in pools:
         pool.shutdown(wait=True, cancel_futures=True)
     if owned is not None:
         with _WORKER_LOCK:
-            owned.clear()
+            owned.pools.clear()
+
+
+def warm_task_workers() -> None:
+    """Consume the current Task's warm start once, including after a deferred decision."""
+    lease = current_resource_lease()
+    with _WORKER_LOCK:
+        owned = _TASK_WORKERS.get(lease) if lease is not None else None
+        if owned is None or owned.start is None:
+            return
+        launch, owned.start = owned.start, None
+    checkpoint()
+    if reason := stop_reason():
+        raise ExecutionStopped(reason)
+    launch()
 
 
 @contextmanager
@@ -609,8 +708,6 @@ def warm_child_workers(workers: int, *, modules: tuple[str, ...]) -> Iterator[Ca
 
     lease = current_resource_lease()
     assert lease is not None
-    with _WORKER_LOCK:
-        _TASK_WORKERS[lease] = {}
 
     def start() -> None:
         warm = (modules, process_config().get(DATA_ROOT_ENV), worker_resource_lease(1))
@@ -620,8 +717,10 @@ def warm_child_workers(workers: int, *, modules: tuple[str, ...]) -> Iterator[Ca
         except (OSError, MemoryError) as error:
             raise ChildStartFailed(error) from error
 
+    with _WORKER_LOCK:
+        _TASK_WORKERS[lease] = _TaskWorkers({}, start if workers else None)
     try:
-        yield start
+        yield warm_task_workers
     finally:
         try:
             stop_task_workers()
@@ -777,13 +876,8 @@ def _call(
                 pickle.dump(result, sink, protocol=pickle.HIGHEST_PROTOCOL)
             result = None
     except BaseException as error:
-        declared = getattr(error, "failure_class", None)
         return {
-            "status": "FAILED",
-            "kind": "REFUSED" if isinstance(error, ValueError) else "INTERRUPTED",
-            "type": type(error).__name__,
-            "message": str(error)[:2000],
-            "failure_class": declared if isinstance(declared, str) else None,
+            **_failed_call(error),
             "spans": None if ledger is None else ledger.readout_value,
             "trace": rows or None,
         }
@@ -880,4 +974,5 @@ __all__ = [
     "child_calls",
     "run_in_child",
     "warm_child_workers",
+    "warm_task_workers",
 ]

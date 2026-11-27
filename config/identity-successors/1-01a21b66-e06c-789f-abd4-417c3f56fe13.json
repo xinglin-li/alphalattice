@@ -1,0 +1,13 @@
+{
+ "schema": "identity-successors",
+ "version": 1,
+ "moves": [
+  {
+   "role": "product_host.workspace_preparation",
+   "predecessor": "blake3:15f838d2416eff1d4cdda6e7a7e7177adc51bf9aa5d0e0ad8045c23535f154f1",
+   "successor": "blake3:8ed44a80967c7b5141daece11e79e11bb51add9f24ed415b74bcc6189d47ed7a",
+   "change": "Speed up small preparations and keep larger workers warm",
+   "reason": "Small first-use preparations run their listing and Panel calls in the Host, and a larger one keeps its warm Task workers; the preparation's source fingerprint moves with that placement and its successor keeps earlier bindings readable; a fresh-root replay after BLAKE3 reads every Market and Feature value equal"
+  }
+ ]
+}

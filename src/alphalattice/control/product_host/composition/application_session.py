@@ -225,8 +225,10 @@ class WorkspaceApplicationSession:
         adapter: TaskDomainAdapter,
         clock: Callable[[], datetime],
         expected_task_hash: str | None = None,
+        *,
+        warm_workers: Callable[[TaskRecord], bool | None] | None = None,
     ) -> TaskRecord | None:
-        """Run or recover one admitted Host task with this session's runner."""
+        """Run or recover one admitted Task. A worker decision of None waits for the next stage."""
         if task.lifecycle not in {TaskLifecycle.QUEUED, TaskLifecycle.RECOVERY_REQUIRED}:
             return None
         gate = gate_for(self.workspace)
@@ -243,8 +245,12 @@ class WorkspaceApplicationSession:
             refused = gate.stage_refusal(record)
             if refused is None and start is not None:
                 # The runner has claimed the Task and owns child-start recovery here.
-                launch, start = start, None
-                launch()
+                decision = True if warm_workers is None else warm_workers(record)
+                if decision is not None:
+                    # Preparation can warm later from the same Task's worker scope.
+                    launch, start = start, None
+                    if decision:
+                        launch()
             return refused
 
         runner = TaskControlRunner(

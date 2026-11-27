@@ -106,6 +106,7 @@ from alphalattice.control.workspace_runtime.artifacts import ArtifactResolver
 from alphalattice.control.workspace_runtime.database import WorkspaceDatabase
 from alphalattice.control.workspace_runtime.network_access import network_access
 from alphalattice.foundation.feature_engine.inputs.gateway import FeatureInputPolicy
+from alphalattice.foundation.feature_engine.runtime.service import PREPARATION_HOST_LISTINGS
 from alphalattice.foundation.feature_engine.storage.repositories import PanelStateRepository
 from alphalattice.foundation.market_data_ops.runtime.universe_onboarding import (
     CurrentUniverseOnboardingOutcome,
@@ -125,6 +126,7 @@ from alphalattice.foundation.market_data_ops.sources.universe import (
 )
 from alphalattice.foundation.market_data_ops.storage.duckdb import MarketDataRepository
 from alphalattice.interface.local_application.dispatcher import CommandAdmission
+from alphalattice.kernel.execution import ExecutionStopped
 from alphalattice.kernel.identity import BLAKE3_PATTERN
 
 TASK_KIND = "workspace_preparation"
@@ -1667,7 +1669,17 @@ class WorkspacePreparationApplication:
             expected_task_hash: Optional optimistic task identity.
         """
         task = self.session.task_control_registry.task(task_id)
-        self.session.execute_admitted(task, self, self.clock, expected_task_hash)
+        self.session.execute_admitted(
+            task, self, self.clock, expected_task_hash, warm_workers=self._warm_feature_workers
+        )
+
+    def _warm_feature_workers(self, task: TaskRecord) -> bool | None:
+        """Start the larger preparation's workers once its source size is known."""
+        frozen = self._load(task.task_id, STAGES[0], optional=True)
+        if frozen is None:
+            return None
+        listings = frozen.get("input_estimate", {}).get("active_listing_count")
+        return not (type(listings) is int and 0 < listings <= PREPARATION_HOST_LISTINGS)
 
     def owns_published_manifest(self, manifest_hash: str) -> bool:
         """Check retained preparation publication records for one exact manifest identity.
@@ -1751,7 +1763,7 @@ class WorkspacePreparationApplication:
                     ),
                 ),
             )
-        except ChildStartFailed:
+        except (ChildStartFailed, ExecutionStopped):
             raise
         except (ValueError, OSError, RuntimeError) as error:
             return self._blocked_preparation(error)
@@ -1993,6 +2005,7 @@ class WorkspacePreparationApplication:
         # panel years computed) through the runtime's progress sink; bound
         # here to this Task, execution and stage so the page can show it for
         # the selected Task.
+        runtime.feature_foundation.prepare_in_host = not self._warm_feature_workers(task)
         runtime.feature_foundation.progress_sink = self._bound_progress_sink(
             task, execution, stage, runtime.progress_publisher
         )

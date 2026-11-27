@@ -18239,6 +18239,10 @@
 "category": "UNAVAILABLE",
 "classification_note": "The required worker process, external HTTP service or network transport could not execute/answer. The source separately represents ordinary owner refusals and input failures."
 },
+"task_control.host_call_requires_storage_free_task": {
+"owner": "task_control",
+"category": "FAILED_PRECONDITION"
+},
 "task_control.child_workers_invalid": {
 "owner": "task_control",
 "category": "INVALID_ARGUMENT"

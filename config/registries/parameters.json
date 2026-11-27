@@ -4276,6 +4276,16 @@
 "class": "EXECUTION",
 "count": 1
 },
+"src/alphalattice/foundation/feature_engine/runtime/service.py::PREPARATION_HOST_LISTINGS::17": {
+"class": "LIMIT",
+"count": 1,
+"description": "Bound in-Host Feature preparation to the candidate count of the sufficient development workspace."
+},
+"src/alphalattice/foundation/feature_engine/runtime/service.py::_PREPARATION_HOST_DAYS::733": {
+"class": "LIMIT",
+"count": 1,
+"description": "Bound in-Host Feature preparation to two calendar years of history, counting both endpoints and allowing for leap days."
+},
 "src/alphalattice/foundation/feature_engine/runtime/service.py::_PANEL_CONNECTION_SESSION_BUDGET::630": {
 "class": "LIMIT",
 "count": 1

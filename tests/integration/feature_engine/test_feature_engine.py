@@ -7,6 +7,7 @@ import math
 from dataclasses import replace
 from datetime import UTC, date, datetime, timedelta
 from pathlib import Path
+from uuid import uuid4
 
 import duckdb
 import numpy as np
@@ -18,7 +19,7 @@ import pytest
 from alphalattice.capabilities.domain_contracts.domain.errors import WorkspaceConflictError
 from alphalattice.capabilities.domain_contracts.identity import canonical_hash
 from alphalattice.control.observation_runtime.telemetry.progress import WorkProgressUpdate
-from alphalattice.control.task_control.child import ChildCalls, ChildRefused
+from alphalattice.control.task_control.child import ChildCalls, ChildRefused, warm_child_workers
 from alphalattice.control.workspace_runtime.artifacts import ArtifactResolver
 from alphalattice.control.workspace_runtime.mutation_gate import WorkspaceMutationGate
 from alphalattice.control.workspace_runtime.reader_threads import connect_duckdb
@@ -64,6 +65,7 @@ from alphalattice.foundation.feature_engine.publication.current_storage import (
 from alphalattice.foundation.feature_engine.publication.sector_map_activation import (
     SectorRevisionMapActivationCoordinator,
 )
+from alphalattice.foundation.feature_engine.runtime import service as feature_service
 from alphalattice.foundation.feature_engine.runtime.service import (
     FeatureFoundationService,
 )
@@ -83,6 +85,7 @@ from alphalattice.foundation.market_data_ops.sources.sanitization import (
 from alphalattice.foundation.market_data_ops.storage.duckdb import (
     MarketDataRepository,
 )
+from alphalattice.kernel.resources import ResourceAmounts, ResourceLease, use_resource_lease
 from tests._support import development_universe, sufficient_universe
 from tests._support.identity_fixtures import fixture_digest
 from tests.feature_engine.panel_workspace import (
@@ -1692,6 +1695,7 @@ def test_a_build_writes_the_same_bytes_whatever_its_workers(tmp_path, monkeypatc
             progress_sink=updates.append,
             session_authority_resolver=fixture_session_authority,
             feature_workers=workers,
+            prepare_in_host=workers == 3,
         )
         request = FeatureBuildRequest.create(
             manifest_revision=manifest.revision_sha256,
@@ -1717,7 +1721,24 @@ def test_a_build_writes_the_same_bytes_whatever_its_workers(tmp_path, monkeypatc
 
         monkeypatch.setattr(feature_state, "feature_source_inputs_by_listing", counted_set)
         monkeypatch.setattr(feature_state, "feature_source_inputs", counted_single)
-        service.build(request, observed_at=NOW, refresh_sector=False)
+        # The 15 candidates fit the source check, but this fixture has more than two years
+        # of history. The Feature owner must start the held workers before materialization.
+        warmed = []
+        lease = ResourceLease(uuid4(), ResourceAmounts(cpu=4, workers=3))
+        with (
+            use_resource_lease(lease),
+            warm_child_workers(workers, modules=()) as start,
+            monkeypatch.context() as patch,
+        ):
+
+            def start_fallback(updates=updates, start=start, warmed=warmed):
+                assert not updates
+                start()
+                warmed.append(True)
+
+            patch.setattr(feature_service, "warm_task_workers", start_fallback, raising=False)
+            service.build(request, observed_at=NOW, refresh_sector=False)
+        assert warmed == ([True] if workers == 3 else [])
         budget = math.ceil(len(listed) / 25)
         assert reads == {"sets": budget, "fallbacks": 0}, (
             f"COUNT STOP op=healthy_build_reads observed={reads} budget={budget}/0 "

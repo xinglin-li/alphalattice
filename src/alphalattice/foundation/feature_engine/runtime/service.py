@@ -18,11 +18,12 @@ from alphalattice.capabilities.domain_contracts.bounded_memo import (
     stage_digests,
 )
 from alphalattice.capabilities.domain_contracts.domain.errors import WorkspaceConflictError
+from alphalattice.capabilities.domain_contracts.host_stop import HostStopping
 from alphalattice.capabilities.domain_contracts.sector_treatment import sector_treatment
 from alphalattice.capabilities.domain_contracts.spans import span, spanned
 from alphalattice.control.observation_runtime.telemetry.process_metrics import worker_processes
 from alphalattice.control.observation_runtime.telemetry.progress import WorkProgressUpdate
-from alphalattice.control.task_control.child import ChildStartFailed, child_calls
+from alphalattice.control.task_control.child import ChildStartFailed, child_calls, warm_task_workers
 from alphalattice.control.workspace_runtime.mutation_gate import WorkspaceMutationGate
 from alphalattice.foundation.feature_engine.catalog.contracts import (
     MARKET_DEPENDENT_FACTOR_IDS,
@@ -143,7 +144,7 @@ from alphalattice.foundation.market_data_ops.sources.price_integrity import Trad
 from alphalattice.foundation.market_data_ops.sources.providers import MarketDataProvider
 from alphalattice.foundation.market_data_ops.storage.duckdb import MarketDataRepository
 from alphalattice.kernel.clock import observation_time
-from alphalattice.kernel.execution import execution_port
+from alphalattice.kernel.execution import ExecutionStopped, execution_port
 from alphalattice.kernel.resources import (
     carry_resource_lease,
     cpu_width,
@@ -155,6 +156,10 @@ if TYPE_CHECKING:
     import pandas as pd
 
 _PANEL_CONNECTION_SESSION_BUDGET = 630
+# The sufficient development preparation has 17 candidates and two years of history.
+PREPARATION_HOST_LISTINGS = 17
+_PREPARATION_HOST_DAYS = 733
+
 _LISTING_ROWS = f"{__name__}:materialize_listing_rows"
 """A listing's computation, run in the Host's kept workers (W10)."""
 
@@ -381,6 +386,8 @@ class FeatureFoundationService:
     (`worker_processes` of the cores the Host applied when the Task started, which its execution
     log records); the count a build used is returned beside its result and in its progress.
     """
+
+    prepare_in_host: bool = False
 
     def __post_init__(self) -> None:
         """Install the selected catalog and its Feature and Panel materializers."""
@@ -647,7 +654,19 @@ class FeatureFoundationService:
         kernel_payload = (
             self.base.kernel_registry.capability_payload() if shipped_kernels is None else None
         )
+        in_host = (
+            self.prepare_in_host
+            and lease is not None
+            and shipped_kernels is None
+            and not self.layer.columns
+            and len(axis_listings) <= PREPARATION_HOST_LISTINGS
+            and (request.as_of_session - request.history_start).days < _PREPARATION_HOST_DAYS
+        )
+        if in_host:
+            workers = 1
         try:
+            if self.prepare_in_host and not in_host:
+                warm_task_workers()
             self._publish_progress(
                 operation_id=request.request_hash,
                 stage_id="base_feature_materialization",
@@ -663,6 +682,7 @@ class FeatureFoundationService:
                     workers=workers,
                     preload_models=shipped_kernels is not None,
                     opens=(),  # it computes on the inputs read here and opens no workspace file
+                    in_host=in_host,
                 ) as calls,
             ):
                 self.feature_persistence.reconcile_pending(
@@ -1063,7 +1083,7 @@ class FeatureFoundationService:
                     counters={"materialization_receipts": len(receipts), "workers": workers},
                     status="SUCCEEDED",
                 )
-        except (AssertionError, ChildStartFailed):
+        except (AssertionError, ChildStartFailed, ExecutionStopped, HostStopping):
             if sector_executor is not None:
                 sector_executor.shutdown(wait=True, cancel_futures=True)
             raise
@@ -1170,7 +1190,7 @@ class FeatureFoundationService:
                 {
                     "materialized_listings": len(receipts),
                     "panel": "not_composed",
-                    "base_feature_workers": workers,
+                    "base_feature_workers": 0 if in_host else workers,
                 },
                 build_stage=self._durable_build_stage(),
             )
@@ -1400,7 +1420,7 @@ class FeatureFoundationService:
         # reclassification falls inside is one call per run of sessions that read one
         # map.
         with child_calls(  # it computes on the rows sent and opens no workspace file
-            _PANEL_CHUNK, workers=workers, preload_models=False, opens=()
+            _PANEL_CHUNK, workers=workers, preload_models=False, opens=(), in_host=in_host
         ) as panel_calls:
             for factor_ids, grouped_sessions in panel_groups:
                 for connection_start in range(
@@ -1556,7 +1576,7 @@ class FeatureFoundationService:
         coverage = {
             "base_receipts": len(receipts),
             "base_feature_elapsed_seconds": base_elapsed,
-            "base_feature_workers": workers,
+            "base_feature_workers": 0 if in_host else workers,
             "panel_elapsed_seconds": panel_elapsed,
             "panel_complete_at_as_of": admission.research_admissible,
             "panel_admission": asdict(admission),
