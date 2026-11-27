@@ -112,6 +112,10 @@ requirements = {
             {"experience_query", "experience_workspace", "experience_known_at", "experience_limit"}
         ),
     ),
+    "EXPERIENCE_SQL": (
+        frozenset({"experience_statement"}),
+        frozenset({"experience_statement"}),
+    ),
     "EXPERIENCE_RECORD": (
         frozenset({"review_subject", "review_verdict", "review_note"}),
         frozenset({"review_subject", "review_verdict", "review_note"}),

@@ -7,7 +7,7 @@ from concurrent.futures import ThreadPoolExecutor
 import pytest
 
 from alphalattice.capabilities.data.errors import DataError
-from alphalattice.foundation.data_layer import reading
+from alphalattice.foundation.data_layer import reading, sql_read
 from alphalattice.foundation.data_layer.market_health import unavailable_market_health
 
 TEST_SOURCE = "src/alphalattice/foundation/data_layer/reading.py"
@@ -126,3 +126,33 @@ def test_a_reads_answer_or_refusal_reaches_the_host_as_the_read_gave_it(tmp_path
         with pytest.raises(DataError) as refused:
             reading._ask(_Answering(answer), ("q", {}), answers, tmp_path)
     assert refused.value.failure.code == code
+
+
+@pytest.mark.proves("data_layer.an_agent_answer_is_screened_for_this_machines_paths")
+@pytest.mark.parametrize(
+    ("value", "named"),
+    [
+        pytest.param("{root}/machine/log.sqlite", True, id="forward-slashes"),
+        pytest.param("{windows}\\extensions", True, id="backslashes"),
+        pytest.param(["kept", {"cell": "{upper}/data"}], True, id="nested-upper-case"),
+        pytest.param({"{root}": 1}, True, id="a-key"),
+        pytest.param(["momentum", 1, None, "abc: def"], False, id="no-path"),
+    ],
+)
+def test_an_agent_answer_is_screened_for_this_machines_paths(tmp_path, value, named):
+    """requirement: a cell, key or nested value naming the data root in either separator or
+    case is caught, and an answer naming no path of this machine is not."""
+    forms = {
+        "root": tmp_path.as_posix(),
+        "windows": tmp_path.as_posix().replace("/", "\\"),
+        "upper": tmp_path.as_posix().upper(),
+    }
+
+    def filled(item):
+        if isinstance(item, str):
+            return item.format(**forms)
+        if isinstance(item, dict):
+            return {filled(key): filled(cell) for key, cell in item.items()}
+        return [filled(cell) for cell in item] if isinstance(item, list) else item
+
+    assert sql_read._names_a_path(filled(value), sql_read._needles(tmp_path)) is named

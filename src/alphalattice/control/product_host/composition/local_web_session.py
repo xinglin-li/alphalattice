@@ -1630,6 +1630,7 @@ OPERATION_ROUTES: Final[tuple[tuple[str, str, str], ...]] = (
     ("GET", "/api/experience-brief", "EXPERIENCE_BRIEF"),
     ("GET", "/api/experience-class", "EXPERIENCE_CLASS"),
     ("GET", "/api/experience-recall", "EXPERIENCE_RECALL"),
+    ("GET", "/api/experience-sql", "EXPERIENCE_SQL"),
     ("POST", "/api/experience", "EXPERIENCE_RECORD"),
     ("GET", "/api/upgrade", "UPGRADE_OVERVIEW"),
     ("POST", "/api/upgrade/acknowledge", "UPGRADE_ACKNOWLEDGE"),

@@ -69,6 +69,9 @@ class RequestFields(RequestFieldModel):
     """The text to recall experiences like, 1 to 512 characters."""
     experience_limit: int | None = Field(default=None, ge=1, le=20, strict=True)
     """How many experiences a recall returns, 1 to 20; 5 when absent."""
+    experience_statement: str | None = Field(default=None, min_length=1, max_length=8192)
+    """One read-only SELECT over the history's views and their macros, 1 to 8,192
+    characters."""
     review_subject: str | None = Field(
         default=None, pattern=r"^(trial|task|goal):[0-9A-Za-z-]{1,64}$"
     )

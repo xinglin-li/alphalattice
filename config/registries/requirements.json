@@ -765,6 +765,19 @@
       "seconds": 10,
       "lower_layer": "The contract crosses real DuckLake metadata, Arrow registration and restart persistence."
     },
+    "data_layer.an_agent_answer_is_screened_for_this_machines_paths": {
+      "description": "If the screen missed a path in another separator, case, key or nested cell, an agent's answer would show the machine's layout.",
+      "owner": "alphalattice.foundation.data_layer",
+      "layer": "unit",
+      "seconds": 1
+    },
+    "data_layer.an_agent_statement_reads_one_select_with_nothing_in_reach": {
+      "description": "If an agent's statement could be other than one SELECT, read a file, run unbounded or answer with a path, it would escape the history.",
+      "lower_layer": "DuckDB's parser, its external-access setting and its locked configuration decide each refusal in the reading process; unit tests may not load DuckDB.",
+      "owner": "alphalattice.foundation.data_layer",
+      "layer": "integration",
+      "seconds": 30
+    },
     "data_layer.an_ended_trial_awaits_its_review": {
       "description": "If an ended trial with no note read as reviewed or as running, an agent would skip its review or wait on work already done.",
       "lower_layer": "It reads the experience view over real projected trial rows, which no single function holds.",
@@ -1952,6 +1965,19 @@
       "layer": "integration",
       "seconds": 2,
       "lower_layer": "The real HTTP owner calls client admission and Host observation, which import process owners outside the unit layer."
+    },
+    "local_application.an_agent_statement_is_answered_through_the_cli": {
+      "description": "If `experience sql` did not reach the Host's reading process through the real CLI entry, or a refusal's data named a path, an agent could not query its history or would learn the machine's layout.",
+      "lower_layer": "The answer crosses the CLI's parser, the Host's operation route and the reading process over the Host's own log; only a served Host shows them together.",
+      "owner": "alphalattice.interface.local_application",
+      "layer": "integration",
+      "seconds": 30
+    },
+    "local_application.an_agent_statement_is_bounded_before_the_host_reads_it": {
+      "description": "If an empty, over-long or non-text statement reached the Host, the reading process would parse an unbounded request before the error was named.",
+      "owner": "alphalattice.interface.local_application",
+      "layer": "unit",
+      "seconds": 1
     },
     "local_application.cli_request_keeps_read_admission": {
       "description": "The bounded CLI carrier receives read admission through its authenticated operation route, so it never renews the Host idle deadline and remains admissible while writes are stopping.",

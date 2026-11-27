@@ -266,7 +266,6 @@ class WorkspaceMaintenanceRecords(Protocol):
         status: MaintenanceStatus,
         observed_at: datetime,
         change_set: MarketDataChangeSet | None = None,
-        child_task_refs: tuple[str, ...] | None = None,
         effect_receipts: tuple[str, ...] | None = None,
         retry_after_at: datetime | None = None,
         failure_code: str | None = None,
@@ -466,7 +465,6 @@ class WorkspaceMaintenanceCoordinator:
                     if cycle.market_data_change_set
                     else None
                 ),
-                child_task_refs=cycle.child_task_refs,
             )
         if (
             cycle.status is MaintenanceStatus.DEFERRED
@@ -482,7 +480,6 @@ class WorkspaceMaintenanceCoordinator:
                     if cycle.market_data_change_set
                     else None
                 ),
-                child_task_refs=cycle.child_task_refs,
                 retry_after_at=cycle.retry_after_at,
                 failure_code=cycle.failure_code,
             )
@@ -3396,7 +3393,6 @@ class WorkspaceMaintenanceCoordinator:
         status: MaintenanceStatus,
         observed_at: datetime,
         change_set: MarketDataChangeSet | None = None,
-        child_task_refs: tuple[str, ...] | None = None,
         effect_receipts: tuple[str, ...] | None = None,
         retry_after_at: datetime | None = None,
         failure_code: str | None = None,
@@ -3423,7 +3419,6 @@ class WorkspaceMaintenanceCoordinator:
             status=status,
             observed_at=observed_at,
             change_set=change_set,
-            child_task_refs=child_task_refs,
             effect_receipts=effect_receipts,
             retry_after_at=retry_after_at,
             failure_code=failure_code,
@@ -3434,11 +3429,6 @@ class WorkspaceMaintenanceCoordinator:
             status=status,
             phase=phase,
             change_set_hash=change_set.change_set_hash if change_set else None,
-            child_task_refs=(
-                child_task_refs
-                if child_task_refs is not None
-                else self.registry.cycle(cycle_id).child_task_refs
-            ),
             retry_after_at=retry_after_at,
             failure_code=failure_code,
             failure_cause=failure_cause,

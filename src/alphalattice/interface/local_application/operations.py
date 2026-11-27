@@ -784,6 +784,13 @@ GRAMMAR: Final[dict[str, Command]] = {
         "its text and its trials' classes; refused by name until the retrieval models are "
         "installed.",
     ),
+    "EXPERIENCE_SQL": Command(
+        "experience",
+        "sql",
+        "Answers one read-only SELECT over the history's views and their macros, at most 1,000 "
+        "rows, with no table, file, network or path past them in reach; anything else is refused "
+        "by name.",
+    ),
     "EXPERIENCE_RECORD": Command(
         "experience",
         "record",
@@ -1139,6 +1146,7 @@ FLAGS: Final[dict[str, str]] = {
     "experience_budget": "budget",
     "experience_limit": "limit",
     "experience_query": "query",
+    "experience_statement": "statement",
     "review_subject": "reviews",
     "review_verdict": "verdict",
     "incident_key": "incident",

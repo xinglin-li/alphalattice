@@ -565,6 +565,18 @@ class ExperienceClassAnswer(_Answer):
     completed and failed."""
 
 
+class ExperienceSqlAnswer(_Answer):
+    """One read-only SELECT's answer over the history: its columns and rows, times in ISO form."""
+
+    model_config = ConfigDict(extra="forbid")
+    columns: list[str]
+    """The statement's column names, in order."""
+    rows: list[list[Any]]
+    """Its first rows, at most 1,000, each cell in JSON's types."""
+    truncated: bool
+    """Whether the statement had more rows than were given."""
+
+
 class ExperienceRecallAnswer(_Answer):
     """The experiences most like a query in a workspace as the history knew them at a time, each
     with its text and the classes of the trials it is on: what a recalled experience rests on."""
@@ -790,6 +802,7 @@ ANSWERS: Final[dict[str, type[BaseModel]]] = {
     "EXPERIENCE_BRIEF": ExperienceBriefAnswer,
     "EXPERIENCE_CLASS": ExperienceClassAnswer,
     "EXPERIENCE_RECALL": ExperienceRecallAnswer,
+    "EXPERIENCE_SQL": ExperienceSqlAnswer,
     "EXPERIENCE_RECORD": ExperienceRecordAnswer,
     "UPGRADE_OVERVIEW": UpgradeOverviewAnswer,
     **_declared_answers(),

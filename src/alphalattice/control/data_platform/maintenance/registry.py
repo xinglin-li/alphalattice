@@ -116,7 +116,6 @@ class DuckDbWorkspaceMaintenanceRegistry:
                         phase VARCHAR NOT NULL,
                         status VARCHAR NOT NULL,
                         change_set_json VARCHAR,
-                        child_task_refs_json VARCHAR NOT NULL,
                         effect_receipts_json VARCHAR NOT NULL,
                         retry_after_at TIMESTAMP,
                         failure_code VARCHAR,
@@ -236,10 +235,10 @@ class DuckDbWorkspaceMaintenanceRegistry:
                     """
                     INSERT INTO workspace_maintenance_cycle (
                         cycle_id, request_hash, request_json, phase, status,
-                        change_set_json, child_task_refs_json, effect_receipts_json,
+                        change_set_json, effect_receipts_json,
                         retry_after_at, failure_code, transport_workers, created_at, updated_at
                     ) VALUES (
-                        ?, ?, ?, 'preflight', 'running', NULL, '[]', '[]',
+                        ?, ?, ?, 'preflight', 'running', NULL, '[]',
                         NULL, NULL, 4, ?, ?
                     )
                     """,
@@ -266,7 +265,6 @@ class DuckDbWorkspaceMaintenanceRegistry:
         status: MaintenanceStatus,
         observed_at: datetime,
         change_set: MarketDataChangeSet | None = None,
-        child_task_refs: tuple[str, ...] | None = None,
         effect_receipts: tuple[str, ...] | None = None,
         retry_after_at: datetime | None = None,
         failure_code: str | None = None,
@@ -280,7 +278,6 @@ class DuckDbWorkspaceMaintenanceRegistry:
             status: Maintenance lifecycle state to record.
             observed_at: Operational observation clock; callers supply an aware instant.
             change_set: Observed market-data/membership changes to propagate.
-            child_task_refs: Optional replacement for the recorded child task references.
             effect_receipts: Optional replacement for committed effect receipt references.
             retry_after_at: Optional next admissible retry clock.
             failure_code: Stable failure code retained for diagnosis.
@@ -299,7 +296,6 @@ class DuckDbWorkspaceMaintenanceRegistry:
                 """
                 UPDATE workspace_maintenance_cycle
                 SET phase = ?, status = ?, change_set_json = COALESCE(?, change_set_json),
-                    child_task_refs_json = COALESCE(?, child_task_refs_json),
                     effect_receipts_json = COALESCE(?, effect_receipts_json), retry_after_at = ?,
                     failure_code = ?, transport_workers = COALESCE(?, transport_workers),
                     updated_at = ?
@@ -309,7 +305,6 @@ class DuckDbWorkspaceMaintenanceRegistry:
                     phase.value,
                     status.value,
                     _json(asdict(change_set)) if change_set is not None else None,
-                    _json(child_task_refs) if child_task_refs is not None else None,
                     _json(effect_receipts) if effect_receipts is not None else None,
                     retry_after_at.astimezone(UTC).replace(tzinfo=None) if retry_after_at else None,
                     failure_code,
@@ -883,7 +878,7 @@ class DuckDbWorkspaceMaintenanceRegistry:
         def operation(connection: duckdb.DuckDBPyConnection) -> Any:
             return connection.execute(
                 """
-                SELECT request_json, phase, status, change_set_json, child_task_refs_json,
+                SELECT request_json, phase, status, change_set_json,
                        effect_receipts_json, retry_after_at, failure_code,
                        transport_workers, updated_at
                 FROM workspace_maintenance_cycle WHERE cycle_id = ?
@@ -953,19 +948,18 @@ class DuckDbWorkspaceMaintenanceRegistry:
                 receipt_hashes=tuple(payload["receipt_hashes"]),
                 change_set_hash=str(payload["change_set_hash"]),
             )
-        updated = row[9].replace(tzinfo=UTC) if row[9].tzinfo is None else row[9]
-        retry = row[6].replace(tzinfo=UTC) if row[6] and row[6].tzinfo is None else row[6]
+        updated = row[8].replace(tzinfo=UTC) if row[8].tzinfo is None else row[8]
+        retry = row[5].replace(tzinfo=UTC) if row[5] and row[5].tzinfo is None else row[5]
         return WorkspaceMaintenanceCycle(
             cycle_id=cycle_id,
             request=request,
             phase=MaintenancePhase(str(row[1])),
             status=MaintenanceStatus(str(row[2])),
             market_data_change_set=change_set,
-            child_task_refs=tuple(json.loads(str(row[4]))),
-            effect_receipts=tuple(json.loads(str(row[5]))),
+            effect_receipts=tuple(json.loads(str(row[4]))),
             retry_after_at=retry,
-            failure_code=str(row[7]) if row[7] is not None else None,
-            transport_workers=int(row[8]),
+            failure_code=str(row[6]) if row[6] is not None else None,
+            transport_workers=int(row[7]),
             updated_at=updated,
         )
 

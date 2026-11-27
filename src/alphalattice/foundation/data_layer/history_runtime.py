@@ -1361,6 +1361,13 @@ def read_experience_class(
     )
 
 
+def read_sql(*, statement: str) -> dict[str, Any] | None:
+    """One agent SELECT over the history's views and their macros, answered by
+    the reader from its locked session (`sql_read.answer`), as one gen_ai `search_memory` span;
+    None if unavailable."""
+    return _search_memory("sql", lambda read: len(read["rows"]), statement=statement)
+
+
 def recall_experiences(
     *, query: str, workspace: str, cutoff_us: int, superseded: bool | None = False, limit: int = 5
 ) -> dict[str, Any] | None:

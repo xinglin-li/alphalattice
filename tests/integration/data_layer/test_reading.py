@@ -15,7 +15,9 @@ from datetime import date, timedelta
 from types import SimpleNamespace
 from unittest.mock import patch
 
+import duckdb
 import pyarrow as pa
+import pyarrow.parquet as pq
 import pytest
 
 from alphalattice.capabilities.data.errors import DataError
@@ -25,6 +27,7 @@ from alphalattice.foundation.data_layer import (
     market_health,
     reading,
     return_series,
+    sql_read,
 )
 from alphalattice.foundation.data_layer import log as log_module
 from alphalattice.foundation.data_layer.chain import canonical
@@ -663,3 +666,112 @@ def test_compare_converts_an_older_metric_version_to_the_newer(tmp_path):
         (row,) = compare(con, "a", "b")
     assert (row["version"], row["a"], row["b"], row["diff"]) == (2, 1.0, 1.5, 0.5)
     assert row["relation"] == "convertible"
+
+
+@pytest.fixture(scope="module")
+def agent_reader(tmp_path_factory):
+    """A data root with a log, a workspace whose folder only the Host holds and a world catalog,
+    the reading process answering its agents' statements, and a real CSV and Parquet beside it."""
+    folder = tmp_path_factory.mktemp("agent-sql")
+    root = folder / "data"
+    create_data_root(root)
+    _world(root, [lambda t: 0.001] * 3, 30)
+    with HostLog.open(root) as log:  # a folder outside every place the path screen knows
+        log.record("workspace.created", ("workspace", "w1"), {"folder": PRIVATE, "name": "w1"})
+    with closing(sqlite3.connect(root / "machine" / "log.sqlite")) as con:
+        held = con.execute("SELECT folder FROM workspace WHERE workspace_id = 'w1'").fetchone()
+    assert held == (PRIVATE,), "the Host holds the private folder the agent must never read"
+    (folder / "plain.csv").write_text("a\n1\n", encoding="utf-8")
+    pq.write_table(pa.table({"a": [1]}), folder / "plain.parquet")
+    reader = reading.LogReader(root)
+    try:
+        yield folder, reader
+    finally:
+        reader.close()
+
+
+OFF = "experience.sql_off_the_surface"
+PRIVATE = "Z:/elsewhere/secret-workspace"
+
+
+@pytest.mark.proves("data_layer.an_agent_statement_reads_one_select_with_nothing_in_reach")
+@pytest.mark.parametrize(
+    ("statement", "code", "words"),
+    [
+        pytest.param("SELECT count(*) AS bars FROM raw_bar_latest", None, None, id="a-view"),
+        pytest.param(
+            "WITH t AS (SELECT * FROM experience) SELECT count(*) AS trials FROM t",
+            None,
+            None,
+            id="a-cte-over-a-view",
+        ),
+        pytest.param("SELECT * FROM range(1500)", None, None, id="row-bound"),
+        pytest.param("SELECT folder FROM log.workspace", OFF, "workspace is off", id="host-only"),
+        pytest.param(
+            "SELECT * FROM query('SELECT folder FROM log.workspace')", OFF, "query is", id="query"
+        ),
+        pytest.param("SUMMARIZE log.workspace", OFF, "SUMMARIZE", id="summarize"),
+        pytest.param("SELECT count(*) FROM lake.world.raw_bar", OFF, "raw_bar is", id="lake-table"),
+        pytest.param("SELECT path FROM duckdb_databases()", OFF, "duckdb_databases", id="engine"),
+        pytest.param(
+            "SELECT current_setting('extension_directory')", OFF, "current_setting", id="setting"
+        ),
+        pytest.param(
+            "SELECT * FROM read_csv('{folder}/plain.csv')", OFF, "read_csv", id="read-csv"
+        ),
+        pytest.param("SELECT 1; SELECT 2", "experience.sql_invalid", "SELECT, SELECT", id="two"),
+        pytest.param(
+            "INSERT INTO log.event VALUES (1)", "experience.sql_invalid", "INSERT", id="insert"
+        ),
+        pytest.param("ATTACH ':memory:' AS other", "experience.sql_invalid", "ATTACH", id="attach"),
+        pytest.param(
+            "COPY (SELECT 1) TO '{folder}/out.csv'", "experience.sql_invalid", "COPY", id="copy"
+        ),
+        pytest.param("PRAGMA version", "experience.sql_invalid", "PRAGMA", id="pragma"),
+        pytest.param(
+            "SET enable_external_access = true", "experience.sql_invalid", "SET", id="set"
+        ),
+        pytest.param("SELECT * FROM read_csv('{folder}/plain.csv')", "locked", None, id="lock-csv"),
+        pytest.param(
+            "SELECT * FROM read_parquet('{folder}/plain.parquet')",
+            "locked",
+            None,
+            id="lock-parquet",
+        ),
+        pytest.param(
+            "SELECT no_such_column FROM experience",
+            "experience.sql_refused",
+            "BinderException); its words are withheld",
+            id="engine-words-withheld",
+        ),
+    ],
+)
+def test_an_agent_statement_is_one_select_answered_with_no_file_network_or_path(
+    agent_reader, statement, code, words
+):
+    """requirement: the reading process answers one SELECT over the history's views up to its row
+    bound and refuses any other statement, table, function or file by name, naming nothing past."""
+    folder, reader = agent_reader
+    asked = statement.format(folder=folder.as_posix())
+    if code == "locked":  # the agents' session itself, past the surface: external access is off
+        with closing(sql_read.lock(reading_session(folder / "data"))) as session:
+            with pytest.raises(duckdb.PermissionException, match="disabled by configuration"):
+                session.execute(asked)
+            with pytest.raises(duckdb.InvalidInputException, match="locked"):
+                session.execute("SET enable_external_access = true")
+        return
+    if code is None:
+        read = reader.read("sql", statement=asked)
+        if asked.startswith("SELECT * FROM range"):
+            assert (len(read["rows"]), read["truncated"]) == (sql_read.ROWS, True)
+        else:
+            (count,) = read["rows"][0]
+            assert read["columns"] in (["bars"], ["trials"]) and not read["truncated"]
+            assert count > 0 if read["columns"] == ["bars"] else count == 0
+        return
+    with pytest.raises(DataError) as refused:
+        reader.read("sql", statement=asked)
+    said = str(refused.value)
+    assert refused.value.failure.code == code and words in said, said
+    assert folder.as_posix().lower() not in said.replace("\\", "/").lower(), said
+    assert "secret-workspace" not in said, said

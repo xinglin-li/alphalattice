@@ -8605,6 +8605,85 @@
         "type": "string"
       }
     },
+    "answer:EXPERIENCE_SQL.columns": {
+      "required": true,
+      "schema": {
+        "items": {
+          "type": "string"
+        },
+        "type": "array"
+      }
+    },
+    "answer:EXPERIENCE_SQL.error_info": {
+      "required": false,
+      "schema": {
+        "anyOf": [
+          {
+            "$ref": "#/$defs/ErrorInfo"
+          },
+          {
+            "type": "null"
+          }
+        ],
+        "default": null
+      }
+    },
+    "answer:EXPERIENCE_SQL.rows": {
+      "required": true,
+      "schema": {
+        "items": {
+          "items": {},
+          "type": "array"
+        },
+        "type": "array"
+      }
+    },
+    "answer:EXPERIENCE_SQL.truncated": {
+      "required": true,
+      "schema": {
+        "type": "boolean"
+      }
+    },
+    "answer:EXPERIENCE_SQL/ErrorInfo.category": {
+      "required": true,
+      "schema": {
+        "type": "string"
+      }
+    },
+    "answer:EXPERIENCE_SQL/ErrorInfo.domain": {
+      "required": true,
+      "schema": {
+        "type": "string"
+      }
+    },
+    "answer:EXPERIENCE_SQL/ErrorInfo.field_violations": {
+      "required": true,
+      "schema": {
+        "items": {
+          "additionalProperties": true,
+          "type": "object"
+        },
+        "type": "array"
+      }
+    },
+    "answer:EXPERIENCE_SQL/ErrorInfo.message": {
+      "required": true,
+      "schema": {
+        "type": "string"
+      }
+    },
+    "answer:EXPERIENCE_SQL/ErrorInfo.message_id": {
+      "required": true,
+      "schema": {
+        "type": "string"
+      }
+    },
+    "answer:EXPERIENCE_SQL/ErrorInfo.reason": {
+      "required": true,
+      "schema": {
+        "type": "string"
+      }
+    },
     "answer:EXPERIMENTS.error_info": {
       "required": false,
       "schema": {
@@ -29267,6 +29346,11 @@
         "EXPERIENCE_RECORD"
       ]
     },
+    "command:experience sql": {
+      "operations": [
+        "EXPERIENCE_SQL"
+      ]
+    },
     "command:feature": {},
     "command:feature activate": {
       "operations": [
@@ -29968,6 +30052,8 @@
     "exchange:PASS": {},
     "exchange:RULING": {},
     "exchange:answer": {},
+    "exchange:codex_queue_reach_probe": {},
+    "exchange:dependency_command_probe": {},
     "exchange:session_bound": {},
     "law:product/DA1": {},
     "law:product/DA10": {},
@@ -30814,6 +30900,14 @@
         "review_note",
         "review_subject",
         "review_verdict"
+      ]
+    },
+    "operation:EXPERIENCE_SQL": {
+      "allowed": [
+        "experience_statement"
+      ],
+      "required": [
+        "experience_statement"
       ]
     },
     "operation:EXPERIMENTS": {
@@ -40390,6 +40484,119 @@
       "type": "Path"
     },
     "option:experience record/-h": {
+      "choices": null,
+      "nargs": 0,
+      "required": false,
+      "type": null
+    },
+    "option:experience sql/--choices": {
+      "choices": null,
+      "nargs": null,
+      "required": false,
+      "type": "Path"
+    },
+    "option:experience sql/--format": {
+      "choices": [
+        "json",
+        "yaml",
+        "html"
+      ],
+      "nargs": null,
+      "required": false,
+      "type": null
+    },
+    "option:experience sql/--from": {
+      "choices": null,
+      "nargs": null,
+      "required": false,
+      "type": "Path"
+    },
+    "option:experience sql/--goal": {
+      "choices": null,
+      "nargs": null,
+      "required": false,
+      "type": null
+    },
+    "option:experience sql/--help": {
+      "choices": null,
+      "nargs": 0,
+      "required": false,
+      "type": null
+    },
+    "option:experience sql/--lang": {
+      "choices": [
+        "en",
+        "zh"
+      ],
+      "nargs": null,
+      "required": false,
+      "type": null
+    },
+    "option:experience sql/--list-next": {
+      "choices": null,
+      "nargs": 0,
+      "required": false,
+      "type": null
+    },
+    "option:experience sql/--max-wait": {
+      "choices": null,
+      "nargs": null,
+      "required": false,
+      "type": "float"
+    },
+    "option:experience sql/--next-from": {
+      "choices": null,
+      "nargs": null,
+      "required": false,
+      "type": "int"
+    },
+    "option:experience sql/--output": {
+      "choices": null,
+      "nargs": null,
+      "required": false,
+      "type": "Path"
+    },
+    "option:experience sql/--request-timeout": {
+      "choices": null,
+      "nargs": null,
+      "required": false,
+      "type": "float"
+    },
+    "option:experience sql/--section": {
+      "choices": null,
+      "nargs": null,
+      "required": false,
+      "type": null
+    },
+    "option:experience sql/--statement": {
+      "choices": null,
+      "nargs": null,
+      "required": false,
+      "type": null
+    },
+    "option:experience sql/--view": {
+      "choices": [
+        "compact",
+        "full",
+        "summary"
+      ],
+      "nargs": null,
+      "required": false,
+      "type": null
+    },
+    "option:experience sql/--wait": {
+      "choices": null,
+      "nargs": 0,
+      "required": false,
+      "type": null
+    },
+    "option:experience sql/--workspace": {
+      "choices": null,
+      "nargs": null,
+      "required": false,
+      "type": "Path"
+    },
+    "option:experience sql/-h": {
       "choices": null,
       "nargs": 0,
       "required": false,
@@ -58630,6 +58837,8 @@
     "refusal:alpha_research.canonical_target_source_duplicated": {},
     "refusal:alpha_research.canonical_target_source_nonfinite": {},
     "refusal:alpha_research.canonical_target_surface_incomplete": {},
+    "refusal:alpha_research.child_staging_invalid": {},
+    "refusal:alpha_research.child_staging_linked": {},
     "refusal:alpha_research.commit_model_authority_mismatch": {},
     "refusal:alpha_research.commit_target_authority_mismatch": {},
     "refusal:alpha_research.comparison_evidence_arm_duplicated": {},
@@ -58660,6 +58869,9 @@
     "refusal:alpha_research.current_sector_map_unavailable": {},
     "refusal:alpha_research.dependence_policy_input_invalid": {},
     "refusal:alpha_research.development_artifact_identity_invalid": {},
+    "refusal:alpha_research.development_breakdown_count_changed": {},
+    "refusal:alpha_research.development_breakdown_profile_invalid": {},
+    "refusal:alpha_research.development_breakdown_profile_repeated": {},
     "refusal:alpha_research.development_child_estimator_missing": {},
     "refusal:alpha_research.development_child_fit_evidence_missing": {},
     "refusal:alpha_research.development_child_lineage_invalid": {},
@@ -58930,6 +59142,7 @@
     "refusal:alpha_research.heterogeneous_component_score_absent": {},
     "refusal:alpha_research.heterogeneous_component_set_invalid": {},
     "refusal:alpha_research.heterogeneous_evidence_absent": {},
+    "refusal:alpha_research.heterogeneous_evidence_before_blake3": {},
     "refusal:alpha_research.heterogeneous_evidence_identity_invalid": {},
     "refusal:alpha_research.heterogeneous_feature_axis_invalid": {},
     "refusal:alpha_research.heterogeneous_feature_count_invalid": {},
@@ -59149,6 +59362,7 @@
     "refusal:alpha_research.portfolio_preflight_simple_score_mismatch": {},
     "refusal:alpha_research.portfolio_preflight_source_identity_invalid": {},
     "refusal:alpha_research.portfolio_preflight_source_mismatch": {},
+    "refusal:alpha_research.portfolio_preflight_source_not_installed": {},
     "refusal:alpha_research.portfolio_return_surface_not_this_risk_input": {},
     "refusal:alpha_research.portfolio_return_surface_readback_failed": {},
     "refusal:alpha_research.portfolio_risk_input_binding_invalid": {},
@@ -59248,6 +59462,7 @@
     "refusal:alpha_research.replay_identity_hash_mismatch": {},
     "refusal:alpha_research.replay_manifest_absent": {},
     "refusal:alpha_research.replay_manifest_axis_lineage_mismatch": {},
+    "refusal:alpha_research.replay_manifest_before_blake3": {},
     "refusal:alpha_research.replay_manifest_identity_invalid": {},
     "refusal:alpha_research.replay_manifest_invalid": {},
     "refusal:alpha_research.replay_manifest_model_count_mismatch": {},
@@ -59616,6 +59831,7 @@
     "refusal:alternative_evidence.external_submission_invalid": {},
     "refusal:alternative_evidence.finding_handle_duplicate": {},
     "refusal:alternative_evidence.first_unit_wait_expired": {},
+    "refusal:alternative_evidence.host_history_unavailable": {},
     "refusal:alternative_evidence.host_policy_binding_invalid": {},
     "refusal:alternative_evidence.host_policy_unauthorized": {},
     "refusal:alternative_evidence.identity_invalid": {},
@@ -59870,6 +60086,7 @@
     "refusal:causal_inputs.strategy_schedule_not_installed_for_recipe": {},
     "refusal:causal_inputs.strategy_schedule_recipe_mismatch": {},
     "refusal:causal_inputs.target_is_not_a_decision_input": {},
+    "refusal:causal_outcomes.chunk_identity_invalid": {},
     "refusal:causal_outcomes.existing_snapshot_carries_a_different_method": {},
     "refusal:causal_outcomes.legacy_snapshot_requires_explicit_method_migration": {},
     "refusal:causal_outcomes.outcome_store_invalid": {},
@@ -59980,6 +60197,7 @@
     "refusal:data.invalid_adjusted_close_payload": {},
     "refusal:data.listing_attempt_budget_exhausted_after_interruption": {},
     "refusal:data.listing_updates_incomplete": {},
+    "refusal:data.local_bars_invalid": {},
     "refusal:data.maintenance_stale_payload": {},
     "refusal:data.provider_policy_mismatch": {},
     "refusal:data.provider_unavailable": {},
@@ -60007,6 +60225,9 @@
     "refusal:data_layer.artifact_holder_unnamed": {},
     "refusal:data_layer.artifact_trial_unregistered": {},
     "refusal:data_layer.below_free_floor": {},
+    "refusal:data_layer.benchmark_invalid": {},
+    "refusal:data_layer.benchmark_missing": {},
+    "refusal:data_layer.carried_version_conflict": {},
     "refusal:data_layer.chain_broken": {},
     "refusal:data_layer.data_folder_unreadable": {},
     "refusal:data_layer.definition_not_owner": {},
@@ -60031,9 +60252,13 @@
     "refusal:data_layer.legacy_table_unanchored": {},
     "refusal:data_layer.lineage_unregistered": {},
     "refusal:data_layer.live_ref_held": {},
+    "refusal:data_layer.market_mic_ambiguous": {},
+    "refusal:data_layer.market_unregistered": {},
     "refusal:data_layer.outcome_collected": {},
     "refusal:data_layer.outcome_incomplete": {},
     "refusal:data_layer.outcome_missing": {},
+    "refusal:data_layer.part_invalid": {},
+    "refusal:data_layer.part_missing": {},
     "refusal:data_layer.result_key_present": {},
     "refusal:data_layer.return_series_invalid": {},
     "refusal:data_layer.review_before_its_end": {},
@@ -60042,8 +60267,13 @@
     "refusal:data_layer.review_unknown_goal": {},
     "refusal:data_layer.review_workspace_disagrees": {},
     "refusal:data_layer.schema_mismatch": {},
+    "refusal:data_layer.sector_result_invalid": {},
+    "refusal:data_layer.sector_result_missing": {},
     "refusal:data_layer.staging_taken": {},
     "refusal:data_layer.trial_unknown": {},
+    "refusal:data_layer.validation_invalid": {},
+    "refusal:data_layer.validation_workspace_unknown": {},
+    "refusal:data_layer.workspace_deleted": {},
     "refusal:data_layer.world_table_not_admitted": {},
     "refusal:data_tradability.adv20_warmup_unavailable": {},
     "refusal:data_tradability.artifact_identity_invalid": {},
@@ -60100,6 +60330,20 @@
     "refusal:devtools.evidence_root_declaration_invalid": {},
     "refusal:devtools.private_evidence_lane_unavailable": {},
     "refusal:domain.invalid": {},
+    "refusal:door.decision_not_pending": {},
+    "refusal:door.decisions_unavailable": {},
+    "refusal:door.family_import_failed": {},
+    "refusal:door.operation_duplicate": {},
+    "refusal:door.operation_unknown": {},
+    "refusal:door.operation_unrecognized": {},
+    "refusal:door.operation_unregistered": {},
+    "refusal:door.paid_run_approval_required": {},
+    "refusal:door.person_required": {},
+    "refusal:door.person_unavailable": {},
+    "refusal:egress.host_not_allowed": {},
+    "refusal:egress.network_disabled": {},
+    "refusal:egress.redirect_limit": {},
+    "refusal:egress.timeout_invalid": {},
     "refusal:evaluation.profile_workspace_unobserved": {},
     "refusal:evidence_review.accession_scope_invalid": {},
     "refusal:evidence_review.accession_scope_requires_one_entity": {},
@@ -60169,6 +60413,7 @@
     "refusal:execution.cpu_budget_invalid": {},
     "refusal:execution.cpu_budget_unreadable": {},
     "refusal:execution.memory_insufficient": {},
+    "refusal:execution.timeout": {},
     "refusal:experience.brief_budget_invalid": {},
     "refusal:experience.class_width_unknown": {},
     "refusal:experience.goal_unknown": {},
@@ -60182,6 +60427,10 @@
     "refusal:experience.note_incomplete": {},
     "refusal:experience.recall_models_missing": {},
     "refusal:experience.recall_query_invalid": {},
+    "refusal:experience.sql_invalid": {},
+    "refusal:experience.sql_names_a_path": {},
+    "refusal:experience.sql_off_the_surface": {},
+    "refusal:experience.sql_refused": {},
     "refusal:experience.trial_unknown": {},
     "refusal:experience.trials_malformed": {},
     "refusal:experience.unit_unknown": {},
@@ -60193,6 +60442,8 @@
     "refusal:factor_formula.not_scale_invariant": {},
     "refusal:factor_formula.sector_labels_absent": {},
     "refusal:factor_formula.source_absent": {},
+    "refusal:factor_research.artifact_identity_invalid": {},
+    "refusal:factor_research.artifact_name_invalid": {},
     "refusal:factor_research.authoring_candidate_budget_exceeded": {},
     "refusal:factor_research.authoring_factor_id_not_in_inventory": {},
     "refusal:factor_research.authoring_factor_ids_duplicated": {},
@@ -60629,6 +60880,7 @@
     "refusal:host_facts.fake_source_missing": {},
     "refusal:host_facts.observation_incomplete": {},
     "refusal:host_facts.observed_at_without_offset": {},
+    "refusal:identity.blake3_digest_invalid": {},
     "refusal:knowledge.access_denied": {},
     "refusal:live_evidence.causal_time_invalid": {},
     "refusal:local_application.advancement_not_wired": {},
@@ -60747,6 +60999,9 @@
     "refusal:market_data.market_profile_invalid": {},
     "refusal:market_data.market_reads_unknown": {},
     "refusal:market_data.workspace_identity_ambiguous": {},
+    "refusal:market_data_ops.catalog_selection_unavailable": {},
+    "refusal:market_data_ops.catalog_selection_unpublished": {},
+    "refusal:market_data_ops.catalog_version_count_moved": {},
     "refusal:market_data_ops.quality_governance_inputs_request_invalid": {},
     "refusal:market_data_ops.raw_close_volume_request_invalid": {},
     "refusal:market_data_ops.session_mark_absent": {},
@@ -60897,6 +61152,7 @@
     "refusal:observation.storage_open_failed": {},
     "refusal:observation.tampered": {},
     "refusal:operations.schema_reference_not_local": {},
+    "refusal:performance.serial_run_required": {},
     "refusal:person_confirmation.already_used": {},
     "refusal:person_confirmation.beyond_its_question": {},
     "refusal:person_confirmation.decision_mismatch": {},
@@ -61052,6 +61308,7 @@
     "refusal:portfolio_application.execution_outcome_authority_ambiguous": {},
     "refusal:portfolio_application.execution_outcome_axis_invalid": {},
     "refusal:portfolio_application.execution_outcome_values_invalid": {},
+    "refusal:portfolio_application.execution_series_invalid": {},
     "refusal:portfolio_application.exit_rank_outside_band": {},
     "refusal:portfolio_application.explicit_strategy_selection_required": {},
     "refusal:portfolio_application.export_document_invalid": {},
@@ -61176,6 +61433,7 @@
     "refusal:portfolio_application.report_execution_binding_mismatch": {},
     "refusal:portfolio_application.report_geometry_ledger_mismatch": {},
     "refusal:portfolio_application.report_geometry_program_mismatch": {},
+    "refusal:portfolio_application.report_holdings_invalid": {},
     "refusal:portfolio_application.report_identity_invalid": {},
     "refusal:portfolio_application.report_risk_axis_invalid": {},
     "refusal:portfolio_application.report_risk_outside_window": {},
@@ -61183,6 +61441,7 @@
     "refusal:portfolio_application.report_window_outside_geometry": {},
     "refusal:portfolio_application.request_policy_weight_rule_not_admitted": {},
     "refusal:portfolio_application.result_identity_invalid": {},
+    "refusal:portfolio_application.result_identity_reused": {},
     "refusal:portfolio_application.result_readback_mismatch": {},
     "refusal:portfolio_application.risk_history_insufficient": {},
     "refusal:portfolio_application.risk_report_axis_mismatch": {},
@@ -61226,6 +61485,8 @@
     "refusal:portfolio_application.task_stage_unknown": {},
     "refusal:portfolio_application.task_strategy_selection_mismatch": {},
     "refusal:portfolio_application.tradability_authority_absent": {},
+    "refusal:portfolio_application.upgrade_identity_invalid": {},
+    "refusal:portfolio_application.upgrade_path_invalid": {},
     "refusal:portfolio_application.window_guard_identity_invalid": {},
     "refusal:portfolio_application.workspace_artifact_root_absent": {},
     "refusal:portfolio_backtesting.active_axis_invalid": {},
@@ -61249,6 +61510,7 @@
     "refusal:portfolio_backtesting.transaction_cost_input_invalid": {},
     "refusal:portfolio_benchmark.axis_invalid": {},
     "refusal:portfolio_benchmark.axis_unavailable": {},
+    "refusal:portfolio_benchmark.catalog_invalid": {},
     "refusal:portfolio_benchmark.identity_invalid": {},
     "refusal:portfolio_benchmark.identity_reused": {},
     "refusal:portfolio_benchmark.lineage_invalid": {},
@@ -61262,6 +61524,7 @@
     "refusal:portfolio_benchmark.source_authority_not_admitted": {},
     "refusal:portfolio_benchmark.source_binding_invalid": {},
     "refusal:portfolio_benchmark.surface_invalid": {},
+    "refusal:portfolio_benchmark.upgrade_path_invalid": {},
     "refusal:portfolio_calibration.artifact_missing": {},
     "refusal:portfolio_calibration.artifact_root_outside_workspace": {},
     "refusal:portfolio_calibration.book_input_axis_invalid": {},
@@ -62040,6 +62303,7 @@
     "refusal:protected_validation.claim_clock_invalid": {},
     "refusal:protected_validation.claim_identity_invalid": {},
     "refusal:protected_validation.claim_index_tampered": {},
+    "refusal:protected_validation.claim_receipt_mismatch": {},
     "refusal:protected_validation.fixture_not_admitted": {},
     "refusal:protected_validation.freeze_receipt_mismatch": {},
     "refusal:protected_validation.permit_already_claimed": {},
@@ -62047,7 +62311,12 @@
     "refusal:protected_validation.permit_index_tampered": {},
     "refusal:protected_validation.permit_not_issued_here": {},
     "refusal:protected_validation.permit_tampered": {},
+    "refusal:protected_validation.receipt_identity_invalid": {},
+    "refusal:protected_validation.receipt_index_tampered": {},
     "refusal:protected_validation.receipt_is_for_another_package": {},
+    "refusal:protected_validation.upgrade_identity_invalid": {},
+    "refusal:protected_validation.upgrade_path_invalid": {},
+    "refusal:protected_validation.upgrade_record_missing": {},
     "refusal:quant.black_litterman_ineligible": {},
     "refusal:replay.acquisition_invalid": {},
     "refusal:replay.backup_source_unbound": {},
@@ -62443,6 +62712,7 @@
     "refusal:research_workspace.configuration_changed_restart_required": {},
     "refusal:research_workspace.evidence_review_path_invalid": {},
     "refusal:research_workspace.experiment_input_duplicate": {},
+    "refusal:research_workspace.manifest_before_blake3": {},
     "refusal:research_workspace.manifest_exists": {},
     "refusal:research_workspace.manifest_field_unknown": {},
     "refusal:research_workspace.manifest_identity_invalid": {},
@@ -62462,6 +62732,9 @@
     "refusal:research_workspace.training_source_outside_workspace": {},
     "refusal:research_workspace.training_source_unresolved": {},
     "refusal:research_workspace.uninstalled_strategy_conflict": {},
+    "refusal:resources.capacity_exceeded": {},
+    "refusal:resources.holder_already_leased": {},
+    "refusal:resources.invalid_quantity": {},
     "refusal:result_cache.request_invalid": {},
     "refusal:risk_report.completed_portfolio_required": {},
     "refusal:risk_report.completed_risk_required": {},
@@ -62768,6 +63041,7 @@
     "refusal:sector_research.evidence_implementation_drift": {},
     "refusal:sector_research.evidence_method_not_installed": {},
     "refusal:sector_research.evidence_method_route_invalid": {},
+    "refusal:sector_research.evidence_not_published": {},
     "refusal:sector_research.evidence_outcome_clock_mismatch": {},
     "refusal:sector_research.evidence_outcome_method_mismatch": {},
     "refusal:sector_research.evidence_outcome_method_unbound": {},
@@ -62842,6 +63116,8 @@
     "refusal:sector_research.target_surface_incomplete": {},
     "refusal:sector_research.training_label_immature": {},
     "refusal:sector_research.training_selection_row_invalid": {},
+    "refusal:sector_research.upgrade_identity_invalid": {},
+    "refusal:sector_research.upgrade_path_invalid": {},
     "refusal:setup.command_failed": {},
     "refusal:setup.file_unavailable": {},
     "refusal:setup.http_failed": {},
@@ -62862,16 +63138,26 @@
     "refusal:shared_kernel.source_inventory_invalid": {},
     "refusal:shared_kernel.source_resource_outside_runtime": {},
     "refusal:shared_kernel.source_syntax_unreadable": {},
+    "refusal:spawn.cgroup_admission_unproved": {},
+    "refusal:spawn.child_subreaper_unavailable": {},
+    "refusal:spawn.darwin_tree_unavailable": {},
     "refusal:spawn.encoding_invalid": {},
     "refusal:spawn.initial_thread_unavailable": {},
+    "refusal:spawn.job_memory_unavailable": {},
+    "refusal:spawn.memory_mode_invalid": {},
+    "refusal:spawn.process_kind_unknown": {},
     "refusal:spawn.session_input_closed": {},
     "refusal:spawn.session_owns_stdin": {},
     "refusal:spawn.session_stop_unconfirmed": {},
     "refusal:spawn.session_terminal": {},
     "refusal:spawn.stdin_unfed": {},
     "refusal:spawn.stop_scope_invalid": {},
+    "refusal:spawn.subreaper_requires_dedicated_launcher": {},
     "refusal:spawn.timeout_invalid": {},
+    "refusal:spawn.tree_memory_budget_invalid": {},
+    "refusal:spawn.tree_memory_limit": {},
     "refusal:spawn.tree_not_stopped": {},
+    "refusal:spawn.worker_tree_admission_unproved": {},
     "refusal:storage.cap_setting_invalid": {},
     "refusal:storage.cap_setting_unreadable": {},
     "refusal:storage.cleanup_interrupted": {},
@@ -62881,6 +63167,7 @@
     "refusal:storage.cleanup_target_protected": {},
     "refusal:storage.current_panel_root_unavailable": {},
     "refusal:storage.disk_space_insufficient": {},
+    "refusal:storage.driver_missing": {},
     "refusal:storage.eviction_readback_failed": {},
     "refusal:storage.evidence_generation_record_misfiled": {},
     "refusal:storage.evidence_rebuild_caller_not_admitted": {},
@@ -62972,6 +63259,7 @@
     "refusal:task_control.heartbeat_signal_invalid": {},
     "refusal:task_control.heartbeat_store_unreadable": {},
     "refusal:task_control.heartbeat_task_unbound": {},
+    "refusal:task_control.host_call_requires_storage_free_task": {},
     "refusal:task_control.ledger_rebuilt": {},
     "refusal:task_control.legacy_database_state_present": {},
     "refusal:task_control.live_lease_present": {},
@@ -63170,6 +63458,9 @@
     "refusal:workspace_data_update.workspace_manifest_changed": {},
     "refusal:workspace_database.access_mode_conflict_on_this_thread": {},
     "refusal:workspace_database.derived_setup_absent": {},
+    "refusal:workspace_database.market_catalog_attach_in_transaction": {},
+    "refusal:workspace_database.market_catalog_root_changed": {},
+    "refusal:workspace_database.market_catalog_unavailable": {},
     "refusal:workspace_database.read_only_retention_cannot_write": {},
     "refusal:workspace_database.runtime_extension_refused": {},
     "refusal:workspace_maintenance.candidate_data_recheck_history_invalid": {},
@@ -64114,6 +64405,22 @@
         "anyOf": [
           {
             "maxLength": 512,
+            "minLength": 1,
+            "type": "string"
+          },
+          {
+            "type": "null"
+          }
+        ],
+        "default": null
+      }
+    },
+    "request:Request.experience_statement": {
+      "required": false,
+      "schema": {
+        "anyOf": [
+          {
+            "maxLength": 8192,
             "minLength": 1,
             "type": "string"
           },
@@ -66100,6 +66407,7 @@
         "EXPERIENCE_BRIEF",
         "EXPERIENCE_CLASS",
         "EXPERIENCE_RECALL",
+        "EXPERIENCE_SQL",
         "EXPERIENCE_RECORD",
         "EXPERIMENT_COMPARE",
         "EXPERIMENT_ALPHA_COMPARE",

@@ -2002,6 +2002,7 @@ const CODE_WORDS = {
   EXPERIENCE_READ: "experience.label.trials",
   EXPERIENCE_CLASS: "experience.label.class",
   EXPERIENCE_RECALL: "experience.label.recall",
+  EXPERIENCE_SQL: "experience.label.sql",
   EXPERIENCE_BRIEF: "experience.label.brief",
   EXPERIENCE_RECORD: "experience.label.review",
   RESEARCH_INPUTS: "Research inputs",

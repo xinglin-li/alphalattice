@@ -29,6 +29,7 @@ from typing import IO, Any
 import alphalattice.foundation.data_layer.return_series as return_series
 from alphalattice.capabilities.data.errors import DataError
 from alphalattice.capabilities.domain_contracts.waits import WaitTimeout, wait_until
+from alphalattice.foundation.data_layer import sql_read
 from alphalattice.foundation.data_layer.chain import canonical, digest
 from alphalattice.foundation.data_layer.log import attach
 from alphalattice.foundation.data_layer.root import (
@@ -256,9 +257,11 @@ def _receive(stream: IO[bytes]) -> Any:
 def serve(root: Path, requests: IO[bytes], answers: IO[bytes]) -> None:
     """Answer each read `LogReader` sends, by name with its filters, from `reading_session` over
     `root` until the requests end. This process holds no HostLog, so its DuckDB is the only SQLite
-    library that opens the log here."""
+    library that opens the log here. An agent's own statement (`sql`) is answered from a locked
+    session of its own (`sql_read`)."""
     session = duckdb_session(root)
-    views_pending = session is not None
+    agent = None  # the agents' statements' own session (`sql_read`), opened at the first
+    pending = [] if session is None else [session]
     reads = {
         "experience": experience,
         "goal_notes": goal_notes,
@@ -268,19 +271,30 @@ def serve(root: Path, requests: IO[bytes], answers: IO[bytes]) -> None:
     }
     try:
         for name, filters in _requests(requests):
-            if views_pending:
-                # A first-use Task may create the catalog after the Host starts this child.
-                _configure_reading(session, root, log=True, shared=False)
-                views_pending = False
+            if name == "sql" and agent is None and (agent := duckdb_session(root)) is not None:
+                pending.append(agent)
+            # Attached at first use, as a first-use Task may create the catalog after the Host
+            # starts this child; the agents' session is locked before it answers anything.
+            for opened in pending:
+                _configure_reading(opened, root, log=True, shared=False)
+                if opened is agent:
+                    sql_read.lock(agent)
+            pending.clear()
             try:
-                _send(answers, (True, reads[name](session, **filters)))
+                if name != "sql":
+                    _send(answers, (True, reads[name](session, **filters)))
+                elif agent is None:
+                    raise DataError(READING_DEFERRED, code="data_layer.history_unavailable")
+                else:
+                    _send(answers, (True, sql_read.answer(agent, root=root, **filters)))
             except DataError as error:  # a read's own refusal, by its code
                 _send(answers, (False, (error.failure.code, str(error))))
             except Exception as error:  # the Host refuses it by name
                 _send(answers, (False, f"{type(error).__name__}: {error}"))
     finally:
-        if session is not None:
-            session.close()
+        for held in (session, agent):
+            if held is not None:
+                held.close()
 
 
 def experience(

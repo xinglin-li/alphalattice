@@ -13093,6 +13093,16 @@
 "count": 1,
 "description": "The hexadecimal base that reads a stored trace identifier back into the integer of its trace."
 },
+"src/alphalattice/foundation/data_layer/sql_read.py::CHARACTERS::8192": {
+"class": "LIMIT",
+"count": 1,
+"description": "The longest statement, in characters, an agent's read-only SQL takes."
+},
+"src/alphalattice/foundation/data_layer/sql_read.py::ROWS::1000": {
+"class": "LIMIT",
+"count": 1,
+"description": "The most rows an agent's read-only SQL answers with; a longer answer is cut and says so."
+},
 "src/alphalattice/foundation/data_layer/store.py::DERIVED_REWRITE::0.5": {
 "class": "EXECUTION",
 "count": 1,

@@ -1748,6 +1748,7 @@ READ_OPERATIONS: frozenset[str] = frozenset(
         "EXPERIENCE_BRIEF",
         "EXPERIENCE_CLASS",
         "EXPERIENCE_RECALL",
+        "EXPERIENCE_SQL",
         "RESEARCH_INPUTS",
         "RESEARCH_INPUT_READBACK",
         "MODEL_TRAINING_INPUT_READBACK",

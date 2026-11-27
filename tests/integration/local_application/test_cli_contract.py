@@ -280,6 +280,24 @@ def test_the_tasks_that_run_at_once_are_set_beside_the_waiting_places(live) -> N
     assert code == 2 and "task_control.tasks_running_invalid" in json.dumps(refused)
 
 
+@pytest.mark.proves("local_application.an_agent_statement_is_answered_through_the_cli")
+def test_an_agent_statement_is_answered_through_the_cli(
+    read_only_live: LocalPortfolioWebSession, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """`experience sql` answers one SELECT over the Host's history views through the real CLI
+    entry, and refuses by name the log's workspace table whose folder only the Host holds."""
+    workspace = read_only_live.workspace
+    statement = ("--statement", "SELECT count(*) AS trials FROM experience")
+    code, body, _ = _inprocess_cli(workspace, "experience", "sql", *statement, capsys=capsys)
+    assert (code, body["outcome"], body["operation"]) == (0, "OK", "EXPERIENCE_SQL"), body
+    read = {key: body["data"][key] for key in ("columns", "rows", "truncated")}
+    assert read == {"columns": ["trials"], "rows": [[0]], "truncated": False}, body
+    named = ("--statement", "SELECT folder FROM log.workspace")
+    code, body, _ = _inprocess_cli(workspace, "experience", "sql", *named, capsys=capsys)
+    assert body["failure_code"] == "experience.sql_off_the_surface", body
+    assert str(workspace.parent.resolve()).lower() not in json.dumps(body["data"]).lower()
+
+
 def test_every_answer_is_one_envelope_and_exits_by_its_outcome(
     read_only_live: LocalPortfolioWebSession,
     tmp_path: Path,

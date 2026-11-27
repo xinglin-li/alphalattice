@@ -42,6 +42,35 @@ def test_a_recall_request_is_bounded_and_its_answer_is_exact() -> None:
         ExperienceRecallAnswer.model_validate(answer)
 
 
+@pytest.mark.proves("local_application.an_agent_statement_is_bounded_before_the_host_reads_it")
+@pytest.mark.parametrize(
+    ("statement", "admitted"),
+    [
+        pytest.param("SELECT 1", True, id="short"),
+        pytest.param("S" * 8192, True, id="longest"),
+        pytest.param("", False, id="empty"),
+        pytest.param("S" * 8193, False, id="too-long"),
+        pytest.param(1, False, id="not-text"),
+    ],
+)
+def test_an_agent_statement_is_bounded_before_the_host_reads_it(
+    statement: object, admitted: bool
+) -> None:
+    """requirement: `experience sql` takes a statement of 1 to 8,192 characters; any other is
+    refused by name before the Host reads anything."""
+
+    def asked() -> PortfolioResearchOperationRequest:
+        return PortfolioResearchOperationRequest(
+            operation="EXPERIENCE_SQL", experience_statement=statement
+        )
+
+    if admitted:
+        assert asked().experience_statement == statement
+        return
+    with pytest.raises(LocalApplicationError, match="sql_invalid"):
+        asked()
+
+
 @pytest.mark.proves("local_application.a_goal_or_floor_read_takes_its_wait_and_its_mark")
 def test_a_goal_or_floor_read_takes_its_wait_and_its_mark() -> None:
     """requirement: a goal's narrative takes the Host's wait and the mark last read, and a floor

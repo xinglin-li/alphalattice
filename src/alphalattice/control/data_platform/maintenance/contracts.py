@@ -834,8 +834,6 @@ class WorkspaceMaintenanceCycle:
         phase: Recorded current phase.
         status: Recorded lifecycle state.
         market_data_change_set: Observed input changes when available.
-        child_task_refs: Empty, read by nothing: a sub-task names its parent by its own
-            parent_task_id on the log's task row, that relation's one home.
         effect_receipts: Committed effect receipt references.
         retry_after_at: Optional next retry clock.
         failure_code: Optional stable failure cause.
@@ -848,7 +846,6 @@ class WorkspaceMaintenanceCycle:
     phase: MaintenancePhase
     status: MaintenanceStatus
     market_data_change_set: MarketDataChangeSet | None
-    child_task_refs: tuple[str, ...]
     effect_receipts: tuple[str, ...]
     retry_after_at: datetime | None
     failure_code: str | None
@@ -865,8 +862,6 @@ class WorkspaceMaintenanceOutcome:
         status: Maintenance disposition.
         phase: Last recorded phase.
         change_set_hash: Optional observed change identity.
-        child_task_refs: Empty, read by nothing: a sub-task names its parent by its own
-            parent_task_id on the log's task row, that relation's one home.
         retry_after_at: Optional next retry clock.
         failure_code: Optional stable failure cause.
         failure_cause: The failed step's recorded cause: its
@@ -877,7 +872,6 @@ class WorkspaceMaintenanceOutcome:
     status: MaintenanceStatus
     phase: MaintenancePhase
     change_set_hash: str | None = None
-    child_task_refs: tuple[str, ...] = ()
     retry_after_at: datetime | None = None
     failure_code: str | None = None
     failure_cause: Mapping[str, object] | None = None
@@ -1185,9 +1179,6 @@ class WorkspaceDataUpdateReceipt(_SealedDataUpdate):
         completed_at: Completion clock.
         before: Prior input status.
         after: Verified resulting input status.
-        child_task_refs: Written empty and read by nothing; it stays only so every sealed
-            receipt keeps its content hash. A sub-task names its parent by its own
-            parent_task_id on the log's task row, that relation's one home.
         transition_receipt_hash: Optional universe-transition receipt.
         valuation_receipt_hashes: Committed held-listing valuation receipts.
         removed_member_tails: Recorded missing formation sessions of removed members.
@@ -1202,7 +1193,6 @@ class WorkspaceDataUpdateReceipt(_SealedDataUpdate):
     completed_at: datetime
     before: WorkspaceInputStatus
     after: WorkspaceInputStatus
-    child_task_refs: tuple[str, ...]
     transition_receipt_hash: str | None = Field(default=None, exclude_if=lambda v: v is None)
     valuation_receipt_hashes: tuple[str, ...] = Field(default=(), exclude_if=lambda v: not v)
     removed_member_tails: tuple[RemovedMemberTail, ...] = Field(

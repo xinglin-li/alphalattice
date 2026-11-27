@@ -75,6 +75,25 @@ def read_experience_class(request: PortfolioResearchOperationRequest) -> dict[st
     return refused("experience.history_unavailable") if found is None else found
 
 
+def read_sql(request: PortfolioResearchOperationRequest) -> dict[str, object]:
+    """One agent SELECT over the history's views and their macros, read only
+    (`history.read_sql`); refused by name, with the reader's own words on the statement."""
+    assert request.experience_statement is not None
+    try:
+        found = history.read_sql(statement=request.experience_statement)
+    except DataError as error:  # the read's own code, or the history unavailable
+        code = public_failure(error, "experience.history_unavailable")
+        body = refused(code)
+        if code in {
+            "experience.sql_invalid",
+            "experience.sql_off_the_surface",
+            "experience.sql_refused",
+        }:
+            body["statement_error"] = error.failure.message
+        return body
+    return refused("experience.history_unavailable") if found is None else found
+
+
 _RECALL_REFUSALS = {
     "data_layer.knowledge_model_unavailable": "experience.recall_models_missing",
     "data_layer.knowledge_query_invalid": "experience.recall_query_invalid",
@@ -182,6 +201,7 @@ def route(call: WorkspaceOperationCall[object]) -> dict[str, object]:
         "EXPERIENCE_BRIEF": read_experience_brief,
         "EXPERIENCE_CLASS": read_experience_class,
         "EXPERIENCE_RECALL": recall_experience,
+        "EXPERIENCE_SQL": read_sql,
     }
     if call.request.operation == "EXPERIENCE_RECORD":
         return record_experience(call.request, call.caller)

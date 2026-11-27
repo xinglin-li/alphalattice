@@ -244,6 +244,7 @@ _ROUTES = (
             "EXPERIENCE_READ",
             "EXPERIENCE_RECALL",
             "EXPERIENCE_RECORD",
+            "EXPERIENCE_SQL",
         ),
         "experience_read",
         "route",

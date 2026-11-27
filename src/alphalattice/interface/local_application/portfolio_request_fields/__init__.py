@@ -35,6 +35,7 @@ FIELD_OWNER: dict[str, RequestFamily] = {
     "experience_budget": "research",
     "experience_query": "research",
     "experience_limit": "research",
+    "experience_statement": "research",
     "review_subject": "research",
     "review_verdict": "research",
     "review_note": "research",

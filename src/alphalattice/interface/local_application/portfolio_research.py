@@ -208,6 +208,7 @@ class PortfolioResearchOperationRequest:
     experience_budget: int | None = None
     experience_query: str | None = None
     experience_limit: int | None = None
+    experience_statement: str | None = None
     review_subject: str | None = None
     review_verdict: str | None = None
     review_note: dict[str, Any] | None = None
@@ -579,6 +580,11 @@ class PortfolioResearchOperationRequest:
             )
         ):
             raise LocalApplicationError("experience.recall_query_invalid")
+        if self.experience_statement is not None and (
+            type(self.experience_statement) is not str
+            or not 1 <= len(self.experience_statement) <= 8192
+        ):
+            raise LocalApplicationError("experience.sql_invalid")
         if self.review_read_at is not None:
             try:
                 parsed = datetime.fromisoformat(str(self.review_read_at))

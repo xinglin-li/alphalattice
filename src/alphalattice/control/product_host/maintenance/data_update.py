@@ -2294,7 +2294,6 @@ class WorkspaceDataUpdateApplication:
                     completed_at=self.clock(),
                     before=plan.before,
                     after=after,
-                    child_task_refs=cycle.child_task_refs,
                     effect_receipts=cycle.effect_receipts,
                     transition_receipt_hash=None
                     if plan.change is None
