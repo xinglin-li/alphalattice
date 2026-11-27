@@ -1,0 +1,13 @@
+{
+ "schema": "identity-successors",
+ "version": 1,
+ "moves": [
+  {
+   "role": "product_host.workspace_preparation",
+   "predecessor": "blake3:533d23d37b4aef338a7e03ad8300a9bc1a9c3ebb6027169f82a8b8d988aca195",
+   "successor": "blake3:a860e6f546a1f7e6b540b295d513387f064c9b967f812ad4182585443716c5ae",
+   "change": "First-use preparation writes panel availability faster",
+   "reason": "Panel availability builds its stage column by column and a workspace connection trusts the digest its instance installed; the workspace preparation owner's source fingerprint rotates and results stay equal"
+  }
+ ]
+}

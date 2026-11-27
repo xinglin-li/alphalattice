@@ -1886,6 +1886,12 @@
       "layer": "integration",
       "seconds": 5
     },
+    "feature_engine.the_availability_stage_holds_its_cells_column_for_column": {
+      "description": "If the availability stage built by columns differed from one built row by row, a Panel's availability hashes and revisions would move with no change in what was measured.",
+      "owner": "alphalattice.foundation.feature_engine",
+      "layer": "unit",
+      "seconds": 1
+    },
     "feature_engine.the_feature_read_setting_names_one_choice": {
       "description": "The Feature read setting is stored by default, derived when set so, and refused by name otherwise.",
       "owner": "alphalattice.foundation.feature_engine",
@@ -3552,6 +3558,12 @@
         "why": "The memo's 20 existing tests state both file-system rules (kept, and not kept where no lifetime handle exists) instead of skipping there, as the review required",
         "decided": "2026-11-15: the excess is the coverage of the second file-system rule; keep every check"
       }
+    },
+    "workspace_runtime.a_workspace_connection_asks_no_catalog_for_the_digest": {
+      "description": "If a workspace connection asked DuckDB's function catalog before every digest statement, each availability write would pay a catalog scan of tens of milliseconds for a function its instance installed at open.",
+      "owner": "alphalattice.control.workspace_runtime",
+      "layer": "unit",
+      "seconds": 1
     },
     "workspace_runtime.an_interrupt_ends_a_source_check_wait": {
       "description": "If waiting on parallel source checks swallowed an interrupt, Ctrl-C could not stop a verification.",

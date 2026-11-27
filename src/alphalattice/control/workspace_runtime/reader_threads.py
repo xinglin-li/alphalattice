@@ -86,7 +86,12 @@ def _register_blake3_sql(connection: duckdb.DuckDBPyConnection) -> None:
 
 
 def install_blake3_sql(connection: duckdb.DuckDBPyConnection) -> None:
-    """Install the digest on an already open instance whose queries or views use it."""
+    """Install the digest on an already open instance whose queries or views use it. A
+    connection whose owner installs it on every instance at its open says so
+    (`BLAKE3_SQL_INSTALLED`), and no catalog is asked: the catalog scan costs tens of
+    milliseconds once an instance has loaded extensions."""
+    if getattr(type(connection), "BLAKE3_SQL_INSTALLED", False):
+        return
     with _DIGEST_REGISTRATION:
         current = connection.execute(
             "SELECT 1 FROM duckdb_functions() WHERE function_name = 'alphalattice_blake3'"

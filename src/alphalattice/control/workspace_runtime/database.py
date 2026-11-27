@@ -39,7 +39,7 @@ from contextlib import AbstractContextManager, contextmanager, suppress
 from dataclasses import dataclass, field
 from pathlib import Path
 from time import monotonic
-from typing import Any, NamedTuple, cast
+from typing import Any, Final, NamedTuple, cast
 from uuid import uuid4
 
 import duckdb
@@ -217,6 +217,10 @@ class WorkspaceConnection:
         "_transacted",
         "_view",
     )
+
+    BLAKE3_SQL_INSTALLED: Final = True
+    """Every instance this owner opens installs the digest at its open (`_fresh_connection`),
+    and its connections share it, so `install_blake3_sql` asks no catalog for them."""
 
     def __init__(
         self,

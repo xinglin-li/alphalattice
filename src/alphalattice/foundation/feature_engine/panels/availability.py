@@ -41,18 +41,18 @@ class PanelAvailabilityRepository:
         Record changed rows as revisions while leaving immutable Panel values
         in their artifact store.
         """
-        rows = [
-            {
-                **_normalized_availability(item, cross_section_by_session=cross_section_by_session),
-                "materialization_receipt_hash": materialization_receipt_hash,
-            }
-            for item in availability
-        ]
-        if not rows:
+        if not availability:
             return
         stage_name = "panel_availability_input_stage"
         try:
-            connection.register(stage_name, pa.Table.from_pylist(rows))
+            connection.register(
+                stage_name,
+                _availability_stage(
+                    availability,
+                    cross_section_by_session=cross_section_by_session,
+                    materialization_receipt_hash=materialization_receipt_hash,
+                ),
+            )
             _record(
                 connection,
                 stage=stage_name,
@@ -257,41 +257,97 @@ def _record(
             connection.execute(f"DROP TABLE IF EXISTS {hashed_stage}")
 
 
-def _normalized_availability(
-    item: Mapping[str, object], *, cross_section_by_session: Mapping[str, str]
-) -> dict[str, object]:
-    binding_hash = str(item.get("panel_binding_hash") or item.get("panel_hash") or "")
-    if not binding_hash:
-        raise ValueError("Panel availability is missing its binding hash")
-    raw_small_names = item.get("small_sector_names", ())
-    if not isinstance(raw_small_names, Sequence) or isinstance(raw_small_names, (str, bytes)):
-        raise ValueError("Panel availability small-sector names are invalid")
-    small_names = tuple(sorted(str(value) for value in raw_small_names))
-    session = str(item["session_date"])
-    try:
-        cross_section = cross_section_by_session[session]
-    except KeyError as exc:
-        raise ValueError(f"Panel availability session {session} has no cross-section") from exc
-    return {
-        "cross_section_identity": cross_section,
-        "session_date": session,
-        "factor_id": str(item["factor_id"]),
-        "universe_size": int(str(item["universe_size"])),
-        "computed_count": int(str(item["computed_count"])),
-        "coverage": float(str(item["coverage"])),
-        "sector_counts_json": json.dumps(
-            item["sector_counts"], sort_keys=True, separators=(",", ":")
-        ),
-        "winsor_lower": item.get("winsor_lower"),
-        "winsor_upper": item.get("winsor_upper"),
-        "residual_median": item.get("residual_median"),
-        "residual_mad": item.get("residual_mad"),
-        "status": str(item["status"]),
-        "reason": item.get("reason"),
-        "panel_binding_hash": binding_hash,
-        "small_sector_warning": bool(item.get("small_sector_warning")),
-        "small_sector_names_json": json.dumps(small_names, separators=(",", ":")),
-    }
+_STAGE_COLUMNS = (
+    "cross_section_identity",
+    "session_date",
+    "factor_id",
+    "universe_size",
+    "computed_count",
+    "coverage",
+    "sector_counts_json",
+    "winsor_lower",
+    "winsor_upper",
+    "residual_median",
+    "residual_mad",
+    "status",
+    "reason",
+    "panel_binding_hash",
+    "small_sector_warning",
+    "small_sector_names_json",
+    "materialization_receipt_hash",
+)
+"""The normalized stage's columns, in the order every upsert stages them."""
+
+
+def _availability_stage(
+    availability: Sequence[Mapping[str, object]],
+    *,
+    cross_section_by_session: Mapping[str, str],
+    materialization_receipt_hash: str,
+) -> pa.Table:
+    """The cells normalized into the stage's columns, one pass and one Arrow array per column:
+    each column holds the values, and takes the type, a table built row by row from the same
+    normalized cells would. A session's sector counts and small-sector names repeat across its
+    factors, so each distinct one is encoded once."""
+    columns: dict[str, list[object]] = {name: [] for name in _STAGE_COLUMNS}
+    encoded_counts: dict[tuple[tuple[object, object], ...], str] = {}
+    encoded_names: dict[tuple[object, ...], str] = {}
+    for item in availability:
+        binding_hash = str(item.get("panel_binding_hash") or item.get("panel_hash") or "")
+        if not binding_hash:
+            raise ValueError("Panel availability is missing its binding hash")
+        raw_small_names = item.get("small_sector_names", ())
+        if not isinstance(raw_small_names, Sequence) or isinstance(raw_small_names, (str, bytes)):
+            raise ValueError("Panel availability small-sector names are invalid")
+        session = str(item["session_date"])
+        try:
+            cross_section = cross_section_by_session[session]
+        except KeyError as exc:
+            raise ValueError(f"Panel availability session {session} has no cross-section") from exc
+        for name, value in (
+            ("cross_section_identity", cross_section),
+            ("session_date", session),
+            ("factor_id", str(item["factor_id"])),
+            ("universe_size", int(str(item["universe_size"]))),
+            ("computed_count", int(str(item["computed_count"]))),
+            ("coverage", float(str(item["coverage"]))),
+            ("sector_counts_json", _encoded_counts(item["sector_counts"], encoded_counts)),
+            ("winsor_lower", item.get("winsor_lower")),
+            ("winsor_upper", item.get("winsor_upper")),
+            ("residual_median", item.get("residual_median")),
+            ("residual_mad", item.get("residual_mad")),
+            ("status", str(item["status"])),
+            ("reason", item.get("reason")),
+            ("panel_binding_hash", binding_hash),
+            ("small_sector_warning", bool(item.get("small_sector_warning"))),
+            ("small_sector_names_json", _encoded_names(raw_small_names, encoded_names)),
+            ("materialization_receipt_hash", materialization_receipt_hash),
+        ):
+            columns[name].append(value)
+    return pa.table({name: pa.array(values) for name, values in columns.items()})
+
+
+def _encoded_counts(counts: object, seen: dict[tuple[tuple[object, object], ...], str]) -> str:
+    """The sector counts as their stage JSON, keys sorted; equal counts encode alike, so each
+    distinct mapping is encoded once."""
+    key = tuple(counts.items()) if isinstance(counts, Mapping) else None
+    if key is None:
+        return json.dumps(counts, sort_keys=True, separators=(",", ":"))
+    encoded = seen.get(key)
+    if encoded is None:
+        encoded = seen[key] = json.dumps(counts, sort_keys=True, separators=(",", ":"))
+    return encoded
+
+
+def _encoded_names(names: Sequence[object], seen: dict[tuple[object, ...], str]) -> str:
+    """The small-sector names as their stage JSON, sorted, each distinct list encoded once."""
+    key = tuple(names)
+    encoded = seen.get(key)
+    if encoded is None:
+        encoded = seen[key] = json.dumps(
+            tuple(sorted(str(value) for value in names)), separators=(",", ":")
+        )
+    return encoded
 
 
 def _utc_naive(value: datetime) -> datetime:
