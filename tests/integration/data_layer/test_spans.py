@@ -213,7 +213,7 @@ def _assert_weaver_trace(capture, rows, client_span, host_span, worker_span):
     attrs = json.loads(cli["attrs"])
     attrs.pop("definition_ids", None)
     cli["attrs"] = json.dumps(attrs)
-    remote = ExternalSpanProcessor(memory)
+    remote = ExternalSpanProcessor(memory, loopback=True)  # in memory: no egress while offline
     try:
         remote.worker_rows([cli])
     finally:
