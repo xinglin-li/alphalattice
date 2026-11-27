@@ -10,7 +10,10 @@ from alphalattice.control.workspace_runtime.database import hold_workspace_datab
 from alphalattice.foundation.data_layer import history
 from alphalattice.foundation.data_layer.upgrade import Family, UpgradeRunner
 from alphalattice.foundation.market_data_ops.storage import world, world_reads
-from alphalattice.foundation.market_data_ops.storage.duckdb import MarketDataRepository
+from alphalattice.foundation.market_data_ops.storage.duckdb import (
+    MarketDataRepository,
+    market_format,
+)
 
 
 def market_upgrade_family(identify: Callable[[Path], str | None]) -> Family:
@@ -20,29 +23,33 @@ def market_upgrade_family(identify: Callable[[Path], str | None]) -> Family:
         repository = MarketDataRepository(workspace, universe_reader="workspace")
         if not repository.path.is_file():
             return None
-        with (
-            hold_workspace_database(repository.path),
-            repository.database.read_transaction() as connection,
-        ):
-            created, tables = connection.execute(
-                "SELECT max(comment) FILTER (WHERE table_name = 'market_profile'),"
-                " list(table_name) FROM duckdb_tables()"
-                " WHERE database_name = current_database() AND schema_name = 'main'"
-            ).fetchone()
+        with hold_workspace_database(repository.path):
+            # The format is one catalog statement, read outside a snapshot: a snapshot first binds
+            # every market read, and a current workspace, each Host start's case, reads no row.
+            probe = repository.database.connect(read_only=True)
+            try:
+                created = market_format(probe)
+            finally:
+                probe.close()
             if created == world.WORKSPACE_MARKET_FORMAT:
                 # A current workspace copied to another machine is published whole by its
                 # first publish there (world.publish).
                 return None
-            if not set(tables or ()) >= set(world.TABLES):
-                raise DataError(
-                    "Restore the older workspace's complete market tables before upgrading.",
-                    code="upgrade.refused",
-                )
-            rows = connection.execute(
-                "SELECT (SELECT count(*) FROM raw_daily_bar_current)"
-                " + (SELECT count(*) FROM corporate_action_current)"
-                " + (SELECT count(*) FROM provider_symbol_mapping)"
-            ).fetchone()[0]
+            with repository.database.read_transaction() as connection:
+                (tables,) = connection.execute(
+                    "SELECT list(table_name) FROM duckdb_tables()"
+                    " WHERE database_name = current_database() AND schema_name = 'main'"
+                ).fetchone()
+                if not set(tables or ()) >= set(world.TABLES):
+                    raise DataError(
+                        "Restore the older workspace's complete market tables before upgrading.",
+                        code="upgrade.refused",
+                    )
+                rows = connection.execute(
+                    "SELECT (SELECT count(*) FROM raw_daily_bar_current)"
+                    " + (SELECT count(*) FROM corporate_action_current)"
+                    " + (SELECT count(*) FROM provider_symbol_mapping)"
+                ).fetchone()[0]
         return repository if rows else None
 
     def holds(workspace: Path) -> bool:

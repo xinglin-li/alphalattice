@@ -506,7 +506,16 @@ def test_a_workspace_open_admits_its_market_tables_once_and_a_correction_from_it
 
         assert "market-data" in [make().name for make in first_start.FAMILIES]
         family = market_upgrade_family(lambda _workspace: "w1")
-        assert not family.holds(store.workspace)
+        from alphalattice.control.workspace_runtime.database import WorkspaceConnection
+
+        # A current workspace's format check opens no snapshot, which binds every market read.
+        with monkeypatch.context() as unbound:
+            unbound.setattr(
+                WorkspaceConnection,
+                "snapshot",
+                lambda *_: pytest.fail("the format check opened a snapshot"),
+            )
+            assert not family.holds(store.workspace)
         with store.database.transaction() as connection:
             connection.execute("COMMENT ON TABLE market_profile IS NULL")
         assert family.holds(store.workspace)
