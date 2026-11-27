@@ -4094,10 +4094,6 @@ class ResearchExperimentApplication:
         from alphalattice.foundation.factor_research.programs.program import (  # lazy: not at start
             FactorResearchDeterministicEvidence,
         )
-        from alphalattice.interface.local_application.experiment_report import (  # lazy: a report
-            render_experiment_report,
-            render_handoff_report,
-        )
 
         from ....foundation.factor_research.experiments.development_evidence import (  # lazy: use
             FactorDevelopmentReceipt,
@@ -4108,19 +4104,9 @@ class ResearchExperimentApplication:
         from ....investment.portfolio_strategy_lab.application.availability import (  # lazy: on use
             NOT_AVAILABLE,
         )
-        from ..research_authoring.factor_curation import submit_report_curation  # lazy: a curation
-        from ..research_authoring.factor_handoff import (  # lazy: a Factor handoff
-            preview_factor_handoff,
-        )
-        from ..research_authoring.input_revisions import (  # lazy: not at start
-            ResearchInputRevisions,
-        )
-        from ..research_authoring.portfolio_handoff import (  # lazy: a Portfolio study
-            portfolio_draft,
-        )
-        from ..research_authoring.risk_reports import RiskReportLinks  # lazy: not at start
-        from .experience_read import run_with_hypothesis  # lazy: not at start
 
+        # The heavy owners load in the operation that uses them, so a listing or readback pays for
+        # none of the curation, handoff, Portfolio draft, risk link or report modules.
         op = request.operation
         if op == "EXPERIMENT_ALPHA_COMPARE":
             from alphalattice.investment.alpha_research.experiments.comparison import (
@@ -4168,6 +4154,8 @@ class ResearchExperimentApplication:
             selection = self.risk_report_selection(request.task_id)
             if not selection["available"]:
                 return {"status": "REFUSED", **selection}
+            from ..research_authoring.risk_reports import RiskReportLinks  # lazy: a risk link
+
             links = RiskReportLinks(self.session.workspace, self.readback)
             if op == "EXPERIMENT_LINK_RISK":
                 assert request.risk_task_id is not None
@@ -4184,6 +4172,10 @@ class ResearchExperimentApplication:
         if op.startswith("EXPERIMENT_FOUNDATION"):
             return self._operate_foundation(request, caller=caller, agent_execution=agent_execution)
         if op == "EXPERIMENT_PORTFOLIO_DRAFT":
+            from ..research_authoring.portfolio_handoff import (  # lazy: a Portfolio study
+                portfolio_draft,
+            )
+
             assert request.task_id is not None and request.candidate_id is not None
             prepared_portfolio, binding = self._prepare_portfolio(
                 request.task_id, request.candidate_id
@@ -4237,6 +4229,8 @@ class ResearchExperimentApplication:
             assert request.experiment_plan_hash is not None
             return self.preview_readback(request.experiment_plan_hash)
         if op == "EXPERIMENT_RUN":
+            from .experience_read import run_with_hypothesis  # lazy: a run
+
             assert request.experiment_plan_hash is not None
             return run_with_hypothesis(self, request, caller, agent_execution)
         if op == "EXPERIMENTS":
@@ -4280,6 +4274,10 @@ class ResearchExperimentApplication:
                 if caller == "INSTALLED_AGENT" and agent_execution is None:
                     raise AuthoringError("research_experiment.agent_execution_not_admitted")
                 assert request.experiment_curation is not None
+                from ..research_authoring.factor_curation import (  # lazy: a curation
+                    submit_report_curation,
+                )
+
                 # Synchronous immutable metadata, not a second Task runtime.
                 with self._curation_lock:
                     previous = curation_readback(root, receipt, checkpoint)["decisions"]
@@ -4319,6 +4317,17 @@ class ResearchExperimentApplication:
                     "numerical_call_count": 0,
                 }
             assert request.curation_receipt_hash is not None
+            from alphalattice.interface.local_application.experiment_report import (  # lazy: report
+                render_handoff_report,
+            )
+
+            from ..research_authoring.factor_handoff import (  # lazy: a Factor handoff
+                preview_factor_handoff,
+            )
+            from ..research_authoring.input_revisions import (  # lazy: a handoff's revisions
+                ResearchInputRevisions,
+            )
+
             selected_binding = None
             if request.input_binding_hash is not None:
                 selected_binding = self._binding(
@@ -4373,6 +4382,10 @@ class ResearchExperimentApplication:
         if op == "EXPERIMENT_REPLAY" and body["status"] == "EXPERIMENT_PUBLISHED":
             return {**body, "status": "REUSED_EXACT", "numerical_call_count": 0}
         if op == "EXPERIMENT_EXPORT":
+            from alphalattice.interface.local_application.experiment_report import (  # lazy: report
+                render_experiment_report,
+            )
+
             document = json.dumps(body, ensure_ascii=False, sort_keys=True, indent=2)
             exported = {
                 "status": body["status"],

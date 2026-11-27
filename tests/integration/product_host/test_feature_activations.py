@@ -442,7 +442,7 @@ def test_feature_trial_reopens_equivalent_declarations_on_one_baseline(tmp_path:
         workspace=tmp_path,
         experiments=None,
         dispatcher=None,
-        feature_builds=SimpleNamespace(
+        feature_builds=lambda: SimpleNamespace(
             definitions=lambda: SimpleNamespace(read=lambda h: plans[h])
         ),
         clock=lambda: datetime(2026, 10, 2, tzinfo=UTC),

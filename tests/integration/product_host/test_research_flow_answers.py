@@ -68,7 +68,7 @@ def test_a_trial_the_owner_refuses_to_compare_claims_no_change(tmp_path):
     trials = FeatureTrials(
         workspace=tmp_path,
         experiments=Owner(),
-        feature_builds=None,
+        feature_builds=lambda: None,
         dispatcher=None,
         clock=lambda: datetime(2026, 9, 30, tzinfo=UTC),
     )
@@ -112,10 +112,11 @@ def test_trial_and_feature_listings_keep_readable_siblings_with_damaged_records(
         def definitions(self):
             return ResearchFeatureDefinitions(tmp_path)
 
+    builds = Builds()
     trials = FeatureTrials(
         workspace=tmp_path,
         experiments=None,
-        feature_builds=Builds(),
+        feature_builds=lambda: builds,
         dispatcher=None,
         clock=lambda: datetime(2026, 10, 4, tzinfo=UTC),
     )

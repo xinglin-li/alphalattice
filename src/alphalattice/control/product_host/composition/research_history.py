@@ -30,7 +30,6 @@ from alphalattice.investment.portfolio_strategy_lab.application.task import (
     portfolio_research_task_input,
 )
 from alphalattice.kernel.identity import blake3_from_filename
-from alphalattice.oversight.chief_risk_officer.decision.book_evidence import BookSelector
 
 if TYPE_CHECKING:
     from alphalattice.control.product_host.composition.decision_advancement import (
@@ -48,9 +47,20 @@ if TYPE_CHECKING:
     from alphalattice.investment.portfolio_strategy_lab.application.decision_updates import (
         PortfolioUpdatePublication,
     )
+    from alphalattice.oversight.chief_risk_officer.decision.book_evidence import BookSelector
     from alphalattice.oversight.chief_risk_officer.decision.portfolio_review import (
         PortfolioReviewPublication,
     )
+
+
+def _book(**fields: Any) -> BookSelector:
+    """A history row's book selector; its owner loads with the first row that names a book, so a
+    history with none loads no review module."""
+    from alphalattice.oversight.chief_risk_officer.decision.book_evidence import (  # lazy: a book
+        BookSelector,
+    )
+
+    return BookSelector(**fields)
 
 
 def _review_metadata(
@@ -336,7 +346,7 @@ class ResearchHistory:
                     book = None
                     if task.lifecycle is TaskLifecycle.SUCCEEDED and plan.portfolio_source:
                         evidence = experiments._stored_evidence(plan)
-                        book = BookSelector(
+                        book = _book(
                             experiment_task_id=task.task_id,
                             experiment_receipt_hash=evidence.artifact_uris[0]
                             .rsplit("/", 1)[-1]
@@ -374,7 +384,7 @@ class ResearchHistory:
                             strategy_package_id=request.selected_strategy_package_id,
                             book=None
                             if manifest is None
-                            else BookSelector(result_hash=manifest.result_hash),
+                            else _book(result_hash=manifest.result_hash),
                             failure_code=task.failure_code,
                         )
                     )
@@ -638,7 +648,7 @@ class ResearchHistory:
             task_id,
             "SUCCEEDED",
             strategy_package_id=package,
-            book=BookSelector(
+            book=_book(
                 update_task_id=task_id,
                 update_publication_hash=value.content_hash,
                 position_basis="CONDITIONAL_ESTIMATE"
@@ -655,16 +665,16 @@ class ResearchHistory:
     def _review_book(value: PortfolioReviewPublication) -> BookSelector | None:
         if value.experiment_subject:
             subject = value.experiment_subject
-            return BookSelector(
+            return _book(
                 experiment_task_id=subject.experiment_task_id,
                 experiment_receipt_hash=subject.experiment_receipt_hash,
                 portfolio_session=subject.portfolio_session.isoformat(),
             )
         if value.update_subject:
             update = value.update_subject
-            return BookSelector(
+            return _book(
                 update_task_id=update.update_task_id,
                 update_publication_hash=update.update_publication_hash,
                 position_basis=update.position_basis,
             )
-        return BookSelector(result_hash=value.result_hash) if value.result_hash else None
+        return _book(result_hash=value.result_hash) if value.result_hash else None

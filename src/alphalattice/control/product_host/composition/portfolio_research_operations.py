@@ -1140,7 +1140,7 @@ class PortfolioResearchOperations:
                 self._trials = FeatureTrials(
                     workspace=self.workspace_session.workspace,
                     experiments=self.experiments,
-                    feature_builds=self.feature_builds,
+                    feature_builds=lambda: self.feature_builds,
                     dispatcher=self.dispatcher,
                     clock=self.dispatcher.clock,
                 )

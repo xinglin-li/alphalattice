@@ -27,7 +27,7 @@ from collections.abc import Callable, Mapping, Sequence
 from datetime import datetime
 from pathlib import Path
 from threading import Lock
-from typing import Any, Literal, cast
+from typing import TYPE_CHECKING, Any, Literal, cast
 from uuid import UUID
 
 from pydantic import BaseModel, ConfigDict, Field
@@ -47,9 +47,6 @@ from alphalattice.control.product_host.composition.research_read_scopes import (
     trial_reads_once as trial_reads_once,
 )
 from alphalattice.control.product_host.composition.result_standing import trial_standing
-from alphalattice.control.product_host.data_preparation.feature_research import (
-    ResearchFeatureBuildApplication,
-)
 from alphalattice.control.product_host.research_authoring.timing import binding_temporal_scope
 from alphalattice.control.task_control.contracts import TaskLifecycle
 from alphalattice.foundation.factor_research.experiments.authoring import FACTOR_EXPERIMENT_KIND
@@ -67,6 +64,11 @@ from alphalattice.kernel.identity import (
     blake3_from_filename,
     is_blake3,
 )
+
+if TYPE_CHECKING:
+    from alphalattice.control.product_host.data_preparation.feature_research import (
+        ResearchFeatureBuildApplication,
+    )
 
 Step = Literal["FEATURE_BUILD", "FACTOR_STUDY", "CURATION", "ALPHA_STUDY", "PORTFOLIO_STUDY"]
 _TASK_STEPS: tuple[Step, ...] = ("FEATURE_BUILD", "FACTOR_STUDY", "ALPHA_STUDY", "PORTFOLIO_STUDY")
@@ -183,7 +185,7 @@ class FeatureTrials:
         *,
         workspace: Path,
         experiments: ResearchExperimentApplication,
-        feature_builds: ResearchFeatureBuildApplication,
+        feature_builds: Callable[[], ResearchFeatureBuildApplication],
         dispatcher: LocalBackgroundDispatcher,
         clock: Callable[[], datetime],
     ) -> None:
@@ -192,18 +194,24 @@ class FeatureTrials:
         Args:
             workspace: Caller-owned workspace root.
             experiments: Deterministic experiment owner.
-            feature_builds: Deterministic feature build owner.
+            feature_builds: Opens the deterministic feature build owner on a trial's first use of
+                it, so a trial listing loads none of its modules.
             dispatcher: Local background task dispatcher.
             clock: Explicit observed-time source.
         """
         self.root = workspace / TRIALS_DIRECTORY
         self.workspace = workspace
         self.experiments = experiments
-        self.feature_builds = feature_builds
+        self._feature_builds = feature_builds
         self.dispatcher = dispatcher
         self.clock = clock
         self._lock = Lock()
         self._io_lock = Lock()  # record I/O never waits for Task work under _lock
+
+    @property
+    def feature_builds(self) -> ResearchFeatureBuildApplication:
+        """The deterministic feature build owner, opened by its provider on first use."""
+        return self._feature_builds()
 
     # ------------------------------------------------------------------ records
 
