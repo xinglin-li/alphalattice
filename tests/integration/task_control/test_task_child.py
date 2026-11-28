@@ -551,16 +551,18 @@ def test_a_tasks_stop_interrupts_its_workers_operation_when_accepted(monkeypatch
     """requirement: a Task's accepted stop reaches each kept worker's running operation of the
     call set through its flag and the worker's bell, with no period on either side, while the
     parent waits on another call (its answer wait set longer than the call)."""
-    assert run_in_child(f"{HERE}:doubled", {"value": 1})["value"] == 2  # the worker is up
+    if call == "run":  # run_in_child's worker 0 is up before the window; no call set uses it
+        assert run_in_child(f"{HERE}:doubled", {"value": 1})["value"] == 2
     monkeypatch.setattr(child, "POLL_SECONDS", 60.0)
     execution = UUID(int=41)
     stop = threading.Timer(0.5, cancel_execution, (execution,))
     with execution_cancellation(execution):
-        if call == "spread":
-            with child_calls(f"{HERE}:interrupted_at", workers=2) as warm:  # both workers are up
-                warm.make({"seconds": 0.0, "holds": True})
-                warm.make({"seconds": 0.0, "holds": True})
-                assert [warm.answer(), warm.answer()] == ["held", "held"]
+        if call != "run":  # the call set's kept workers (from 1; run_in_child's is 0) are up
+            width = 2 if call == "spread" else 1  # before the window, which times only the stop
+            with child_calls(f"{HERE}:interrupted_at", workers=width) as warm:
+                for _ in range(width):
+                    warm.make({"seconds": 0.0, "holds": True})
+                assert [warm.answer() for _ in range(width)] == ["held"] * width
         stop.start()
         began, wall = time.monotonic(), time.time()
         if call == "run":

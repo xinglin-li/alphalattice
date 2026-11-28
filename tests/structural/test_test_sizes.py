@@ -1441,6 +1441,7 @@ def test_collection_resolves_owned_size_or_names_the_conflict(tmp_path, monkeypa
         target = str(root / "tests/integration/product_host/test_strategy_activation.py")
         target += "::test_the_daily_update_resumes_its_deferral_then_goes_on_to_the_next_session"
     guard_runs = case == "guard-runs"
+    bare = case in GUARD_SCALE  # the live guard alone: no suite conftest to start (11-28)
     call_duration = (
         " @pytest.hookimpl(tryfirst=True)\n"
         " def pytest_runtest_makereport(self,call):\n"
@@ -1491,7 +1492,7 @@ def test_collection_resolves_owned_size_or_names_the_conflict(tmp_path, monkeypa
             "_pytest.main.Session._collect_path=collect_owned\n"
         ) + script
     command = [sys.executable, "-c", script]
-    if guard_runs:
+    if bare:
         command += [
             "-p",
             "devtools.testing.collection",
@@ -1517,7 +1518,7 @@ def test_collection_resolves_owned_size_or_names_the_conflict(tmp_path, monkeypa
     command += ["-c", str(root / "pyproject.toml")]
     command += ["--basetemp", str(tmp_path / "child-temp")]
     command += ["-vv"] if case in GUARD_SCALE else ["--collect-only", "-q"]
-    command += [str(target)] if guard_runs else ["--no-cov", str(target)]
+    command += [str(target)] if bare else ["--no-cov", str(target)]
     if lane:
         command += ["--keep-duplicates", str(target), str(mandatory)]
     result = spawn.run(
@@ -1528,7 +1529,7 @@ def test_collection_resolves_owned_size_or_names_the_conflict(tmp_path, monkeypa
             # the registered node is nightly_only (the person, 11-19): collected in its own lane
             ALPHALATTICE_TEST_LANE=lane or ("nightly" if registered else ""),
             ALPHALATTICE_PIPELINE_STAGE=post_stage,
-            **({"PYTEST_DISABLE_PLUGIN_AUTOLOAD": "1", "PYTEST_PLUGINS": ""} if guard_runs else {}),
+            **({"PYTEST_DISABLE_PLUGIN_AUTOLOAD": "1", "PYTEST_PLUGINS": ""} if bare else {}),
         ),
         capture_output=True,
         text=True,
