@@ -305,14 +305,17 @@ def expirable(
 class _Block:
     """The admissions one `StorePort.admitting` block has made: the events its snapshot owes, the
     staging folders its commit settles, the records naming its rows that its commit publishes
-    (`StorePort.after_commit`), and whether an admission's writes are under way, which a failure
-    then rolls back with the whole block."""
+    (`StorePort.after_commit`), whether an admission's writes are under way, which a failure
+    then rolls back with the whole block, the world lookups it holds read (`LOOKUPS`), and the
+    temp tables it made for them, read again or not, which its commit drops."""
 
     def __init__(self) -> None:
         self.owed: list[dict[str, Any]] = []
         self.staging: list[str] = []
         self.published: list[Callable[[], None]] = []
         self.writing = False
+        self.lookups: set[str] = set()
+        self.made: set[str] = set()
 
 
 class StorePort:
@@ -514,6 +517,8 @@ class StorePort:
         and publish, in order, the records naming its rows."""
         run = self.lake.execute
         try:
+            for name in sorted(block.made):
+                run(LOOKUPS[name][3]).complete()
             if block.owed:
                 info = {"version": OWED_EVENTS_VERSION, "events": block.owed}
                 run(
@@ -1419,7 +1424,7 @@ class StorePort:
         for table, rows in writes:
             if table in WORLD_KEYS:
                 target = f"lake.world.{table}"
-                self._supersede(table, target, rows, admission)
+                self._supersede(table, rows, admission)
                 rows = f"SELECT * EXCLUDE (_opening), '{admission}' AS admission_id FROM ({rows})"
             else:
                 target = f"lake.results.{table}"
@@ -1432,6 +1437,8 @@ class StorePort:
                     )
             order = ", ".join(WORLD_KEYS.get(table) or RESULTS_KEYS[table])
             run(f"INSERT INTO {target} BY NAME {rows} ORDER BY {order}").complete()
+            if self._block is not None:  # a lookup this table feeds is read again when next used
+                self._block.lookups -= {name for name, held in LOOKUPS.items() if held[0] == table}
             if retain:
                 run(
                     f"INSERT INTO {target} BY NAME SELECT *, '{admission}' AS admission_id"
@@ -1442,18 +1449,17 @@ class StorePort:
                     f" version_id, {NEVER_CURRENT}, '{admission}' FROM temp.retaining_observations"
                 ).complete()
 
-    def _supersede(self, table: str, target: str, rows: str, admission: str) -> None:
-        """Record the world versions this batch replaces and later writes of held values."""
+    def _supersede(self, table: str, rows: str, admission: str) -> None:
+        """Record the world versions this batch replaces and later writes of held values. A version
+        it replaces is its key's newest, which the judging joined as `_held` (`_known`): world
+        holds one unreplaced version per key, and nothing replaced it since in this transaction."""
         run = self.lake.execute
         table_id, key = f"world_table_id('{table}')", WORLD_KEYS[table]
-        same = " AND ".join(f"t.{k} = n.{k}" for k in key)
         pair = " AND ".join(f"o.{k} = c.{k}" for k in key)
         run(  # once, by its earliest replacement: an interval's pair replaces it once
-            f"INSERT INTO lake.world.superseded SELECT {table_id}, t.version_id,"
-            f" min(n.known_asof), '{admission}' FROM {target} t, ({rows}) n"
-            f" WHERE {same} AND NOT EXISTS (SELECT 1 FROM lake.world.superseded s"
-            f" WHERE s.table_id = {table_id} AND s.version_id = t.version_id)"
-            " GROUP BY t.version_id"
+            f"INSERT INTO lake.world.superseded SELECT {table_id}, _held, min(known_asof),"
+            f" '{admission}' FROM temp.admitting WHERE fate = 'admit' AND _held IS NOT NULL"
+            " GROUP BY _held"
         ).complete()
         run(
             f"INSERT INTO lake.world.superseded SELECT {table_id}, o.version_id,"
@@ -1657,21 +1663,30 @@ class StorePort:
         market, joined = "n.market_id", ""
         if table != "listing":
             market = "l.market_id"
-            joined = (  # a listing that changed market has no market for a date before the change
-                " LEFT JOIN (SELECT listing_id, any_value(market_id) AS market_id"
-                " FROM lake.world.listing"
-                " WHERE NOT retracted GROUP BY listing_id HAVING count(DISTINCT market_id) = 1) l"
-                " ON l.listing_id = n.listing_id"
-            )
+            joined = f" LEFT JOIN {self._lookup('listing_market')} l ON l.listing_id = n.listing_id"
         asof = (
             f"CASE WHEN p.version_id IS NULL THEN {derived}"
             f" ELSE greatest({derived}, {at}, p.known_asof) END"
         )
         return (
             f"SELECT n.*, NULL::TIMESTAMPTZ AS known_at, {asof} AS known_asof, {fate},"
-            f" {named} FROM ({rows}) n{joined} ASOF LEFT JOIN {_current('session')} a"
+            f" {named} FROM ({rows}) n{joined} ASOF LEFT JOIN {self._lookup('session_current')} a"
             f" ON a.market_id = {market} AND coalesce({valid}) <= a.session_date{held}"
         )
+
+    def _lookup(self, name: str) -> str:
+        """A world lookup the legacy judging reads (`LOOKUPS`), as a relation: inside an admitting
+        block, a temp table read once and again only after the block writes its source table;
+        outside one, the query itself, since a lone admission reads it once anyway."""
+        _, query, hold, _ = LOOKUPS[name]
+        block = self._block
+        if block is None:
+            return f"({query})"
+        if name not in block.lookups:
+            self.lake.execute(hold + query).complete()
+            block.lookups.add(name)
+            block.made.add(name)
+        return f"temp.{name}"
 
     def _catalog_columns(self, target: str, omit: tuple[str, ...] = ()) -> dict[str, str]:
         """The attached table's committed columns until the writer changes its catalog."""
@@ -2157,6 +2172,28 @@ def _current(table: str) -> str:
         f" FROM lake.world.superseded s WHERE s.table_id = world_table_id('{table}')"
         " AND s.version_id = x.version_id))"
     )
+
+
+LOOKUPS: Final = {
+    # a listing that changed market has no market for a date before the change
+    "listing_market": (
+        "listing",
+        "SELECT listing_id, any_value(market_id) AS market_id FROM lake.world.listing"
+        " WHERE NOT retracted GROUP BY listing_id HAVING count(DISTINCT market_id) = 1",
+        "CREATE OR REPLACE TEMP TABLE listing_market AS ",
+        "DROP TABLE IF EXISTS temp.listing_market",
+    ),
+    "session_current": (
+        "session",
+        f"SELECT * FROM {_current('session')}",
+        "CREATE OR REPLACE TEMP TABLE session_current AS ",
+        "DROP TABLE IF EXISTS temp.session_current",
+    ),
+}
+"""The world lookups a legacy row's known_asof is derived from, by name: the world table whose
+writes change it, its query, and the statements that hold it in a temp table and drop it. Every
+legacy judging of an admitting block reads the same ones, so the block holds each read
+(`StorePort._lookup`)."""
 
 
 def _named_files(lake: Any) -> frozenset[str]:

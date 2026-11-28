@@ -3,6 +3,7 @@ collection, the deletion queue, the live_ref guard and the writer's fences."""
 
 from __future__ import annotations
 
+import hashlib
 import json
 import os
 import sqlite3
@@ -1093,6 +1094,136 @@ def _published_once_they_commit(root) -> None:
     assert (rolled_back, inside, published) == ([], [], [1])
 
 
+def _legacy_rows_read_the_blocks_own_sessions(root) -> None:
+    """A legacy row counts its lag from the sessions its block admitted before it, though an
+    earlier legacy row of the block read the sessions before they were written; the block's
+    commit leaves no lookup it held behind."""
+    with HostLog.open(root) as log:
+        port = seed(root, log, [("2024-01-05", "21:00:00", False)])
+        calendar = log.require_lineage("provider", "calendar")
+        yf = log.require_lineage("provider", "yf")
+        market = port.lake.execute("SELECT market_id FROM lake.world.market").fetchone()[0]
+        bar, rule = {"listing_id": LISTING, "adjusted_close": 0.5} | WRITTEN, ("yf-close", 1)
+        later = {"market_id": str(market), "session_date": "2024-01-08", "half_day": False}
+        later |= {"close_utc": "2024-01-08 21:00:00+00"}
+        with port.admitting():
+            port.publish("raw_bar", yf, arrow([bar | {"session_date": "2024-01-05"}]), rule)
+            port.publish("session", calendar, arrow([later]))
+            port.publish("raw_bar", yf, arrow([bar | {"session_date": "2024-01-08"}]), rule)
+            port.publish("session", calendar, arrow([later | {"session_date": "2024-01-09"}]))
+        known = port.lake.execute(
+            "SELECT list(strftime(known_asof, '%d %H') ORDER BY session_date)"
+            " FROM lake.world.raw_bar"
+        ).fetchone()[0]
+        held = port.lake.execute(
+            "SELECT count(*) FROM duckdb_tables() WHERE temporary AND table_name IN"
+            " ('session_current', 'listing_market')"
+        ).fetchone()[0]
+        port.close()
+    assert known == ["05 22", "08 22"]  # each an hour after its own session's close
+    assert held == 0  # the last session write left its lookup stale, and the commit dropped it
+
+
+RECEIPT_BYTES = "1e03c644afd3a4fe87d8c420b1193c6a238e1bf3d96de6db4b1221483143d8ca"
+"""The sha256 of `_receipts_keep_their_bytes`' receipts, read at the store's base and head alike."""
+
+
+def _minted(value: object) -> bool:
+    """Whether a value is an id a fresh root mints anew: a UUIDv7, never a listing's own UUIDv5."""
+    try:
+        return uuid.UUID(str(value)).version == 7
+    except ValueError:
+        return False
+
+
+def _receipts_keep_their_bytes(root) -> None:
+    """A block's admission receipts keep their bytes under a fixed clock: each event, the world
+    rows it wrote, the versions it superseded and the writes it saw again, every minted id and
+    catalog snapshot mapped one to one in the order they appear."""
+    with pytest.MonkeyPatch.context() as fixed:
+        # after the root's own creation: the log's clock then counts from it by one each read
+        fixed.setattr(host, "wall_time_ns", lambda: 4_102_444_800_000_000_000)  # 2100-01-01 UTC
+        with HostLog.open(root) as log:
+            received, world = _block_receipts(root, log)
+    tokens: dict[str, str] = {}
+
+    def mapped(value, kind=None):
+        """A minted value or snapshot by its first appearance, the same value always the same."""
+        kind = kind or ("id" if _minted(value) else None)
+        if kind:
+            return (
+                value
+                if value is None
+                else tokens.setdefault(f"{kind}:{value}", f"{kind}{len(tokens)}")
+            )
+        if isinstance(value, dict):
+            return {key: mapped(item, MINTED_FIELDS.get(key)) for key, item in value.items()}
+        return [mapped(item) for item in value] if isinstance(value, list) else value
+
+    receipt = mapped({"events": received, "world": world})  # events, then rows in key order
+    for table in ("superseded", "rewritten"):  # their order is the engine's: read in token order
+        receipt["world"][table].sort()
+    admissions = {event["subject_id"] for event in receipt["events"]}
+    rows = [
+        row
+        for table in ("session", "raw_bar", "provider_symbol")
+        for row in receipt["world"][table]
+    ]
+    versions = {row[-1] for row in rows}
+    assert {row[-2] for row in rows} <= admissions  # each row names an admission the log holds
+    assert {row[-1] for row in receipt["world"]["superseded"]} <= versions  # and replaces a row
+    assert {row[-1] for row in receipt["world"]["rewritten"]} <= versions  # or sees one again
+    assert len({event["attrs"]["catalog_snapshot"] for event in receipt["events"][-5:]}) == 1
+    assert receipt["world"]["superseded"] and receipt["world"]["rewritten"]
+    digest = hashlib.sha256(json.dumps(receipt, sort_keys=True).encode()).hexdigest()
+    assert digest == RECEIPT_BYTES, digest
+
+
+MINTED_FIELDS = {"catalog_snapshot": "snapshot", "trace_id": "trace", "span_id": "trace"}
+"""The receipt fields a fresh root numbers or draws anew, beside its UUIDv7 ids."""
+
+
+def _block_receipts(root, log) -> tuple[list[dict], dict[str, list[list[str]]]]:
+    """One block's admissions, a legacy row over the block's own session, a supersession, a
+    value written again and an interval among them; their events and the world they wrote."""
+    port = seed(root, log, [("2024-01-05", "21:00:00", False)])
+    calendar = log.require_lineage("provider", "calendar")
+    yf = log.require_lineage("provider", "yf")
+    market = port.lake.execute("SELECT market_id FROM lake.world.market").fetchone()[0]
+    bar, rule = {"listing_id": LISTING, "session_date": "2024-01-05"}, ("yf-close", 1)
+    changed = bar | {"adjusted_close": 0.6, "source_observed_at": "2024-02-02 00:00:00+00"}
+    day = {"market_id": str(market), "session_date": "2024-01-08", "half_day": False}
+    symbol = {"listing_id": LISTING, "symbol": "AAA", "valid_from": "2024-01-05"}
+    with port.admitting():
+        port.publish("raw_bar", yf, arrow([bar | {"adjusted_close": 0.5} | WRITTEN]), rule)
+        port.publish("session", calendar, arrow([day | {"close_utc": "2024-01-08 21:00:00+00"}]))
+        later = bar | {"session_date": "2024-01-08", "adjusted_close": 0.5} | WRITTEN
+        port.publish("raw_bar", yf, arrow([changed, later]), rule)  # supersedes the first
+        again = changed | {"source_observed_at": "2024-02-03 00:00:00+00"}
+        port.publish("raw_bar", yf, arrow([again]), rule)  # the same value, written again
+        port.publish("provider_symbol", yf, arrow([symbol | {"valid_to": "2024-01-08"}]), rule)
+    events = log.read(
+        "SELECT * FROM event WHERE type IN (SELECT type FROM event_type_name"
+        " WHERE named = 'admission.committed') ORDER BY seq"
+    )
+    received = []
+    for row in events:
+        event = dict(zip(row.keys(), row, strict=True))
+        del event["seq"]  # numbered among each log's other events
+        received.append(event | {"attrs": json.loads(event["attrs"])})
+    world = {}
+    for table in ("session", "raw_bar", "provider_symbol", "superseded", "rewritten"):
+        order = (
+            f"ORDER BY {', '.join(WORLD_KEYS[table])}, known_asof" if table in WORLD_KEYS else ""
+        )
+        query = f"SELECT * EXCLUDE (version_id), version_id FROM lake.world.{table} {order}"
+        world[table] = [
+            [str(value) for value in row] for row in port.lake.execute(query).fetchall()
+        ]
+    port.close()
+    return received, world
+
+
 @pytest.mark.proves("data_layer.one_block_of_admissions_is_one_snapshot")
 @pytest.mark.parametrize(
     "scenario",
@@ -1100,6 +1231,8 @@ def _published_once_they_commit(root) -> None:
         pytest.param(partial(_one_snapshot, refused=False), id="whole"),
         pytest.param(partial(_one_snapshot, refused=True), id="a-refusal-inside"),
         pytest.param(_published_once_they_commit, id="a-record-naming-its-rows"),
+        pytest.param(_legacy_rows_read_the_blocks_own_sessions, id="its-own-sessions"),
+        pytest.param(_receipts_keep_their_bytes, id="receipt-bytes"),
     ],
 )
 def test_a_block_of_admissions_is_one_snapshot_each_keeping_its_own_admission(root, scenario):
