@@ -24,6 +24,7 @@ from __future__ import annotations
 from collections.abc import Mapping
 from types import MappingProxyType
 
+from alphalattice.capabilities.domain_contracts.adapter_families import AdapterKind, conforms
 from alphalattice.capabilities.domain_contracts.identity import canonical_hash
 
 from ..contracts import SectorResearchError
@@ -33,21 +34,19 @@ from .contracts import (
     SectorForecastCatalogBinding,
     SectorForecastRecipe,
 )
-from .distributed_lag_elastic_net import (
-    DISTRIBUTED_LAG_ELASTIC_NET_METHOD_ID,
-    DistributedLagElasticNetAdapter,
+
+SECTOR_FORECASTS: AdapterKind[SectorForecastAdapter] = AdapterKind(
+    group="alphalattice.sector_forecasts",
+    admits=conforms(SectorForecastAdapter),
+    answers_to=lambda adapter: adapter.method_id,
+    refused=lambda _: SectorResearchError("sector_research.method_not_installed"),
 )
-from .ewma import EWMA_SECTOR_MEAN_METHOD_ID, EwmaSectorMeanAdapter
-from .relative_strength import (
-    SECTOR_RELATIVE_STRENGTH_METHOD_ID,
-    SectorRelativeStrengthAdapter,
-)
-from .zero import ZERO_SECTOR_FORECAST_METHOD_ID, ZeroSectorForecastAdapter
+"""The Sector forecast methods the distribution declares."""
 
 FROZEN_SINGLETON_PARAMETERS: Mapping[str, Mapping[str, int]] = MappingProxyType(
     {
-        ZERO_SECTOR_FORECAST_METHOD_ID: MappingProxyType({}),
-        EWMA_SECTOR_MEAN_METHOD_ID: MappingProxyType(
+        "ZERO_SECTOR_FORECAST": MappingProxyType({}),
+        "EWMA_SECTOR_MEAN": MappingProxyType(
             {
                 "half_life_sessions": 21,
                 "minimum_history_sessions": 21,
@@ -55,7 +54,7 @@ FROZEN_SINGLETON_PARAMETERS: Mapping[str, Mapping[str, int]] = MappingProxyType(
                 "forecast_horizon_sessions": 1,
             }
         ),
-        SECTOR_RELATIVE_STRENGTH_METHOD_ID: MappingProxyType(
+        "SECTOR_RELATIVE_STRENGTH_126": MappingProxyType(
             {
                 "lookback_sessions": 126,
                 "minimum_history_sessions": 126,
@@ -63,7 +62,7 @@ FROZEN_SINGLETON_PARAMETERS: Mapping[str, Mapping[str, int]] = MappingProxyType(
                 "forecast_horizon_sessions": 1,
             }
         ),
-        DISTRIBUTED_LAG_ELASTIC_NET_METHOD_ID: MappingProxyType(
+        "DISTRIBUTED_LAG_ELASTIC_NET": MappingProxyType(
             {
                 "lag_count": 5,
                 "minimum_history_sessions": 252,
@@ -78,7 +77,9 @@ FROZEN_SINGLETON_PARAMETERS: Mapping[str, Mapping[str, int]] = MappingProxyType(
         ),
     }
 )
-"""The whole admissible parameter space, one point per method."""
+"""The whole admissible parameter space, one point per method, in catalog order: the order
+inside the catalog's hash. The `alphalattice.sector_forecasts` entry points say which module
+serves each method."""
 
 
 class SectorForecastCatalog:
@@ -245,19 +246,15 @@ def installed_numerical_binding_hash(method_id: str) -> str:
 
 
 def build_installed_sector_forecast_catalog() -> SectorForecastCatalog:
-    """Construct the explicit installed catalog; no discovery, no runtime mutation."""
+    """Construct the installed catalog: every method the distribution declares, in its order."""
     return SectorForecastCatalog(
-        (
-            ZeroSectorForecastAdapter(),
-            EwmaSectorMeanAdapter(),
-            SectorRelativeStrengthAdapter(),
-            DistributedLagElasticNetAdapter(),
-        )
+        tuple(SECTOR_FORECASTS.load(v) for v in FROZEN_SINGLETON_PARAMETERS)
     )
 
 
 __all__ = [
     "FROZEN_SINGLETON_PARAMETERS",
+    "SECTOR_FORECASTS",
     "SectorForecastCatalog",
     "build_installed_sector_forecast_catalog",
 ]

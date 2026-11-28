@@ -676,15 +676,10 @@ def test_a_built_wheel_holds_the_exact_runtime_content_set(tmp_path: Path) -> No
         entry_points = ConfigParser(interpolation=None)
         entry_points.optionxform = str
         entry_points.read_string(archive.read(entry).decode())
+        declared = tomllib.loads((ROOT / "pyproject.toml").read_text("utf-8"))["project"]
         assert {group: dict(entry_points[group]) for group in entry_points.sections()} == {
-            "console_scripts": {
-                "alphalattice": "alphalattice.control.product_host.composition.entry:main"
-            },
-            "alphalattice.capabilities": {
-                "factor.session_dollar_volume": (
-                    "alphalattice.control.product_host.plugins.session_dollar_volume:run"
-                )
-            },
+            "console_scripts": declared["scripts"],
+            **declared["entry-points"],
         }
         for name in inputs:
             assert archive.read("alphalattice/_runtime/" + name) == (ROOT / name).read_bytes()

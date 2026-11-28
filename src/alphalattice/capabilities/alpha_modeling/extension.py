@@ -11,13 +11,13 @@ workspace installs one only when a person activates it there.
 
 from __future__ import annotations
 
-import importlib
-import re
 import sys
 from pathlib import Path
-from typing import Any, cast
+from typing import Any
 
 from pydantic import ValidationError
+
+from alphalattice.capabilities.domain_contracts.adapter_families import AdapterKind, conforms
 
 from .contracts import (
     AlphaModelAdapter,
@@ -191,6 +191,16 @@ class DeclaredModelAdapter:
         return values
 
 
+ALPHA_MODELS: AdapterKind[AlphaModelAdapter] = AdapterKind(
+    group="alphalattice.alpha_models",
+    admits=conforms(AlphaModelAdapter),
+    answers_to=lambda adapter: adapter.adapter_id,
+    refused=lambda model_id: ValueError(f"model_extension.not_found:{model_id}"),
+    extensions=(EXTENSION_PACKAGE, DeclaredModelAdapter),
+)
+"""The Alpha models: the built-ins the distribution declares, and a workspace's extensions."""
+
+
 def extension_adapter(model_id: str) -> AlphaModelAdapter:
     """An extension's adapter, loaded by name.
 
@@ -203,20 +213,11 @@ def extension_adapter(model_id: str) -> AlphaModelAdapter:
     Raises:
         ValueError: `model_extension.not_found:<model_id>` when no extension module names it.
     """
-    if not re.fullmatch(r"[a-z][a-z0-9_]*", model_id):
-        raise ValueError(f"model_extension.not_found:{model_id}")
-    try:
-        module = importlib.import_module(f"{EXTENSION_PACKAGE}.{model_id}")  # lazy: optional.
-    except ModuleNotFoundError as error:
-        raise ValueError(f"model_extension.not_found:{model_id}") from error
-    adapter = getattr(module, "ADAPTER", None)
-    instance = adapter() if isinstance(adapter, type) else None
-    if not isinstance(instance, DeclaredModelAdapter):
-        raise ValueError(f"model_extension.not_found:{model_id}")
-    return cast(AlphaModelAdapter, instance)
+    return ALPHA_MODELS.extension(model_id)
 
 
 __all__ = [
+    "ALPHA_MODELS",
     "EXTENSION_PACKAGE",
     "DeclaredModelAdapter",
     "extension_adapter",

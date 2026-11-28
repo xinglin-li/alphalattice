@@ -34,7 +34,7 @@ import numpy.typing as npt
 from pydantic import BaseModel, ConfigDict, Field, ValidationError, field_validator, model_validator
 
 from alphalattice.capabilities.alpha_modeling.adapters.lightgbm_dynamic_panel import (
-    DynamicPanelLightGBMAdapter,
+    DYNAMIC_PANEL_LIGHTGBM_ADAPTER_ID,
     build_dynamic_panel_lightgbm_recipe,
     build_dynamic_panel_lightgbm_search_domain,
 )
@@ -43,6 +43,7 @@ from alphalattice.capabilities.alpha_modeling.contracts import (
     AlphaEstimatorContent,
     BoundAlphaPredictionInput,
 )
+from alphalattice.capabilities.alpha_modeling.extension import ALPHA_MODELS
 from alphalattice.capabilities.alpha_modeling.runtime.numerical_environment import (
     resolve_alpha_model_numerical_environment,
 )
@@ -444,7 +445,7 @@ class AlphaRuntimeHeterogeneousPredictionOwner:
             raise HeterogeneousScoringError("alpha_research.heterogeneous_live_component_invalid")
         self._component_ids = component_ids
         self._runtime = AlphaModelRuntimeService(
-            AlphaModelCatalog((DynamicPanelLightGBMAdapter(),))
+            AlphaModelCatalog((ALPHA_MODELS.load(DYNAMIC_PANEL_LIGHTGBM_ADAPTER_ID),))
         )
         self._domain = build_dynamic_panel_lightgbm_search_domain()
         try:

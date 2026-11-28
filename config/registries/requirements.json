@@ -9,6 +9,12 @@
       "layer": "unit",
       "seconds": 1
     },
+    "alpha_modeling.every_declared_model_keeps_the_adapter_contract": {
+      "description": "Every Alpha model the entry points declare loads to an adapter with a BLAKE3 numerical binding that a catalog installs.",
+      "owner": "alphalattice.capabilities.alpha_modeling",
+      "layer": "contract",
+      "seconds": 20
+    },
     "alpha_modeling.sparse_multiplier_counts_from_alpha_max": {
       "description": "If a Lasso or Elastic-Net multiplier counted from a wrong alpha-max, a declared sparse model would fit at a penalty its recipe never named, and the adapter and its reference fit would agree on the wrong value.",
       "owner": "alphalattice.capabilities.alpha_modeling",
@@ -1508,6 +1514,12 @@
       "layer": "integration",
       "seconds": 2
     },
+    "domain_contracts.a_kinds_installed_routes_enter_its_rule_closure": {
+      "description": "A module declaring an adapter kind holds every module its installed routes select in its rule closure, and two ids trading targets move its digest.",
+      "owner": "alphalattice.capabilities.domain_contracts",
+      "layer": "contract",
+      "seconds": 10
+    },
     "domain_contracts.a_record_is_sealed_once": {
       "description": "If a record's validator encoded the payload its creator had just sealed, every sealed record would be encoded twice; a record read back still proves its digest.",
       "owner": "alphalattice.capabilities.domain_contracts",
@@ -1516,6 +1528,12 @@
     },
     "domain_contracts.a_wait_ends_by_its_deadline_or_its_stop": {
       "description": "A wait returns its check's first result, or ends by name at its deadline or its stop event, and refuses an unbounded deadline.",
+      "owner": "alphalattice.capabilities.domain_contracts",
+      "layer": "unit",
+      "seconds": 1
+    },
+    "domain_contracts.an_adapter_family_refuses_by_name_an_id_it_cannot_serve": {
+      "description": "An undeclared id, an unimportable target, an object that is not the kind's adapter, or one answering to another id is refused by the kind's own name.",
       "owner": "alphalattice.capabilities.domain_contracts",
       "layer": "unit",
       "seconds": 1
@@ -1554,6 +1572,12 @@
     },
     "domain_contracts.source_identity_survives_relocation": {
       "description": "Relocating a module while keeping its body and semantic binding preserves its source closure identities.",
+      "owner": "alphalattice.capabilities.domain_contracts",
+      "layer": "unit",
+      "seconds": 1
+    },
+    "domain_contracts.the_catalogs_and_entry_points_name_the_same_built_ins": {
+      "description": "A catalog id no entry point declares, and a declared built-in no catalog lists, are named, so the ordered ids and the module list never drift.",
       "owner": "alphalattice.capabilities.domain_contracts",
       "layer": "unit",
       "seconds": 1
@@ -3177,6 +3201,13 @@
       "layer": "integration",
       "seconds": 15
     },
+    "product_host.the_hosts_start_imports_no_adapter_module": {
+      "description": "A fresh interpreter importing the Host's entry and its web session holds no module an adapter family's entry point names.",
+      "owner": "alphalattice.control.product_host",
+      "layer": "integration",
+      "seconds": 5,
+      "lower_layer": "Only a fresh interpreter shows what the Host's start imports, since a unit test's process has already loaded every adapter."
+    },
     "product_host.workspace_backup_restores_held_state": {
       "description": "A workspace backup restores the held Tasks, every exported market table's rows and every held file's bytes.",
       "owner": "alphalattice.control.product_host",
@@ -3237,6 +3268,18 @@
       "owner": "alphalattice.kernel.resources",
       "layer": "unit",
       "seconds": 1
+    },
+    "risk_research.every_declared_estimator_keeps_the_capability_contract": {
+      "description": "Every Risk capability the entry points declare owns an adapter with a BLAKE3 binding, and a catalog admits the capability's route.",
+      "owner": "alphalattice.investment.risk_research",
+      "layer": "contract",
+      "seconds": 10
+    },
+    "sector_research.every_declared_method_keeps_the_adapter_contract": {
+      "description": "Every Sector method the entry points declare loads to an adapter with a BLAKE3 binding whose one frozen recipe a catalog seals.",
+      "owner": "alphalattice.investment.sector_research",
+      "layer": "contract",
+      "seconds": 10
     },
     "shared_kernel.a_wait_ends_at_its_bound": {
       "description": "If a wait could run without a finite deadline, a hung check or a lost event would hold its caller for good.",

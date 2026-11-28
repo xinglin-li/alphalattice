@@ -26,6 +26,7 @@ src/alphalattice/capabilities/domain_contracts/retired_spellings.py
 src/alphalattice/capabilities/domain_contracts/environment.py
 src/alphalattice/capabilities/domain_contracts/sealing.py
 src/alphalattice/capabilities/domain_contracts/spans.py
+src/alphalattice/capabilities/domain_contracts/adapter_families.py
 src/alphalattice/capabilities/domain_contracts/domain/__init__.py
 src/alphalattice/capabilities/domain_contracts/domain/base.py
 src/alphalattice/capabilities/domain_contracts/domain/enums.py

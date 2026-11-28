@@ -11,6 +11,7 @@ from types import MappingProxyType
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
+from alphalattice.capabilities.domain_contracts.adapter_families import AdapterKind, conforms
 from alphalattice.capabilities.domain_contracts.identity import canonical_hash
 from alphalattice.kernel.identity import BLAKE3_PATTERN
 
@@ -267,11 +268,12 @@ def installed_numerical_binding_hash(adapter_id: str) -> str:
 
 
 def build_installed_risk_estimator_catalog() -> RiskEstimatorCatalog:
-    """Construct the explicit installed catalog; no discovery or runtime mutation.
+    """Construct the installed catalog: every capability the distribution declares, in order.
 
-    Two real capabilities: the production covariance control and the blended
-    fast/slow correlation challenger. Both are named here, at one readable call
-    site. Any further capability -- including every case-study one -- is injected
+    The production covariance control, the blended fast/slow correlation
+    challenger and the diagonal shrinkage control, each served by the module its
+    `alphalattice.risk_estimators` entry point names. Any
+    further capability -- including every case-study one -- is injected
     explicitly by whoever wants it, so a test method can never become reachable
     from a production composition.
 
@@ -281,29 +283,34 @@ def build_installed_risk_estimator_catalog() -> RiskEstimatorCatalog:
     it does not reach a published production surface at all -- those are bound by
     the frozen execution closure, which this file is outside of.
     """
-    from .covariance import CovarianceCapability, CovarianceEstimatorAdapter
-    from .diagonal import DiagonalShrunkCovarianceAdapter, DiagonalShrunkCovarianceCapability
-    from .fast_slow import FastSlowCovarianceAdapter, FastSlowCovarianceCapability
-
     # Order is declaration order and it is inside ``catalog_hash``, so installing
-    # R2 is an append. The two existing entries keep their positions: reordering
-    # them would move a catalog identity that published development evidence
-    # already names, for no reason anyone could point at.
+    # a capability is an append. The existing entries keep their positions:
+    # reordering them would move a catalog identity that published development
+    # evidence already names, for no reason anyone could point at.
+    capabilities = tuple(RISK_ESTIMATORS.load(value) for value in INSTALLED_ESTIMATORS)
     return RiskEstimatorCatalog(
-        (
-            CovarianceEstimatorAdapter(),
-            FastSlowCovarianceAdapter(),
-            DiagonalShrunkCovarianceAdapter(),
-        ),
-        capabilities=(
-            CovarianceCapability(),
-            FastSlowCovarianceCapability(),
-            DiagonalShrunkCovarianceCapability(),
-        ),
+        tuple(capability.adapter for capability in capabilities), capabilities=capabilities
     )
 
 
+INSTALLED_ESTIMATORS: tuple[str, ...] = (
+    "risk-covariance-ewma-standardized-ledoit-wolf",
+    "risk-covariance-fast-slow-ledoit-wolf",
+    "risk-covariance-diagonal-shrunk-ledoit-wolf",
+)
+"""The installed capabilities' ids in catalog order; their entry points name each one's module."""
+
+RISK_ESTIMATORS: AdapterKind[RiskCapability] = AdapterKind(
+    group="alphalattice.risk_estimators",
+    admits=conforms(RiskCapability),
+    answers_to=lambda capability: capability.adapter.adapter_id,
+    refused=lambda _: ValueError("RISK_ESTIMATOR_ADAPTER_NOT_INSTALLED"),
+)
+"""The Risk estimators: each id names the capability that owns its adapter."""
+
+
 __all__ = [
+    "RISK_ESTIMATORS",
     "RiskEstimatorCapabilityIdentity",
     "RiskEstimatorCatalog",
     "RiskEstimatorCatalogBinding",

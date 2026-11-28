@@ -57,6 +57,30 @@ alphalattice = "alphalattice.control.product_host.composition.entry:main"
 [project.entry-points."alphalattice.capabilities"]
 "factor.session_dollar_volume" = "alphalattice.control.product_host.plugins.session_dollar_volume:run"
 
+# Each adapter kind's built-ins, one group per kind and the family list's one home: which module
+# serves an id. Setuptools writes a group sorted by name, so a catalog states its own order, the
+# order inside its hash, by id.
+[project.entry-points."alphalattice.alpha_models"]
+regularized_linear = "alphalattice.capabilities.alpha_modeling.adapters.regularized_linear:RegularizedLinearAdapter"
+dynamic_panel_lightgbm = "alphalattice.capabilities.alpha_modeling.adapters.lightgbm_dynamic_panel:DynamicPanelLightGBMAdapter"
+rank_composite = "alphalattice.capabilities.alpha_modeling.adapters.rank_composite:RankCompositeAdapter"
+lightgbm_chronological_multi_seed = "alphalattice.capabilities.alpha_modeling.adapters.lightgbm_chronological:ChronologicalLightGBMAdapter"
+lightgbm_chronological_regularized = "alphalattice.capabilities.alpha_modeling.adapters.lightgbm_chronological:RegularizedChronologicalLightGBMAdapter"
+hist_gradient_boosting = "alphalattice.capabilities.alpha_modeling.adapters.hist_gradient_boosting:HistGradientBoostingAdapter"
+huber_linear = "alphalattice.capabilities.alpha_modeling.adapters.huber:HuberLinearAdapter"
+dynamic_panel_regularized_linear = "alphalattice.capabilities.alpha_modeling.adapters.regularized_linear_dynamic_panel:DynamicPanelRegularizedLinearAdapter"
+
+[project.entry-points."alphalattice.risk_estimators"]
+"risk-covariance-ewma-standardized-ledoit-wolf" = "alphalattice.investment.risk_research.estimators.covariance:CovarianceCapability"
+"risk-covariance-fast-slow-ledoit-wolf" = "alphalattice.investment.risk_research.estimators.fast_slow:FastSlowCovarianceCapability"
+"risk-covariance-diagonal-shrunk-ledoit-wolf" = "alphalattice.investment.risk_research.estimators.diagonal:DiagonalShrunkCovarianceCapability"
+
+[project.entry-points."alphalattice.sector_forecasts"]
+ZERO_SECTOR_FORECAST = "alphalattice.investment.sector_research.models.zero:ZeroSectorForecastAdapter"
+EWMA_SECTOR_MEAN = "alphalattice.investment.sector_research.models.ewma:EwmaSectorMeanAdapter"
+SECTOR_RELATIVE_STRENGTH_126 = "alphalattice.investment.sector_research.models.relative_strength:SectorRelativeStrengthAdapter"
+DISTRIBUTED_LAG_ELASTIC_NET = "alphalattice.investment.sector_research.models.distributed_lag_elastic_net:DistributedLagElasticNetAdapter"
+
 [build-system]
 requires = ["setuptools==83.0.0", "psutil==7.2.2", "blake3==1.0.11"]
 build-backend = "setuptools.build_meta"

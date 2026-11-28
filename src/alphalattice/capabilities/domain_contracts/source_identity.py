@@ -12,6 +12,7 @@ from contextlib import contextmanager, suppress
 from contextvars import ContextVar
 from copy import deepcopy
 from dataclasses import dataclass
+from importlib import metadata
 from pathlib import Path, PurePosixPath
 from threading import Lock, get_ident
 from typing import Any, cast
@@ -37,6 +38,7 @@ from alphalattice.kernel.identity import (
     tagged_blake3,
 )
 
+from .adapter_families import declared
 from .identity import canonical_hash
 
 _PHYSICAL_NAMESPACE_GROUPS = frozenset(
@@ -778,8 +780,55 @@ def _components(edges: Mapping[str, tuple[str, ...]]) -> list[list[str]]:
 
 
 def _canonical_walk(path: Path, package: str) -> tuple[_Canonical, tuple[str, ...]]:
-    held = _canonical(path, package)
+    held = _routed(_canonical(path, package))
     return held, held.walked
+
+
+_KIND_GROUP = re.compile(r"keyword\('group',Constant\('(alphalattice\.[^']+)'")
+"""An adapter kind's declaration in a module's canonical form: the entry point group it loads."""
+
+
+def _installed_routes() -> tuple[tuple[str, str, str], ...]:
+    """Every installed product entry point, by group and name: the table a route reads."""
+    try:
+        points = metadata.distribution("alphalattice").entry_points
+    except metadata.PackageNotFoundError:
+        return ()
+    return tuple(sorted((point.group, point.name, point.value) for point in points))
+
+
+def _routed(held: _Canonical) -> _Canonical:
+    """A module that declares an adapter kind, with each installed route of its group bound as
+    an import (``adapter_families``): the walk reaches each selected module, and the digest binds
+    which class each id selects, so changing a route moves every closure that reaches the kind.
+
+    A route is not an import statement, so the rule closure cannot read it from the syntax; the
+    installed distribution's entry points are what the loader takes, and the identity reads the
+    same table. Every other module's form is unchanged.
+    """
+    groups = sorted(set(_KIND_GROUP.findall("".join(held.template[::2]))))
+    if not groups:
+        return held
+    routes = sorted(
+        (group, name, point.module, point.attr)
+        for group in groups
+        for name, point in declared(group).items()
+    )
+    if not routes:
+        return held
+    template, references = list(held.template), list(held.references)
+    for group, name, module, attr in routes:
+        template[-1] += f"\0route:{group}:{name}="
+        template += [str(len(references)), ""]
+        references.append(("from", module, attr))
+    bound = tuple(("from", module, attr) for _, _, module, attr in routes)
+    return _Canonical(
+        key=(f"{held.key[0]}:{_text_digest(repr(routes))}", held.key[1]),
+        walked=(*held.walked, *sorted({module for _, _, module, _ in routes})),
+        template=tuple(template),
+        references=tuple(references),
+        imports=(*held.imports, *bound),
+    )
 
 
 def _canonical(path: Path, package: str) -> _Canonical:
@@ -1364,7 +1413,9 @@ def number_deciding_rule(root: Path) -> NumberDecidingRule:
 
 
 type _FileVersion = tuple[bool, Stamp | None]
-type _RoleInput = tuple[Path, tuple[str, ...], str, str, NumberDecidingRule]
+type _RoleInput = tuple[
+    Path, tuple[str, ...], str, str, NumberDecidingRule, tuple[tuple[str, str, str], ...]
+]
 type _RoleClosure = tuple[tuple[tuple[Path, _FileVersion], ...], str]
 
 _ROLE_CLOSURES = BoundedMemo[_RoleInput, _RoleClosure](capacity=128)
@@ -1456,7 +1507,8 @@ class _ClosureInputs:
             parsed = _canonical(path, package)
             if settled and stamp is not None:
                 self.parsed[identity] = stamp, parsed
-        return parsed, parsed.walked
+        routed = _routed(parsed)  # an installed route is identity input, as in canonical_closure
+        return routed, routed.walked
 
     def stable(self) -> bool:
         confirmed = self.acquired.confirmed
@@ -1520,7 +1572,8 @@ def source_rule_closure_hash(
     """
     with _ROLE_READ:
         rule = number_deciding_rule(root)
-        key = root, tracked_paths, semantic_owner, numerical_role, rule
+        # A held closure is valid only while the installed route table reads the same.
+        key = root, tracked_paths, semantic_owner, numerical_role, rule, _installed_routes()
         observing = _SOURCE_OBSERVER.get() is not None
         inputs = _ClosureInputs(None if observing else _ACQUIRED_ROLE_SOURCES.get())
         held = None if observing else _ROLE_CLOSURES.get(key)

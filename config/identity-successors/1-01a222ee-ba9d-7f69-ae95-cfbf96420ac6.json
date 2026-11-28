@@ -1,0 +1,125 @@
+{
+ "schema": "identity-successors",
+ "version": 1,
+ "moves": [
+  {
+   "role": "alpha_research.campaign_decision_policy",
+   "predecessor": "blake3:504b410bce8850b5a3f33876b7adaeebdf24627cacac5fb9699360d32f93f9b4",
+   "successor": "blake3:53a8cac6704a6e261cf0a6168d790783092f02012be72bdd1ddc772c2cfd0b8d",
+   "change": "Model families load lazily from entry points through one loader",
+   "reason": "Model families load as plugins and each role's identity now binds the installed routes it reaches, so a changed route can never run other code under the same identity; results unchanged: the development equality replay reads ALL EQUAL across 11 listing families with first use and the next day OK; the same 17 roles move by source and route; the change after the replay is one type alias"
+  },
+  {
+   "role": "alpha_research.model_lifecycle_replay",
+   "predecessor": "blake3:eb44a0e69aed66ce705379d11949e1383fa1fe468c6adb9b912bcba58f6f6b00",
+   "successor": "blake3:b8b77161ba92c6823d5781c92a48690a49b9bb5384ab94d69fdcecf9fdf2c714",
+   "change": "Model families load lazily from entry points through one loader",
+   "reason": "Model families load as plugins and each role's identity now binds the installed routes it reaches, so a changed route can never run other code under the same identity; results unchanged: the development equality replay reads ALL EQUAL across 11 listing families with first use and the next day OK; the same 17 roles move by source and route; the change after the replay is one type alias"
+  },
+  {
+   "role": "alpha_research.return_unit_capability",
+   "predecessor": "blake3:06a2fb8bb5aec5920e9e826e09cd178ef85f3ff62098a78ab4bae1fa00d592ef",
+   "successor": "blake3:ac7b3c2caafc812ccd897cacac29048a1407bdbf273ec75eaaf0a2a49a250e29",
+   "change": "Model families load lazily from entry points through one loader",
+   "reason": "Model families load as plugins and each role's identity now binds the installed routes it reaches, so a changed route can never run other code under the same identity; results unchanged: the development equality replay reads ALL EQUAL across 11 listing families with first use and the next day OK; the same 17 roles move by source and route; the change after the replay is one type alias"
+  },
+  {
+   "role": "portfolio_strategy_lab.public_path",
+   "predecessor": "blake3:c5928390584c53a91f3f9cb04b8f5daaf363aabe5a82d813a70a0881f7d0d640",
+   "successor": "blake3:28a3e4ab5c87e71dcf8406488947542a0ba2996bda081f9b22b468473f1fdb1c",
+   "change": "Model families load lazily from entry points through one loader",
+   "reason": "Model families load as plugins and each role's identity now binds the installed routes it reaches, so a changed route can never run other code under the same identity; results unchanged: the development equality replay reads ALL EQUAL across 11 listing families with first use and the next day OK; the same 17 roles move by source and route; the change after the replay is one type alias"
+  },
+  {
+   "role": "product_host.conditional_decision_advancement",
+   "predecessor": "blake3:f4aecf397253c92b37c2ed7a7633eb565fd28fd683a4593dc5eb17823796a7a3",
+   "successor": "blake3:4a85f94d239b4efb06bb118d3b0129197ad59bf13f24816149eeaafb19c6420c",
+   "change": "Model families load lazily from entry points through one loader",
+   "reason": "Model families load as plugins and each role's identity now binds the installed routes it reaches, so a changed route can never run other code under the same identity; results unchanged: the development equality replay reads ALL EQUAL across 11 listing families with first use and the next day OK; the same 17 roles move by source and route; the change after the replay is one type alias"
+  },
+  {
+   "role": "product_host.portfolio_updates",
+   "predecessor": "blake3:6e41435707aeb20a9cfcaba4e92276b452f8f95f9e7f28323415a963c52f1e6c",
+   "successor": "blake3:6c5cd61b486ad51416dd51d1d3fb0c9d2549dbd6015c5250bec6ec17aa1d3290",
+   "change": "Model families load lazily from entry points through one loader",
+   "reason": "Model families load as plugins and each role's identity now binds the installed routes it reaches, so a changed route can never run other code under the same identity; results unchanged: the development equality replay reads ALL EQUAL across 11 listing families with first use and the next day OK; the same 17 roles move by source and route; the change after the replay is one type alias"
+  },
+  {
+   "role": "product_host.research_component_training_input",
+   "predecessor": "blake3:d5e86181858893796cea76a2916eed6eb09ce6763f7167ffad251d6762944042",
+   "successor": "blake3:e161813d502db5ed2b8a9071f2290b2100ea391e7efe8a713a6f5ac4b42289f1",
+   "change": "Model families load lazily from entry points through one loader",
+   "reason": "Model families load as plugins and each role's identity now binds the installed routes it reaches, so a changed route can never run other code under the same identity; results unchanged: the development equality replay reads ALL EQUAL across 11 listing families with first use and the next day OK; the same 17 roles move by source and route; the change after the replay is one type alias"
+  },
+  {
+   "role": "product_host.research_feature_materialization.prepared",
+   "predecessor": "blake3:9451b05db010bba950e4304a50c817f48a337860c81d2269a1c7e0374b6efc92",
+   "successor": "blake3:0050745ff199c6c7d861cee589065b5f50da88af8f4c4e557c660cf824dd65e8",
+   "change": "Model families load lazily from entry points through one loader",
+   "reason": "Model families load as plugins and each role's identity now binds the installed routes it reaches, so a changed route can never run other code under the same identity; results unchanged: the development equality replay reads ALL EQUAL across 11 listing families with first use and the next day OK; the same 17 roles move by source and route; the change after the replay is one type alias"
+  },
+  {
+   "role": "product_host.research_strategy_preparation",
+   "predecessor": "blake3:12f7ab31bfd12126292edd741f475d8fe481bac207f8daa26a26e088cfe04455",
+   "successor": "blake3:20b4e0d2dda8f15d1353e3fc900bb1792016a9f69db6dbbd96d32db04a9a80db",
+   "change": "Model families load lazily from entry points through one loader",
+   "reason": "Model families load as plugins and each role's identity now binds the installed routes it reaches, so a changed route can never run other code under the same identity; results unchanged: the development equality replay reads ALL EQUAL across 11 listing families with first use and the next day OK; the same 17 roles move by source and route; the change after the replay is one type alias"
+  },
+  {
+   "role": "product_host.strategy_calibration",
+   "predecessor": "blake3:e354b702a4c60280071b81d30416ef760995ee964a13ff68faf3b24703eeb850",
+   "successor": "blake3:5cb043547bc8aa3b2036b32e603469683e92d7817cf8039e8b5e7fa234a8ca3b",
+   "change": "Model families load lazily from entry points through one loader",
+   "reason": "Model families load as plugins and each role's identity now binds the installed routes it reaches, so a changed route can never run other code under the same identity; results unchanged: the development equality replay reads ALL EQUAL across 11 listing families with first use and the next day OK; the same 17 roles move by source and route; the change after the replay is one type alias"
+  },
+  {
+   "role": "product_host.strategy_scoring",
+   "predecessor": "blake3:7ef643ad637540e8dc9b519153a9a94fad2def485e8378352683f5ea1af4cd67",
+   "successor": "blake3:70eb163fd357d927ffe29e545bc5c0f822740c7a97effeb97505f4d6424b66b9",
+   "change": "Model families load lazily from entry points through one loader",
+   "reason": "Model families load as plugins and each role's identity now binds the installed routes it reaches, so a changed route can never run other code under the same identity; results unchanged: the development equality replay reads ALL EQUAL across 11 listing families with first use and the next day OK; the same 17 roles move by source and route; the change after the replay is one type alias"
+  },
+  {
+   "role": "research_experiment.alpha.model-development.implementation",
+   "predecessor": "blake3:a637726d7d2ba8b7f4c892c65affb0fbb8f84a21d11c80358746d8ef3662fcac",
+   "successor": "blake3:43a92daf8160024d7d2beb80208b2992e5b399d4d18f6c4c9dc4466cd4d4eaf3",
+   "change": "Model families load lazily from entry points through one loader",
+   "reason": "Model families load as plugins and each role's identity now binds the installed routes it reaches, so a changed route can never run other code under the same identity; results unchanged: the development equality replay reads ALL EQUAL across 11 listing families with first use and the next day OK; the same 17 roles move by source and route; the change after the replay is one type alias"
+  },
+  {
+   "role": "research_experiment.alpha.model-development.lifecycle.implementation",
+   "predecessor": "blake3:a637726d7d2ba8b7f4c892c65affb0fbb8f84a21d11c80358746d8ef3662fcac",
+   "successor": "blake3:43a92daf8160024d7d2beb80208b2992e5b399d4d18f6c4c9dc4466cd4d4eaf3",
+   "change": "Model families load lazily from entry points through one loader",
+   "reason": "Model families load as plugins and each role's identity now binds the installed routes it reaches, so a changed route can never run other code under the same identity; results unchanged: the development equality replay reads ALL EQUAL across 11 listing families with first use and the next day OK; the same 17 roles move by source and route; the change after the replay is one type alias"
+  },
+  {
+   "role": "research_experiment.alpha.qualification.implementation",
+   "predecessor": "blake3:c38bd71d5a51b13b9b2dbc86c7e4a0595db242b4f4ed48e276f14ad09792298d",
+   "successor": "blake3:90c7b4b053ce8cba88625fc46410bb2300c3fb564402fac498b8f762fd9a6a36",
+   "change": "Model families load lazily from entry points through one loader",
+   "reason": "Model families load as plugins and each role's identity now binds the installed routes it reaches, so a changed route can never run other code under the same identity; results unchanged: the development equality replay reads ALL EQUAL across 11 listing families with first use and the next day OK; the same 17 roles move by source and route; the change after the replay is one type alias"
+  },
+  {
+   "role": "research_experiment.portfolio.policy-development.implementation",
+   "predecessor": "blake3:f2b631aae0db541e9d576c1d86001ec83944b5ca423cba4ff8a6ff8822744187",
+   "successor": "blake3:5bdafb47edf2ae244eaa513b88832e6069a69ed30c63298898711024aa0299e6",
+   "change": "Model families load lazily from entry points through one loader",
+   "reason": "Model families load as plugins and each role's identity now binds the installed routes it reaches, so a changed route can never run other code under the same identity; results unchanged: the development equality replay reads ALL EQUAL across 11 listing families with first use and the next day OK; the same 17 roles move by source and route; the change after the replay is one type alias"
+  },
+  {
+   "role": "research_experiment.risk.covariance-development.implementation",
+   "predecessor": "blake3:78fa9259c229fd3d2314ed1b9b2723fac740687138a15a285d88b16889e40281",
+   "successor": "blake3:14d54194efce9e290f40e0cfcb8ef10a15407b4eb4abdaea1ce535e3a58a1912",
+   "change": "Model families load lazily from entry points through one loader",
+   "reason": "Model families load as plugins and each role's identity now binds the installed routes it reaches, so a changed route can never run other code under the same identity; results unchanged: the development equality replay reads ALL EQUAL across 11 listing families with first use and the next day OK; the same 17 roles move by source and route; the change after the replay is one type alias"
+  },
+  {
+   "role": "sector_research.development_execution",
+   "predecessor": "blake3:45cdcfc0b3a7aa7eba4e0572dd242f1699c43b6315081b95388a1bd078cbaa26",
+   "successor": "blake3:2c5201237d88d59d12d8fe43db092c703b66957ae67e62a98d6e2c7673785475",
+   "change": "Model families load lazily from entry points through one loader",
+   "reason": "Model families load as plugins and each role's identity now binds the installed routes it reaches, so a changed route can never run other code under the same identity; results unchanged: the development equality replay reads ALL EQUAL across 11 listing families with first use and the next day OK; the same 17 roles move by source and route; the change after the replay is one type alias"
+  }
+ ]
+}

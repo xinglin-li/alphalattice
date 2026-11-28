@@ -2,7 +2,8 @@
 
 from __future__ import annotations
 
-from collections.abc import Iterable
+import importlib
+from collections.abc import Iterable, Mapping
 from types import MappingProxyType
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
@@ -15,6 +16,28 @@ from .contracts import (
     AlphaModelRecipeEnvelope,
     AlphaModelSearchDomainEnvelope,
 )
+
+PRODUCTION_MODELS: Mapping[str, str] = MappingProxyType(
+    {
+        "regularized_linear": "build_regularized_linear_search_domain",
+        "dynamic_panel_lightgbm": "build_dynamic_panel_lightgbm_search_domain",
+    }
+)
+"""The production mandate's models, in catalog order, each with its module's domain builder.
+
+Order is inside the catalog's hash: the linear family stays first, so the capability handle
+every existing declaration names keeps resolving to it. Which module serves an id is the
+`alphalattice.alpha_models` entry point's alone."""
+
+CAMPAIGN_MODELS: tuple[str, ...] = (
+    "regularized_linear",
+    "rank_composite",
+    "lightgbm_chronological_multi_seed",
+    "lightgbm_chronological_regularized",
+    "hist_gradient_boosting",
+    "huber_linear",
+)
+"""The Campaign's competitors, in catalog order; none widens the production mandate."""
 
 
 class _Contract(BaseModel):  # type: ignore[misc]
@@ -283,17 +306,14 @@ def build_installed_alpha_model_catalog(extensions: Iterable[str] = ()) -> Alpha
     Raises:
         ValueError: An extension declaration or resulting catalog cannot be admitted.
     """
-    from .adapters.lightgbm_dynamic_panel import DynamicPanelLightGBMAdapter
-    from .adapters.regularized_linear import RegularizedLinearAdapter
-    from .extension import extension_adapter
+    from .extension import ALPHA_MODELS  # lazy: a catalog loads its models at first use
 
     # A workspace's activated models follow the installed ones, loaded by name (EX): a
     # Program binds only the models its mandate admits, so they move no result.
     return AlphaModelCatalog(
         (
-            RegularizedLinearAdapter(),
-            DynamicPanelLightGBMAdapter(),
-            *(extension_adapter(value) for value in extensions),
+            *(ALPHA_MODELS.load(model_id) for model_id in PRODUCTION_MODELS),
+            *(ALPHA_MODELS.extension(value) for value in extensions),
         )
     )
 
@@ -314,26 +334,15 @@ def build_installed_alpha_model_search_domains(
     Raises:
         ValueError: `ALPHA_MODEL_SEARCH_DOMAIN_NOT_INSTALLED` for an adapter with none.
     """
-    from .adapters.lightgbm_dynamic_panel import (
-        DYNAMIC_PANEL_LIGHTGBM_ADAPTER_ID,
-        build_dynamic_panel_lightgbm_search_domain,
-    )
-    from .adapters.regularized_linear import (
-        REGULARIZED_LINEAR_ADAPTER_ID,
-        build_regularized_linear_search_domain,
-    )
     from .extension import DeclaredModelAdapter
 
-    builders = {
-        REGULARIZED_LINEAR_ADAPTER_ID: build_regularized_linear_search_domain,
-        DYNAMIC_PANEL_LIGHTGBM_ADAPTER_ID: build_dynamic_panel_lightgbm_search_domain,
-    }
     domains = []
     for adapter in catalog.adapters:
         if isinstance(adapter, DeclaredModelAdapter):
             domains.append(adapter.declared_search_domain())
-        elif adapter.adapter_id in builders:
-            domains.append(builders[adapter.adapter_id]())
+        elif adapter.adapter_id in PRODUCTION_MODELS:
+            module = importlib.import_module(type(adapter).__module__)
+            domains.append(getattr(module, PRODUCTION_MODELS[adapter.adapter_id])())
         else:
             raise ValueError("ALPHA_MODEL_SEARCH_DOMAIN_NOT_INSTALLED")
     return tuple(domains)
@@ -341,25 +350,9 @@ def build_installed_alpha_model_search_domains(
 
 def build_alpha_campaign_development_catalog() -> AlphaModelCatalog:
     """Install Campaign-only competitors without widening production mandate."""
-    from .adapters.hist_gradient_boosting import HistGradientBoostingAdapter
-    from .adapters.huber import HuberLinearAdapter
-    from .adapters.lightgbm_chronological import (
-        ChronologicalLightGBMAdapter,
-        RegularizedChronologicalLightGBMAdapter,
-    )
-    from .adapters.rank_composite import RankCompositeAdapter
-    from .adapters.regularized_linear import RegularizedLinearAdapter
+    from .extension import ALPHA_MODELS  # lazy: a catalog loads its models at first use
 
-    return AlphaModelCatalog(
-        (
-            RegularizedLinearAdapter(),
-            RankCompositeAdapter(),
-            ChronologicalLightGBMAdapter(),
-            RegularizedChronologicalLightGBMAdapter(),
-            HistGradientBoostingAdapter(),
-            HuberLinearAdapter(),
-        )
-    )
+    return AlphaModelCatalog(tuple(ALPHA_MODELS.load(model_id) for model_id in CAMPAIGN_MODELS))
 
 
 __all__ = [

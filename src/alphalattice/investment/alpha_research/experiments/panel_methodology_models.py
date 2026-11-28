@@ -15,14 +15,12 @@ from alphalattice.capabilities.alpha_modeling.adapters.lightgbm_chronological im
     chronological_lightgbm_dataset_cache,
 )
 from alphalattice.capabilities.alpha_modeling.adapters.lightgbm_dynamic_panel import (
-    DynamicPanelLightGBMAdapter,
     DynamicPanelLightGBMParameters,
     build_dynamic_panel_lightgbm_recipe,
     build_dynamic_panel_lightgbm_search_domain,
     dynamic_panel_lightgbm_parameters,
 )
 from alphalattice.capabilities.alpha_modeling.adapters.regularized_linear_dynamic_panel import (
-    DynamicPanelRegularizedLinearAdapter,
     DynamicPanelRegularizedLinearParameters,
     build_dynamic_panel_regularized_linear_recipe,
     build_dynamic_panel_regularized_linear_search_domain,
@@ -39,6 +37,7 @@ from alphalattice.capabilities.alpha_modeling.contracts import (
     BoundAlphaTrainingInput,
     alpha_model_array_content_hash,
 )
+from alphalattice.capabilities.alpha_modeling.extension import ALPHA_MODELS
 from alphalattice.capabilities.alpha_modeling.runtime.service import (
     AlphaModelExecutionResult,
     AlphaModelRuntimeService,
@@ -233,10 +232,16 @@ class PanelModelFoldResult:
     fold_evidence: PanelModelFoldEvidence
 
 
+PANEL_MODELS: Final[tuple[str, ...]] = (
+    "dynamic_panel_regularized_linear",
+    "dynamic_panel_lightgbm",
+)
+"""The panel methodology's models, in catalog order: the order inside its hash."""
+
+
 def build_panel_model_catalog() -> AlphaModelCatalog:
-    return AlphaModelCatalog(
-        (DynamicPanelRegularizedLinearAdapter(), DynamicPanelLightGBMAdapter())
-    )
+    """The panel methodology's catalog: its two models, loaded by id."""
+    return AlphaModelCatalog(tuple(ALPHA_MODELS.load(model_id) for model_id in PANEL_MODELS))
 
 
 def _linear_parameters(

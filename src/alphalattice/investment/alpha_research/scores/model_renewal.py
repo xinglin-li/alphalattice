@@ -22,7 +22,7 @@ import numpy.typing as npt
 from pydantic import Field, model_validator
 
 from alphalattice.capabilities.alpha_modeling.adapters.lightgbm_dynamic_panel import (
-    DynamicPanelLightGBMAdapter,
+    DYNAMIC_PANEL_LIGHTGBM_ADAPTER_ID,
     build_dynamic_panel_lightgbm_recipe,
     build_dynamic_panel_lightgbm_search_domain,
 )
@@ -33,6 +33,7 @@ from alphalattice.capabilities.alpha_modeling.contracts import (
     BoundAlphaTrainingInput,
     alpha_model_array_content_hash,
 )
+from alphalattice.capabilities.alpha_modeling.extension import ALPHA_MODELS
 from alphalattice.capabilities.alpha_modeling.runtime.service import AlphaModelRuntimeService
 from alphalattice.capabilities.domain_contracts.identity import canonical_hash
 from alphalattice.capabilities.domain_contracts.spans import span, spanned
@@ -716,7 +717,9 @@ def _read_lifecycle_estimator(
         recipe = build_dynamic_panel_lightgbm_recipe(
             component.estimator_point.resolve(seed=child.seed)
         )
-        numerical = DynamicPanelLightGBMAdapter().describe_numerical_binding()
+        numerical = ALPHA_MODELS.load(
+            DYNAMIC_PANEL_LIGHTGBM_ADAPTER_ID
+        ).describe_numerical_binding()
         expected_operation = prepared.child_operation(
             recipe_hash=recipe.recipe_hash, numerical_binding_hash=numerical.numerical_binding_hash
         )
@@ -919,7 +922,9 @@ def fit_alpha_refit_child(
     binding = prepared.training_binding_hash
     recipe = build_dynamic_panel_lightgbm_recipe(component.estimator_point.resolve(seed=seed))
     domain = build_dynamic_panel_lightgbm_search_domain()
-    runtime = AlphaModelRuntimeService(AlphaModelCatalog((DynamicPanelLightGBMAdapter(),)))
+    runtime = AlphaModelRuntimeService(
+        AlphaModelCatalog((ALPHA_MODELS.load(DYNAMIC_PANEL_LIGHTGBM_ADAPTER_ID),))
+    )
     numerical = runtime.resolve_numerical_binding(recipe=recipe, domain=domain)
     operation = prepared.child_operation(
         recipe_hash=recipe.recipe_hash,
@@ -1004,7 +1009,11 @@ def reuse_refit_child(
 ) -> bool:
     """Relocate verified fit evidence, never invent a fit in the receiving workspace."""
     recipe = build_dynamic_panel_lightgbm_recipe(component.estimator_point.resolve(seed=seed))
-    numeric = DynamicPanelLightGBMAdapter().describe_numerical_binding().numerical_binding_hash
+    numeric = (
+        ALPHA_MODELS.load(DYNAMIC_PANEL_LIGHTGBM_ADAPTER_ID)
+        .describe_numerical_binding()
+        .numerical_binding_hash
+    )
     operation = prepared.child_operation(
         recipe_hash=recipe.recipe_hash, numerical_binding_hash=numeric
     )
@@ -1310,7 +1319,11 @@ class AlphaModelLifecycleAdmission(_LifecycleContract):
             AlphaLifecycleError: Required epoch/preparation is absent, a sidecar binding differs, a
                 fit period is undeclared or remaining budget is insufficient.
         """
-        numeric = DynamicPanelLightGBMAdapter().describe_numerical_binding().numerical_binding_hash
+        numeric = (
+            ALPHA_MODELS.load(DYNAMIC_PANEL_LIGHTGBM_ADAPTER_ID)
+            .describe_numerical_binding()
+            .numerical_binding_hash
+        )
         initial = {(v.vintage, v.seed) for v in self.initial_children}
         missing: list[tuple[str, int]] = []
         for vintage in sorted({v for day in formations for v in self.lifecycle.vintages(day)}):
