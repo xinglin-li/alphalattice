@@ -59,12 +59,16 @@ from alphalattice.control.task_control.runner import (
 from alphalattice.foundation.causal_outcomes.execution.contracts import LocalQAMarketSnapshot
 from alphalattice.foundation.causal_outcomes.execution.readers import read_local_qa_market_snapshot
 from alphalattice.foundation.market_data_ops.storage.duckdb import MarketDataRepository
+from alphalattice.foundation.market_data_ops.storage.rebase import RawBarRebase
+from alphalattice.foundation.market_data_ops.storage.rebase import recorded as recorded_rebases
 from alphalattice.interface.local_application.dispatcher import CommandAdmission
 from alphalattice.interface.local_application.failure_codes import located_failure
 from alphalattice.investment.portfolio_strategy_lab.application.calibration import (
     PreparedPortfolioBookInput,
+    PreparedPortfolioComponentInput,
 )
 from alphalattice.investment.portfolio_strategy_lab.application.decision_updates import (
+    IssuedChainReads,
     PortfolioDecisionCheckpoint,
     PortfolioSourceRevision,
     PortfolioUpdatePublication,
@@ -77,6 +81,9 @@ from alphalattice.investment.portfolio_strategy_lab.application.decision_updates
 )
 from alphalattice.investment.portfolio_strategy_lab.application.strategy_package import (
     recipe_hashes_match,
+)
+from alphalattice.investment.portfolio_strategy_lab.publication.portfolio_ledger import (
+    PortfolioLedgerStore,
 )
 from alphalattice.investment.portfolio_strategy_lab.reporting.static import render_decision_update
 
@@ -412,13 +419,7 @@ class PortfolioUpdateApplication:
         Returns:
             Exact previous input/checkpoint binding or the initial checkpoint.
         """
-        return (
-            checkpoint
-            if previous is None
-            else self.store.load_decision_checkpoint(
-                previous.input_checkpoint_hash or previous.checkpoint_hash
-            )
-        )
+        return _prior_checkpoint(self.store, previous, checkpoint)
 
     def continued_market(
         self, current: LocalQAMarketSnapshot, previous: PortfolioUpdatePublication | None
@@ -464,19 +465,30 @@ class PortfolioUpdateApplication:
         return acquire(plan.raw_market_hash or plan.market_hash)
 
     def revision_impact(
-        self, current: LocalQAMarketSnapshot, previous: PortfolioUpdatePublication | None
+        self,
+        current: LocalQAMarketSnapshot,
+        previous: PortfolioUpdatePublication | None,
+        *,
+        continued: LocalQAMarketSnapshot | None = None,
     ) -> PortfolioSourceRevision | None:
         """Ask the deterministic owner for source revision impact against issued raw data.
 
         Args:
             current: Current raw market snapshot.
             previous: Optional previous publication.
+            continued: The sealed continuation a publication values; a plan gives none.
 
         Returns:
-            Declared revision impact or None when no revision is present.
+            Declared revision impact or None (`publication_revision`).
         """
-        old = None if previous is None else self.raw_basis(previous)
-        return source_revision_impact(old, current)
+        return publication_revision(
+            self.store,
+            MarketDataRepository(self.session.workspace),
+            basis=None if previous is None else self.raw_basis(previous),
+            current=current,
+            previous=previous,
+            continued=continued,
+        )
 
     def _market(
         self, checkpoint: PortfolioDecisionCheckpoint, through: date
@@ -883,35 +895,20 @@ class PortfolioUpdateApplication:
                     if plan.prepared_input_hash is None
                     else self.calibration.published_input(plan.prepared_input_hash)
                 )
-                value = advance_decision_state(
+                value = publish_decision_successor(
+                    self.store,
+                    MarketDataRepository(self.session.workspace),
                     checkpoint=self._checkpoint(plan.strategy_package_id),
                     previous=previous,
                     prepared=prepared,
                     observed=observed,
+                    raw=self.store.load_decision_observation(
+                        plan.raw_market_hash or plan.market_hash
+                    ),
+                    basis=None if previous is None else self.raw_basis(previous),
                     plan_hash=plan.plan_hash,
                     published_at=self.clock(),
-                    previous_checkpoint=self.prior_checkpoint(
-                        previous, self._checkpoint(plan.strategy_package_id)
-                    ),
-                    revised_source_hash=plan.raw_market_hash,
-                    source_revision=self.revision_impact(
-                        self.store.load_decision_observation(
-                            plan.raw_market_hash or plan.market_hash
-                        ),
-                        previous,
-                    ),
                 )
-                html_hash, _ = self.store.publish_html(
-                    render_decision_update(self._checkpoint(plan.strategy_package_id), (value,))
-                )
-                values = {
-                    name: getattr(value, name)
-                    for name in type(value).model_fields
-                    if name != "content_hash"
-                }
-                values["html_hash"] = html_hash
-                value = PortfolioUpdatePublication.create(**values)
-                self.store.publish_decision_update(value)
             from alphalattice.control.product_host.composition.rolling_portfolio_report import (
                 publish_rolling_report_heads,
             )
@@ -1114,6 +1111,106 @@ class PortfolioUpdateApplication:
             "realized_performance": _realized_performance(checkpoint, value, prefix),
             "html": self.store.load_html(value.html_hash) if value.html_hash else None,
         }
+
+
+def _prior_checkpoint(
+    store: PortfolioLedgerStore,
+    previous: PortfolioUpdatePublication | None,
+    checkpoint: PortfolioDecisionCheckpoint,
+) -> PortfolioDecisionCheckpoint:
+    """The checkpoint that governed `previous`, or `checkpoint` at the history origin."""
+    if previous is None:
+        return checkpoint
+    return store.load_decision_checkpoint(
+        previous.input_checkpoint_hash or previous.checkpoint_hash
+    )
+
+
+def _settled_axes(
+    store: PortfolioLedgerStore, previous: PortfolioUpdatePublication
+) -> tuple[tuple[PortfolioUpdatePublication, tuple[str, ...]], ...]:
+    """The issued chain through `previous`, each publication with the listing axis its
+    settlements were valued on: its parent's checkpoint."""
+    initial = store.load_decision_checkpoint(previous.checkpoint_hash)
+    chain = store.decision_history(initial.history_hash)
+    return tuple(
+        (value, _prior_checkpoint(store, parent, initial).ordered_listing_ids)
+        for parent, value in zip((None, *chain[:-1]), chain, strict=True)
+    )
+
+
+def publication_revision(
+    store: PortfolioLedgerStore,
+    market: MarketDataRepository,
+    *,
+    basis: LocalQAMarketSnapshot | None,
+    current: LocalQAMarketSnapshot,
+    previous: PortfolioUpdatePublication | None,
+    continued: LocalQAMarketSnapshot | None,
+) -> PortfolioSourceRevision | None:
+    """The source revision a decision update declares against its issued raw `basis`.
+
+    A plan gives no `continued` and checks the revision alone. A publication gives the
+    continuation it sealed: a split reported after the sessions it moved were issued then adds
+    its disclosure, reading each settlement's issued observations and the chain with its axes
+    from the ledger and the recorded rebases through the market store's own reader.
+    """
+    if previous is None or basis is None:
+        return None
+    last = previous
+
+    def rebases(listing_ids: tuple[str, ...]) -> tuple[RawBarRebase, ...]:
+        with market.database.read_transaction() as read:
+            found: tuple[RawBarRebase, ...] = recorded_rebases(read, listing_ids)
+        return found
+
+    return source_revision_impact(
+        basis,
+        current,
+        continued=continued,
+        reads=IssuedChainReads(
+            issued=store.load_decision_observation,
+            history=lambda: _settled_axes(store, last),
+            rebases=rebases,
+        ),
+    )
+
+
+def publish_decision_successor(
+    store: PortfolioLedgerStore,
+    market: MarketDataRepository,
+    *,
+    checkpoint: PortfolioDecisionCheckpoint,
+    previous: PortfolioUpdatePublication | None,
+    prepared: PreparedPortfolioComponentInput | PreparedPortfolioBookInput | None,
+    observed: LocalQAMarketSnapshot,
+    raw: LocalQAMarketSnapshot,
+    basis: LocalQAMarketSnapshot | None,
+    plan_hash: str,
+    published_at: datetime,
+) -> PortfolioUpdatePublication:
+    """Advance the issued book on its sealed observations and commit the successor, with its
+    report, under {checkpoint, parent}; `raw` is the current raw snapshot `observed` continues
+    and `basis` the previous publication's raw basis."""
+    value = advance_decision_state(
+        checkpoint=checkpoint,
+        previous=previous,
+        prepared=prepared,
+        observed=observed,
+        plan_hash=plan_hash,
+        published_at=published_at,
+        previous_checkpoint=_prior_checkpoint(store, previous, checkpoint),
+        revised_source_hash=None if raw == observed else raw.content_hash,
+        source_revision=publication_revision(
+            store, market, basis=basis, current=raw, previous=previous, continued=observed
+        ),
+    )
+    html_hash, _ = store.publish_html(render_decision_update(checkpoint, (value,)))
+    fields = {name: getattr(value, name) for name in type(value).model_fields}
+    fields.pop("content_hash")
+    value = PortfolioUpdatePublication.create(**{**fields, "html_hash": html_hash})
+    store.publish_decision_update(value)
+    return value
 
 
 def _realized_performance(

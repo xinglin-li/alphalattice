@@ -15,8 +15,10 @@ from alphalattice.control.data_platform.readiness import (
     WorkspaceReadinessGate,
     WorkspaceReadinessStatus,
 )
+from alphalattice.control.product_host.composition.portfolio_updates import (
+    publish_decision_successor,
+)
 from alphalattice.foundation.causal_outcomes.execution.contracts import LocalQAMarketSnapshot
-from alphalattice.foundation.causal_outcomes.execution.readers import planned_local_qa_schedule
 from alphalattice.foundation.feature_engine.storage.repositories import (
     FeatureStateRepository,
     PanelStateRepository,
@@ -32,10 +34,19 @@ from alphalattice.foundation.market_data_ops.sources.universe import (
     candidate_manifest_document,
     membership_fingerprint,
 )
+from alphalattice.foundation.market_data_ops.storage.rebase import recorded as recorded_rebases
 from alphalattice.investment.portfolio_strategy_lab.application.decision_updates import (
-    SplitBasisRevision,
     continue_issued_observations,
 )
+from alphalattice.investment.portfolio_strategy_lab.policies.post_observed_authority import (
+    FrozenHistoricalBookRecipe,
+    FrozenHistoricalComponentRecipe,
+)
+from alphalattice.investment.portfolio_strategy_lab.publication.portfolio_ledger import (
+    PortfolioLedgerStore,
+)
+from tests.portfolio_strategy_lab.local_web_support import TEST_PACKAGE
+from tests.portfolio_strategy_lab.synthetic_numerical import HASH, build_numerical, prepared_for
 from tests.workspace_maintenance.acquisition_manifest import acquisition_manifest
 from tests.workspace_maintenance.wire_replay import (
     LISTING,
@@ -81,17 +92,18 @@ def _adjusted(workspace, through):
     }
 
 
-def _observations(workspace, through):
-    """The stored bars and actions through `through`, as the Portfolio's daily observations read
-    them (the QA reader's own store reads, without its research-manifest epoch)."""
-    start = workspace.replay.start
+def _observations(n, workspace, through):
+    """The stored bars and actions from the book's first session through `through`, as the
+    Portfolio's daily observations read them, on the book's own schedule."""
+    index = n.sessions.index(through)
+    start = n.sessions[n.first - 1]
     bars = workspace.market.raw_bars_by_listing((LISTING,), start=start, through=through)[LISTING]
     actions = workspace.market.actions_by_listing((LISTING,))[LISTING]
     return LocalQAMarketSnapshot.create(
         source_hash=canonical_hash(["wire-replay"]),
         through=through,
         ordered_listing_ids=(LISTING,),
-        schedule=planned_local_qa_schedule(start, through),
+        schedule=n.schedule[n.first - 1 : index + 3],
         bars=tuple(sorted(bars, key=lambda bar: bar.session_date)),
         actions=tuple(item for item in actions if item.effective_date <= through),
     )
@@ -186,20 +198,121 @@ def test_a_split_waits_for_approval_then_rebases_the_stored_bars(
         assert _closes(workspace)[before] == pytest.approx(held[before] / ratio, rel=1e-12)
 
 
-@pytest.mark.proves("market_data_ops.a_late_split_through_the_wire_refuses_the_continuation")
-def test_a_split_reported_late_on_an_issued_session_is_refused_by_the_continuation(
-    tmp_path, request
-):
-    """A split the provider reports after the session it moved was issued cannot continue the
-    issued observations: the continuation refuses the split basis revision."""
+@pytest.mark.proves("market_data_ops.a_late_split_through_the_wire_continues_the_issued_prefix")
+def test_a_split_reported_late_on_an_issued_session_continues_the_book_disclosed(tmp_path, request):
+    """A split reported after the session it moved was issued continues the book, its next
+    publication disclosing it and settling at the rebased prices."""
     replay, workspace = _replayed("split-late", tmp_path, request)
     issued_through, first, approved = replay.days
-    issued = _observations(workspace, issued_through)
+    # A one-name book over the replay's one listing.
+    component = FrozenHistoricalComponentRecipe(TEST_PACKAGE.component_ids[0], 10_000, "mu.iv0")
+    n = build_numerical(
+        listing_ids=(LISTING,),
+        book_recipe=FrozenHistoricalBookRecipe(
+            TEST_PACKAGE.strategy_id, (component,), top_k=1, exit_rank=1
+        ),
+    )
+    ledger = PortfolioLedgerStore(tmp_path / "ledger")
+    ledger.publish_decision_checkpoint(n.checkpoint)
+    previous, basis = None, None
+    for offset, index in enumerate(range(n.first, n.sessions.index(issued_through) + 1)):
+        observed = _observations(n, workspace, n.sessions[index])
+        ledger.publish_decision_observations(observed)
+        previous = publish_decision_successor(
+            ledger,
+            workspace.market,
+            checkpoint=n.checkpoint,
+            previous=previous,
+            prepared=prepared_for(n, index),
+            observed=observed,
+            raw=observed,
+            basis=basis,
+            plan_hash=canonical_hash(offset),
+            published_at=evening(n.sessions[index]),
+        )
+        basis = observed
+    chain = ledger.decision_history(n.checkpoint.history_hash)
+    stored_bytes = [
+        ledger.content.artifact_path(category="decision-updates", content_hash=v.content_hash)
+        for v in chain
+    ]
+    issued_bytes = [path.read_bytes() for path in stored_bytes]
+    issued = ledger.load_decision_observation(chain[-1].source_snapshot_hash)
     workspace.daily(first)
     workspace.daily(approved, approved=True)
-    current = _observations(workspace, approved)
-    with pytest.raises(SplitBasisRevision):
-        continue_issued_observations(issued, current)
+    raw = _observations(n, workspace, approved)
+    continued = continue_issued_observations(issued, raw)
+    ledger.publish_decision_observations(raw, continued)
+
+    publish_decision_successor(
+        ledger,
+        workspace.market,
+        checkpoint=n.checkpoint,
+        previous=chain[-1],
+        prepared=None,
+        observed=continued,
+        raw=raw,
+        basis=issued,
+        plan_hash=HASH,
+        published_at=evening(approved),
+    )
+
+    # The issued prefix continues: the bars before the split rebased as the store rebased them,
+    # those from it as issued.
+    with workspace.market.database.read_transaction() as read:
+        (rebase,) = recorded_rebases(read, (LISTING,))
+    ex = date(2026, 7, 28)
+    assert (rebase.ex_date, rebase.price_factor) == (ex, 0.5)
+    known = {v.session_date: v.close for v in raw.bars}
+    for bar in issued.bars:
+        moved = next(v for v in continued.bars if v.session_date == bar.session_date)
+        scale = rebase.price_factor if bar.session_date < ex else 1.0
+        assert moved.close == pytest.approx(bar.close * scale, rel=1e-12)
+        assert moved.close == pytest.approx(known[bar.session_date], rel=1e-12)
+    # The successor on {checkpoint, parent} discloses the split as the store recorded it.
+    stored = ledger.decision_successor(n.checkpoint.history_hash, chain[-1].content_hash)
+    disclosure = stored.source_revision.late_split
+    assert [
+        (v.listing_id, v.effective_date, v.new_shares_per_old_share, v.observed_at)
+        for v in disclosure.splits
+    ] == [(LISTING, ex, 2.0, rebase.observed_at)]
+    assert disclosure.splits[0].rebase_receipt_hash == rebase.receipt_hash
+    assert disclosure.affected_publication_hashes == tuple(
+        v.content_hash for v in chain if v.observed_through >= ex
+    )
+    assert disclosure.unheld == ()
+    (spanning,) = [
+        event
+        for publication in chain
+        for event in publication.events
+        if event.phase == "OUTCOME_SETTLED"
+        and event.entry.schedule.entry_session < ex <= event.entry.schedule.holding_end_session
+    ]
+    (holding,) = disclosure.holdings
+    opens = {v.session_date: v.open for v in raw.bars}
+    entry, exit_ = opens[spanning.entry.schedule.entry_session], opens[ex]
+    assert holding.proposal_hash == spanning.proposal_hash
+    assert holding.issued_return == pytest.approx(exit_ / (entry / rebase.price_factor) - 1)
+    assert holding.rebased_return == pytest.approx(exit_ / entry - 1)
+    assert holding.weight == spanning.entry.weights[0] > 0
+    assert holding.book_effect_bps == pytest.approx(
+        holding.weight * (holding.rebased_return - holding.issued_return) * 10_000
+    )
+    # The prior open entry settles: its issued entry, its exit from the rebased prices.
+    open_entry = chain[-1].active_entry
+    (settled,) = [
+        v
+        for v in stored.events
+        if v.phase == "OUTCOME_SETTLED" and v.proposal_hash == open_entry.proposal_hash
+    ]
+    schedule, weight = open_entry.entry.schedule, open_entry.entry.weights[0]
+    assert settled.entry == open_entry.entry
+    assert settled.gross_return == pytest.approx(
+        weight * (opens[schedule.holding_end_session] / opens[schedule.entry_session] - 1)
+    )
+    # The issued publications keep every stored byte.
+    assert [path.read_bytes() for path in stored_bytes] == issued_bytes
+    assert ledger.decision_history(n.checkpoint.history_hash)[:-1] == chain
 
 
 @pytest.mark.proves("market_data_ops.provider_actions_reach_the_store_through_the_wire")

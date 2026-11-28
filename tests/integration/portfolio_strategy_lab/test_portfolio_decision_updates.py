@@ -77,6 +77,7 @@ def _fields_without_hash(value, **changes):
 
 
 def test_qa_price_coverage_requires_explicit_retention_and_resolved_identifiers():
+    """QA price coverage reads the manifest's listings and only retained ones that resolve."""
     from alphalattice.foundation.causal_outcomes.execution.readers import _qa_source_manifest
 
     current = SimpleNamespace(listings=(SimpleNamespace(listing_id="A"),))
@@ -360,6 +361,18 @@ def test_corrections_keep_issued_prices_and_verify_split_conversion(
     )
     with pytest.raises(ValueError, match="split_conversion_unverified"):
         continue_issued_observations(old, invalid)
+    # A split reported late on an issued session with no usable ratio, or whose bars before it the
+    # provider did not rebase, cannot continue the book.
+    late = replace(split, effective_date=old.through)
+    for event, refusal in [
+        (replace(late, new_shares_per_old_share=0.0), "split_conversion_unavailable"),
+        (late, "split_conversion_unverified"),
+    ]:
+        unprovable = LocalQAMarketSnapshot.create(
+            **{**raw.model_dump(exclude={"content_hash"}), "actions": (event,)}
+        )
+        with pytest.raises(ValueError, match=refusal):
+            continue_issued_observations(old, unprovable)
     revised_past = LocalQAMarketSnapshot.create(
         **{
             **raw.model_dump(exclude={"content_hash"}),
@@ -378,18 +391,20 @@ def test_corrections_keep_issued_prices_and_verify_split_conversion(
         identity_field="content_hash",
     )
     for ids in [("L" * 110, "M" * 110), (listing,), ("L" * 210,), ("L" * 210, "M", "N")]:
+        # A split the issued basis held, whose ratio the provider now reports otherwise.
+        events = tuple(replace(split, listing_id=i, effective_date=old.through) for i in ids)
         before = LocalQAMarketSnapshot.create(
             **{
                 **stored.model_dump(exclude={"content_hash"}),
                 "ordered_listing_ids": ids,
                 "bars": (),
+                "actions": events,
             }
         )
-        events = tuple(replace(split, listing_id=i, effective_date=old.through) for i in ids)
         after = LocalQAMarketSnapshot.create(
             **{
                 **revised_past.model_dump(exclude={"content_hash"}),
-                "actions": events,
+                "actions": tuple(replace(v, new_shares_per_old_share=3.0) for v in events),
                 "ordered_listing_ids": ids,
                 "bars": (),
             }

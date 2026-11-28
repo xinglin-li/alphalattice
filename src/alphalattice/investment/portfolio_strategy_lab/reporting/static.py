@@ -184,6 +184,7 @@ def render_decision_update(
             if current.source_revision is not None
             else ""
         )
+        + _late_split_words(current)
         + tables
         + "<h2>As-issued history and observed settlement</h2>"
         '<div class="scroll"><table><thead><tr><th>Decision</th><th>Phase</th>'
@@ -245,6 +246,42 @@ a[href]::after{content:""}}
 
 def _pct(value: float) -> str:
     return format_book_weight(value, precision=2)
+
+
+def _late_split_words(current: PortfolioUpdatePublication) -> str:
+    """The disclosure of splits reported after the sessions they moved were issued."""
+    disclosure = None if current.source_revision is None else current.source_revision.late_split
+    if disclosure is None:
+        return ""
+    splits = "; ".join(
+        f"{html.escape(v.listing_id)} {v.new_shares_per_old_share:g} for 1 effective "
+        f"{v.effective_date}, first observed {v.observed_at:%Y-%m-%d %H:%M} UTC"
+        for v in disclosure.splits
+    )
+    holdings = "; ".join(
+        f"{html.escape(v.listing_id)} held at {_pct(v.weight)}: {_pct(v.issued_return)} as "
+        f"issued, {_pct(v.rebased_return)} rebased, {v.book_effect_bps:+.1f} bp to the book"
+        for v in disclosure.holdings
+    )
+    return (
+        f"<p>Late split: {splits}. "
+        f"{len(disclosure.affected_publication_hashes)} issued publications observed the "
+        "unadjusted move; they stand as published. "
+        + (
+            f"Holdings across it, valued again from the rebased prices: {holdings}. "
+            if holdings
+            else ""
+        )
+        + (
+            "Not held across it: "
+            + ", ".join(sorted({html.escape(listing) for _, listing in disclosure.unheld}))
+            + ". "
+            if disclosure.unheld
+            else ""
+        )
+        + "This is the valuation alone; it excludes any change to signals, selection or "
+        "rebalancing. The book continues split-adjusted.</p>"
+    )
 
 
 def _rows(cells: list[tuple[str, str]]) -> str:

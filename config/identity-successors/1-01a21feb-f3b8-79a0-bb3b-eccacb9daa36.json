@@ -1,0 +1,27 @@
+{
+ "schema": "identity-successors",
+ "version": 1,
+ "moves": [
+  {
+   "role": "portfolio_strategy_lab.public_path",
+   "predecessor": "blake3:3bceb563f67b4aa09ca2e7b6b641feb067dbd31376f40ea0f83143ed4f27a377",
+   "successor": "blake3:2d71ac32634a2e16ec3a221ea3c5da0485dc2043212ad108aee194c70098f2bd",
+   "change": "A split reported late continues the book with a disclosure",
+   "reason": "A split reported late no longer stops the book: the next publication continues with a disclosure of the split and each affected holding's valuation difference, so the publication path's stored identities are re-signed; published sessions keep every byte"
+  },
+  {
+   "role": "product_host.conditional_decision_advancement",
+   "predecessor": "blake3:0151c34b2ba687e59161dfb0dd9bc11f991b580e0947013d2137a7ff38301bd0",
+   "successor": "blake3:47357992ade8390c857764903f29f6f7ae077745de73976a9216321e9492a7e2",
+   "change": "A split reported late continues the book with a disclosure",
+   "reason": "A split reported late no longer stops the book: the next publication continues with a disclosure of the split and each affected holding's valuation difference, so the publication path's stored identities are re-signed; published sessions keep every byte"
+  },
+  {
+   "role": "product_host.portfolio_updates",
+   "predecessor": "blake3:0a6f3a84b8107b6459d2470fcad9036d3832c73a0ca4cd01ea4a273bc5e6a6e8",
+   "successor": "blake3:010579643257181df7a3f7ce10fb622e1e8b76ce53f746bcdfc9f59bd7223ac3",
+   "change": "A split reported late continues the book with a disclosure",
+   "reason": "A split reported late no longer stops the book: the next publication continues with a disclosure of the split and each affected holding's valuation difference, so the publication path's stored identities are re-signed; published sessions keep every byte"
+  }
+ ]
+}

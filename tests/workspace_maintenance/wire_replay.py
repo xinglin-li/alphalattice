@@ -365,8 +365,9 @@ class WireReplay:
         return served
 
     def history(self, symbol: str, today: date) -> dict[date, dict[str, float]]:
-        """Each session through `today`: OHLCV split-adjusted by every split known on `today`,
-        and the adjusted close Yahoo derives from them."""
+        """Each session through `today`: OHLCV in the units after each split it trades past,
+        every earlier bar rebased by each split known on `today`, and the adjusted close Yahoo
+        derives from them."""
         return _history(self, symbol, today)
 
     # The index lists -----------------------------------------------------------------------
@@ -429,8 +430,19 @@ def _history(replay: WireReplay, symbol: str, today: date) -> dict[date, dict[st
             for index in range(sessions.index(event.ex), len(sessions)):
                 value[index] -= drop
     served = replay._served_actions(symbol, today)
-    units = math.prod(ratio for event, ratio in served if event.kind == "split")
-    close = [item / units for item in value]
+    # A split moves the traded price and volume on its ex day, known or not; once the provider
+    # shows it, it rebases every bar before it too.
+    units = [
+        math.prod(
+            event.ratio
+            for event in replay.events
+            if event.kind == "split"
+            and event.symbol == symbol
+            and (event.ex <= session or event.seen(today))
+        )
+        for session in sessions
+    ]
+    close = [item / unit for item, unit in zip(value, units, strict=True)]
     adjusted = list(close)
     for event, amount in served:
         if event.kind != "dividend" or event.ex not in sessions or event.ex == sessions[0]:
@@ -456,7 +468,9 @@ def _history(replay: WireReplay, symbol: str, today: date) -> dict[date, dict[st
             "high": close[index] * (1.0 + above),
             "low": close[index] * (1.0 - below),
             "close": close[index],
-            "volume": 1_000_000 + (seed * 31 + index * 997) % 100_000,
+            "volume": math.floor(
+                (1_000_000 + (seed * 31 + index * 997) % 100_000) * units[index] + 0.5
+            ),
             "adjclose": adjusted[index],
         }
     return bars

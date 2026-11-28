@@ -7854,6 +7854,11 @@
 "class": "METHOD",
 "count": 1
 },
+"src/alphalattice/investment/portfolio_strategy_lab/application/decision_updates.py::book_effect_bps::10000": {
+"class": "METHOD",
+"count": 1,
+"description": "A return difference is disclosed in basis points, ten thousand to one."
+},
 "src/alphalattice/investment/portfolio_strategy_lab/application/decision_updates.py::binding::10000": {
 "class": "METHOD",
 "count": 1

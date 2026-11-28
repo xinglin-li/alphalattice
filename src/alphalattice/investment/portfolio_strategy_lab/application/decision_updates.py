@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from collections.abc import Callable, Sequence
 from dataclasses import dataclass, replace
 from datetime import date, datetime
 from typing import Literal, Self
@@ -24,6 +25,7 @@ from alphalattice.capabilities.portfolio_backtesting.contracts import (
     PortfolioWalkForwardState,
 )
 from alphalattice.capabilities.portfolio_backtesting.execution import (
+    TOLERANCE,
     drift_holdings,
     execute_portfolio_entry,
     mark_book_to_session_close,
@@ -36,6 +38,7 @@ from alphalattice.foundation.causal_outcomes.execution.contracts import (
 )
 from alphalattice.foundation.causal_outcomes.execution.readers import local_qa_point_rows
 from alphalattice.foundation.market_data_ops.sources.contracts import CorporateActionEvent
+from alphalattice.foundation.market_data_ops.storage.rebase import RawBarRebase
 from alphalattice.investment.portfolio_strategy_lab.application.calibration import (
     PreparedPortfolioBookInput,
     PreparedPortfolioComponentInput,
@@ -343,6 +346,58 @@ class PortfolioObservedSettlement(_Sealed):
         return self
 
 
+@dataclass(frozen=True)
+class LateSplit:
+    """A split reported after the sessions it moved were issued, with the market store's rebase
+    of the bars before it: its receipt and when it was first observed."""
+
+    listing_id: str
+    effective_date: date
+    new_shares_per_old_share: float
+    observed_at: datetime
+    rebase_receipt_hash: str
+
+
+@dataclass(frozen=True)
+class SplitSpanningHolding:
+    """An issued settlement's holding across a late split: its return as issued and from the
+    rebased prices, and the book's difference for that settlement, its weight times the
+    difference, in basis points. The issued settlement stands as published."""
+
+    proposal_hash: str
+    listing_id: str
+    weight: float
+    issued_return: float
+    rebased_return: float
+    book_effect_bps: float
+
+
+@dataclass(frozen=True)
+class LateSplitDisclosure:
+    """The book continues past splits reported late: each split, every issued publication that
+    observed its unadjusted move, and each issued holding across one valued again from the
+    rebased prices. The effect is the mechanical valuation alone, per settlement and never
+    compounded: it excludes any change to signals, selection or rebalancing."""
+
+    splits: tuple[LateSplit, ...]
+    affected_publication_hashes: tuple[str, ...]
+    holdings: tuple[SplitSpanningHolding, ...]
+    unheld: tuple[tuple[str, str], ...]
+    """Each settlement (proposal hash) and split listing it spans at or below the settlement
+    owner's weight tolerance: named, with no figures."""
+
+
+@dataclass(frozen=True)
+class IssuedChainReads:
+    """What a late split's disclosure reads, only when a split was reported late: an issued
+    observation snapshot by its hash, the issued chain with each publication's settlement axis,
+    and the market store's recorded rebases of the given listings."""
+
+    issued: Callable[[str], LocalQAMarketSnapshot]
+    history: Callable[[], Sequence[tuple[PortfolioUpdatePublication, tuple[str, ...]]]]
+    rebases: Callable[[tuple[str, ...]], Sequence[RawBarRebase]]
+
+
 class PortfolioSourceRevision(_Sealed):
     """Input-impact evidence, not adoption of a re-optimized historical book."""
 
@@ -352,6 +407,7 @@ class PortfolioSourceRevision(_Sealed):
     actions_changed: bool
     continuation_basis: Literal["AS_ISSUED"] = "AS_ISSUED"
     replay_status: Literal["NOT_ADOPTED_NOT_PERFORMED"] = "NOT_ADOPTED_NOT_PERFORMED"
+    late_split: LateSplitDisclosure | None = Field(default=None, exclude_if=lambda v: v is None)
 
 
 UpdateClaim = Literal["TIMELY_RESEARCH_NOT_TRADE_ADVICE", "POST_OBSERVED_QA_NOT_TIMELY_ADVICE"]
@@ -644,6 +700,25 @@ def _split_basis_subject(
     return subject
 
 
+def _late_splits(
+    factual: LocalQAMarketSnapshot, issued: LocalQAMarketSnapshot, current: LocalQAMarketSnapshot
+) -> tuple[CorporateActionEvent, ...]:
+    """The splits `current` holds, effective within the issued prefix, that its factual basis did
+    not: reported after the sessions they moved were issued. A split the basis held that `current`
+    changes or no longer holds cannot establish a unit conversion and refuses."""
+    held = tuple(v for v in factual.actions if v.action_kind == "SPLIT")
+    reported = tuple(
+        v
+        for v in current.actions
+        if v.action_kind == "SPLIT"
+        and v.effective_date <= issued.through
+        and v.listing_id in issued.ordered_listing_ids
+    )
+    if not set(held) <= set(reported):
+        raise SplitBasisRevision(held, reported)
+    return tuple(v for v in reported if v not in held)
+
+
 def continue_issued_observations(
     previous: LocalQAMarketSnapshot,
     current: LocalQAMarketSnapshot,
@@ -652,10 +727,12 @@ def continue_issued_observations(
 ) -> LocalQAMarketSnapshot:
     """Keep the issued prefix; only future observations extend its valuation.
 
-    Provider bars are split-adjusted. A newly effective split translates the
-    old prefix by its declared factor before appending new-basis bars. Corrections
-    to an already observed split cannot establish a unit conversion and refuse.
-    Other late revisions remain in the separately sealed current snapshot.
+    Provider bars are split-adjusted. A split the issued basis did not hold translates each
+    issued bar before its effective date by its factor, one over its ratio, as the market store
+    rebases them; bars from it stand. A newly effective split so moves the whole prefix, and a
+    split reported late the sessions before it. Each conversion is proved against the factual
+    basis, bar by bar. Corrections to an already observed split cannot establish a unit
+    conversion and refuse. Other late revisions remain in the separately sealed current snapshot.
     """
     if current.through < previous.through or not set(previous.ordered_listing_ids) <= set(
         current.ordered_listing_ids
@@ -667,67 +744,73 @@ def continue_issued_observations(
         or factual.ordered_listing_ids != previous.ordered_listing_ids
     ):
         raise ValueError("portfolio_update.raw_basis_axis_or_clock_invalid")
-    old_splits = tuple(v for v in factual.actions if v.action_kind == "SPLIT")
-    issued_splits = tuple(
-        v
-        for v in current.actions
-        if v.action_kind == "SPLIT"
-        and v.effective_date <= previous.through
-        and v.listing_id in previous.ordered_listing_ids
-    )
-    if old_splits != issued_splits:
-        raise SplitBasisRevision(old_splits, issued_splits)
-    factors = dict.fromkeys(previous.ordered_listing_ids, 1.0)
+    late = _late_splits(factual, previous, current)
+    splits = []
     for action in current.actions:
-        if action.action_kind == "SPLIT" and action.effective_date > previous.through:
+        if action in late or (
+            action.action_kind == "SPLIT" and action.effective_date > previous.through
+        ):
             ratio = action.new_shares_per_old_share
             if ratio is None or not np.isfinite(ratio) or ratio <= 0:
                 raise ValueError("portfolio_update.split_conversion_unavailable")
-            if action.listing_id in factors:
-                factors[action.listing_id] /= ratio
+            if action.listing_id in previous.ordered_listing_ids:
+                splits.append((action.listing_id, action.effective_date, ratio))
+
+    def factor(listing: str, on: date) -> float:
+        value = 1.0
+        for held, effective, ratio in splits:
+            if held == listing and effective > on:
+                value /= ratio
+        return value
+
     known = {(v.session_date, v.listing_id): v for v in current.bars}
     # Establish the conversion from successive factual versions. Issued prices
     # may deliberately differ after a correction and cannot prove this ratio.
-    for listing, factor in factors.items():
-        if factor == 1.0:
-            continue
+    for listing in sorted({held for held, _, _ in splits}):
         pairs = [
             (v, known.get((v.session_date, listing)))
             for v in factual.bars
             if v.listing_id == listing
         ]
-        if not pairs or any(b is None for _, b in pairs):
-            raise ValueError("portfolio_update.split_conversion_unverified")
-        if not all(
-            b is not None
-            and np.allclose(
-                np.asarray((a.open, a.high, a.low, a.close)) * factor,
-                (b.open, b.high, b.low, b.close),
-                rtol=1e-12,
-                atol=0,
+        if (
+            not pairs
+            or any(b is None for _, b in pairs)
+            or not all(
+                b is not None
+                and np.allclose(
+                    np.asarray((a.open, a.high, a.low, a.close)) * factor(listing, a.session_date),
+                    (b.open, b.high, b.low, b.close),
+                    rtol=1e-12,
+                    atol=0,
+                )
+                for a, b in pairs
             )
-            for a, b in pairs
         ):
             raise ValueError("portfolio_update.split_conversion_unverified")
     for bar in previous.bars:
-        factor = factors[bar.listing_id]
+        scale = factor(bar.listing_id, bar.session_date)
         known[bar.session_date, bar.listing_id] = replace(
             bar,
-            open=bar.open * factor,
-            high=bar.high * factor,
-            low=bar.low * factor,
-            close=bar.close * factor,
+            open=bar.open * scale,
+            high=bar.high * scale,
+            low=bar.low * scale,
+            close=bar.close * scale,
         )
     old_actions = tuple(
-        replace(v, cash_amount=v.cash_amount * factors[v.listing_id])
+        replace(v, cash_amount=v.cash_amount * factor(v.listing_id, v.effective_date))
         if v.cash_amount is not None
         else v
         for v in previous.actions
     )
-    actions = old_actions + tuple(
-        v
-        for v in current.actions
-        if v.effective_date > previous.through or v.listing_id not in previous.ordered_listing_ids
+    actions = (
+        old_actions
+        + late
+        + tuple(
+            v
+            for v in current.actions
+            if v.effective_date > previous.through
+            or v.listing_id not in previous.ordered_listing_ids
+        )
     )
     return LocalQAMarketSnapshot.create(
         **{
@@ -744,18 +827,128 @@ def continue_issued_observations(
     )
 
 
+def _holding_returns(
+    snapshot: LocalQAMarketSnapshot, axis: tuple[str, ...], schedule: CausalExecutionSchedulePoint
+) -> FloatArray:
+    """Each listing's simple return over a holding, on the settlement's axis; NaN where none."""
+    rows = local_qa_point_rows(market_on_axis(snapshot, axis), schedule)
+    return np.asarray(rows.column("simple_return").to_numpy(zero_copy_only=False), dtype=float)
+
+
+def late_split_disclosure(
+    factual: LocalQAMarketSnapshot, continued: LocalQAMarketSnapshot, *, reads: IssuedChainReads
+) -> LateSplitDisclosure | None:
+    """Disclose the splits reported after the sessions they moved were issued, or None.
+
+    `continued` is the sealed continuation the publication values. Each late split is bound to
+    the market store's recorded rebase of its bars, at one over its ratio, and carries the time it
+    was first observed; a split no such rebase records cannot prove its conversion and refuses.
+    Every issued publication observed through a split's effective date is named, and each issued
+    holding whose period spans it is valued again from the rebased prices against the
+    observations its settlement was valued on. The issued publications themselves do not
+    change.
+    """
+    late = _late_splits(factual, factual, continued)
+    if not late:
+        return None
+    recorded = reads.rebases(tuple(sorted({v.listing_id for v in late})))
+    splits = []
+    for action in late:
+        ratio = float(action.new_shares_per_old_share or 0.0)
+        rebase = min(
+            (
+                v
+                for v in recorded
+                if v.listing_id == action.listing_id
+                and v.provider == action.provider
+                and v.ex_date == action.effective_date
+                and v.price_factor == 1.0 / ratio
+                and v.last_session < action.effective_date
+            ),
+            key=lambda v: v.observed_at,
+            default=None,
+        )
+        if rebase is None:
+            raise ValueError("portfolio_update.split_conversion_unverified")
+        splits.append(
+            LateSplit(
+                listing_id=action.listing_id,
+                effective_date=action.effective_date,
+                new_shares_per_old_share=ratio,
+                observed_at=rebase.observed_at,
+                rebase_receipt_hash=rebase.receipt_hash,
+            )
+        )
+    chain = reads.history()
+    holdings: list[SplitSpanningHolding] = []
+    unheld: list[tuple[str, str]] = []
+    for publication, axis in chain:
+        for event in publication.events:
+            if event.phase != "OUTCOME_SETTLED":
+                continue
+            schedule, weights = event.entry.schedule, event.entry.weights
+            spanning = sorted(
+                {
+                    v.listing_id
+                    for v in late
+                    if v.listing_id in axis
+                    and schedule.entry_session < v.effective_date <= schedule.holding_end_session
+                }
+            )
+            # Held as the settlement owner holds it: above its weight tolerance.
+            spanned = [v for v in spanning if weights[axis.index(v)] > TOLERANCE]
+            unheld.extend((event.proposal_hash, v) for v in spanning if v not in spanned)
+            if not spanned:
+                continue
+            before = _holding_returns(reads.issued(event.source_snapshot_hash), axis, schedule)
+            after = _holding_returns(continued, axis, schedule)
+            for listing in spanned:
+                index = axis.index(listing)
+                weight, was, now = weights[index], before[index], after[index]
+                if not np.isfinite(was) or not np.isfinite(now):
+                    raise ValueError("portfolio_update.settlement_invalid")
+                holdings.append(
+                    SplitSpanningHolding(
+                        proposal_hash=event.proposal_hash,
+                        listing_id=listing,
+                        weight=weight,
+                        issued_return=float(was),
+                        rebased_return=float(now),
+                        book_effect_bps=float(weight * (now - was) * 10_000),
+                    )
+                )
+    first = min(v.effective_date for v in late)
+    return LateSplitDisclosure(
+        splits=tuple(splits),
+        affected_publication_hashes=tuple(
+            publication.content_hash
+            for publication, _ in chain
+            if publication.observed_through >= first
+        ),
+        holdings=tuple(holdings),
+        unheld=tuple(unheld),
+    )
+
+
 def source_revision_impact(
-    previous: LocalQAMarketSnapshot | None, current: LocalQAMarketSnapshot
+    previous: LocalQAMarketSnapshot | None,
+    current: LocalQAMarketSnapshot,
+    *,
+    continued: LocalQAMarketSnapshot | None = None,
+    reads: IssuedChainReads | None = None,
 ) -> PortfolioSourceRevision | None:
     """Detect revised historical bars/actions relative to a preceding market snapshot.
 
     Args:
         previous: Prior source snapshot, or None when no comparison exists.
         current: Current revised/extended market snapshot.
+        continued: The sealed continuation a publication values, given with `reads`.
+        reads: The issued chain's reads a late split's disclosure takes.
 
     Returns:
         Sealed source revision with changed prior-bar count and action-change flag, or None when no
-        prior snapshot/change is observed.
+        prior snapshot/change is observed; at a publication, a split reported after the sessions
+        it moved were issued adds its disclosure (`late_split_disclosure`).
     """
     if previous is None:
         return None
@@ -768,11 +961,17 @@ def source_revision_impact(
     )
     if not changed and not actions_changed:
         return None
+    disclosed = (
+        late_split_disclosure(previous, continued, reads=reads)
+        if actions_changed and continued is not None and reads is not None
+        else None
+    )
     return PortfolioSourceRevision.create(
         previous_market_hash=previous.content_hash,
         revised_market_hash=current.content_hash,
         changed_bar_count=changed,
         actions_changed=actions_changed,
+        late_split=disclosed,
     )
 
 

@@ -1568,7 +1568,9 @@ class DecisionAdvancementApplication:
                             published_at=self.clock(),
                             previous_checkpoint=self.updates.prior_checkpoint(previous, checkpoint),
                             revised_source_hash=raw.content_hash if raw != prefix else None,
-                            source_revision=self.updates.revision_impact(raw, previous),
+                            source_revision=self.updates.revision_impact(
+                                raw, previous, continued=prefix
+                            ),
                         )
                     with span("write", "decision_html"):
                         html, _ = self.updates.store.publish_html(

@@ -2184,8 +2184,8 @@
       "layer": "unit",
       "seconds": 1
     },
-    "market_data_ops.a_late_split_through_the_wire_refuses_the_continuation": {
-      "description": "A split the provider reports late, stored through the real HTTP client after approval, leaves the issued observations unable to continue: the continuation refuses it.",
+    "market_data_ops.a_late_split_through_the_wire_continues_the_issued_prefix": {
+      "description": "If a split reported late through the real HTTP client stopped the issued book, or continued it undisclosed, the book would end or hide the issued holdings the split moved.",
       "owner": "alphalattice.foundation.market_data_ops",
       "layer": "integration",
       "seconds": 20,
@@ -2197,6 +2197,13 @@
         "why": "The provider's realistic cases must pass through the real HTTP client and cache, which only test support below the client can serve.",
         "decided": "2026-11-27: granted: test support only with no product source change, and one integration test per listed provider case through the real client and cache, so the net source is zero"
       }
+    },
+    "market_data_ops.a_late_split_through_the_wire_refuses_the_continuation": {
+      "description": "A split the provider reports late, stored through the real HTTP client after approval, leaves the issued observations unable to continue: the continuation refuses it.",
+      "owner": "alphalattice.foundation.market_data_ops",
+      "layer": "integration",
+      "seconds": 20,
+      "retired": "2026-11-27: a split reported late continues the issued prefix rebased by its ratio, proved by market_data_ops.a_late_split_through_the_wire_continues_the_issued_prefix"
     },
     "market_data_ops.a_membership_transition_is_its_exits_then_entries": {
       "description": "A move from one member set to the next is recorded as its exits and then its entries, numbered on from the given sequence.",
