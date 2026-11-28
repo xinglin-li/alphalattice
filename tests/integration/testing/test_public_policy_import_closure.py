@@ -22,6 +22,7 @@ import pytest
 
 from alphalattice.capabilities.domain_contracts import spawn
 from alphalattice.control.product_host.plugins import registry
+from alphalattice.kernel.door import DECISIONS_DATABASE, Decisions, DoorRefusal
 from alphalattice.kernel.identity import blake3_digest, canonical_hash
 from alphalattice.protocols.plugin_contract import ExecutionMode
 
@@ -229,7 +230,26 @@ def test_the_local_application_service_reaches_no_solver_or_masked_lane() -> Non
 @pytest.mark.proves("product_host.only_explicit_plugins_activate_with_verified_bytes")
 @pytest.mark.parametrize(
     "case",
-    ["startup", "builtin", "enabled", "changed", "unlisted", "conflict", "exited", "source_only"],
+    [
+        "startup",
+        "builtin",
+        "enabled",
+        "changed",
+        "unlisted",
+        "conflict",
+        "exited",
+        "source_only",
+        "trial",
+        "result",
+        "network",
+        "data_layer",
+        "confirmed",
+        "lapsed-replaced",
+        "lapsed-missing",
+        "lapsed-added",
+        "unattended",
+        "unknown_effect",
+    ],
 )
 def test_the_host_starts_without_its_heavy_libraries_or_its_strategy_source_hash(
     case: str, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
@@ -287,32 +307,52 @@ def _assert_explicit_plugin_registrations(
     folder.mkdir(parents=True)
     implementation = folder / "custom.py"
     implementation.write_bytes(source)
+    lapsing = case.startswith("lapsed-")
+    effects = {
+        "trial": "STAGING_WRITE",
+        "result": "STAGING_WRITE",
+        "data_layer": "LEDGER_COMMIT",
+        "confirmed": "STAGING_WRITE",
+        "unattended": "STAGING_WRITE",
+        "unknown_effect": "UNNAMED",
+    }
     manifest = json.dumps(
         {
             "entry": entry,
             "files": ["custom.py"],
-            "effect_mode": "READ_ONLY",
-            "lease": {"memory_bytes": 1024, "threads": 1, "timeout_ms": 1000},
+            "effect_mode": "STAGING_WRITE" if lapsing else effects.get(case, "READ_ONLY"),
+            "lease": {
+                "memory_bytes": 1024,
+                "threads": 1,
+                "timeout_ms": 1000,
+                "network": case == "network",
+            },
             "input_schema": {"type": "object", "required": ["window"]},
             "output_schema": {"type": "object"},
             "inputs": ["market.bars"],
             "as_of_param": "as_of",
         }
     ).encode()
-    (folder / "plugin.json").write_bytes(manifest)
-    digest = canonical_hash(
-        {
-            "form": "plugin-closure-v1",
-            "name": user,
-            "entry": entry,
-            "manifest": blake3_digest(manifest),
-            "sources": {"custom.py": blake3_digest(source)},
-        }
-    )
-    if case in {"enabled", "changed", "conflict", "exited"}:
+    manifest_path = folder / "plugin.json"
+    manifest_path.write_bytes(manifest)
+
+    def enable(body: bytes) -> str:
+        digest = canonical_hash(
+            {
+                "form": "plugin-closure-v1",
+                "name": user,
+                "entry": entry,
+                "manifest": blake3_digest(manifest),
+                "sources": {"custom.py": blake3_digest(body)},
+            }
+        )
         (tmp_path / "plugins.toml").write_text(
             f'[enabled]\n"{user}" = "{digest}"\n', encoding="utf-8"
         )
+        return digest
+
+    enabled = case not in {"unlisted", "builtin", "source_only"}
+    digest = enable(source) if enabled else ""
     calls = []
     distribution = registry.metadata.distribution
 
@@ -337,8 +377,13 @@ def _assert_explicit_plugin_registrations(
     if case == "source_only":
         assert plugins.capabilities == ()
         return
+    if case == "unknown_effect":
+        with pytest.raises(registry.PluginRefused) as refused:
+            plugins.activate(user, no_scan, attended=True)
+        assert (refused.value.code, refused.value.name) == ("plugin_registry.effect_unknown", user)
+        return
     assert plugins.capabilities == (
-        (user, builtin) if case in {"enabled", "changed", "exited"} else (builtin,)
+        (user, builtin) if enabled and case != "conflict" else (builtin,)
     )
     if case in {"unlisted", "conflict"}:
         with pytest.raises(registry.PluginRefused) as refused:
@@ -380,6 +425,87 @@ def _assert_explicit_plugin_registrations(
             assert verified.spec.as_of_param == "as_of"
             assert verified.sources == {"custom.py": source}
         return worker
+
+    if case == "trial":
+        verified = plugins.verify(user)
+        assert verified.spec.code_role_hash == digest
+        assert verified.sources == {"custom.py": source}
+        assert plugins.state(user) is registry.PluginState.DISCOVERED
+        assert not (tmp_path / DECISIONS_DATABASE).exists()
+        return
+    if case == "unattended":
+        with pytest.raises(registry.PluginRefused) as refused:
+            plugins.activate(user, load)
+        assert (refused.value.code, refused.value.name) == (
+            "plugin_registry.confirmation_required",
+            user,
+        )
+        assert not (tmp_path / DECISIONS_DATABASE).exists()
+        return
+    if lapsing or case in {"result", "network", "data_layer", "confirmed"}:
+        confirmation_required = r"plugin_registry\.confirmation_required"
+        with pytest.raises(registry.PluginRefused, match=confirmation_required) as prompt:
+            plugins.activate(user, no_scan, attended=True)
+        question = prompt.value.decision
+        assert question is not None and question.operation == user
+        assert prompt.value.fingerprint == digest
+        expected_effect = case if case in {"network", "data_layer"} else "result"
+        assert prompt.value.effects == (expected_effect,)
+        with pytest.raises(registry.PluginRefused, match=confirmation_required) as repeated:
+            plugins.activate(user, no_scan, attended=True)
+        assert repeated.value.decision == question
+        if case in {"result", "network", "data_layer"}:
+            return
+        decisions = Decisions(tmp_path / DECISIONS_DATABASE, lambda: question.id)
+        with pytest.raises(DoorRefusal, match=r"door\.person_required"):
+            decisions.answer(question, "approve", by_person=False)
+        with pytest.raises(DoorRefusal, match=r"door\.decision_answer_invalid"):
+            decisions.answer(question, "CONFIRMED", by_person=True)
+        decisions.answer(question, "approve", by_person=True)
+        if lapsing:
+            replacement = source.replace(b"return params", b"return {}")
+            added = folder / "support.py"
+            if case == "lapsed-replaced":
+                implementation.write_bytes(replacement)
+            elif case == "lapsed-missing":
+                implementation.unlink()
+            else:
+                added.write_bytes(b"VALUE = 2\n")
+                updated = json.loads(manifest)
+                updated["files"].append(added.name)
+                manifest_path.write_text(json.dumps(updated), encoding="utf-8")
+
+            with pytest.raises(registry.PluginRefused, match=r"plugin_registry\.closure_changed"):
+                plugins.activate(user, no_scan)
+            if case == "lapsed-added":
+                manifest_path.write_bytes(manifest)
+                added.unlink()
+            else:
+                implementation.write_bytes(source)
+            with pytest.raises(registry.PluginRefused, match=confirmation_required) as reset:
+                plugins.activate(user, load, attended=True)
+            fresh = reset.value.decision
+            assert fresh is not None and fresh != question
+            assert reset.value.fingerprint == digest
+            assert decisions.take(question) is None
+            if case != "lapsed-replaced":
+                return
+            decisions.answer(fresh, "approve", by_person=True)
+
+            implementation.write_bytes(replacement)
+            changed = enable(replacement)
+            with pytest.raises(registry.PluginRefused, match=confirmation_required) as next_prompt:
+                registry.PluginRegistry(tmp_path).activate(user, no_scan, attended=True)
+            assert next_prompt.value.fingerprint == changed
+            assert next_prompt.value.decision != fresh
+            assert decisions.take(fresh) is None
+            implementation.write_bytes(source)
+            enable(source)
+            with pytest.raises(registry.PluginRefused, match=confirmation_required) as reverted:
+                registry.PluginRegistry(tmp_path).activate(user, no_scan, attended=True)
+            assert reverted.value.fingerprint == digest
+            assert reverted.value.decision != fresh
+            return
 
     assert plugins.activate(capability, load) is worker
     assert plugins.state(capability) is registry.PluginState.ACTIVE

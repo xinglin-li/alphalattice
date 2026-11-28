@@ -7,6 +7,7 @@
 "door.family_import_failed": {"owner": "alphalattice.kernel.door", "category": "UNAVAILABLE", "classification_note": "The operation's family could not load. Check the named family and repair the Host installation."},
 "door.person_unavailable": {"owner": "alphalattice.kernel.door", "category": "FAILED_PRECONDITION", "classification_note": "This request needs a person's decision. Ask them before continuing."},
 "door.person_required": {"owner": "alphalattice.kernel.door", "category": "PERMISSION_DENIED", "classification_note": "Only the person can answer this decision."},
+"door.decision_answer_invalid": {"owner": "alphalattice.kernel.door", "category": "INVALID_ARGUMENT", "classification_note": "Answer the pending plugin confirmation with approve to authorize its exact fingerprint."},
 "door.paid_run_approval_required": {"owner": "alphalattice.kernel.door", "category": "PERMISSION_DENIED", "classification_note": "The person must approve this paid run before it can start."},
 "door.decision_not_pending": {"owner": "alphalattice.kernel.door", "category": "FAILED_PRECONDITION", "classification_note": "This decision is no longer pending. Read the current decision before answering."},
 "door.decisions_unavailable": {"owner": "alphalattice.kernel.door", "category": "UNAVAILABLE", "classification_note": "The workspace's decision file could not be opened or written. Check the workspace before retrying."},
@@ -758,6 +759,16 @@
   "owner": "alphalattice.control.product_host",
   "category": "FAILED_PRECONDITION",
   "classification_note": "Verify the named plugin again before enabling its changed bytes."
+},
+"plugin_registry.confirmation_required": {
+  "owner": "alphalattice.control.product_host",
+  "category": "PERMISSION_DENIED",
+  "classification_note": "Have the person confirm the named plugin's verified fingerprint before a workspace activation."
+},
+"plugin_registry.effect_unknown": {
+  "owner": "alphalattice.control.product_host",
+  "category": "INVALID_ARGUMENT",
+  "classification_note": "Use an effect mode named by the plugin contract in the named plugin's manifest."
 },
 "plugin_registry.worker_exited": {
   "owner": "alphalattice.control.product_host",

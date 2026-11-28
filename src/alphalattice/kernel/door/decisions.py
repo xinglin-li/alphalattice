@@ -17,8 +17,15 @@ if TYPE_CHECKING:
     from sqlite3 import Connection
 
 DECISIONS_DATABASE: Final = Path("runtime/decisions.sqlite3")
+_PLUGIN_LAPSE: Final = (
+    "UPDATE decision SET answer = CASE WHEN answer = 'CONFIRMED' THEN 'LAPSED' "
+    "ELSE answer END, consumed = 1, external_key = NULL "
+    "WHERE kind = 'plugin_activation' AND operation = ? "
+)
 
-type DecisionKind = Literal["question", "confirmation", "paid_run", "activation"]
+type DecisionKind = Literal[
+    "question", "confirmation", "paid_run", "activation", "plugin_activation"
+]
 
 
 @dataclass(frozen=True, slots=True)
@@ -31,7 +38,7 @@ class Decision:
 
 
 class Decisions:
-    """A Host-owned decisions file. Unattended callers never enter its writer."""
+    """The Host-owned workspace store for person decisions and their current validity."""
 
     def __init__(self, path: Path, mint: Callable[[], UUID]) -> None:
         """Bind the workspace decision file and the Host allocator for decision IDs."""
@@ -99,14 +106,70 @@ class Decisions:
         """Store one answer under the person authority the Host has already checked."""
         if not by_person:
             raise DoorRefusal("door.person_required", decision.operation)
+        if decision.kind == "plugin_activation":
+            if answer != "approve":
+                raise DoorRefusal("door.decision_answer_invalid", decision.operation)
+            answer = "CONFIRMED"
         with self._writing(decision.operation) as connection:
             changed = connection.execute(
                 "UPDATE decision SET answer = ? WHERE id = ? AND kind = ? "
-                "AND operation = ? AND answer IS NULL",
+                "AND operation = ? AND answer IS NULL AND consumed = 0",
                 (answer, str(decision.id), decision.kind, decision.operation),
             )
             if changed.rowcount != 1:
                 raise DoorRefusal("door.decision_not_pending", decision.operation)
+
+    def plugin_confirmation(
+        self, name: str, fingerprint: str, effects: tuple[str, ...], *, attended: bool
+    ) -> tuple[bool, Decision | None]:
+        """Lapse older fingerprints and read or ask for this exact workspace confirmation."""
+        if not (effects and attended) and not self._has_database(name):
+            return not effects, None
+
+        key = _plugin_key(name, fingerprint)
+        with self._writing(name) as connection:
+            # Keep lapsed decisions by id; a previously seen fingerprint needs a fresh answer.
+            connection.execute(
+                _PLUGIN_LAPSE + "AND external_key <> ?",
+                (name, key),
+            )
+            if not effects:
+                return True, None
+            row = connection.execute(
+                "SELECT id, answer FROM decision WHERE external_key = ?", (key,)
+            ).fetchone()
+            if row is not None and row[1] == "CONFIRMED":
+                return True, None
+            if not attended:
+                return False, None
+            if row is not None:
+                return False, Decision(UUID(row[0]), "plugin_activation", name)
+            question = Decision(self._mint(), "plugin_activation", name)
+            request = {"plugin_name": name, "fingerprint": fingerprint, "effects": effects}
+            connection.execute(
+                "INSERT INTO decision (id, kind, operation, request, external_key) "
+                "VALUES (?, ?, ?, ?, ?)",
+                (str(question.id), question.kind, name, json.dumps(request, sort_keys=True), key),
+            )
+            return False, question
+
+    def lapse_plugin_confirmation(self, name: str, fingerprint: str) -> None:
+        """Retire the exact pinned decision when activation refuses a changed closure."""
+        if self._has_database(name):
+            with self._writing(name) as connection:
+                connection.execute(
+                    _PLUGIN_LAPSE + "AND external_key = ?", (name, _plugin_key(name, fingerprint))
+                )
+
+    def _has_database(self, operation: str) -> bool:
+        """Distinguish an absent workspace store from one whose state cannot be read."""
+        try:
+            self.path.stat()
+        except FileNotFoundError:
+            return False
+        except OSError as error:
+            raise DoorRefusal("door.decisions_unavailable", operation) from error
+        return True
 
     def take(self, decision: Decision) -> str | None:
         """Read a saved answer once. Approval cannot authorize a second run."""
@@ -204,3 +267,8 @@ class Decisions:
 def question_key(code: str, goal: str, session: str) -> str:
     """One pending catalog question for a particular goal and session."""
     return json.dumps(("question", code, goal, session), separators=(",", ":"))
+
+
+def _plugin_key(name: str, fingerprint: str) -> str:
+    """Identify the current decision for one plugin fingerprint within this workspace."""
+    return json.dumps(("plugin_activation", name, fingerprint))
