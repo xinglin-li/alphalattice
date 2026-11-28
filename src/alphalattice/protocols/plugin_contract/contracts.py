@@ -155,6 +155,18 @@ class ActionInvocation(_ActionKeyInputs):
         if self.idempotency_key != self.derived_key():
             raise ValueError("plugin_contract.invocation_key_mismatch")
 
+    def staged_receipt(
+        self, invocation_id: Uuid4, *, wall_ms: int, peak_bytes: int
+    ) -> ActionReceipt:
+        """The receipt of a run of this invocation that staged its answer for the Host to check."""
+        return ActionReceipt(
+            invocation_id=invocation_id,
+            idempotency_key=self.idempotency_key,
+            status=ReceiptStatus.OK,
+            wall_ms=wall_ms,
+            peak_bytes=peak_bytes,
+        )
+
 
 class CatalogRead(DomainModel):
     """One read of the catalog: the snapshot a run reads at and each declared input's version at

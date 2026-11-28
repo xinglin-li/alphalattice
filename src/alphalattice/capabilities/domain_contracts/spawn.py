@@ -36,17 +36,24 @@ held_memory = child_process.held_memory
 _worker_host: int | None = None
 
 
-def tree_memory(kind: str) -> child_process.TreeMemory:
-    """Bind a registered process kind's tree budget and the operator's current mode."""
+def tree_memory(kind: str, leased: int | None = None) -> child_process.TreeMemory:
+    """Bind a registered process kind's tree budget and the operator's current mode; a kind whose
+    budget is its caller's lease takes `leased` and always enforces it, the lease being a cap the
+    capability declared."""
     rows = runtime_json("config/registries/process-budgets.json")["kinds"]
     if kind not in rows:
         raise ValueError(f"spawn.process_kind_unknown: {kind}")
     budget = rows[kind].get("tree_memory_bytes")
+    if (budget == "lease") != (leased is not None):
+        raise ValueError(f"spawn.tree_memory_lease_mismatch: {kind}")
+    if budget == "lease":
+        budget = leased
     if budget == "undeclared":
         budget = None
     elif type(budget) is not int or budget <= 0:
         raise ValueError(f"spawn.tree_memory_budget_invalid: {kind}")
-    return child_process.TreeMemory(kind, budget, process_config().settings.process_memory_mode)
+    mode = "enforce" if leased is not None else process_config().settings.process_memory_mode
+    return child_process.TreeMemory(kind, budget, mode)
 
 
 def current_tree(kind: str) -> AbstractContextManager[None]:
@@ -231,9 +238,11 @@ def run(
     capture_output: bool = False,
     check: bool = False,
     process_kind: str | None = None,
+    leased_memory: int | None = None,
     **kwargs: Any,
 ) -> subprocess.CompletedProcess[Any]:
-    """Run one child until it exits or its finite deadline ends its tree."""
+    """Run one child until it exits or its finite deadline ends its tree; a kind leased its
+    memory names the lease's bytes."""
     return child_process.run(
         psutil,
         _default_environment,
@@ -242,7 +251,7 @@ def run(
         input=input,
         capture_output=capture_output,
         check=check,
-        memory=None if process_kind is None else tree_memory(process_kind),
+        memory=None if process_kind is None else tree_memory(process_kind, leased_memory),
         **kwargs,
     )
 

@@ -10,6 +10,11 @@
       "idle_cpu_percent": 2.0,
       "stopped_within_seconds": 60
     },
+    "plugin_child": {
+      "owner": "src/alphalattice/control/task_control/plugin_child.py",
+      "tree_memory_bytes": "lease",
+      "description": "One guarded child per user or agent plugin run, whose tree's memory is the plugin's lease and whose Windows Job holds one process."
+    },
     "kept_worker": {
       "owner": "src/alphalattice/control/task_control/child.py",
       "tree_memory_bytes": "undeclared",

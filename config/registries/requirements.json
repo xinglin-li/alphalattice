@@ -3268,6 +3268,25 @@
       "layer": "integration",
       "seconds": 5
     },
+    "task_control.a_guarded_childs_result_counts_only_from_its_clean_exit": {
+      "description": "If the Host accepted a guarded child's answer from a failed exit, an unbounded stream or an unregistered refusal, a failed plugin could commit its files or a verbose one exhaust the Host's memory.",
+      "owner": "alphalattice.control.task_control",
+      "layer": "unit",
+      "seconds": 1
+    },
+    "task_control.a_guarded_plugin_is_refused_each_wrong_reach_by_name": {
+      "description": "If a guarded plugin's network call, subprocess, write outside its staging folder or import from outside the environment passed its audit hook, a wrong plugin could reach the network or change the person's files.",
+      "owner": "alphalattice.control.task_control",
+      "layer": "unit",
+      "seconds": 1
+    },
+    "task_control.a_guarded_plugin_runs_confined_in_its_own_child": {
+      "description": "If a user's or an agent's plugin ran in the Host or unconfined, a wrong plugin's network call, process or write outside its staging folder would reach the machine instead of being refused by name.",
+      "owner": "alphalattice.control.task_control",
+      "layer": "integration",
+      "seconds": 10,
+      "lower_layer": "Its audit hook and its system's confinement (Low integrity and the Job, Landlock, rlimits) are a child process's own state, which a test in the test process cannot install without changing that process for good."
+    },
     "task_control.a_killed_import_resumes_with_nothing_lost": {
       "description": "If a kill between a 0.2.7 workspace's move onto the log and the retirement of its store lost or repeated a Task, its history would be wrong the next time it opened.",
       "lower_layer": "It reads real DuckDB, SQLite and JSONL sources, SDK spans and the durable log across reader retirement and reopening, which an in-memory function cannot prove.",

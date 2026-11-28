@@ -805,3 +805,17 @@ def test_a_subreaper_launcher_reaps_an_adopted_orphan_as_it_ends():
         creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0),
     )
     assert (done.returncode, done.stdout.strip()) == (0, "adopted gone"), done.stderr
+
+
+@pytest.mark.proves("domain_contracts.child_processes_are_bounded_and_isolated")
+def test_a_leased_tree_enforces_its_lease_whatever_the_operators_mode() -> None:
+    """A plugin child's memory lease is enforced even where the operator observes trees."""
+    from alphalattice.capabilities.domain_contracts import spawn
+
+    with override(Change("test-observed-trees", {"ALPHALATTICE_PROCESS_MEMORY_MODE": "observe"})):
+        leased = spawn.tree_memory("plugin_child", 1 << 20)
+        declared = spawn.tree_memory("host")
+    assert (leased.budget_bytes, leased.enforce) == (1 << 20, True)
+    assert declared.mode == "observe"
+    with pytest.raises(ValueError, match=r"spawn.tree_memory_lease_mismatch"):
+        spawn.tree_memory("plugin_child")

@@ -74,16 +74,21 @@ Plugin = Callable[[ExecutionContext], ActionReceipt | AbstractContextManager[Act
 class StagingRefused(ValueError):
     """A staged run the Host does not commit, by name, with the step that recovers it."""
 
-    def __init__(self, code: str, message: str) -> None:
+    def __init__(
+        self, code: str, message: str, refusals: tuple[Mapping[str, str], ...] = ()
+    ) -> None:
         """Name the refusal and its next step.
 
         Args:
             code: The registered refusal code.
             message: The step that recovers it, which the caller is shown.
+            refusals: A guarded child's audit-hook record: each refusal's code, event and
+                detail, the first being this refusal's.
         """
         super().__init__(f"{code}: {message}")
         self.code = code
         self.next_step = message
+        self.refusals = refusals
 
 
 @dataclass(frozen=True)

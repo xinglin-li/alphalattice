@@ -1181,6 +1181,8 @@
         "task_control.plugin_staging.PluginStaging"
       ],
       "writers": [
+        "task_control.plugin_guard:_landlock",
+        "task_control.plugin_guard:serve",
         "task_control.plugin_staging:PluginStaging",
         "task_control.plugin_staging:write_arrow_output"
       ],

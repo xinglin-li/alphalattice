@@ -1082,6 +1082,7 @@ def run(
     capture_output = kwargs.pop("capture_output", False)
     check = kwargs.pop("check", False)
     memory = kwargs.pop("memory", None)
+    active_processes = kwargs.pop("active_processes", None)
     if (
         isinstance(timeout, bool)
         or not isinstance(timeout, int | float)
@@ -1122,7 +1123,11 @@ def run(
         if "stdout" in kwargs or "stderr" in kwargs:
             raise ValueError("stdout and stderr arguments may not be used with capture_output")
         kwargs.update(stdout=subprocess.PIPE, stderr=subprocess.PIPE)
-    job = ChildJob(memory=memory) if sys.platform == "win32" else None
+    job = (
+        ChildJob(memory=memory, active_processes=active_processes)
+        if sys.platform == "win32"
+        else None
+    )
     if job is None:
         kwargs["start_new_session"] = True
     watch = None
@@ -1543,8 +1548,10 @@ class ChildJob:
         affinity: int | None = None,
         priority: int | None = None,
         memory: TreeMemory | None = None,
+        active_processes: int | None = None,
     ) -> None:
-        """Create this parent's Job with its caller's optional affinity and priority."""
+        """Create this parent's Job with its caller's optional affinity, priority and the most
+        processes it may hold at once."""
         if sys.platform != "win32":
             raise OSError("Windows Jobs are unavailable")
         self._lock = threading.Lock()
@@ -1592,6 +1599,9 @@ class ChildJob:
         if priority is not None:
             limits.BasicLimitInformation.LimitFlags |= 0x20
             limits.BasicLimitInformation.PriorityClass = priority
+        if active_processes is not None:
+            limits.BasicLimitInformation.LimitFlags |= 0x8  # JOB_OBJECT_LIMIT_ACTIVE_PROCESS
+            limits.BasicLimitInformation.ActiveProcessLimit = active_processes
         if memory is not None and memory.enforce:
             assert memory.budget_bytes is not None
             limits.BasicLimitInformation.LimitFlags |= _JOB_MEMORY_LIMIT
