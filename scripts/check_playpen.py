@@ -1442,17 +1442,17 @@ def _check_evidence_bindings() -> bool:
     return not found
 
 
-def _check_operation_registry() -> bool:
+def _check_operation_registry(base_ref: str) -> bool:
     """Refuse a tree whose operations disagree with the registry, or whose CLI answers any
     command outside its contract without a Host (the CLI walk)."""
 
     started = perf_counter()
     sys.path.insert(0, str(ROOT / "src"))
     try:
-        from devtools.architecture import operation_registry
+        from devtools.architecture import interface_registry, operation_registry
         from devtools.architecture.operation_registry import problems, walk
 
-        found = problems(ROOT) + walk(ROOT)
+        found = problems(ROOT) + interface_registry.problems(ROOT, base_ref) + walk(ROOT)
     finally:
         sys.path.pop(0)
     for line in found:
@@ -1669,7 +1669,7 @@ def main(*, ensure_environment: Callable[[], None] = _ensure_workspace_environme
         ),
         ("identity-reach", lambda: _check_identity_reach(staged=args.staged)),
         ("evidence-bindings", _check_evidence_bindings),
-        ("operation-registry", _check_operation_registry),
+        ("operation-registry", lambda: _check_operation_registry(args.base)),
         (
             "registries",
             lambda: _check_registries(

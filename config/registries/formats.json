@@ -68,6 +68,13 @@
 "alphalattice.playpen.registry.host-modules"
 ]
 },
+"schema:alphalattice.playpen.registry.interfaces": {
+"description": "A generated inventory of operation, kernel port and plugin extension contracts.",
+"owner": "devtools.architecture",
+"readers": ["src/devtools/architecture/interface_registry.py"],
+"upgraders": [],
+"version": ["alphalattice.playpen.registry.interfaces"]
+},
 "schema:alphalattice.playpen.registry.noun-definitions": {
 "owner": "schema:alphalattice",
 "readers": [

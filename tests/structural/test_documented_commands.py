@@ -150,6 +150,148 @@ def test_the_frozen_surface_and_release_retirements_match_the_owners() -> None:
     assert any("exchange:CORRECTION" in problem for problem in surface_problems(manifest, missing))
 
 
+@pytest.mark.proves("architecture.interface_inventory_tracks_owners")
+@pytest.mark.parametrize("case", ["inventory", "forwarding", "storage", "export", "schema"])
+def test_generated_interfaces_read_their_owners_and_refuse_an_edit(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, case: str
+) -> None:
+    """Read the checkout declarations that determine the generated interface rows."""
+    from devtools.architecture import interface_registry
+
+    root = SCRIPT.parents[1]
+    package = "src/alphalattice/protocols/plugin_contract"
+    export_path = f"{package}/__init__.py"
+    contract_path = f"{package}/contracts.py"
+    exports = (root / export_path).read_text(encoding="utf-8")
+    contracts = (root / contract_path).read_text(encoding="utf-8")
+
+    if case == "export":
+        rebound = exports.replace("    ActionSpec,\n", "    ActionReceipt as ActionSpec,\n")
+        assert interface_registry.published_problems(exports, contracts, rebound, contracts) == [
+            "interface_registry.published_breaking: ActionSpec: export binding changed",
+        ]
+        return
+
+    generated = interface_registry.inventory_text(root)
+    inventory = json.loads(generated)
+    entries = inventory["entries"]
+    if case == "forwarding":
+        assert "operation:CLI_INVOKE" in entries
+        row = entries["operation:CLI_INVOKE"]
+        assert row["implementations"] == [
+            "alphalattice.interface.local_application.cli:execute_forwarded",
+        ]
+        assert row["schema"]["request"]["required"] == [
+            "argv",
+            "cwd",
+            "environment",
+            "operation",
+            "stdin",
+            "streams",
+        ]
+        assert row["schema"]["answer"] == {
+            "complete": ["cli", "exit", "stderr", "stdout"],
+            "local": ["cli"],
+        }
+        return
+    if case == "storage":
+        row = entries["port:storage"]
+        assert (
+            "alphalattice.control.workspace_runtime.reader_threads:_DuckDB"
+            in row["implementations"]
+        )
+        assert row["schema"]["callables"]["memory"].endswith(" -> 'Iterator[Any]'")
+        return
+    if case == "schema":
+        from pydantic import create_model
+
+        from alphalattice.protocols.plugin_contract import ActionSpec
+
+        changed = create_model("ActionSpec", __base__=ActionSpec, new_required_field=(str, ...))
+        entries["extension-point:plugin_action"]["schema"]["ActionSpec"] = (
+            changed.model_json_schema()
+        )
+        snapshot = tmp_path / interface_registry.SNAPSHOT
+        snapshot.parent.mkdir(parents=True)
+        snapshot.write_text(
+            json.dumps(inventory, indent=2, sort_keys=True) + "\n", encoding="utf-8", newline="\n"
+        )
+        for relative, text in ((export_path, exports), (contract_path, contracts)):
+            path = tmp_path / relative
+            path.parent.mkdir(parents=True, exist_ok=True)
+            path.write_text(text, encoding="utf-8")
+        monkeypatch.setattr(interface_registry, "interface_inventory", lambda _root: inventory)
+        prior = {
+            export_path: exports,
+            contract_path: contracts,
+            interface_registry.SNAPSHOT: generated,
+        }
+        monkeypatch.setattr(
+            interface_registry,
+            "read_blobs",
+            lambda specs, _root: {
+                f"review:{key}": prior[key] for key in prior if f"review:{key}" in specs
+            },
+        )
+        assert interface_registry.problems(tmp_path, "review") == [
+            "interface_registry.published_breaking: ActionSpec: schema changed",
+        ]
+        return
+
+    for key, kind, owner, schema_member, implementation, consumer in [
+        (
+            "operation:STATUS",
+            "operation",
+            "alphalattice.control.product_host.composition.task_operations",
+            "request",
+            "alphalattice.control.product_host.composition.task_operations:route",
+            "cli:task show",
+        ),
+        (
+            "port:door",
+            "port",
+            "alphalattice.kernel.door",
+            "DoorPort",
+            "alphalattice.kernel.door",
+            "product_host",
+        ),
+        (
+            "extension-point:plugin_action",
+            "extension point",
+            "alphalattice.protocols.plugin_contract",
+            "ActionSpec",
+            None,
+            "data_layer",
+        ),
+    ]:
+        row = entries[key]
+        assert row["kind"] == kind and row["owner"] == owner
+        assert row["description"].endswith((".", "!", "?"))
+        assert schema_member in row["schema"] and consumer in row["consumers"]
+        assert "stability" in row and row["conformance_suite"] == []
+        if implementation is not None:
+            assert implementation in row["implementations"]
+
+    snapshot = tmp_path / "interfaces.json"
+    for persisted, match in [
+        (generated, False),
+        (generated.replace('"cli:task show"', '"cli:unknown show"'), True),
+    ]:
+        snapshot.write_text(persisted, encoding="utf-8", newline="\n")
+        findings = interface_registry.snapshot_problems(snapshot, generated)
+        assert bool(findings) is match
+        if match:
+            assert findings[0].startswith("interface_registry.stale_generation:")
+
+    changed_invocation = contracts.replace("def invoke(", "def changed_invoke(")
+    for changed, match in [(contracts, False), (changed_invocation, True)]:
+        findings = interface_registry.published_problems(exports, contracts, exports, changed)
+        assert bool(findings) is match
+        if match:
+            assert findings[0].startswith("interface_registry.published_breaking:")
+            assert "invoke" in findings[0]
+
+
 def test_a_command_a_text_names_is_one_the_cli_has(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:

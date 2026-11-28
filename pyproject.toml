@@ -129,6 +129,7 @@ semantic = [
 dev = [
     "ast-grep-cli==0.51.1",
     "deptry>=0.25,<1",
+    "griffelib==2.3.0",
     "hypothesis>=6.140,<7",
     "import-linter>=2.15,<3",
     # The release gates' shared environment (devtools.evaluation) runs on Inspect AI's structure.
@@ -194,7 +195,7 @@ DEP001 = ["tokenizers", "fastembed", "torch"]
 DEP002 = ["python-dotenv", "duckdb-extension-ducklake", "duckdb-extension-sqlite-scanner", "exchange-calendars", "tzdata", "pytz", "clarabel", "optuna", "onnxruntime", "sentencepiece", "sqlite-vec", "tokenizers"]
 # These imports are in src/devtools, which is not included in the product wheel;
 # they are correctly declared in the development dependency group.
-DEP004 = ["inspect_ai", "pytest", "xdist", "pytest_socket", "_pytest", "packaging"]
+DEP004 = ["inspect_ai", "pytest", "xdist", "pytest_socket", "_pytest", "packaging", "griffe"]
 
 [tool.uv]
 package = true

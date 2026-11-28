@@ -308,6 +308,13 @@
       "layer": "integration",
       "seconds": 5
     },
+    "architecture.interface_inventory_tracks_owners": {
+      "description": "The interface inventory follows its code owners, refuses stale or edited output, and reports breaking changes to the published plugin contract.",
+      "owner": "devtools.architecture",
+      "layer": "integration",
+      "seconds": 1,
+      "lower_layer": "The generator reads the checkout's actual route and port source files to prove the registered production interfaces agree."
+    },
     "architecture.kernel_ports_enforce_import_boundaries": {
       "description": "Kernel packages import downward through ports, with only standard-library dependencies and no access to another owner's internals or reserved APIs such as the file-trust owner's verification primitives.",
       "owner": "devtools.architecture",
