@@ -911,33 +911,55 @@ def test_candidate_script_needs_a_consumer_outside_release_policy():
 
 @pytest.mark.proves("pipeline.public_manifest_follows_registered_host_routes")
 @pytest.mark.parametrize(
-    ("module", "target_mode", "private", "refusal"),
+    ("source", "module", "target_mode", "private", "refusal"),
     [
-        pytest.param('"handler"', "100644", False, None, id="public-handler-and-imports"),
-        pytest.param('"handler"', "100644", True, "door_route_private", id="private-handler"),
-        pytest.param("module_name", "100644", False, "door_route_nonliteral", id="nonliteral"),
+        pytest.param("door", '"handler"', "100644", False, None, id="public-handler-and-imports"),
         pytest.param(
+            "door", '"handler"', "100644", True, "door_route_private", id="private-handler"
+        ),
+        pytest.param(
+            "door", "module_name", "100644", False, "door_route_nonliteral", id="nonliteral"
+        ),
+        pytest.param(
+            "door",
             '"alphalattice.kernel.handler"',
             "100644",
             False,
             "door_route_outside_package",
             id="outside-package",
         ),
-        pytest.param('"handler"', None, False, "door_route_untracked", id="untracked"),
+        pytest.param("door", '"handler"', None, False, "door_route_untracked", id="untracked"),
+        pytest.param("entry-point", "handler:run", "100644", False, None, id="public-entry-point"),
+        pytest.param(
+            "entry-point",
+            "handler:run",
+            "100644",
+            True,
+            "capability_target_private",
+            id="private-entry-point",
+        ),
     ],
 )
 def test_public_runtime_closure_follows_the_registered_door_routes(
-    monkeypatch, module, target_mode, private, refusal
+    monkeypatch, source, module, target_mode, private, refusal
 ):
-    """The real scanner follows literal public routes and refuses invalid targets by name."""
+    """The scanner follows registered runtime targets and their parsed dependencies."""
     registry = _HOST_ROUTES
     package = registry.rsplit("/", 1)[0]
     handler, dependency = f"{package}/handler.py", f"{package}/dependency.py"
+    unlisted = f"{package}/unlisted.py"
     blobs = {
         **_runtime_census(registry),
         registry: f'_ROUTES = (FamilyRoute(("SHOW",), {module}),)\n'.encode(),
         dependency: b"answer = 1\n",
+        unlisted: b"answer = 2\n",
     }
+    if source == "entry-point":
+        target = package.removeprefix("src/").replace("/", ".") + "." + module
+        blobs[registry] = b"_ROUTES = ()\n"
+        blobs["pyproject.toml"] = (
+            f'[project.entry-points."alphalattice.capabilities"]\nexample = "{target}"\n'
+        ).encode()
     if target_mode is not None:
         blobs[handler] = b"from .dependency import answer\n"
     modes = dict.fromkeys(blobs, "100644")
@@ -961,6 +983,7 @@ def test_public_runtime_closure_follows_the_registered_door_routes(
         manifest, _ = generate("a" * 40, blobs, modes)
         public = {row["path"]: row["rule"] for row in manifest["public"]}
         assert public[handler] == public[dependency] == "PUBLIC_RUNTIME"
+        assert unlisted not in public
 
 
 @pytest.mark.proves("pipeline.public_manifest_settles_every_file_by_rule")

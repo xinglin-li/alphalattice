@@ -53,6 +53,9 @@ dependencies = [
 [project.scripts]
 alphalattice = "alphalattice.control.product_host.composition.entry:main"
 
+[project.entry-points."alphalattice.capabilities"]
+"factor.session_dollar_volume" = "alphalattice.control.product_host.plugins.session_dollar_volume:run"
+
 [build-system]
 requires = ["setuptools==83.0.0", "psutil==7.2.2", "blake3==1.0.11"]
 build-backend = "setuptools.build_meta"

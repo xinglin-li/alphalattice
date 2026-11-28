@@ -12,6 +12,7 @@ The idiom follows the existing source architecture import guards.
 
 from __future__ import annotations
 
+import json
 import os
 import subprocess
 import sys
@@ -20,6 +21,9 @@ from pathlib import Path
 import pytest
 
 from alphalattice.capabilities.domain_contracts import spawn
+from alphalattice.control.product_host.plugins import registry
+from alphalattice.kernel.identity import blake3_digest, canonical_hash
+from alphalattice.protocols.plugin_contract import ExecutionMode
 
 ROOT = Path(__file__).resolve().parents[3]
 SOLVERS = ("cvxpy", "osqp", "optuna")
@@ -222,10 +226,19 @@ def test_the_local_application_service_reaches_no_solver_or_masked_lane() -> Non
     assert result.returncode == 0, result.stderr
 
 
-def test_the_host_starts_without_its_heavy_libraries_or_its_strategy_source_hash() -> None:
-    """The Host entry loads no heavy numerical library and computes no strategy source hash
-    while it starts; a library first loaded inside a thread limit, the Risk scope's included,
-    still runs at that limit."""
+@pytest.mark.proves("product_host.only_explicit_plugins_activate_with_verified_bytes")
+@pytest.mark.parametrize(
+    "case",
+    ["startup", "builtin", "enabled", "changed", "unlisted", "conflict", "exited", "source_only"],
+)
+def test_the_host_starts_without_its_heavy_libraries_or_its_strategy_source_hash(
+    case: str, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Hosting and explicit capability discovery leave implementation imports to their readers."""
+    if case != "startup":
+        _assert_explicit_plugin_registrations(case, tmp_path, monkeypatch)
+        return
+    _assert_static_plugin_inventory(tmp_path)
 
     result = _probe(
         "import sys; "
@@ -258,6 +271,141 @@ def test_the_control_catalog_alone_reaches_no_solver_or_masked_lane() -> None:
         + _ASSERT_CLEAN
         + "; "
         + _ASSERT_NO_EXCLUDED_PACKAGE
+    )
+    assert result.returncode == 0, result.stderr
+
+
+def _assert_explicit_plugin_registrations(
+    case: str, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Inventory is static and first use loads an exact closure in a worker."""
+    source = b"def run(params):\n    return params\n"
+    entry = "custom:run"
+    builtin = "factor.session_dollar_volume"
+    user = builtin if case == "conflict" else "factor.custom_momentum"
+    folder = tmp_path / "plugins" / user
+    folder.mkdir(parents=True)
+    implementation = folder / "custom.py"
+    implementation.write_bytes(source)
+    manifest = json.dumps(
+        {
+            "entry": entry,
+            "files": ["custom.py"],
+            "effect_mode": "READ_ONLY",
+            "lease": {"memory_bytes": 1024, "threads": 1, "timeout_ms": 1000},
+            "input_schema": {"type": "object", "required": ["window"]},
+            "output_schema": {"type": "object"},
+            "inputs": ["market.bars"],
+            "as_of_param": "as_of",
+        }
+    ).encode()
+    (folder / "plugin.json").write_bytes(manifest)
+    digest = canonical_hash(
+        {
+            "form": "plugin-closure-v1",
+            "name": user,
+            "entry": entry,
+            "manifest": blake3_digest(manifest),
+            "sources": {"custom.py": blake3_digest(source)},
+        }
+    )
+    if case in {"enabled", "changed", "conflict", "exited"}:
+        (tmp_path / "plugins.toml").write_text(
+            f'[enabled]\n"{user}" = "{digest}"\n', encoding="utf-8"
+        )
+    calls = []
+    distribution = registry.metadata.distribution
+
+    def own_distribution(name: str) -> registry.metadata.Distribution:
+        assert name == "alphalattice"
+        calls.append(name)
+        if case == "source_only":
+            raise registry.metadata.PackageNotFoundError(name)
+        return distribution(name)
+
+    def no_scan(*_args: object, **_kwargs: object) -> None:
+        raise AssertionError("a registry operation scanned for plugins or reached a worker loader")
+
+    monkeypatch.setattr(registry.metadata, "distribution", own_distribution)
+    monkeypatch.setattr(registry.metadata, "entry_points", no_scan)
+    monkeypatch.setattr(registry.metadata.EntryPoint, "load", no_scan)
+    monkeypatch.setattr(Path, "iterdir", no_scan)
+    monkeypatch.setattr(Path, "glob", no_scan)
+    monkeypatch.setattr(Path, "rglob", no_scan)
+    plugins = registry.PluginRegistry(tmp_path)
+    assert calls == ["alphalattice"]
+    if case == "source_only":
+        assert plugins.capabilities == ()
+        return
+    assert plugins.capabilities == (
+        (user, builtin) if case in {"enabled", "changed", "exited"} else (builtin,)
+    )
+    if case in {"unlisted", "conflict"}:
+        with pytest.raises(registry.PluginRefused) as refused:
+            plugins.activate(user, no_scan)
+        expected = "capability_conflict" if case == "conflict" else "capability_unlisted"
+        assert (refused.value.code, refused.value.name) == (f"plugin_registry.{expected}", user)
+        return
+    if case == "changed":
+        implementation.write_bytes(source.replace(b"return params", b"return {}"))
+        with pytest.raises(registry.PluginRefused) as refused:
+            plugins.activate(user, no_scan)
+        assert (refused.value.code, refused.value.name) == ("plugin_registry.closure_changed", user)
+        return
+    capability = builtin if case == "builtin" else user
+    assert plugins.state(capability) is registry.PluginState.DISCOVERED
+
+    class Worker:
+        running = True
+
+        def is_alive(self) -> bool:
+            return self.running
+
+    worker = Worker()
+
+    def load(verified: registry.VerifiedPlugin) -> Worker:
+        assert verified.spec.capability_id == capability
+        if case == "builtin":
+            from alphalattice.control.product_host.plugins import session_dollar_volume
+
+            assert verified.spec.execution_mode is ExecutionMode.TRUSTED_POOL
+            assert verified.entry == f"{session_dollar_volume.__name__}:run"
+            assert session_dollar_volume.run(
+                {"close_raw": [2.5, 4.0], "volume_raw": [8.0, 3.0]}
+            ) == {"values": [20.0, 12.0]}
+        else:
+            assert verified.spec.execution_mode is ExecutionMode.SANDBOX_SUBPROCESS
+            assert verified.spec.code_role_hash == digest
+            assert verified.spec.inputs == ("market.bars",)
+            assert verified.spec.as_of_param == "as_of"
+            assert verified.sources == {"custom.py": source}
+        return worker
+
+    assert plugins.activate(capability, load) is worker
+    assert plugins.state(capability) is registry.PluginState.ACTIVE
+    assert plugins.activate(capability, no_scan) is worker
+    if case == "exited":
+        worker.running = False
+        assert plugins.state(capability) is registry.PluginState.EVICTED
+
+
+def _assert_static_plugin_inventory(tmp_path: Path) -> None:
+    """The ordinary serving path reads the manifest and leaves the plugin undispatched."""
+    result = _probe(
+        "import os, sys; from pathlib import Path; "
+        "from alphalattice.control.product_host.composition.local_web_session "
+        "import LocalPortfolioWebSession; "
+        f"root = Path({str(tmp_path)!r}); "
+        "os.environ['ALPHALATTICE_DATA_ROOT'] = str(root / 'data'); "
+        "os.environ['ALPHALATTICE_BACKUP_ROOT'] = str(root / 'backups'); "
+        "os.environ['ALPHALATTICE_CACHE_ROOT'] = str(root / 'cache'); "
+        "host = LocalPortfolioWebSession.from_workspace(root / 'workspace');\n"
+        "with host:\n"
+        "    assert host.plugins.capabilities == ('factor.session_dollar_volume',), "
+        "host.plugins.capabilities\n"
+        "    assert host.plugins.state('factor.session_dollar_volume') == 'DISCOVERED'\n"
+        "    assert 'alphalattice.control.product_host.plugins.session_dollar_volume' "
+        "not in sys.modules\n"
     )
     assert result.returncode == 0, result.stderr
 

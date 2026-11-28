@@ -154,6 +154,8 @@ src/alphalattice/interface/local_application
 src/alphalattice/investment/alpha_research/scores/product_lifecycle.py
 src/alphalattice/control/product_host/composition/portfolio_finalization.py
 src/alphalattice/control/product_host/composition/local_web_session.py
+src/alphalattice/control/product_host/plugins/registry.py
+src/alphalattice/control/product_host/plugins/session_dollar_volume.py
 src/alphalattice/control/product_host/composition/native_usage_reader.py
 src/alphalattice/control/product_host/composition/workspace_activity.py
 scripts/run_local_portfolio_web.py

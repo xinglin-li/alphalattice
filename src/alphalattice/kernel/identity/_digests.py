@@ -127,3 +127,7 @@ def canonical_json(value: object) -> str:
 def canonical_hash(value: object) -> str:
     """Hash canonical JSON-safe contract content, never a payload or local path."""
     return tagged_blake3(identity_blake3(canonical_json(value).encode("utf-8")))
+
+
+# Integrity envelopes use the same canonical representation as identity records.
+integrity_blake3_canonical = canonical_hash

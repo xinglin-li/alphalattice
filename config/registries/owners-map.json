@@ -2416,6 +2416,7 @@
         "alphalattice.control.product_host.composition.entry",
         "alphalattice.control.product_host.composition.application_session",
         "alphalattice.control.product_host.composition.local_web_session",
+        "alphalattice.control.product_host.plugins.registry",
         "alphalattice.control.product_host.composition.local_web_connection",
         "alphalattice.control.product_host.composition.web_launcher",
         "alphalattice.control.product_host.composition.native_usage_reader",

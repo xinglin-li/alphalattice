@@ -13,6 +13,7 @@ import tempfile
 import threading
 import tomllib
 import zipfile
+from configparser import ConfigParser
 from pathlib import Path
 from types import SimpleNamespace
 from urllib.parse import unquote, urlsplit
@@ -658,10 +659,19 @@ def test_a_built_wheel_holds_the_exact_runtime_content_set(tmp_path: Path) -> No
         names = set(archive.namelist())
         assert {name for name in names if ".dist-info/" not in name} == expected
         entry = next(name for name in names if name.endswith(".dist-info/entry_points.txt"))
-        assert archive.read(entry).decode().strip() == (
-            "[console_scripts]\nalphalattice = "
-            "alphalattice.control.product_host.composition.entry:main"
-        )
+        entry_points = ConfigParser(interpolation=None)
+        entry_points.optionxform = str
+        entry_points.read_string(archive.read(entry).decode())
+        assert {group: dict(entry_points[group]) for group in entry_points.sections()} == {
+            "console_scripts": {
+                "alphalattice": "alphalattice.control.product_host.composition.entry:main"
+            },
+            "alphalattice.capabilities": {
+                "factor.session_dollar_volume": (
+                    "alphalattice.control.product_host.plugins.session_dollar_volume:run"
+                )
+            },
+        }
         for name in inputs:
             assert archive.read("alphalattice/_runtime/" + name) == (ROOT / name).read_bytes()
         hashes = json.loads(archive.read("alphalattice/_runtime/config/release/source-hashes.json"))

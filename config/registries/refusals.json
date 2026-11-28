@@ -734,6 +734,36 @@
 "owner": "plugin_contract",
 "category": "INVALID_ARGUMENT"
 },
+"plugin_registry.configuration_invalid": {
+  "owner": "alphalattice.control.product_host",
+  "category": "FAILED_PRECONDITION",
+  "classification_note": "The workspace plugin enablement file cannot be read as named BLAKE3 bindings."
+},
+"plugin_registry.manifest_invalid": {
+  "owner": "alphalattice.control.product_host",
+  "category": "FAILED_PRECONDITION",
+  "classification_note": "Repair the named plugin's static manifest and verify the corrected closure."
+},
+"plugin_registry.capability_conflict": {
+  "owner": "alphalattice.control.product_host",
+  "category": "FAILED_PRECONDITION",
+  "classification_note": "More than one explicit registration claims the same capability."
+},
+"plugin_registry.capability_unlisted": {
+  "owner": "alphalattice.control.product_host",
+  "category": "NOT_FOUND",
+  "classification_note": "The requested capability is absent from the installed and enabled registrations."
+},
+"plugin_registry.closure_changed": {
+  "owner": "alphalattice.control.product_host",
+  "category": "FAILED_PRECONDITION",
+  "classification_note": "Verify the named plugin again before enabling its changed bytes."
+},
+"plugin_registry.worker_exited": {
+  "owner": "alphalattice.control.product_host",
+  "category": "FAILED_PRECONDITION",
+  "classification_note": "The worker exited before the named plugin could become active."
+},
 "agent_bundle.analyst_task_required": {
 "owner": "agent_bundle",
 "category": "INVALID_ARGUMENT"

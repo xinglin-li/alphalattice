@@ -2668,7 +2668,7 @@
       "seconds": 5
     },
     "pipeline.public_manifest_follows_registered_host_routes": {
-      "description": "Public reach follows the Host's registered literal routes and refuses private, missing and invalid route targets.",
+      "description": "Public reach follows the Host's registered routes and installed capability entry points while refusing private, missing and invalid targets.",
       "owner": "devtools.pipeline",
       "layer": "integration",
       "lower_layer": "The end-to-end scanner combines the installed verification inventory, import closure, private classification and final manifest projection, so checking the route parser alone cannot prove publication or refusal.",
@@ -3025,6 +3025,13 @@
       "owner": "alphalattice.control.product_host",
       "layer": "integration",
       "seconds": 20
+    },
+    "product_host.only_explicit_plugins_activate_with_verified_bytes": {
+      "description": "Host startup lists only explicit plugin manifests, and the first request activates a verified closure in a worker whose exit determines eviction.",
+      "owner": "alphalattice.control.product_host",
+      "layer": "integration",
+      "seconds": 12,
+      "lower_layer": "Discovery uses the installed distribution metadata and workspace files, and startup checks the import set of a fresh serving Host."
     },
     "product_host.panel_cleanup_keeps_current_and_previous_generations": {
       "description": "A cleanup keeps the current Panel generation and the one before the last data update, and releases nothing while a Task is busy.",

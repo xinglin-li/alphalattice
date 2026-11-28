@@ -203,6 +203,7 @@ if TYPE_CHECKING:
     from alphalattice.control.product_host.maintenance.data_update import (
         WorkspaceDataUpdateApplication,
     )
+    from alphalattice.control.product_host.plugins.registry import PluginRegistry
     from alphalattice.evidence.alternative_evidence.contracts import SecIssuerRegistrySnapshot
     from alphalattice.evidence.alternative_evidence.publication.analysis import (
         AlternativeEvidenceAnalysisPublicationService,
@@ -726,6 +727,7 @@ class LocalPortfolioWebSession:
     session: WorkspaceApplicationSession | None = field(default=None, init=False)
     dispatcher: LocalBackgroundDispatcher | None = field(default=None, init=False)
     operations: PortfolioResearchOperations | None = field(default=None, init=False)
+    plugins: PluginRegistry | None = field(default=None, init=False)
     activity: WorkspaceActivity | None = field(default=None, init=False)
     forward_prewarm: PortfolioForwardPrewarm | None = field(default=None, init=False)
     native_usage_reader: NativeUsageReader | None = field(default=None, init=False)
@@ -941,6 +943,7 @@ class LocalPortfolioWebSession:
         return self.operations is not None
 
     def _compose(self) -> str:
+        from ..plugins.registry import PluginRegistry  # lazy: full Host only
         from .native_usage_reader import attach_native_usage  # lazy: full Host only
         from .operation_route_families import host_door  # lazy: full Host only
         from .portfolio_research_operations import (  # lazy: full Host only
@@ -948,6 +951,7 @@ class LocalPortfolioWebSession:
         )
         from .workspace_activity import WorkspaceActivity  # lazy: full Host only
 
+        self.plugins = PluginRegistry(self.workspace)
         session = WorkspaceApplicationSession.acquire(self.workspace, self.upgrade).__enter__()
         self.session = session
         # The one holder of the workspace manifest every application reads; the operations
@@ -1442,6 +1446,7 @@ class LocalPortfolioWebSession:
         self.dispatcher = None
         self.session = None
         self.operations = None
+        self.plugins = None
         self.forward_prewarm = None
         self.native_usage_reader = None
         self._timers = None

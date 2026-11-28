@@ -4,10 +4,13 @@
       "conformance_suite": [],
       "consumers": [
         "data_layer",
+        "product_host",
         "task_control"
       ],
       "description": "The plugin contract is what a capability declares, runs with, is asked and answers, so the Host can key, run and commit any capability the same way in either execution mode.",
-      "implementations": [],
+      "implementations": [
+        "factor.session_dollar_volume=alphalattice.control.product_host.plugins.session_dollar_volume:run"
+      ],
       "kind": "extension point",
       "owner": "alphalattice.protocols.plugin_contract",
       "schema": {

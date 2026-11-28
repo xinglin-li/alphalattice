@@ -1,0 +1,21 @@
+{
+  "effect_mode": "READ_ONLY",
+  "lease": {"memory_bytes": 536870912, "threads": 1, "timeout_ms": 30000},
+  "input_schema": {
+    "type": "object",
+    "required": ["close_raw", "volume_raw"],
+    "properties": {
+      "close_raw": {"type": "array", "items": {"type": "number"}},
+      "volume_raw": {"type": "array", "items": {"type": "number"}}
+    }
+  },
+  "output_schema": {
+    "type": "object",
+    "required": ["values"],
+    "properties": {"values": {"type": "array", "items": {"type": "number"}}}
+  },
+  "files": [
+    "control/product_host/plugins/session_dollar_volume.py",
+    "foundation/feature_engine/producers/factors/session_liquidity.py"
+  ]
+}

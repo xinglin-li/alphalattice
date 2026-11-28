@@ -12,9 +12,11 @@ import tomllib
 from collections.abc import Callable
 from datetime import date
 from pathlib import Path
+from types import SimpleNamespace
 
 import pytest
 
+from alphalattice.control.product_host.plugins.registry import PluginRegistry, VerifiedPlugin
 from alphalattice.kernel.identity import is_blake3
 from alphalattice.protocols.plugin_contract import (
     ActionSpec,
@@ -43,29 +45,35 @@ SAMPLE = ActionSpec(
 )
 
 
-def _declared(name: str) -> Callable[[], ActionSpec]:
-    def spec() -> ActionSpec:
-        raise AssertionError(
-            f"{SEAM} declares {name}, but no reader of the seam's registry builds its ActionSpec"
-            " here; the card that adds the group's registry wires it into this suite"
-        )
+def _declared(name: str) -> Callable[[Path], ActionSpec]:
+    def build(workspace: Path) -> ActionSpec:
+        captured: list[ActionSpec] = []
 
-    return spec
+        def capture(plugin: VerifiedPlugin) -> SimpleNamespace:
+            captured.append(plugin.spec)
+            return SimpleNamespace(is_alive=lambda: True)
+
+        PluginRegistry(workspace).activate(name, capture)
+        (spec,) = captured
+        assert spec.capability_id == name
+        return spec
+
+    return build
 
 
 _GROUP = tomllib.loads((Path(__file__).resolve().parents[3] / "pyproject.toml").read_text("utf-8"))
-IMPLEMENTATIONS: dict[str, Callable[[], ActionSpec]] = {
-    "sample": lambda: SAMPLE,
+IMPLEMENTATIONS: dict[str, Callable[[Path], ActionSpec]] = {
+    "sample": lambda _workspace: SAMPLE,
     **{name: _declared(name) for name in _GROUP["project"].get("entry-points", {}).get(SEAM, {})},
 }
 
 
 @pytest.mark.proves("plugin_contract.every_capability_keeps_the_contract")
 @pytest.mark.parametrize("implementation", IMPLEMENTATIONS, ids=tuple(IMPLEMENTATIONS))
-def test_every_capability_keeps_the_plugin_contract(implementation: str) -> None:
+def test_every_capability_keeps_the_plugin_contract(implementation: str, tmp_path: Path) -> None:
     """A capability's spec survives the contract's wire form, each of its runs is keyed by its
     inputs alone, and a run its declared inputs or as-of do not admit is refused by name."""
-    spec = IMPLEMENTATIONS[implementation]()
+    spec = IMPLEMENTATIONS[implementation](tmp_path)
     assert ActionSpec.model_validate_json(spec.model_dump_json()) == spec
     today, params = date(2026, 11, 27), {"window": 20, "universe": ["A", "B"]}
     versions = {table: n + 1 for n, table in enumerate(spec.inputs)}

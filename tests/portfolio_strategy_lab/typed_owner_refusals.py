@@ -190,6 +190,8 @@ def make_owner_exception(cls: type[Exception]) -> tuple[Exception, str]:
     if name == "GoalRefusal":
         # Handlers read only the code; the revision is goal_check's, for its recovery offer.
         return cls(CODE, object()), CODE
+    if name == "PluginRefused":
+        return cls(code, "factor.fixture"), code
     if name == "TaskRecordAuthorityError":
         return cls(()), "task_control.database_authority_unreadable"
     if name == "TaskQueueHeadAuthorityError":

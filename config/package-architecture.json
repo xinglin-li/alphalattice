@@ -722,6 +722,8 @@
     "alphalattice.control.observation_runtime.telemetry.process_metrics": "Read the Host's effective processor allowance when preparing native startup.",
     "alphalattice.evidence.alternative_evidence.runtime.execution": "Read the workspace's CPU setting before numerical imports or open Evidence execution on first use.",
     "alphalattice.control.workspace_runtime.content_store": "Load the file writer when native usage settings are written.",
+    "alphalattice.control.product_host.plugins.registry": "Read static plugin registrations only when the full Host composes.",
+    "alphalattice.control.workspace_runtime.verified_facts": "Read verified plugin source bytes when a capability is requested.",
     "alphalattice.kernel.egress.http -> httpx": "Load the outbound HTTP backend only when a source opens or reads its session.",
     "alphalattice.kernel.egress.http -> requests": "Load the Requests backend only when a sender opens a direct session.",
     "alphalattice.evidence.alternative_evidence.analysis.contracts": "Read the Evidence topic declaration only when a view request names a topic.",

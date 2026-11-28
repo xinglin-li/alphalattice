@@ -17,6 +17,7 @@ import posixpath
 import re
 import subprocess
 import sys
+import tomllib
 from collections import Counter
 from collections.abc import Callable, Iterable
 from pathlib import Path, PurePosixPath
@@ -1454,6 +1455,28 @@ def _host_route_names(raw: bytes) -> set[str]:
     return names
 
 
+def _capability_names(raw: bytes) -> set[str]:
+    """Read the built-in targets declared in AlphaLattice's entry-point group."""
+    project = tomllib.loads(raw.decode("utf-8")).get("project", {})
+    entries = project.get("entry-points", {}).get("alphalattice.capabilities", {})
+    if not isinstance(entries, dict):
+        raise ValueError("public_release.capability_target_invalid: alphalattice.capabilities")
+    names = set()
+    for name, target in entries.items():
+        if not isinstance(target, str):
+            raise ValueError(f"public_release.capability_target_invalid: {name}")
+        module, separator, attribute = target.partition(":")
+        if not (
+            separator
+            and module.startswith("alphalattice.")
+            and all(part.isidentifier() for part in module.split("."))
+            and attribute.isidentifier()
+        ):
+            raise ValueError(f"public_release.capability_target_invalid: {name}")
+        names.add(module)
+    return names
+
+
 def import_closure(
     blobs: dict[str, bytes],
     roots: set[str],
@@ -1461,7 +1484,7 @@ def import_closure(
     runtime_modes: dict[str, str] | None = None,
     declared: frozenset[str] = frozenset(),
 ) -> set[str]:
-    """Follow parsed imports, including the registered Door targets in the runtime closure."""
+    """Follow parsed imports, registered Door targets and installed capability targets."""
     modules = {
         p[4:-3].replace("/", ".").removesuffix(".__init__"): p
         for p in blobs
@@ -1477,6 +1500,20 @@ def import_closure(
             if prefix in modules
         }
 
+    def public_targets(names: set[str], kind: str, modes: dict[str, str]) -> set[str]:
+        for name in sorted(names):
+            if modes.get(modules.get(name, "")) not in {"100644", "100755"}:
+                raise ValueError(f"public_release.{kind}_untracked: {name}")
+        paths = imported_paths(names)
+        for path in sorted(paths):
+            if classify(path, {path}, set(), set(), declared=declared)[0] != "PUBLIC":
+                raise ValueError(f"public_release.{kind}_private: {path}")
+        return paths
+
+    if runtime_modes is not None and "pyproject.toml" in blobs:
+        roots = roots | public_targets(
+            _capability_names(blobs["pyproject.toml"]), "capability_target", runtime_modes
+        )
     edges = {
         path: imported_paths(_import_names(path, raw))
         for path, raw in blobs.items()
@@ -1488,15 +1525,9 @@ def import_closure(
         path = todo.pop()
         next_paths = edges.get(path, set())
         if path == _HOST_ROUTES and runtime_modes is not None and path not in declared:
-            names = _host_route_names(blobs[path])
-            for name in sorted(names):
-                if runtime_modes.get(modules.get(name, "")) not in {"100644", "100755"}:
-                    raise ValueError(f"public_release.door_route_untracked: {name}")
-            routed = imported_paths(names)
-            for target in sorted(routed):
-                if classify(target, {target}, set(), set(), declared=declared)[0] != "PUBLIC":
-                    raise ValueError(f"public_release.door_route_private: {target}")
-            next_paths = next_paths | routed
+            next_paths = next_paths | public_targets(
+                _host_route_names(blobs[path]), "door_route", runtime_modes
+            )
         for target in next_paths - reached:
             reached.add(target)
             todo.append(target)
