@@ -19,6 +19,7 @@
     "kernel_resources",
     "knowledge",
     "market_data_ops",
+    "plugin_contract",
     "portfolio_backtesting",
     "portfolio_management",
     "quant",
