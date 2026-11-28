@@ -1206,6 +1206,9 @@ _SCHEMA_DISPLAYS = frozenset(
             "src/alphalattice/oversight/chief_risk_officer/decision/book_evidence.py",
             "PortfolioReviewAnswer",
         ),
+        # The interface inventory displays the plugin contract schemas and has no identity readers.
+        ("src/devtools/architecture/interface_registry.py", "TypeAdapter"),
+        ("src/devtools/architecture/interface_registry.py", "contract"),
         # The compatibility manifest displays typed contracts; neither schema feeds a hash.
         ("src/devtools/architecture/operation_registry.py", "PortfolioResearchRequestDocument"),
         ("src/devtools/architecture/operation_registry.py", "model"),
