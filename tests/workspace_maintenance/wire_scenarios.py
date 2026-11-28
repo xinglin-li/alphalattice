@@ -14,6 +14,53 @@ SCENARIOS: dict[str, dict[str, Any]] = {
         "symbols": {"AAPL": 180.0, "MSFT": 410.0},
         "days": ["2026-07-29", "2026-07-30", "2026-07-31"],
         "cases": {
+            "chart-empty-200": [{"kind": "chart-empty", "symbol": "AAPL", "on": "2026-07-30"}],
+            "chart-nan-close": [{"kind": "chart-null-close", "symbol": "AAPL", "on": "2026-07-30"}],
+            "chart-zero-close": [
+                {"kind": "chart-zero-close", "symbol": "AAPL", "on": "2026-07-30"}
+            ],
+            "chart-unfinished-next-session": [
+                {"kind": "chart-partial", "symbol": "AAPL", "on": "2026-07-31"}
+            ],
+            "cash-acquisition-delists": [
+                {
+                    "kind": "cash-acquisition",
+                    "symbol": "AAPL",
+                    "ex": "2026-07-30",
+                    "on": "2026-07-31",
+                    "amount": 205.0,
+                }
+            ],
+            "ticker-change": [
+                {"kind": "ticker-change", "symbol": "AAPL", "to": "AAPX", "on": "2026-07-30"}
+            ],
+            "special-dividend": [
+                {
+                    "kind": "dividend",
+                    "symbol": "AAPL",
+                    "ex": "2026-07-30",
+                    "known": "2026-07-30",
+                    "amount": 28.0,
+                }
+            ],
+            "split-reverse-fifth": [
+                {
+                    "kind": "split",
+                    "symbol": "AAPL",
+                    "ex": "2026-07-30",
+                    "known": "2026-07-30",
+                    "ratio": 0.2,
+                }
+            ],
+            "spin-off-price-adjustment": [
+                {
+                    "kind": "split",
+                    "symbol": "AAPL",
+                    "ex": "2026-07-30",
+                    "known": "2026-07-30",
+                    "ratio": 1.589,
+                }
+            ],
             "dividend-stored": [
                 {
                     "kind": "dividend",

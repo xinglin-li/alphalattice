@@ -197,7 +197,7 @@ class WireReplay:
             fault = self._fault(symbol=symbol, url=url)
             if fault is not None:
                 return fault
-            if symbol not in self.symbols:
+            if self._history_symbol(symbol) not in self.symbols:
                 body = {"chart": {"result": None, "error": {"code": "Not Found"}}}
                 return 404, [("Content-Type", "application/json")], json.dumps(body).encode(), []
             body = {"chart": {"result": [self.chart(symbol, query)], "error": None}}
@@ -250,29 +250,69 @@ class WireReplay:
 
     # The chart ------------------------------------------------------------------------------
 
+    def _history_symbol(self, symbol: str) -> str:
+        for event in self.events:
+            if event.kind == "ticker-change" and event.to == symbol and event.on <= self.today:
+                return event.symbol
+        return symbol
+
     def chart(self, symbol: str, query: Mapping[str, str]) -> dict[str, Any]:
         """Yahoo's daily chart result for `symbol` as the provider shows it on `today`."""
-        bars = self.history(symbol, self.today)
+        history_symbol = self._history_symbol(symbol)
+        bars = self.history(history_symbol, self.today)
         if query.get("range") == "1d":
             sessions = list(bars)[-1:]
         else:
             first = datetime.fromtimestamp(int(query["period1"]), UTC).date()
             last = datetime.fromtimestamp(int(query["period2"]), UTC).date()
             sessions = [item for item in bars if first <= item < last]
+        for event in self.events:
+            if event.kind == "ticker-change" and event.symbol == symbol and event.on <= self.today:
+                sessions = [session for session in sessions if session < event.on]
+            if event.symbol == symbol and event.kind == "cash-acquisition":
+                if event.on is not None and self.today >= event.on:
+                    sessions = []
+                elif event.ex in sessions:
+                    for field in ("open", "high", "low", "close", "adjclose"):
+                        bars[event.ex][field] = event.amount
+        fault = next(
+            (
+                event
+                for event in self.events
+                if event.symbol == symbol
+                and event.on == self.today
+                and event.kind.startswith("chart-")
+            ),
+            None,
+        )
+        if fault is not None and fault.kind == "chart-empty":
+            sessions = []
         stamps = [_open_stamp(item) for item in sessions]
         quote = {
             name: [bars[item][name] for item in sessions]
             for name in ("open", "high", "low", "close", "volume")
         }
+        adjusted = [bars[item]["adjclose"] for item in sessions]
+        if fault is not None and self.today in sessions:
+            index = sessions.index(self.today)
+            if fault.kind == "chart-null-close":
+                quote["close"][index] = None
+            elif fault.kind == "chart-zero-close":
+                quote["close"][index] = 0.0
+        if fault is not None and fault.kind == "chart-partial" and self.today not in sessions:
+            stamps.append(_open_stamp(self.today))
+            for name, values in quote.items():
+                values.append(10 if name == "volume" else bars[self.today][name] * 0.99)
+            adjusted.append(bars[self.today]["adjclose"] * 0.99)
         events: dict[str, dict[str, Any]] = {}
-        for event, served in self._served_actions(symbol, self.today):
+        for event, served in self._served_actions(history_symbol, self.today):
             if event.ex not in sessions:
                 continue
             stamp = _open_stamp(event.ex)
             if event.kind == "dividend":
                 events.setdefault("dividends", {})[str(stamp)] = {"amount": served, "date": stamp}
             else:
-                ratio = Fraction(event.ratio).limit_denominator(100)
+                ratio = Fraction(str(event.ratio))
                 events.setdefault("splits", {})[str(stamp)] = {
                     "date": stamp,
                     "numerator": ratio.numerator,
@@ -299,7 +339,7 @@ class WireReplay:
             },
             "indicators": {
                 "quote": [quote],
-                "adjclose": [{"adjclose": [bars[item]["adjclose"] for item in sessions]}],
+                "adjclose": [{"adjclose": adjusted}],
             },
         }
 
@@ -339,6 +379,8 @@ class WireReplay:
                 members.update({symbol: symbol.title() for symbol in event.join})
                 for symbol in event.leave:
                     members.pop(symbol, None)
+            if event.kind == "ticker-change" and event.on <= self.today and event.symbol in members:
+                members[event.to] = members.pop(event.symbol)
         return members
 
     def universe_fetch(self, uri: str) -> SimpleNamespace:
@@ -601,10 +643,13 @@ class ReplayedWorkspace:
         )
         return cls(replay, market, manifest, provider)
 
-    def daily(self, day: date, *, approved: bool = False) -> CurrentUniverseMaintenanceListing:
+    def daily(
+        self, day: date, *, approved: bool = False, observed_at: datetime | None = None
+    ) -> CurrentUniverseMaintenanceListing:
         """The day's maintenance with the provider as it stands on `day`, and the listing's state
         after it; `approved`: the person approved the listing's full-history audit."""
-        self.replay.today = day
+        observed_at = observed_at or evening(day)
+        self.replay.today = observed_at.date()
         approval = frozenset({LISTING} if approved else ())
         runner = CurrentUniverseMaintenance(
             store=self.market,
@@ -612,7 +657,7 @@ class ReplayedWorkspace:
             provider=self.provider,
             as_of_session=day,
             trading_session_authority=resolve_trading_session_authority(
-                start=self.replay.start, end=day, as_of_timestamp=evening(day)
+                start=self.replay.start, end=day, as_of_timestamp=observed_at
             ),
             max_workers=1,
             full_audit_listing_ids=approval,
@@ -621,7 +666,7 @@ class ReplayedWorkspace:
             adjusted_tolerance=SHIPPED_PRECISION,
             rebase_agreement=(SHIPPED_REBASE_PRECISION, SHIPPED_REBASE_FLOOR),
         )
-        runner.run(observed_at=evening(day))
+        runner.run(observed_at=observed_at)
         return self.market.current_universe_maintenance_listings(runner.maintenance_id)[0]
 
 
