@@ -65,6 +65,9 @@ os.environ["ALPHALATTICE_BACKUP_ROOT"] = str(Path(_bootstrap_data.name) / "backu
 # The user's cache (source identity's canonical forms) is this process's own, never the person's;
 # from the session's start it lives under the temporary root every layer's tests may read.
 os.environ["ALPHALATTICE_CACHE_ROOT"] = str(Path(_bootstrap_data.name) / "cache")
+# The suite is offline however it is started, as CI and the commit stage already start it; a test
+# of the network-on path opts out with monkeypatch and says so in its docstring.
+os.environ["ALPHALATTICE_NETWORK_DISABLED"] = "1"
 
 # A test's Git acts on the repository it names, under a configuration the suite owns. A Git hook
 # exports the variables that bind Git to the committing repository (git rev-parse
