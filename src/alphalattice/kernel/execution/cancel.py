@@ -3,13 +3,15 @@
 from __future__ import annotations
 
 from collections.abc import Callable, Iterator
-from contextlib import contextmanager, suppress
+from contextlib import contextmanager, nullcontext, suppress
 from contextvars import ContextVar
 from pathlib import Path
 from threading import Condition, Event, Lock, Thread, Timer
 from time import monotonic
 from typing import Protocol
 from uuid import UUID
+
+from .port import PublicationCheck
 
 CANCELLED = "execution.cancelled"
 TIMED_OUT = "execution.timeout"
@@ -40,8 +42,9 @@ class Bell(Protocol):
 
 
 class _Cancellation:
-    def __init__(self) -> None:
+    def __init__(self, publication_check: PublicationCheck | None = None) -> None:
         self.reason: str | None = None
+        self._publication_check = publication_check
         self._condition = Condition()
         self._interrupts: dict[object, Callable[[], object]] = {}
         self._watcher: Thread | None = None
@@ -57,8 +60,8 @@ class _Cancellation:
 
     def _stop(self, reason: str) -> None:
         if self.reason is None:
-            self.reason = reason
             self._deadline = monotonic() + 1.0
+            self.reason = reason
 
     def _start(self) -> None:
         if self._watcher is None:
@@ -110,9 +113,14 @@ _RUNNING_LOCK = Lock()
 
 
 @contextmanager
-def execution_cancellation(execution_id: UUID, timeout: float | None = None) -> Iterator[None]:
+def execution_cancellation(
+    execution_id: UUID,
+    timeout: float | None = None,
+    *,
+    publication_check: PublicationCheck | None = None,
+) -> Iterator[None]:
     """Bind the execution's signal for its lifetime, including its nested thread work."""
-    signal = _Cancellation()
+    signal = _Cancellation(publication_check)
     with _RUNNING_LOCK:
         _RUNNING[execution_id] = signal
     reset = _CURRENT.set(signal)
@@ -182,6 +190,30 @@ def stop_reason() -> str | None:
     """Return the accepted stop reason for the current execution, if any."""
     signal = _CURRENT.get()
     return None if signal is None else signal.reason
+
+
+def stop_deadline() -> float | None:
+    """The absolute settlement deadline of this execution's accepted stop."""
+    signal = _CURRENT.get()
+    return signal._deadline if signal is not None and signal.reason is not None else None
+
+
+@contextmanager
+def execution_publication() -> Iterator[None]:
+    """Order an irreversible publication against acceptance of this execution's stop."""
+    signal = _CURRENT.get()
+    if signal is None:
+        yield
+        return
+    check = signal._publication_check
+    guard = check() if check is not None else nullcontext(False)
+    # Task Control takes the durable authority before it signals the execution.
+    with guard as cancelled, signal._condition:
+        if cancelled:
+            signal.stop(CANCELLED)
+        if signal.reason is not None:
+            raise ExecutionStopped(signal.reason)
+        yield
 
 
 def interrupt_on_execution_stop(interrupt: Callable[[], object]) -> Callable[[], None]:

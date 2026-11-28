@@ -9,6 +9,7 @@ from typing import Literal, Protocol
 from uuid import UUID
 
 type ExecutionLane = Literal["interactive", "background"]
+type PublicationCheck = Callable[[], AbstractContextManager[bool]]
 
 
 _SELECTED_TASK: ContextVar[UUID | None] = ContextVar("execution_selected_task", default=None)
@@ -48,7 +49,12 @@ class ExecutionPort(Protocol):
         ...
 
     def running(
-        self, execution_id: UUID, timeout: float | None, heartbeat: ExecutionHeartbeat
+        self,
+        execution_id: UUID,
+        timeout: float | None,
+        heartbeat: ExecutionHeartbeat,
+        *,
+        publication_check: PublicationCheck | None = None,
     ) -> AbstractContextManager[None]:
         """Own a running execution until its work and heartbeat settle."""
         ...

@@ -7,24 +7,42 @@ The workspace setting is read when the Host composes. Restart after changing it.
 from __future__ import annotations
 
 import re
+import sys
 import tomllib
-from collections.abc import Callable, Mapping
+from collections.abc import Callable, Iterator, Mapping
+from contextlib import contextmanager
 from dataclasses import dataclass, field
 from enum import StrEnum
-from importlib import metadata
+from importlib import import_module, metadata
+from importlib.abc import Loader, MetaPathFinder
+from importlib.util import spec_from_loader
 from pathlib import Path, PurePosixPath, PureWindowsPath
+from tempfile import TemporaryDirectory
 from threading import Lock
-from types import MappingProxyType
-from typing import Annotated, Final, Protocol
-from uuid import uuid7
+from types import MappingProxyType, ModuleType
+from typing import TYPE_CHECKING, Annotated, Final, Protocol
+from uuid import uuid4, uuid7
 
 from pydantic import StringConstraints, ValidationError
 
 from alphalattice.capabilities.domain_contracts.domain.base import DomainModel, ShortString
 from alphalattice.kernel.door import DECISIONS_DATABASE, Decision, Decisions
 from alphalattice.kernel.identity import integrity_blake3_canonical, is_blake3
-from alphalattice.protocols.plugin_contract import ActionSpec, EffectMode, ExecutionMode, Lease
+from alphalattice.protocols.plugin_contract import (
+    ActionInvocation,
+    ActionReceipt,
+    ActionSpec,
+    EffectMode,
+    ExecutionContext,
+    ExecutionMode,
+    Lease,
+)
 from alphalattice.protocols.plugin_contract.contracts import JsonObject
+
+if TYPE_CHECKING:
+    from importlib.machinery import ModuleSpec
+
+    from alphalattice.control.task_control.plugin_staging import PluginStaging
 
 _GROUP: Final = "alphalattice.capabilities"
 _PACKAGE: Final = Path(__file__).resolve().parents[3]
@@ -153,6 +171,7 @@ class _Activation:
     registration: _Registration
     state: PluginState = PluginState.DISCOVERED
     worker: PluginWorker | None = None
+    trusted_role: str | None = None
     lock: Lock = field(default_factory=Lock)
 
     def live_worker(self) -> PluginWorker | None:
@@ -172,10 +191,15 @@ class PluginRegistry:
         self._actions: dict[str, _Activation] = {}
         self._refusals: dict[str, PluginRefused] = {}
         for entry in _builtin_entries():
+            package = _PACKAGE
+            if entry.dist is not None:
+                installed = entry.dist.locate_file("alphalattice")
+                if isinstance(installed, Path) and installed.is_dir():
+                    package = installed.resolve()
             self._add(
                 _registration(
                     entry.name,
-                    _PACKAGE,
+                    package,
                     Path("control/product_host/plugins") / f"{entry.name}.json",
                     entry=entry.value,
                 )
@@ -218,6 +242,116 @@ class PluginRegistry:
     def verify(self, capability: str) -> VerifiedPlugin:
         """Read the verified closure without seeking a workspace decision or loading a worker."""
         return self._action(capability).registration.verify()
+
+    def trusted_spec(self, capability: str) -> ActionSpec:
+        """Admit a built-in closure for invocation keying, without starting a worker."""
+        action = self._action(capability)
+        with action.lock:
+            return self._verify_trusted(action).spec
+
+    def run_trusted(
+        self,
+        invocation: ActionInvocation,
+        *,
+        staging: PluginStaging | None = None,
+        cancelled: Callable[[], bool] | None = None,
+    ) -> object:
+        """Run a verified built-in, committing staged effects through the Host's staging owner."""
+        if not isinstance(invocation, ActionInvocation):
+            name = getattr(invocation, "__name__", type(invocation).__name__)
+            raise PluginRefused("plugin_registry.dispatch_unverified", name)
+        name = invocation.capability_id
+        action = self._action(name)
+        with action.lock:
+            verified = self._verify_trusted(action)
+            if verified.spec.code_role_hash != invocation.code_role_hash:
+                raise PluginRefused("plugin_registry.closure_changed", name)
+        if verified.spec.effect_mode is EffectMode.STAGING_WRITE and staging is not None:
+
+            @contextmanager
+            def stage(context: ExecutionContext) -> Iterator[ActionReceipt]:
+                with self._run_worker(action, verified, invocation, context, cancelled) as receipt:
+                    assert receipt is not None
+                    yield receipt
+
+            return staging.request(
+                verified.spec,
+                invocation,
+                stage,
+            ).result(timeout=verified.spec.lease.timeout_ms / 1000)
+        if verified.spec.effect_mode is not EffectMode.READ_ONLY:
+            raise PluginRefused("plugin_registry.dispatch_unverified", name)
+
+        from alphalattice.control.task_control.plugin_staging import (  # lazy: read verified IPC
+            ARROW_OUTPUT,
+            check_plugin_input,
+            checked_plugin_output,
+        )
+        from alphalattice.control.task_control.scratch import (  # lazy: own this read's scratch
+            task_scratch_directory,
+        )
+        from alphalattice.foundation.data_layer.root import data_root  # lazy: bind the read root
+
+        check_plugin_input(invocation, verified.spec)
+        with TemporaryDirectory(prefix="plugin-read-", dir=task_scratch_directory()) as folder:
+            context = ExecutionContext(
+                invocation_id=uuid4(),
+                catalog_snapshot_id=invocation.catalog_snapshot_id,
+                readonly_data_root=data_root(),
+                staging_dir=Path(folder),
+                lease=verified.spec.lease,
+                is_speculative=invocation.is_speculative,
+            )
+            with self._run_worker(action, verified, invocation, context, cancelled):
+                return checked_plugin_output(context.staging_dir / ARROW_OUTPUT, verified.spec)
+
+    @staticmethod
+    def _verify_trusted(action: _Activation) -> VerifiedPlugin:
+        registration = action.registration
+        if registration.expected_hash is not None:
+            raise PluginRefused("plugin_registry.dispatch_unverified", registration.name)
+        verified = registration.verify()
+        module = verified.entry.partition(":")[0]
+        if not module.startswith("alphalattice.") or _source_path(module) not in verified.sources:
+            raise PluginRefused("plugin_registry.dispatch_unverified", registration.name)
+        if action.trusted_role is not None and action.trusted_role != verified.spec.code_role_hash:
+            raise PluginRefused("plugin_registry.closure_changed", registration.name)
+        action.trusted_role = verified.spec.code_role_hash
+        if action.state is PluginState.DISCOVERED:
+            action.state = PluginState.VERIFIED
+        return verified
+
+    @staticmethod
+    @contextmanager
+    def _run_worker(
+        action: _Activation,
+        verified: VerifiedPlugin,
+        invocation: ActionInvocation,
+        context: ExecutionContext,
+        cancelled: Callable[[], bool] | None,
+    ) -> Iterator[ActionReceipt | None]:
+        from alphalattice.control.task_control.child import KeptWorker  # lazy: actual dispatch
+
+        with action.lock:
+            worker = action.live_worker()
+            if worker is None:
+                worker = action.worker = KeptWorker()
+            if not isinstance(worker, KeptWorker):
+                raise PluginRefused("plugin_registry.dispatch_unverified", invocation.capability_id)
+            with worker.calling(
+                f"{__name__}:_invoke_verified",
+                {
+                    "entry": verified.entry,
+                    "package": action.registration.folder,
+                    "sources": tuple(verified.sources.items()),
+                    "context_json": context.model_dump_json(),
+                    "invocation_json": invocation.model_dump_json(),
+                    "staged": verified.spec.effect_mode is EffectMode.STAGING_WRITE,
+                },
+                cancelled=cancelled,
+            ) as receipt:
+                action.state = PluginState.ACTIVE
+                yield None if receipt is None else ActionReceipt.model_validate_json(receipt)
 
     def activate(
         self,
@@ -273,6 +407,91 @@ class PluginRegistry:
                 effects=effects,
                 decision=decision,
             )
+
+
+def _source_path(module: str) -> str:
+    """Locate a declared module within the installed alphalattice package."""
+    return module.removeprefix("alphalattice.").replace(".", "/") + ".py"
+
+
+class _VerifiedSources(Loader, MetaPathFinder):
+    """Use the registry's frozen bytes for declared modules, including lazy imports."""
+
+    def __init__(self, package: Path, sources: tuple[tuple[str, bytes], ...]) -> None:
+        self.package = package
+        self.sources = sources
+        self.modules = {
+            "alphalattice." + path.removesuffix(".py").replace("/", "."): (path, source)
+            for path, source in sources
+            if path.endswith(".py")
+        }
+
+    def find_spec(
+        self, fullname: str, path: object = None, target: ModuleType | None = None
+    ) -> ModuleSpec | None:
+        if fullname not in self.modules:
+            return None
+        origin = str(self.package / self.modules[fullname][0])
+        return spec_from_loader(fullname, self, origin=origin)
+
+    def exec_module(self, module: ModuleType) -> None:
+        path, source = self.modules[module.__name__]
+        module.__file__ = str(self.package / path)
+        exec(compile(source, module.__file__, "exec"), module.__dict__)
+
+
+def _invoke_verified(
+    *,
+    entry: str,
+    package: Path,
+    sources: tuple[tuple[str, bytes], ...],
+    context_json: str,
+    invocation_json: str,
+    staged: bool,
+    cancelled: Callable[[], bool],
+) -> str | None:
+    """Run the named entry and return only its small control receipt through the pipe."""
+    from alphalattice.control.task_control.plugin_staging import (  # lazy: write in the worker
+        ARROW_OUTPUT,
+        write_arrow_output,
+    )
+    from alphalattice.kernel.execution import CANCELLED, ExecutionStopped  # lazy: worker stop
+
+    if cancelled():
+        raise ExecutionStopped(CANCELLED)
+    context = ExecutionContext.model_validate_json(context_json)
+    invocation = ActionInvocation.model_validate_json(invocation_json)
+    module, _, function = entry.partition(":")
+    if module not in sys.modules:
+        loader = _VerifiedSources(package, sources)
+    else:
+        existing_loader = getattr(sys.modules[module], "__loader__", None)
+        if (
+            not isinstance(existing_loader, _VerifiedSources)
+            or existing_loader.package != package
+            or existing_loader.sources != sources
+        ):
+            raise PluginRefused("plugin_registry.closure_changed", invocation.capability_id)
+        loader = existing_loader
+    if any(
+        name in sys.modules and getattr(sys.modules[name], "__loader__", None) is not loader
+        for name in loader.modules
+    ):
+        raise PluginRefused("plugin_registry.closure_changed", invocation.capability_id)
+    sys.meta_path.insert(0, loader)
+    try:
+        call = getattr(import_module(module), function)
+        output = context.staging_dir / ARROW_OUTPUT
+        if staged:
+            receipt: ActionReceipt = call(context, invocation)
+            if receipt.output is not None:
+                write_arrow_output(output, receipt.model_dump(mode="json")["output"])
+            control_receipt: str = receipt.model_dump_json(exclude={"output"})
+            return control_receipt
+        write_arrow_output(output, call(invocation.params))
+        return None
+    finally:
+        sys.meta_path.remove(loader)
 
 
 def _builtin_entries() -> metadata.EntryPoints:

@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 import multiprocessing
 import os
 import pickle
@@ -9,13 +10,18 @@ import subprocess
 import sys
 import threading
 import time
+import tomllib
 from collections.abc import Callable
-from concurrent.futures import Future, ProcessPoolExecutor
+from concurrent.futures import Future, ProcessPoolExecutor, ThreadPoolExecutor
+from contextlib import contextmanager
 from datetime import UTC, datetime
+from importlib import metadata
 from pathlib import Path
 from types import SimpleNamespace
 from uuid import UUID, uuid4
 
+import psutil
+import pyarrow as pa
 import pytest
 
 from alphalattice.capabilities.domain_contracts import spawn
@@ -25,14 +31,25 @@ from alphalattice.capabilities.domain_contracts.source_identity import (
     open_source_role_acquisition,
     source_role_acquisition,
 )
+from alphalattice.capabilities.domain_contracts.waits import wait_until
+from alphalattice.control.product_host.plugins import registry as plugins
 from alphalattice.control.task_control import child
 from alphalattice.control.task_control.child import (
     ChildInterrupted,
     ChildRefused,
     ChildStartFailed,
+    KeptWorker,
     child_calls,
     run_in_child,
 )
+from alphalattice.control.task_control.plugin_staging import (
+    ARROW_OUTPUT,
+    PluginStaging,
+    StagedCommit,
+    StagingRefused,
+)
+from alphalattice.control.workspace_runtime.artifacts import ArtifactResolver
+from alphalattice.control.workspace_runtime.mutation_gate import WorkspaceMutationGate
 from alphalattice.foundation.data_layer import create_data_root, reading
 from alphalattice.foundation.data_layer.log import HostLog
 from alphalattice.kernel.execution import (
@@ -49,6 +66,12 @@ from alphalattice.kernel.resources import (
     ResourceAmounts,
     ResourceLease,
     use_resource_lease,
+)
+from alphalattice.protocols.plugin_contract import (
+    ActionReceipt,
+    CatalogRead,
+    EffectMode,
+    ReceiptStatus,
 )
 from tests._support.identity_fixtures import fixture_digest
 
@@ -389,10 +412,42 @@ def sized(*, value: int, size: int, cancelled) -> dict[str, object]:  # type: ig
     return {"value": value, "pid": os.getpid(), "payload": b"x" * size}
 
 
-def test_calls_spread_over_kept_workers_answer_in_order_and_bring_back_large_answers() -> None:
+@pytest.mark.proves(
+    "task_control.a_trusted_plugin_stages_its_answer_in_a_kept_worker",
+    "product_host.a_trusted_call_requires_the_verified_entry",
+)
+@pytest.mark.parametrize(
+    ("case", "code", "name"),
+    [
+        pytest.param("spread", "", "", id="spread"),
+        pytest.param("trusted-arrow", "", "", id="trusted-arrow"),
+        pytest.param("trusted-commit-cancel", "", "", id="trusted-commit-cancel"),
+        pytest.param("trusted-output-schema", "", "", id="trusted-output-schema"),
+        pytest.param("callable", "dispatch_unverified", "arbitrary", id="trusted-callable"),
+        pytest.param("missing", "capability_unlisted", "test.missing", id="trusted-missing"),
+        pytest.param("unverified", "closure_changed", "test.registered", id="trusted-unverified"),
+        pytest.param("changed", "closure_changed", "test.registered", id="trusted-changed"),
+    ],
+)
+def test_calls_spread_over_kept_workers_answer_in_order_and_bring_back_large_answers(
+    case, code, name, tmp_path, monkeypatch
+) -> None:
     """requirement (PF #1, W10): independent calls run on up to N kept workers and answer in
     the order made; an answer of megabytes comes back whole, through the calls' folder, where a
     worker's pipe refused one under load (WinError 1450); a refusal answers in its turn."""
+
+    if case == "trusted-arrow":
+        _check_trusted_arrow(tmp_path, monkeypatch)
+        return
+    if case == "trusted-commit-cancel":
+        _check_cancel_at_commit_gate(tmp_path, monkeypatch)
+        return
+    if case == "trusted-output-schema":
+        _check_readonly_output_schema(tmp_path, monkeypatch)
+        return
+    if case != "spread":
+        _check_trusted_refusal(tmp_path, monkeypatch, case, code, name)
+        return
 
     with child_calls(f"{HERE}:sized", workers=3) as calls:
         for value in range(6):
@@ -478,9 +533,17 @@ def test_a_tasks_stop_interrupts_its_workers_operation_when_accepted(monkeypatch
     assert answer == "interrupted" and time.monotonic() - began < 10
 
 
-def test_a_cancellation_reaches_the_worker_and_a_worker_that_ends_is_replaced() -> None:
+@pytest.mark.proves("task_control.a_cancel_ends_the_trusted_workers_tree")
+@pytest.mark.parametrize("case", ["ordinary", "trusted"])
+def test_a_cancellation_reaches_the_worker_and_a_worker_that_ends_is_replaced(
+    case, request
+) -> None:
     """requirement (W10): the parent relays the Task's cancellation while the call runs; a
     worker that ends without answering is an interruption, and the next call starts a new one."""
+
+    if case == "trusted":
+        _check_cancel_ends_tree(request)
+        return
 
     asked = []
 
@@ -498,6 +561,296 @@ def test_a_cancellation_reaches_the_worker_and_a_worker_that_ends_is_replaced() 
         run_in_child(f"{HERE}:ended", {})
     assert processes[0].exitcode == 7
     assert run_in_child(f"{HERE}:doubled", {"value": 5})["value"] == 10
+
+
+def _bounded_grandchild() -> None:
+    threading.Event().wait(20)
+
+
+def _open_capability_tree(*, cancelled) -> tuple[int, int]:
+    leaf = multiprocessing.get_context("spawn").Process(target=_bounded_grandchild)
+    leaf.start()
+    assert leaf.pid is not None
+    return os.getpid(), leaf.pid
+
+
+def _check_cancel_ends_tree(request) -> None:
+    """The OS settles a live worker and its descendant within one second of accepted cancel."""
+    worker = KeptWorker()
+    first, leaf = worker.call(f"{HERE}:_open_capability_tree", {})
+    assert psutil.pid_exists(first) and psutil.pid_exists(leaf)
+    execution = uuid4()
+    checks = 0
+    began = 0.0
+
+    def accept_during_call() -> bool:
+        nonlocal began, checks
+        checks += 1
+        if checks == 2:
+            began = time.monotonic()
+            cancel_execution(execution)
+        return False
+
+    try:
+        with (
+            execution_cancellation(execution),
+            pytest.raises(ExecutionStopped, match=r"execution\.cancelled"),
+        ):
+            worker.call(f"{HERE}:until_cancelled", {"seconds": 20.0}, cancelled=accept_during_call)
+        elapsed = time.monotonic() - began
+        request.node.user_properties.append(("trusted_cancel_seconds", elapsed))
+        assert 0 < elapsed < 1.0
+        assert not psutil.pid_exists(first) and not psutil.pid_exists(leaf)
+        assert not worker.is_alive()
+        assert worker.call(f"{HERE}:doubled", {"value": 5})["pid"] != first
+    finally:
+        if psutil.pid_exists(first):
+            spawn.stop_tree(first)
+
+
+def _installed_fixture(tmp_path, monkeypatch, name, effect, body, required):
+    """Give the registry installed group metadata and real package bytes to verify."""
+    package = tmp_path / "alphalattice"
+    source = package / "control/product_host/plugins/sample.py"
+    source.parent.mkdir(parents=True)
+    source.write_text(body, encoding="utf-8")
+    source.with_name(f"{name}.json").write_text(
+        json.dumps(
+            {
+                "effect_mode": effect,
+                "lease": {"memory_bytes": 1 << 28, "threads": 1, "timeout_ms": 10000},
+                "input_schema": {"type": "object"},
+                "output_schema": {
+                    "type": "object",
+                    "required": required,
+                    "properties": {"values": {"type": "array"}},
+                },
+                "files": [source.relative_to(package).as_posix()],
+            }
+        ),
+        encoding="utf-8",
+    )
+    info = tmp_path / "alphalattice-0.dist-info"
+    info.mkdir()
+    (info / "entry_points.txt").write_text(
+        "[alphalattice.capabilities]\n"
+        f"{name} = alphalattice.control.product_host.plugins.sample:run\n",
+        encoding="utf-8",
+    )
+    distribution = metadata.PathDistribution(info)
+    monkeypatch.setattr(plugins, "metadata", SimpleNamespace(distribution=lambda _: distribution))
+    return plugins.PluginRegistry(tmp_path), source
+
+
+def _check_trusted_refusal(tmp_path, monkeypatch, case, code, name) -> None:
+    """Every inadmissible trusted invocation names the entry before starting a worker."""
+    registry, source = _installed_fixture(
+        tmp_path, monkeypatch, "test.registered", "READ_ONLY", "def run(params): return {}\n", ()
+    )
+    spec = registry.trusted_spec("test.registered")
+
+    def arbitrary():
+        pytest.fail("an arbitrary callable reached execution")
+
+    def no_worker(*_args, **_kwargs):
+        pytest.fail("an inadmissible request started a worker")
+
+    monkeypatch.setattr(KeptWorker, "calling", no_worker)
+    if case == "missing":
+        spec = spec.model_copy(update={"capability_id": name})
+    elif case == "unverified":
+        spec = spec.model_copy(update={"code_role_hash": "blake3:" + "1" * 64})
+    elif case == "changed":
+        source.write_text("def run(params): return {'changed': True}\n", encoding="utf-8")
+    request = (
+        arbitrary
+        if case == "callable"
+        else spec.invoke({}, CatalogRead(snapshot_id="lake:1", input_versions={}))
+    )
+    with pytest.raises(plugins.PluginRefused, match=rf"plugin_registry\.{code}: {name}"):
+        registry.run_trusted(request)
+
+
+def _check_trusted_arrow(tmp_path, monkeypatch) -> None:
+    """A verified installed entry crosses the process boundary and commits its mapped answer."""
+    group = "alphalattice.capabilities"
+    manifest = Path(__file__).resolve().parents[3] / "pyproject.toml"
+    installed = tomllib.loads(manifest.read_text("utf-8"))["project"]["entry-points"][group]
+    entry, target = next(iter(installed.items()))
+    entries = metadata.EntryPoints([metadata.EntryPoint(entry, target, group)])
+    monkeypatch.setattr(
+        plugins,
+        "metadata",
+        SimpleNamespace(distribution=lambda _: SimpleNamespace(entry_points=entries)),
+    )
+    snapshot = CatalogRead(snapshot_id="lake:1", input_versions={})
+    shipped = plugins.PluginRegistry(tmp_path)
+    spec = shipped.trusted_spec(entry)
+    assert spec.effect_mode is EffectMode.READ_ONLY
+    monkeypatch.setitem(sys.modules, target.partition(":")[0], None)  # never execute in this Host
+    with pytest.raises(StagingRefused, match=r"plugin_input_invalid.*factor.session_dollar_volume"):
+        shipped.run_trusted(spec.invoke({"close_raw": 2.0, "volume_raw": 4.0}, snapshot))
+    assert shipped.state(entry) is plugins.PluginState.VERIFIED
+    assert shipped.run_trusted(
+        spec.invoke({"close_raw": [2.0, 3.0], "volume_raw": [4.0, 5.0]}, snapshot)
+    ) == {"values": [8.0, 15.0]}
+    assert shipped.state(entry) is plugins.PluginState.ACTIVE
+
+    registry = _staging_registry(tmp_path, monkeypatch)
+    stage_spec = registry.trusted_spec("test.stage")
+    staged = stage_spec.invoke({}, snapshot, is_speculative=True)
+    resolver = ArtifactResolver(tmp_path / "artifacts")
+    staging = PluginStaging(
+        tmp_path, tmp_path, resolver, WorkspaceMutationGate(), lambda _tables, _at: snapshot
+    )
+
+    def write_json(context):
+        (context.staging_dir / "output.json").write_text("{}", encoding="utf-8")
+        return ActionReceipt(
+            invocation_id=context.invocation_id,
+            idempotency_key=staged.idempotency_key,
+            status=ReceiptStatus.OK,
+            wall_ms=0,
+            peak_bytes=0,
+        )
+
+    with pytest.raises(StagingRefused, match=r"task_control\.plugin_staged_entry_invalid"):
+        staging.request(stage_spec, staged, write_json).result()
+
+    native_map = pa.memory_map
+    mapped = []
+
+    def map_output(path, mode):
+        mapped.append((Path(path).name, mode))
+        return native_map(path, mode)
+
+    monkeypatch.setattr(pa, "memory_map", map_output)
+    result = registry.run_trusted(staged, staging=staging)
+    assert isinstance(result, StagedCommit) and isinstance(result.output, dict)
+    assert result.output == {"pid": result.output["pid"], "values": [2, 3], "speculative": True}
+    assert result.output["pid"] != os.getpid()
+    assert mapped == [(ARROW_OUTPUT, "r")]
+    assert sorted(p.name for p in resolver.resolve_plugin_result(result.artifact).iterdir()) == [
+        "output.json",
+        "provenance.json",
+    ]
+    worker = psutil.Process(result.output["pid"])
+    worker.kill()
+    wait_until(lambda _: not worker.is_running(), timeout=3, what="the exited idle worker")
+    assert registry.state("test.stage") is plugins.PluginState.EVICTED
+    again = registry.trusted_spec("test.stage").invoke({"second": True}, snapshot)
+    replacement = registry.run_trusted(again, staging=staging)
+    assert replacement.output["pid"] != result.output["pid"]
+
+
+def _staging_registry(tmp_path, monkeypatch):
+    registry, _ = _installed_fixture(
+        tmp_path,
+        monkeypatch,
+        "test.stage",
+        "STAGING_WRITE",
+        "import os\n"
+        "from alphalattice.protocols.plugin_contract import ActionReceipt, ReceiptStatus\n"
+        "def run(context, invocation):\n"
+        "    return ActionReceipt(invocation_id=context.invocation_id, "
+        "idempotency_key=invocation.idempotency_key, status=ReceiptStatus.OK, "
+        "output={'pid': os.getpid(), 'values': [2, 3], "
+        "'speculative': context.is_speculative}, wall_ms=0, peak_bytes=0)\n",
+        ("pid", "values", "speculative"),
+    )
+    return registry
+
+
+def _check_readonly_output_schema(tmp_path, monkeypatch) -> None:
+    registry, _ = _installed_fixture(
+        tmp_path,
+        monkeypatch,
+        "test.read",
+        "READ_ONLY",
+        "def run(params): return {'values': 3}\n",
+        ("values",),
+    )
+    snapshot = CatalogRead(snapshot_id="lake:1", input_versions={})
+    invocation = registry.trusted_spec("test.read").invoke({}, snapshot)
+    with pytest.raises(StagingRefused, match=r"plugin_output_invalid.*test.read"):
+        registry.run_trusted(invocation)
+
+
+def _check_cancel_at_commit_gate(tmp_path, monkeypatch) -> None:
+    """A Task's durable cancel prevents publication even before its live signal arrives."""
+    from alphalattice.control.task_control import registry as task_control
+    from alphalattice.control.task_control.contracts import TaskLifecycle
+    from alphalattice.control.task_control.runner import TaskControlRunner
+    from tests.workspace_task_runner.task_control_support import FixtureTaskAdapter, task_contract
+
+    gate_wait = threading.Event()
+    owner = threading.current_thread()
+
+    class HeldGate(WorkspaceMutationGate):
+        @contextmanager
+        def hold(self):
+            if threading.current_thread() is not owner:
+                gate_wait.set()
+            with super().hold():
+                yield
+
+    registry = _staging_registry(tmp_path, monkeypatch)
+    snapshot = CatalogRead(snapshot_id="lake:1", input_versions={})
+    invocation = registry.trusted_spec("test.stage").invoke({}, snapshot)
+    gate = HeldGate()
+    staging = PluginStaging(
+        tmp_path,
+        tmp_path,
+        ArtifactResolver(tmp_path / "artifacts"),
+        gate,
+        lambda _tables, _at: snapshot,
+    )
+
+    class Stage(FixtureTaskAdapter):
+        def execute_stage(self, *, task, execution, work_item):
+            registry.run_trusted(invocation, staging=staging)
+            return super().execute_stage(task=task, execution=execution, work_item=work_item)
+
+    authority = task_control.DuckDbTaskControlRegistry(
+        task_control.resolve_task_control_database(tmp_path), gate=WorkspaceMutationGate()
+    )
+    envelope, goal, plan = task_contract(salt="trusted-commit-cancel")
+    now = datetime.now(UTC)
+    admitted = authority.admit(
+        input_envelope=envelope, goal=goal, plan=plan, observed_at=now
+    ).record
+    stage = Stage()
+    runner = TaskControlRunner(
+        registry=authority,
+        adapters={stage.task_kind: stage},
+        runtime_path=str(tmp_path / "task-runtime.sqlite"),
+        clock=lambda: now,
+    )
+    # The publisher must honor the committed command even if the dispatch signal is delayed.
+    dispatched: list[UUID | None] = []
+    monkeypatch.setattr(
+        task_control, "execution_port", lambda: SimpleNamespace(cancel=dispatched.append)
+    )
+    with ThreadPoolExecutor(max_workers=1) as executor:
+        with gate.hold():
+            pending = executor.submit(runner.run_next)
+            assert gate_wait.wait(timeout=8), "the worker never reached the commit gate"
+            (answer,) = (tmp_path / "staging/plugin-runs").glob("*/output.json")
+            process = psutil.Process(json.loads(answer.read_text("utf-8"))["pid"])
+            current = authority.task(admitted.task_id)
+            requested, _command = authority.request_cancel(
+                task_id=current.task_id, expected_task_hash=current.record_hash, observed_at=now
+            )
+            assert requested.lifecycle is TaskLifecycle.CANCEL_REQUESTED
+            assert dispatched == [current.latest_execution_id]
+        completed = pending.result(timeout=5)
+    assert not list((tmp_path / "artifacts/plugin-result").glob("*")), (
+        "cancelled artifact published"
+    )
+    assert completed.lifecycle is TaskLifecycle.CANCELLED
+    assert not process.is_running()
+    assert not list((tmp_path / "staging/plugin-runs").iterdir())
+    assert registry.state("test.stage") is plugins.PluginState.EVICTED
 
 
 def test_stage_plans_keep_both_consumers_canonical_work_items() -> None:

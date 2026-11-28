@@ -36,7 +36,7 @@ from concurrent import futures
 from concurrent.futures import Future, ProcessPoolExecutor
 from concurrent.futures import TimeoutError as FutureTimeout
 from concurrent.futures.process import BrokenProcessPool
-from contextlib import contextmanager, suppress
+from contextlib import ExitStack, contextmanager, nullcontext, suppress
 from dataclasses import dataclass
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
@@ -75,9 +75,11 @@ from alphalattice.kernel.execution import (
     CANCELLED,
     Bell,
     ExecutionStopped,
+    carry_cancellation,
     child_process,
     execution_port,
     interrupt_on_execution_stop,
+    stop_deadline,
     stop_reason,
     worker_cancellation,
 )
@@ -112,13 +114,14 @@ KEPT_WORKER_IDLE_SECONDS = 180.0
 """How long a kept worker waits with no call before it retires; the next call starts it again.
 An execution parameter: an idle Host keeps no workers the person would see for its whole life."""
 
-_WORKERS: dict[int, ProcessPoolExecutor] = {}
-"""Kept workers by position. The ordinary call owns 0 and spread calls own 1 onward."""
+type _WorkerKey = int | KeptWorker
+_WORKERS: dict[_WorkerKey, ProcessPoolExecutor] = {}
+"""Kept workers by position or named owner. Ordinary calls use 0 and spreads use 1 onward."""
 
 
 @dataclass
 class _TaskWorkers:
-    pools: dict[int, ProcessPoolExecutor]
+    pools: dict[_WorkerKey, ProcessPoolExecutor]
     start: Callable[[], None] | None
 
 
@@ -213,12 +216,93 @@ def run_in_child(
         ChildStartFailed: The OS refused the worker's creation.
         ChildInterrupted: The call raised anything else, or the worker ended without answering.
     """
-    with tempfile.TemporaryDirectory(
-        prefix="alphalattice-call-", dir=task_scratch_directory()
-    ) as folder:
+    return _single_call(0, target, arguments, cancelled)
+
+
+class KeptWorker:
+    """One capability's reusable worker, with no other capability's calls behind it."""
+
+    def __init__(self) -> None:
+        """Reserve a distinct pool position without starting a process."""
+        self._lock = threading.RLock()
+        self._retiring = False
+
+    def is_alive(self) -> bool:
+        """Observe the pool's workers and settle an unexpected exit before replacement."""
+        with self._lock:
+            with _WORKER_LOCK:
+                pool = _WORKERS.get(self)
+            if pool is None:
+                self._retiring = False
+                return False
+            if not self._retiring and child_process.pool_workers_alive(pool):
+                return True
+            _terminate_processes(pool)
+            _retire_worker(self, pool, wait_for_exit=True)
+            return False
+
+    def call(
+        self,
+        target: str,
+        arguments: Mapping[str, Any],
+        *,
+        cancelled: Callable[[], bool] | None = None,
+    ) -> Any:
+        """Run a verified call whose invocation ends when it answers."""
+        with self.calling(target, arguments, cancelled=cancelled) as result:
+            return result
+
+    @contextmanager
+    def calling(
+        self,
+        target: str,
+        arguments: Mapping[str, Any],
+        *,
+        cancelled: Callable[[], bool] | None = None,
+    ) -> Iterator[Any]:
+        """Hold this call's exclusive stop and its worker through the caller's publication."""
+        with self._lock, ExitStack() as scope:
+            _check_cancelled(cancelled)
+            self.is_alive()
+            yield _single_call(self, target, arguments, cancelled, scope=scope)
+
+
+def _single_call(
+    worker: _WorkerKey,
+    target: str,
+    arguments: Mapping[str, Any],
+    cancelled: Callable[[], bool] | None,
+    *,
+    scope: ExitStack | None = None,
+) -> Any:
+    """Run one ordinary or capability call, with a flag private to its invocation."""
+    capability = scope is not None
+    with ExitStack() as local:
+        lifetime = local if scope is None else scope
+        folder = lifetime.enter_context(
+            tempfile.TemporaryDirectory(prefix="alphalattice-call-", dir=task_scratch_directory())
+        )
         flag = Path(folder) / "cancel"
         with span("wait", "worker"):
-            answer = _waited(_submitted(0, target, arguments, flag, threads=None), flag, cancelled)
+            submitted = _submitted(
+                worker,
+                target,
+                arguments,
+                flag,
+                threads=1 if capability else None,
+                preload_models=not capability,
+                opens=() if capability else None,
+                scope=scope,
+            )
+            exclusive = (
+                _ExclusiveStop(worker, submitted, flag, cancelled)
+                if isinstance(worker, KeptWorker)
+                else None
+            )
+            if exclusive is not None:
+                lifetime.callback(exclusive.finish)
+                lifetime.callback(interrupt_on_execution_stop(carry_cancellation(exclusive.stop)))
+            answer = _waited(submitted, flag, cancelled, exclusive=exclusive)
     absorb(answer.get("spans"))
     _traced(answer)
     return _answered(answer)
@@ -261,7 +345,7 @@ class ChildCalls:
         self._folder = tempfile.TemporaryDirectory(
             prefix="alphalattice-calls-", dir=task_scratch_directory()
         )
-        self._shipped: dict[tuple[int, str], ProcessPoolExecutor] = {}
+        self._shipped: dict[tuple[_WorkerKey, str], ProcessPoolExecutor] = {}
         self._flag = Path(self._folder.name) / "cancel"
 
     def make(
@@ -437,14 +521,14 @@ class _Submitted:
     """One call handed to a kept worker: which worker, the process pool it had then, the call,
     and the file its answer comes back through, when it does not come through the pipe."""
 
-    worker: int
+    worker: _WorkerKey
     pool: ProcessPoolExecutor
     future: Future[dict[str, Any]]
     answer: Path | None = None
 
 
 def _submitted(
-    worker: int,
+    worker: _WorkerKey,
     target: str,
     arguments: Mapping[str, Any],
     flag: Path,
@@ -453,6 +537,7 @@ def _submitted(
     answer: Path | None = None,
     preload_models: bool = True,
     opens: Iterable[Path] | None = None,
+    scope: ExitStack | None = None,
 ) -> _Submitted:
     """Hand one call to a kept worker; one that has ended answers as an interruption. The worker
     may open the files this process holds that `opens` names (None: any), so none of them is kept
@@ -490,11 +575,13 @@ def _submitted(
         ended()
         raise
     future.add_done_callback(lambda _done: ended())
-    _hold(worker, pool, future)
+    _hold(worker, pool, future, scope=scope)
     return _Submitted(worker, pool, future, answer)
 
 
-def _hold(worker: int, pool: ProcessPoolExecutor, future: Future[Any]) -> None:
+def _hold(
+    worker: _WorkerKey, pool: ProcessPoolExecutor, future: Future[Any], *, scope: ExitStack | None
+) -> None:
     """Count a call in flight on a kept worker; its last call's end starts the idle wait."""
     with _WORKER_LOCK:
         if _WORKERS.get(worker) is not pool:
@@ -516,20 +603,29 @@ def _hold(worker: int, pool: ProcessPoolExecutor, future: Future[Any]) -> None:
             timer.daemon = True
         timer.start()
 
-    future.add_done_callback(ended)
+    if scope is None:
+        future.add_done_callback(ended)
+    else:
+        scope.callback(ended, future)
 
 
-def _retire_idle(worker: int, pool: ProcessPoolExecutor) -> None:
+def _retire_idle(worker: _WorkerKey, pool: ProcessPoolExecutor) -> None:
     """Retire a kept worker that took no call since its idle wait began."""
-    with _WORKER_LOCK:
-        if _IDLE.get(pool) is not threading.current_thread():
-            return  # Cancelled while it waited for the lock: a call took the pool, or it retired.
-        del _IDLE[pool]
-        if _BUSY.get(pool) or _WORKERS.get(worker) is not pool:
-            return
-        del _WORKERS[worker]
-        _BUSY.pop(pool, None)
-    pool.shutdown(wait=False, cancel_futures=False)
+    with worker._lock if isinstance(worker, KeptWorker) else nullcontext():
+        with _WORKER_LOCK:
+            if _IDLE.get(pool) is not threading.current_thread():
+                return  # Cancelled while it waited for the lock.
+            del _IDLE[pool]
+            if _BUSY.get(pool) or _WORKERS.get(worker) is not pool:
+                return
+            if not isinstance(worker, KeptWorker):
+                del _WORKERS[worker]
+                _BUSY.pop(pool, None)
+        if isinstance(worker, KeptWorker):
+            _terminate_processes(pool)
+            _retire_worker(worker, pool, wait_for_exit=True)
+        else:
+            pool.shutdown(wait=False, cancel_futures=False)
 
 
 def _waited(
@@ -537,6 +633,8 @@ def _waited(
     flag: Path,
     cancelled: Callable[[], bool] | None,
     sharing: Callable[[], Iterable[ProcessPoolExecutor]] = tuple,
+    *,
+    exclusive: _ExclusiveStop | None = None,
 ) -> dict[str, Any]:
     """Wait for a call's answer, relaying the Task's cancellation while it runs to its worker
     and to the workers of ``sharing``, the other calls running under the same flag."""
@@ -544,17 +642,24 @@ def _waited(
     # The Task's stop reaches the workers when it is accepted, through the execution's interrupt;
     # one accepted before this wait began is relayed at once.
     try:
-        release = interrupt_on_execution_stop(lambda: _relay(flag, {submitted.pool, *sharing()}))
+        release = (
+            interrupt_on_execution_stop(lambda: _relay(flag, {submitted.pool, *sharing()}))
+            if exclusive is None
+            else _unheld
+        )
     except ExecutionStopped:  # already timed out
         release = _unheld
     if stop_reason() is not None:
         _relay(flag, {submitted.pool, *sharing()})
     try:
+        if exclusive is not None:
+            exclusive.check()
         # The answer ends the wait at once; each POLL_SECONDS without one relays a cancel only
         # the Task's predicate knows and samples the worker's CPU for the wedge.
         while (answer := _answer(submitted.future)) is None:
-            reason = stop_reason()
-            if reason is not None or (cancelled is not None and cancelled()):
+            if exclusive is not None:
+                exclusive.check()
+            elif (reason := stop_reason()) is not None or (cancelled is not None and cancelled()):
                 _relay(flag, {submitted.pool, *sharing()})
                 if _task_owns_pool(submitted.pool):
                     spawn.stop_pool(submitted.pool)
@@ -563,14 +668,71 @@ def _waited(
             progress = _progressed(submitted.pool, progress)
             if time.monotonic() - progress[1] > WEDGED_SECONDS:
                 raise _ended_wedged(submitted) from None
+        if exclusive is not None:
+            exclusive.check()
         return answer
     except BrokenProcessPool as broken:
+        if exclusive is not None:
+            exclusive.check()
         # The future keeps this exception; its traceback holds these frames, which hold the
         # future and its retired pool, a cycle only a collection would end.
         broken.__traceback__ = None
         raise _ended(submitted.worker, submitted.pool) from None
     finally:
         release()
+
+
+def _check_cancelled(cancelled: Callable[[], bool] | None) -> None:
+    if reason := stop_reason():
+        raise ExecutionStopped(reason)
+    if cancelled is not None and cancelled():
+        raise ExecutionStopped(CANCELLED)
+
+
+class _ExclusiveStop:
+    """Stop only the owned tree and retain its position until its exit is proved."""
+
+    def __init__(
+        self,
+        worker: KeptWorker,
+        submitted: _Submitted,
+        flag: Path,
+        cancelled: Callable[[], bool] | None,
+    ) -> None:
+        self._worker = worker
+        self._submitted = submitted
+        self._flag = flag
+        self._cancelled = cancelled
+        self._lock = threading.Lock()
+        self._deadline: float | None = None
+        self._settled = False
+
+    def stop(self) -> None:
+        with self._lock:
+            if self._settled:
+                return
+            if self._deadline is None:
+                self._deadline = stop_deadline() or time.monotonic() + 1.0
+            self._worker._retiring = True
+            pool = self._submitted.pool
+            _relay(self._flag, (pool,))
+            spawn.stop_pool(pool, deadline=self._deadline)
+            self._settled = True
+
+    def check(self) -> None:
+        try:
+            _check_cancelled(self._cancelled)
+        except ExecutionStopped:
+            self.stop()
+            raise
+
+    def finish(self) -> None:
+        try:
+            self.check()
+        finally:
+            if self._settled:
+                item = self._submitted
+                _retire_worker(item.worker, item.pool)
 
 
 def _unheld() -> None:
@@ -627,7 +789,7 @@ def _terminate_processes(pool: ProcessPoolExecutor) -> None:
     spawn.stop_pool(pool)
 
 
-def _ended(worker: int, pool: ProcessPoolExecutor) -> ChildInterrupted:
+def _ended(worker: _WorkerKey, pool: ProcessPoolExecutor) -> ChildInterrupted:
     """The interruption for a worker that ended; the next call to its place starts a new one."""
     _retire_worker(worker, pool, wait_for_exit=True)
     return ChildInterrupted(
@@ -657,7 +819,9 @@ def _failed_call(error: BaseException) -> dict[str, Any]:
     }
 
 
-def _kept_workers() -> dict[int, ProcessPoolExecutor]:
+def _kept_workers(worker: _WorkerKey = 0) -> dict[_WorkerKey, ProcessPoolExecutor]:
+    if not isinstance(worker, int):
+        return _WORKERS
     lease = current_resource_lease()
     owned = _TASK_WORKERS.get(lease) if lease is not None else None
     return _WORKERS if owned is None else owned.pools
@@ -733,12 +897,12 @@ type _WarmImports = tuple[tuple[str, ...], str | None, ResourceLease | None]
 
 
 def _worker(
-    worker: int, *, threads: int | None, warm: _WarmImports | None = None
+    worker: _WorkerKey, *, threads: int | None, warm: _WarmImports | None = None
 ) -> ProcessPoolExecutor:
     """The kept worker at `worker`, started if none; a kept one leaves its idle wait, so it is not
     retired between its selection and the call `_hold` counts."""
     with _WORKER_LOCK:
-        workers = _kept_workers()
+        workers = _kept_workers(worker)
         kept = workers.get(worker)
         if kept is not None:
             _cancel_idle(kept)
@@ -758,14 +922,16 @@ def _worker(
         return kept
 
 
-def _retire_worker(worker: int, pool: ProcessPoolExecutor, *, wait_for_exit: bool = False) -> None:
+def _retire_worker(
+    worker: _WorkerKey, pool: ProcessPoolExecutor, *, wait_for_exit: bool = False
+) -> None:
     """Retire the worker at `worker` if it is still the one that ended, never its replacement."""
     # On a broken or terminated pool the manager joins the process. The Task keeps
     # its grant until that exit completes, including when a call loses its reply.
     if wait_for_exit:
         pool.shutdown(wait=True, cancel_futures=False)
     with _WORKER_LOCK:
-        workers = _kept_workers()
+        workers = _kept_workers(worker)
         if workers.get(worker) is pool:
             del workers[worker]
         _BUSY.pop(pool, None)

@@ -2969,6 +2969,13 @@
       "seconds": 2,
       "lower_layer": "The goal composition imports Host facilities that the unit layer cannot load."
     },
+    "product_host.a_trusted_call_requires_the_verified_entry": {
+      "description": "The built-in pool refuses an unregistered callable, a missing registration or changed closure by name before starting a worker.",
+      "owner": "alphalattice.control.product_host",
+      "layer": "integration",
+      "seconds": 10,
+      "lower_layer": "The installed registry verifies real fixture files through the Host product package, which the unit layer cannot import."
+    },
     "product_host.an_idle_scrub_never_stalls_the_hosts_requests": {
       "description": "If the Host's idle file-trust scrub ran on a lowered thread, a busy machine would starve it while it holds the interpreter's or the dispatcher's lock, and every request of its Host would stall behind it.",
       "owner": "alphalattice.control.product_host",
@@ -3247,6 +3254,13 @@
       "layer": "integration",
       "seconds": 5
     },
+    "task_control.a_cancel_ends_the_trusted_workers_tree": {
+      "description": "An accepted invocation cancel ends its kept worker and descendants within one second, leaving its next activation a fresh worker.",
+      "lower_layer": "The operating system must terminate the real process tree within the bound.",
+      "owner": "alphalattice.control.task_control",
+      "layer": "integration",
+      "seconds": 10
+    },
     "task_control.a_duplicated_cancel_never_reaches_a_newer_version": {
       "description": "If a cancel sent again reached the Task version after the one its caller confirmed, a retry or a stale page could stop work nobody asked to stop.",
       "lower_layer": "The cancel's version check and its one command are the registry's transaction on a real SQLite log.",
@@ -3292,6 +3306,13 @@
       "layer": "integration",
       "seconds": 10,
       "lower_layer": "It needs a real kept worker process and the bell shared with it across processes, which no in-process unit holds."
+    },
+    "task_control.a_trusted_plugin_stages_its_answer_in_a_kept_worker": {
+      "description": "A verified built-in runs in a kept worker, carrying speculation and handing typed Arrow buffers back for the Host-only staging commit.",
+      "lower_layer": "The PID, IPC map and committed output cross a real kept process boundary.",
+      "owner": "alphalattice.control.task_control",
+      "layer": "integration",
+      "seconds": 10
     },
     "task_control.a_wedged_worker_is_ended_by_name": {
       "description": "If the Host waited on a worker that stopped running with no bound, a wedged call would hold its Task forever.",

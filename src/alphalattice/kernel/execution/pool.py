@@ -14,7 +14,7 @@ from uuid import UUID
 from weakref import WeakKeyDictionary
 
 from .cancel import cancel_execution, execution_cancellation
-from .port import ExecutionHeartbeat, ExecutionLane, ExecutionPort
+from .port import ExecutionHeartbeat, ExecutionLane, ExecutionPort, PublicationCheck
 
 _DEFAULT_EXECUTION_TIMEOUT_SECONDS = 24 * 60 * 60
 _POOLS: WeakKeyDictionary[Any, str] = WeakKeyDictionary()
@@ -112,7 +112,12 @@ class ExecutionPool:
 
     @contextmanager
     def running(
-        self, execution_id: UUID, timeout: float | None, heartbeat: ExecutionHeartbeat
+        self,
+        execution_id: UUID,
+        timeout: float | None,
+        heartbeat: ExecutionHeartbeat,
+        *,
+        publication_check: PublicationCheck | None = None,
     ) -> Iterator[None]:
         """Apply the per-execution deadline and settle the heartbeat on exit."""
         stop = Event()
@@ -126,7 +131,7 @@ class ExecutionPool:
 
         if timeout is None:
             timeout = _DEFAULT_EXECUTION_TIMEOUT_SECONDS
-        with execution_cancellation(execution_id, timeout):
+        with execution_cancellation(execution_id, timeout, publication_check=publication_check):
             watcher = Thread(target=pulse, name=heartbeat.name, daemon=True)
             watcher.start()
             try:

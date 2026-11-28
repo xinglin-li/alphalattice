@@ -349,6 +349,11 @@ REGISTER: dict[tuple[str, str, str], str] = {
     ): "started and unended: the one active Task; a queued one is not started",
     (
         "control/task_control/registry.py",
+        "DuckDbTaskControlRegistry.publication_cancelled",
+        "CANCELLED,CANCEL_REQUESTED",
+    ): "an accepted or completed cancellation refuses artifact publication",
+    (
+        "control/task_control/registry.py",
         "DuckDbTaskControlRegistry.request_cancel.operation",
         "CANCELLED,CANCEL_REQUESTED",
     ): "a cancel already asked for or done answers as it stands",

@@ -110,7 +110,7 @@ class LinuxScope:
             watcher.register(stop, native["POLLIN"])
         watcher.poll(1000)  # Observe has no kernel threshold and samples cumulative peak.
 
-    def stop(self) -> None:
+    def stop(self, *, deadline: float | None = None) -> None:
         """Kill the whole cgroup, including descendants in other sessions. A cgroup that has gone
         (its files absent, or ENODEV once its manager removed the emptied scope) has ended."""
         native = vars(select)
@@ -119,7 +119,7 @@ class LinuxScope:
             with (self.directory / "cgroup.events").open("rb", buffering=0) as events:
                 watcher = native["poll"]()
                 watcher.register(events, native["POLLPRI"])
-                deadline = time.monotonic() + 5
+                deadline = time.monotonic() + 5 if deadline is None else deadline
                 while time.monotonic() < deadline:
                     events.seek(0)
                     if b"populated 0" in events.read().splitlines():

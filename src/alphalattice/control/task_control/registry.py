@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import json
 import sqlite3
-from collections.abc import Callable, Iterable
+from collections.abc import Callable, Iterable, Iterator
 from contextlib import contextmanager
 from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
@@ -452,6 +452,13 @@ class DuckDbTaskControlRegistry:
         """
         with held().reading():
             yield
+
+    @contextmanager
+    def publication_cancelled(self, task_id: UUID) -> Iterator[bool]:
+        """Read the Task's cancel state while holding the log guard through publication."""
+        with held().reading() as connection:
+            task = self._task_row(connection, task_id)
+            yield task.lifecycle in {TaskLifecycle.CANCEL_REQUESTED, TaskLifecycle.CANCELLED}
 
     @staticmethod
     def _verified_record(stored_id: str, document: str) -> TaskRecord:
@@ -1455,9 +1462,12 @@ class DuckDbTaskControlRegistry:
             )
             return task, command
 
-        task, command = self._write(operation, control_only=True)
-        if task.lifecycle is TaskLifecycle.CANCEL_REQUESTED:
-            execution_port().cancel(task.latest_execution_id)
+        # Keep the log guard from the durable commit through the live stop. Publication
+        # acquires this same guard before checking the execution signal.
+        with held().reading():
+            task, command = self._write(operation, control_only=True)
+            if task.lifecycle is TaskLifecycle.CANCEL_REQUESTED:
+                execution_port().cancel(task.latest_execution_id)
         return task, command
 
     def finalize_cancel_after_writer_stopped(

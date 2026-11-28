@@ -60,6 +60,7 @@
 "task_control.plugin_staged_entry_invalid": {"owner": "alphalattice.control.task_control", "category": "FAILED_PRECONDITION", "classification_note": "A staged entry is a link, hard link or non-regular file, the Host's provenance name, or the answer is missing; nothing is committed; stage only regular files and rerun."},
 "task_control.plugin_role_hash_mismatch": {"owner": "alphalattice.control.task_control", "category": "FAILED_PRECONDITION", "classification_note": "The invocation was keyed for other code than the capability's; invoke the capability's current code again."},
 "task_control.plugin_provenance_mismatch": {"owner": "alphalattice.control.task_control", "category": "FAILED_PRECONDITION", "classification_note": "A staged run's receipt does not name its invocation and key or did not end ok; nothing is committed; rerun the invocation."},
+"task_control.plugin_input_invalid": {"owner": "alphalattice.control.task_control", "category": "INVALID_ARGUMENT", "classification_note": "The invocation's parameters do not meet the installed capability's declared input schema."},
 "task_control.plugin_output_invalid": {"owner": "alphalattice.control.task_control", "category": "INVALID_ARGUMENT", "classification_note": "A staged answer is missing, not JSON or outside the capability's output schema; nothing is committed; repair the plugin's output and rerun."},
 "task_control.plugin_inputs_changed": {"owner": "alphalattice.control.task_control", "category": "FAILED_PRECONDITION", "classification_note": "A declared input changed after the run read it; the staged result is discarded; rerun the invocation against the current catalog."},
 "task_control.heartbeat_import_unequal": {"owner": "alphalattice.control.task_control", "category": "FAILED_PRECONDITION", "classification_note": "The copied heartbeat differs from its old signal; preserve the old store and repair the named family before upgrading."},
@@ -759,6 +760,11 @@
   "owner": "alphalattice.control.product_host",
   "category": "FAILED_PRECONDITION",
   "classification_note": "Verify the named plugin again before enabling its changed bytes."
+},
+"plugin_registry.dispatch_unverified": {
+  "owner": "alphalattice.control.product_host",
+  "category": "FAILED_PRECONDITION",
+  "classification_note": "Only a named, verified installed capability may run in a kept worker."
 },
 "plugin_registry.confirmation_required": {
   "owner": "alphalattice.control.product_host",

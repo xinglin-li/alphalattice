@@ -331,7 +331,11 @@ def detached(
 
 
 def stop_tree(
-    pid: int, *, processes: ProcessObservations, stop_root: Callable[[], object] | None = None
+    pid: int,
+    *,
+    processes: ProcessObservations,
+    stop_root: Callable[[], object] | None = None,
+    deadline: float | None = None,
 ) -> None:
     """Stop a process and its descendants, children first."""
     try:
@@ -348,20 +352,46 @@ def stop_tree(
         # multiprocessing has the root's wait handle and reaps it itself.
         with suppress(ProcessLookupError):
             stop_root()
-    _, alive = processes.wait_procs(members, timeout=REAP_TIMEOUT)
+    _, alive = processes.wait_procs(members, timeout=_reap_time(deadline))
     if alive:
         raise TreeNotStopped(f"spawn.tree_not_stopped: {[p.pid for p in alive]}")
 
 
-def stop_pool(pool: Any, *, processes: ProcessObservations) -> None:
+def _reap_time(deadline: float | None) -> float:
+    return REAP_TIMEOUT if deadline is None else max(0.0, deadline - time.monotonic())
+
+
+def _join_pool_worker(child: Any, deadline: float) -> None:
+    child.join(timeout=_reap_time(deadline))
+    if child.exitcode is None or time.monotonic() > deadline:
+        raise TreeNotStopped(f"spawn.tree_not_stopped: worker {child.pid} exceeded its stop bound")
+
+
+def pool_workers_alive(pool: Any) -> bool:
+    """Observe the pool's actual worker handles independently of its owning registry."""
+    return not getattr(pool, "_broken", False) and any(
+        child.pid is not None and child.exitcode is None
+        for child in list((getattr(pool, "_processes", None) or {}).values())
+    )
+
+
+def pool_trees_stopped(pool: Any) -> bool:
+    """Whether all retained POSIX tree owners have confirmed a stop."""
+    owners = getattr(pool, "_owned_process_trees", ())
+    return bool(owners) and all(owner._stopped for owner in owners)
+
+
+def stop_pool(pool: Any, *, processes: ProcessObservations, deadline: float | None = None) -> None:
     """Stop each exact pool root and its descendants without taking the manager's wait."""
     if (owners := getattr(pool, "_owned_process_trees", None)) is not None:
         for owner in owners.copy():
-            owner._stop()
+            owner._stop(deadline)
         return
     for child in list((getattr(pool, "_processes", None) or {}).values()):
         if child.pid is not None and child.exitcode is None:
-            stop_tree(child.pid, processes=processes, stop_root=child.kill)
+            stop_tree(child.pid, processes=processes, stop_root=child.kill, deadline=deadline)
+        if deadline is not None and child.pid is not None:
+            _join_pool_worker(child, deadline)
 
 
 @contextmanager
@@ -575,14 +605,16 @@ class _PosixMemoryWatch:
             except Exception as error:
                 self._failure = error
 
-    def _stop(self) -> None:
-        with self._lock:
+    def _stop(self, deadline: float | None = None) -> None:
+        if not self._lock.acquire(timeout=-1 if deadline is None else _reap_time(deadline)):
+            raise TreeNotStopped(f"spawn.tree_not_stopped: owner for {self.pid} is still busy")
+        try:
             if self._stopped:
                 return
             if self.scope is not None:
-                self.scope.stop()
+                self.scope.stop(deadline=deadline)
             elif self._pool_child is not None:
-                self._stop_pool_child()
+                self._stop_pool_child(deadline)
             elif self.current:
                 members = self._members
                 if self.lineage is not None:
@@ -600,11 +632,15 @@ class _PosixMemoryWatch:
                     observed=(member for member in self._members if member.pid != self.pid),
                     lineage=self.lineage,
                 )
+            if deadline is not None:
+                _join_pool_worker(self._pool_child, deadline)
             self._stopped = True
+        finally:
+            self._lock.release()
 
-    def _stop_pool_child(self) -> None:
+    def _stop_pool_child(self, deadline: float | None) -> None:
         if isinstance(self._pool_child, GuardedWorker):
-            self._pool_child.stop()
+            self._pool_child.stop(deadline=deadline)
             return
         self._sample()
         if self._pool_child.exitcode is None:
@@ -615,7 +651,8 @@ class _PosixMemoryWatch:
                 with suppress(self.processes.NoSuchProcess):
                     member.kill()
         _, alive = self.processes.wait_procs(
-            [member for member in self._members if member.pid != self.pid], timeout=REAP_TIMEOUT
+            [member for member in self._members if member.pid != self.pid],
+            timeout=_reap_time(deadline),
         )
         if live := [member.pid for member in alive if _running(member, self.processes)]:
             raise TreeNotStopped(f"spawn.tree_not_stopped: {live}")

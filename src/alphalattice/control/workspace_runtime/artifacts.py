@@ -7,6 +7,7 @@ import os
 import shutil
 import stat
 from collections.abc import Mapping, Sequence
+from contextlib import AbstractContextManager, nullcontext
 from dataclasses import dataclass
 from pathlib import Path
 from uuid import uuid4
@@ -268,7 +269,13 @@ class ArtifactResolver:
     def _plugin_result_path(self, idempotency_key: str) -> Path:
         return self._root / self._PLUGIN_RESULT_KIND / blake3_filename(idempotency_key)
 
-    def publish_plugin_result(self, staged_dir: Path, idempotency_key: str) -> ArtifactDescriptor:
+    def publish_plugin_result(
+        self,
+        staged_dir: Path,
+        idempotency_key: str,
+        *,
+        publication: AbstractContextManager[None] | None = None,
+    ) -> ArtifactDescriptor:
         """Atomically publish a plugin run's checked staging folder under its run's key.
 
         Every staged file is checked and hashed before the key is exposed, so a failure leaves
@@ -282,8 +289,10 @@ class ArtifactResolver:
         target.parent.mkdir(parents=True, exist_ok=True)
         source = target if target.exists() else staged_dir
         files = {relative: verified_file_digest(source / relative) for relative in _files(source)}
+        with publication if publication is not None else nullcontext():
+            if source is staged_dir:
+                os.replace(staged_dir, target)
         if source is staged_dir:
-            os.replace(staged_dir, target)
             try:
                 for relative, digest in files.items():
                     record_sealed_file(target / relative, digest)

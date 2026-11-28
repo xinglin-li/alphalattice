@@ -50,6 +50,28 @@ def test_registered_pools_keep_their_workers() -> None:
 
 
 @pytest.mark.proves("domain_contracts.child_processes_are_bounded_and_isolated")
+def test_a_pool_stop_refuses_to_retire_an_unsettled_worker() -> None:
+    """Both descendant waiting and worker joining use what remains of the accepted bound."""
+    waits = []
+    worker = SimpleNamespace(
+        pid=42, exitcode=None, kill=lambda: None, join=lambda *, timeout: waits.append(timeout)
+    )
+    observations = SimpleNamespace(
+        Process=lambda _pid: SimpleNamespace(children=lambda *, recursive: []),
+        NoSuchProcess=ProcessLookupError,
+        wait_procs=lambda _members, *, timeout: (waits.append(timeout) or [], []),
+    )
+    with pytest.raises(execution_spawn.TreeNotStopped, match="worker 42 exceeded its stop bound"):
+        execution_spawn.stop_pool(
+            SimpleNamespace(_processes={42: worker}),
+            processes=observations,
+            deadline=time.monotonic() + 0.25,
+        )
+    descendant_wait, join_wait = waits
+    assert 0 <= join_wait <= descendant_wait <= 0.25
+
+
+@pytest.mark.proves("domain_contracts.child_processes_are_bounded_and_isolated")
 def test_ambient_job_probe_adds_no_job(monkeypatch, tmp_path):
     """The ambient probe measures the caller's Job without adding its own."""
     from alphalattice.capabilities.domain_contracts import spawn

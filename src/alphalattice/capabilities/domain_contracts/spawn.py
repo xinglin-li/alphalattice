@@ -125,7 +125,8 @@ def _own_process_pool(pool: ProcessPoolExecutor, name: str) -> None:
 
     def shutdown_owned(*, wait: bool = True, cancel_futures: bool = False) -> None:
         try:
-            shutdown(wait=wait or sys.platform != "win32", cancel_futures=cancel_futures)
+            wait_for_tree = sys.platform != "win32" and not child_process.pool_trees_stopped(pool)
+            shutdown(wait=wait or wait_for_tree, cancel_futures=cancel_futures)
         finally:
             if release is not None:
                 release()
@@ -200,9 +201,9 @@ def stop_tree(pid: int) -> None:
     child_process.stop_tree(pid, processes=psutil)
 
 
-def stop_pool(pool: Any) -> None:
+def stop_pool(pool: Any, *, deadline: float | None = None) -> None:
     """Stop the trees of a process pool whose caller owns its shutdown."""
-    child_process.stop_pool(pool, processes=psutil)
+    child_process.stop_pool(pool, processes=psutil, deadline=deadline)
 
 
 def reap_detached_sessions() -> AbstractContextManager[Callable[[int], None]]:

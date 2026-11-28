@@ -26,11 +26,11 @@ class _ProcessContext(Protocol):
     Process: type[BaseProcess]
 
 
-def _drain_adopted() -> None:
+def _drain_adopted(deadline: float | None = None) -> None:
     """Stop and reap the guardian's children, including newly adopted descendants."""
     native = vars(os)
     children = Path(f"/proc/self/task/{os.getpid()}/children")
-    deadline = time.monotonic() + _STOP_SECONDS
+    deadline = time.monotonic() + _STOP_SECONDS if deadline is None else deadline
     while time.monotonic() < deadline:
         try:
             ended, _ = native["waitpid"](-1, native["WNOHANG"])
@@ -76,6 +76,7 @@ def _guard_worker(
             except (OSError, ValueError):
                 _drain_adopted()
                 raise
+            stop_by: float | None = None
             try:
                 control.send_bytes(str(worker.pid).encode("ascii"))
                 # SIGCHLD wakes the guardian even when a descendant holds the
@@ -89,7 +90,9 @@ def _guard_worker(
                     readable = dict(events.poll())
                     if controller in readable:
                         with suppress(EOFError):
-                            control.recv_bytes()
+                            _, _, requested = control.recv_bytes().partition(b" ")
+                            if requested:
+                                stop_by = float(requested)
                         break
                     if departure in readable:
                         os.read(departure, 4096)
@@ -97,7 +100,7 @@ def _guard_worker(
                 if worker.exitcode is None:
                     with suppress(ProcessLookupError):
                         worker.kill()
-                    deadline = time.monotonic() + _STOP_SECONDS
+                    deadline = time.monotonic() + _STOP_SECONDS if stop_by is None else stop_by
                     while worker.exitcode is None:
                         remaining = deadline - time.monotonic()
                         if remaining <= 0 or not wait([departure], timeout=remaining):
@@ -105,10 +108,14 @@ def _guard_worker(
                                 "spawn.tree_not_stopped: Linux pool worker still live"
                             )
                         os.read(departure, 4096)
-                worker.join(timeout=_STOP_SECONDS)
+                worker.join(
+                    timeout=_STOP_SECONDS
+                    if stop_by is None
+                    else max(0.0, stop_by - time.monotonic())
+                )
                 status = worker.exitcode
                 assert status is not None
-                _drain_adopted()
+                _drain_adopted(stop_by)
                 with suppress(BrokenPipeError, ConnectionResetError):
                     control.send_bytes(b"settled")
     raise SystemExit(status if status >= 0 else 128 - status)
@@ -136,10 +143,11 @@ class GuardedWorker:
         """Let the executor join and observe the guardian through the worker handle."""
         return getattr(self._launcher, name)
 
-    def _request(self) -> None:
+    def _request(self, deadline: float | None = None) -> None:
         if not self._requested and not self._control.poll():
             with suppress(BrokenPipeError, ConnectionResetError):
-                self._control.send_bytes(b"stop")
+                command = b"stop" if deadline is None else f"stop {deadline}".encode("ascii")
+                self._control.send_bytes(command)
         self._requested = True
 
     def terminate(self) -> None:
@@ -147,13 +155,18 @@ class GuardedWorker:
         with self._lock:
             self._request()
 
-    def stop(self) -> None:
+    def stop(self, *, deadline: float | None = None) -> None:
         """Require the guardian's acknowledgment before the Task can finish stopping."""
         with self._lock:
             if not self._settled:
-                self._request()
+                self._request(deadline)
                 with suppress(EOFError):
-                    self._settled = self._control.poll(2 * _STOP_SECONDS + 1) and (
+                    left = (
+                        2 * _STOP_SECONDS + 1
+                        if deadline is None
+                        else max(0.0, deadline - time.monotonic())
+                    )
+                    self._settled = self._control.poll(left) and (
                         self._control.recv_bytes() == b"settled"
                     )
             if not self._settled:

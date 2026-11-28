@@ -574,6 +574,7 @@ class TaskControlRunner:
                     self.heartbeat_seconds,
                     f"task-heartbeat-{task.task_id}",
                 ),
+                publication_check=partial(self.registry.publication_cancelled, task.task_id),
             ),
             task_observation(execution.started_at),
             self.registry.retain(read_only=False),

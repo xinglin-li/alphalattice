@@ -5490,7 +5490,7 @@
       "schema": {
         "ExecutionPort": [
           "submit(self, action: Callable[[], T], *, lane: ExecutionLane='background') -> Future[T]",
-          "running(self, execution_id: UUID, timeout: float | None, heartbeat: ExecutionHeartbeat) -> AbstractContextManager[None]",
+          "running(self, execution_id: UUID, timeout: float | None, heartbeat: ExecutionHeartbeat, *, publication_check: PublicationCheck | None=None) -> AbstractContextManager[None]",
           "cancel(self, execution_id: UUID | None) -> None",
           "register_pool(self, pool: T, *, name: str) -> T"
         ]

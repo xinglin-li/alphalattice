@@ -26,8 +26,9 @@ import json
 import os
 import shutil
 import stat
-from collections.abc import Callable, Collection
+from collections.abc import Callable, Collection, Iterator, Mapping
 from concurrent.futures import Future
+from contextlib import AbstractContextManager, ExitStack, contextmanager
 from dataclasses import dataclass
 from pathlib import Path
 from threading import Lock
@@ -45,6 +46,7 @@ from alphalattice.control.workspace_runtime.paths import (
     make_confined_parents,
     resolve_confined,
 )
+from alphalattice.kernel.execution import execution_publication
 from alphalattice.protocols.plugin_contract import (
     ActionInvocation,
     ActionReceipt,
@@ -52,16 +54,20 @@ from alphalattice.protocols.plugin_contract import (
     CatalogRead,
     EffectMode,
     ExecutionContext,
+    ExecutionMode,
     ReceiptStatus,
 )
 
 OUTPUT = "output.json"
 """The answer a plugin stages in its folder, checked against its capability's output schema."""
 
+ARROW_OUTPUT = "output.arrow"
+"""The trusted worker's transfer file, consumed before the Host publishes its result."""
+
 PROVENANCE = "provenance.json"
 """The invocation and its receipt, written by the Host beside the answer it commits."""
 
-Plugin = Callable[[ExecutionContext], ActionReceipt]
+Plugin = Callable[[ExecutionContext], ActionReceipt | AbstractContextManager[ActionReceipt]]
 """One run of a capability's code in the context it is given; an executor supplies it."""
 
 
@@ -173,6 +179,8 @@ class PluginStaging:
     def _run(self, spec: ActionSpec, invocation: ActionInvocation, plugin: Plugin) -> StagedCommit:
         invocation_id = uuid4()
         run = f"staging/plugin-runs/{invocation_id}"
+        arrow = spec.execution_mode is ExecutionMode.TRUSTED_POOL
+        answer = ARROW_OUTPUT if arrow else OUTPUT
         try:  # each folder from the workspace root down, checked as it is created
             folder = make_confined_parents(self._workspace, f"{run}/{OUTPUT}").parent
         except (OSError, WorkspaceSecurityError) as error:
@@ -180,6 +188,14 @@ class PluginStaging:
                 "task_control.plugin_staging_unproved",
                 "replace the link in the workspace's staging folder with a folder and rerun",
             ) from error
+        running = ExitStack()
+
+        @contextmanager
+        def publication() -> Iterator[None]:
+            with execution_publication():
+                yield
+                running.close()
+
         try:
             context = ExecutionContext(
                 invocation_id=invocation_id,
@@ -189,7 +205,12 @@ class PluginStaging:
                 lease=spec.lease,
                 is_speculative=invocation.is_speculative,
             )
-            receipt = plugin(context)
+            answer_scope = plugin(context)
+            receipt = (
+                answer_scope
+                if isinstance(answer_scope, ActionReceipt)
+                else running.enter_context(answer_scope)
+            )
             if (
                 receipt.status is not ReceiptStatus.OK
                 or receipt.invocation_id != context.invocation_id
@@ -199,12 +220,20 @@ class PluginStaging:
                     "task_control.plugin_provenance_mismatch", "rerun the invocation"
                 )
             staged = _staged_files(self._workspace, run)
-            if PROVENANCE in staged or OUTPUT not in staged:
+            if PROVENANCE in staged or answer not in staged or (arrow and OUTPUT in staged):
                 raise StagingRefused(
                     "task_control.plugin_staged_entry_invalid",
-                    f"stage {OUTPUT} and never {PROVENANCE}, which the Host writes",
+                    f"stage {answer} and leave the Host's output names to the Host",
                 )
-            _checked_output(resolve_confined(self._workspace, f"{run}/{OUTPUT}"), spec)
+            staged_answer = resolve_confined(self._workspace, f"{run}/{answer}")
+            output = checked_plugin_output(staged_answer, spec)
+            if arrow:
+                # Release the map before replacing the folder on Windows.
+                staged_answer.unlink()
+                json_answer = resolve_confined(self._workspace, f"{run}/{OUTPUT}")
+                with json_answer.open("x", encoding="utf-8") as sink:
+                    json.dump(output, sink)
+                receipt = receipt.model_copy(update={"output": output})
             provenance = resolve_confined(self._workspace, f"{run}/{PROVENANCE}")
             with provenance.open("x", encoding="utf-8") as record:
                 json.dump(
@@ -221,13 +250,18 @@ class PluginStaging:
                         "task_control.plugin_inputs_changed",
                         "rerun the invocation against the current catalog",
                     )
-                artifact = self._resolver.publish_plugin_result(folder, invocation.idempotency_key)
+                artifact = self._resolver.publish_plugin_result(
+                    folder, invocation.idempotency_key, publication=publication()
+                )
             committed = self._resolver.resolve_plugin_result(artifact) / OUTPUT
             output = json.loads(committed.read_text(encoding="utf-8"))
             return StagedCommit(invocation.idempotency_key, artifact, output)
         finally:
-            if folder.exists():
-                shutil.rmtree(folder)
+            try:
+                running.close()
+            finally:
+                if folder.exists():
+                    shutil.rmtree(folder)
 
 
 def _staged_files(workspace: Path, run: str) -> set[str]:
@@ -259,13 +293,48 @@ def _staged_files(workspace: Path, run: str) -> set[str]:
     return found
 
 
-def _checked_output(path: Path, spec: ActionSpec) -> None:
-    """Refuse by name a staged answer that is not JSON meeting the output schema, whose references
-    resolve only inside the schema itself: an empty registry retrieves nothing."""
-    schema = spec.model_dump(mode="json")["output_schema"]
+def write_arrow_output(path: Path, output: Mapping[str, object]) -> None:
+    """Write one capability answer as uncompressed Arrow IPC, with its fields as columns."""
+    import pyarrow as pa  # lazy: the worker writes its Arrow answer
+
+    batch = pa.RecordBatch.from_struct_array(pa.array([dict(output)]))
+    with path.open("xb") as sink, pa.ipc.new_file(sink, batch.schema) as writer:
+        writer.write_batch(batch)
+
+
+def read_arrow_output(path: Path) -> dict[str, object]:
+    """Map the IPC buffers before projecting the one answer into the JSON contract."""
+    import pyarrow as pa  # lazy: the Host maps an Arrow answer
+
+    with pa.memory_map(str(path), "r") as source:
+        table = pa.ipc.open_file(source).read_all()
+        if table.num_rows != 1:
+            raise ValueError("a plugin IPC file must carry one answer")
+        return {
+            name: column[0].as_py()
+            for name, column in zip(table.column_names, table.columns, strict=True)
+        }
+
+
+def check_plugin_input(invocation: ActionInvocation, spec: ActionSpec) -> None:
+    """Check the declared schema against the invocation's JSON-shaped parameters."""
     try:
-        output = json.loads(path.read_text(encoding="utf-8"))
-        validators.validator_for(schema)(schema, registry=Registry()).validate(output)
+        _validate_schema(spec, "input_schema", invocation.model_dump(mode="json")["params"])
+    except (ValueError, schema_errors.ValidationError, reference_errors.Unresolvable) as error:
+        raise StagingRefused(
+            "task_control.plugin_input_invalid", f"correct the inputs to {spec.capability_id}"
+        ) from error
+
+
+def checked_plugin_output(path: Path, spec: ActionSpec) -> object:
+    """Read the answer and validate it with a schema registry that retrieves nothing."""
+    try:
+        output = (
+            read_arrow_output(path)
+            if path.name == ARROW_OUTPUT
+            else json.loads(path.read_text(encoding="utf-8"))
+        )
+        _validate_schema(spec, "output_schema", output)
     except (
         OSError,
         ValueError,
@@ -273,5 +342,11 @@ def _checked_output(path: Path, spec: ActionSpec) -> None:
         reference_errors.Unresolvable,
     ) as error:
         raise StagingRefused(
-            "task_control.plugin_output_invalid", "repair the plugin's output and rerun"
+            "task_control.plugin_output_invalid", f"repair {spec.capability_id}'s output and rerun"
         ) from error
+    return output
+
+
+def _validate_schema(spec: ActionSpec, field: str, value: object) -> None:
+    schema = spec.model_dump(mode="json")[field]
+    validators.validator_for(schema)(schema, registry=Registry()).validate(value)
