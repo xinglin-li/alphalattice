@@ -40,6 +40,7 @@ from alphalattice.foundation.data_layer.store import (
 )
 from alphalattice.foundation.data_layer.telemetry import decode
 from alphalattice.kernel.config import Change, override
+from alphalattice.protocols.plugin_contract import CatalogRead
 
 TEST_SOURCE = "src/alphalattice/foundation/data_layer/store.py"
 LISTING, MOVED = str(uuid.UUID(int=7)), str(uuid.UUID(int=8))
@@ -1289,11 +1290,16 @@ def _check_idle_maintenance_preserves_world_rows(root, log, port, listings, monk
     assert run("SELECT current_setting('threads')").fetchone() == (6,)
 
 
+def snapshot(read: CatalogRead) -> int:
+    """The catalog snapshot a read names."""
+    return int(read.snapshot_id.removeprefix("lake:"))
+
+
 @pytest.mark.proves("data_layer.legacy_rows_are_known_from_their_lag_rule")
 def test_a_legacy_batch_is_known_from_its_lag_rule_and_the_new_columns_round_trip(root):
-    """Every catalog table is admitted; a legacy row is known its rule's lag after its market's
-    first close on or after its valid date; a batch moving a listing's market or naming an
-    unregistered scheme is refused; typed columns read back whole."""
+    """Every catalog table is admitted, moving its own version alone; a legacy row is known its
+    rule's lag after its market's first close on or after its valid date; a batch moving a
+    listing's market or naming an unregistered scheme is refused; typed columns read back whole."""
     assert WORLD_KEYS["session"] == ("market_id", "session_date")
     bar = {"listing_id": LISTING, "session_date": "2024-01-05", "adjusted_close": 0.5}
     bar |= WRITTEN
@@ -1323,6 +1329,10 @@ def test_a_legacy_batch_is_known_from_its_lag_rule_and_the_new_columns_round_tri
         )
         calendar = log.require_lineage("provider", "calendar")
         yf = log.require_lineage("provider", "yf")
+        watched = ("execution_outcome", "raw_bar")  # a results table and a world one
+        reads = [port.catalog_read(watched)]
+        versions = [reads[0].input_versions]
+        moved = []  # each batch: the watched inputs its commit moved, and those it should
         for table, rows, lag in batches:
             if table == "listing":
                 rows = [
@@ -1343,6 +1353,16 @@ def test_a_legacy_batch_is_known_from_its_lag_rule_and_the_new_columns_round_tri
                     port.commit(staged)
                 except DataError as error:
                     refused.append(error.failure.code)
+                else:
+                    reads.append(port.catalog_read(watched))
+                    versions.append(reads[-1].input_versions)
+                    changed = {k for k in watched if versions[-1][k] != versions[-2][k]}
+                    moved.append((changed, {table} & set(watched)))
+        unversioned = []
+        for tables, at in ((("no_such_table",), None), (watched, 10**9)):  # undefined, unreached
+            with pytest.raises(DataError) as error:
+                port.catalog_read(tables, at)
+            unversioned.append(error.value.failure.code)
         read = port.lake.execute
         known = [
             read(
@@ -1392,8 +1412,11 @@ def test_a_legacy_batch_is_known_from_its_lag_rule_and_the_new_columns_round_tri
             renamed = {"market_id": str(market_id), "mic": mic}
             if changed:
                 renamed["valid_from"] = "2024-02-01"
+            before = port.catalog_read(("market",)).input_versions
             with stage(root, "market", calendar, arrow([renamed])) as staged:
                 assert port.commit(staged).rows == int(changed), label
+            # A commit that admits no row changes nothing, so it moves no version.
+            assert (port.catalog_read(("market",)).input_versions != before) == changed, label
             assert (
                 read(
                     "SELECT market_id, session_date, version_id, close_utc FROM lake.world.session"
@@ -1449,7 +1472,47 @@ def test_a_legacy_batch_is_known_from_its_lag_rule_and_the_new_columns_round_tri
             port.commit(staged)
         with pytest.raises(DataError, match="names several recorded markets"):
             port.market_id("XNYS", calendar)
+        # An earlier kept snapshot reads its own versions; a collection, which commits deletes
+        # and no admission, moves the results table's.
+        first = snapshot(reads[1])
+        again = port.catalog_read(watched, first)
+        held = port.catalog_read(watched)
+        bare = port.catalog_read(())  # a capability that declares no input
+        log.queue_deletion("results/art-1", "rows", "collected")
+        storeport.remove_bodies(root, log, port.lake)
+        collected = port.catalog_read(watched)
+        # An expired snapshot between kept ones is refused by name; maintenance that only moves
+        # bytes and an expiry move no version; a missing change record falls back to the read.
+        lake = port.lake.execute
+        lake("CALL ducklake_expire_snapshots('lake', versions => ?)", ([first + 1],)).fetchall()
+        with pytest.raises(DataError) as interior:
+            port.catalog_read(watched, first + 1)
+        port.maintain(datetime.now(UTC))
+        maintained = port.catalog_read(watched)
+        port.maintain(datetime.now(UTC) + timedelta(days=30))
+        expired = port.catalog_read(watched)
+        lake("DELETE FROM lake.world.raw_bar WHERE rowid = 0")  # one row of a flushed file
+        deleted = port.catalog_read(watched)
+        lake("CALL lake.set_option('rewrite_delete_threshold', 0.0)").fetchall()
+        lake("CALL ducklake_rewrite_data_files('lake')").fetchall()  # applies that delete's file
+        rewritten = port.catalog_read(watched)
+        lake(f"DELETE FROM {storeport.CHANGES} WHERE snapshot_id = ?", [snapshot(rewritten)])
+        lost = port.catalog_read(watched)
         port.close()
+    assert all(changed == expected for changed, expected in moved)  # its own commits alone
+    assert all(versions[-1].values()) and min(versions[0].values()) <= min(versions[-1].values())
+    assert again == reads[1] and held.input_versions != again.input_versions
+    assert bare == CatalogRead(snapshot_id=held.snapshot_id, input_versions={})
+    assert collected.input_versions["raw_bar"] == held.input_versions["raw_bar"]
+    assert collected.input_versions["execution_outcome"] > held.input_versions["execution_outcome"]
+    assert interior.value.failure.code == "data_layer.input_unversioned"
+    assert maintained.input_versions == expired.input_versions == collected.input_versions
+    assert snapshot(maintained) > snapshot(collected)  # the flush committed a snapshot
+    assert deleted.input_versions["raw_bar"] > expired.input_versions["raw_bar"]
+    assert rewritten.input_versions == deleted.input_versions
+    assert snapshot(rewritten) > snapshot(deleted)  # the rewrite committed a snapshot
+    assert lost.input_versions == dict.fromkeys(watched, snapshot(lost))
+    assert unversioned == ["data_layer.input_unversioned"] * 2
     schemas = dict(tables)
     kept = ("superseded", "rewritten")  # the versions' own records, keyed by no fact
     assert sorted(WORLD_KEYS) == [table for table in schemas["world"] if table not in kept]

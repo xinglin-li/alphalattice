@@ -86,6 +86,7 @@
 "data_layer.array_collected": {"owner": "alphalattice.foundation.data_layer", "category": "FAILED_PRECONDITION", "classification_note": "A collected array body cannot be read or kept as present."},
 "data_layer.array_missing": {"owner": "alphalattice.foundation.data_layer", "category": "NOT_FOUND", "classification_note": "No array, or no body for its profile, is held for the digest; restore the data root from its backup."},
 "data_layer.input_missing": {"owner": "alphalattice.foundation.data_layer", "category": "NOT_FOUND", "classification_note": "No research input is kept for the binding, or a file it lists is gone; restore the data root from its backup."},
+"data_layer.input_unversioned": {"owner": "alphalattice.foundation.data_layer", "category": "INVALID_ARGUMENT", "classification_note": "A capability declares a table no admission versions; declare the world or results tables it reads."},
 "data_layer.input_invalid": {"owner": "alphalattice.foundation.data_layer", "category": "INVALID_ARGUMENT", "classification_note": "A research input folder or file is a link; bind the input again from its source."},
 "data_layer.part_missing": {"owner": "alphalattice.foundation.data_layer", "category": "NOT_FOUND", "classification_note": "The Alpha part relation is absent; restore the workspace and data root from their backup."},
 "data_layer.part_invalid": {"owner": "alphalattice.foundation.data_layer", "category": "FAILED_PRECONDITION", "classification_note": "An Alpha part relation or carried body is invalid; restore the workspace and data root from their backup."},
@@ -714,6 +715,14 @@
 "category": "INVALID_ARGUMENT"
 },
 "plugin_contract.json_value_not_finite": {
+"owner": "plugin_contract",
+"category": "INVALID_ARGUMENT"
+},
+"plugin_contract.as_of_unresolved": {
+"owner": "plugin_contract",
+"category": "INVALID_ARGUMENT"
+},
+"plugin_contract.input_versions_mismatch": {
 "owner": "plugin_contract",
 "category": "INVALID_ARGUMENT"
 },

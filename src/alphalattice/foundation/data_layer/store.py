@@ -67,6 +67,7 @@ from alphalattice.kernel import storage
 from alphalattice.kernel.clock import utc_now
 from alphalattice.kernel.config import current as process_config
 from alphalattice.kernel.execution import interruptible
+from alphalattice.protocols.plugin_contract import CatalogRead
 
 _GROUPING = threading.Lock()
 _grouping: list[threading.Thread] = []
@@ -154,6 +155,16 @@ DERIVED_PARTS: Final = {rule["table"]: rule["part"] for rule in _ADMISSION_RULES
 listing (a feature set's: a build's batch writes whole listings, and a day's append moves one
 month of each), or an as-of date."""
 CHANGES: Final = "__ducklake_metadata_lake.main.ducklake_snapshot_changes"
+LAYOUT_CHANGES: Final = (
+    "inline_flush",
+    "flushed_inlined",
+    "rewrite_delete",
+    "merge_adjacent",
+    "compacted_table",
+)
+"""The catalog's change kinds for maintenance that only moves a table's bytes (flushing inlined
+rows, rewriting files past their delete threshold, merging and compacting files); they change no
+data, so no version reads them. The deletes a rewrite applies were already changes when made."""
 _CATALOG_METADATA: Final = "__ducklake_metadata_lake.main"
 """Each snapshot's commit message and info, read in the catalog database DuckLake attaches for
 `lake` under its documented name (METADATA_CATALOG's default, `__ducklake_metadata_<name>`)."""
@@ -534,6 +545,72 @@ class StorePort:
                 publish()
             else:
                 self._block.published.append(publish)
+
+    def catalog_read(self, tables: Collection[str], snapshot: int | None = None) -> CatalogRead:
+        """The catalog snapshot a run reads at, the latest when `snapshot` is None, with each of
+        these tables' version at it, in one read of the catalog's own change record.
+
+        A table's version is the last snapshot at or before the read one that changed its data
+        or schema: its creation, an insert, a delete (a collection's too) or an alteration. A
+        commit that writes nothing records no change, and maintenance that only moves bytes
+        (LAYOUT_CHANGES) changes no data, so neither moves it; expiry keeps the change record,
+        so it moves none either. When a change record between that snapshot and the read one is
+        missing, so a later change cannot be ruled out, the version is the read snapshot itself:
+        a lost reuse, never a wrong one. A table the catalog does not define at the snapshot, or
+        a snapshot it does not keep, is refused by name.
+        """
+        schemas = {
+            **dict.fromkeys(WORLD_KEYS, "world"),
+            **dict.fromkeys(RESULTS_KEYS, "results"),
+            **{table: "derived" for table in tables if _family(table) in DERIVED_KEYS},
+        }
+        unknown = sorted(set(tables) - schemas.keys())
+        if unknown:
+            raise DataError(
+                f"the catalog defines no table {', '.join(unknown)}; declare the tables read",
+                code="data_layer.input_unversioned",
+            )
+        wanted = json.dumps(sorted([schemas[table], table] for table in set(tables)))
+        found = self.lake.execute(
+            f"WITH bound AS (SELECT snapshot_id AS v FROM {_CATALOG_METADATA}.ducklake_snapshot"
+            " WHERE snapshot_id = coalesce(CAST(? AS BIGINT),"
+            f" (SELECT max(snapshot_id) FROM {_CATALOG_METADATA}.ducklake_snapshot))),"
+            " wanted AS (SELECT w[1] AS schema_name, w[2] AS table_name"
+            " FROM (SELECT unnest(CAST(? AS JSON)::VARCHAR[][]) AS w)),"
+            " live AS (SELECT t.table_id, s.schema_name, t.table_name, t.begin_snapshot"
+            f" FROM {_CATALOG_METADATA}.ducklake_table t"
+            f" JOIN {_CATALOG_METADATA}.ducklake_schema s USING (schema_id) CROSS JOIN bound"
+            " WHERE t.begin_snapshot <= v AND coalesce(t.end_snapshot > v, true)"
+            " AND s.begin_snapshot <= v AND coalesce(s.end_snapshot > v, true)),"
+            " recorded AS (SELECT c.snapshot_id, u.change"
+            f" FROM {CHANGES} c CROSS JOIN bound,"
+            " unnest(string_split(c.changes_made, ',')) AS u(change) WHERE c.snapshot_id <= v),"
+            " touched AS (SELECT snapshot_id,"
+            " TRY_CAST(split_part(change, ':', 2) AS BIGINT) AS table_id FROM recorded"
+            " WHERE NOT list_contains(CAST(? AS VARCHAR[]), split_part(change, ':', 1))),"
+            " last AS (SELECT b.v, coalesce(w.table_name, '') AS table_name,"
+            " greatest(max(l.begin_snapshot), max(x.snapshot_id)) AS changed"
+            " FROM bound b LEFT JOIN (wanted w JOIN live l"
+            " ON l.schema_name = w.schema_name AND l.table_name = w.table_name) ON true"
+            " LEFT JOIN touched x ON x.table_id = l.table_id GROUP BY b.v, w.table_name)"
+            " SELECT v, table_name, CASE WHEN (SELECT count(DISTINCT r.snapshot_id)"
+            " FROM recorded r WHERE r.snapshot_id > changed) = v - changed"
+            " THEN changed ELSE v END AS version FROM last",
+            [snapshot, wanted, list(LAYOUT_CHANGES)],
+        ).fetchnumpy()
+        at = int(found["v"][0]) if len(found["v"]) else snapshot
+        versions = {
+            str(table): int(version)
+            for table, version in zip(found["table_name"], found["version"], strict=True)
+            if table
+        }
+        if not len(found["v"]) or len(versions) != len(set(tables)):
+            raise DataError(
+                f"the catalog keeps no snapshot {at} holding {', '.join(sorted(tables))};"
+                " read at a kept snapshot",
+                code="data_layer.input_unversioned",
+            )
+        return CatalogRead(snapshot_id=f"lake:{at}", input_versions=versions)
 
     @contextmanager
     def hold_disjoint_catalog(self, since: int, input_schema: str) -> Iterator[int | None]:

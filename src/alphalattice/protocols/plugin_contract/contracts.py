@@ -5,16 +5,23 @@ One contract serves both execution modes. A built-in capability runs in the Host
 plugin writes the ledger: it reads a catalog snapshot and writes only its staging folder, and the
 Host commits what it staged. The speculation fields (effect mode, snapshot anchor, idempotency
 key, speculative flag, priority) are part of the contract from its first version.
+
+A run's key names its result by what the result depends on: the capability, its code, its
+parameters with an implicit as-of resolved, the version of each input table it declares and the
+contract's version. The catalog snapshot it reads at is not among them, since every commit
+advances it: a write to a table the capability never reads leaves the key, so the result stays
+reusable.
 """
 
 from __future__ import annotations
 
 import math
 from collections.abc import Mapping
+from datetime import date
 from enum import StrEnum
 from pathlib import Path
 from types import MappingProxyType
-from typing import Annotated, cast
+from typing import Annotated, Final, cast
 
 from pydantic import AfterValidator, JsonValue, NonNegativeInt, PlainSerializer, PositiveInt
 
@@ -54,6 +61,23 @@ def _frozen_object(value: Mapping[str, JsonValue]) -> Mapping[str, JsonValue]:
 JsonObject = Annotated[
     Mapping[str, JsonValue], AfterValidator(_frozen_object), PlainSerializer(_thawed)
 ]
+
+
+def _frozen_versions(value: Mapping[str, int]) -> Mapping[str, int]:
+    return MappingProxyType(dict(value))
+
+
+InputVersions = Annotated[
+    Mapping[ShortString, NonNegativeInt],
+    AfterValidator(_frozen_versions),
+    PlainSerializer(dict),
+]
+"""Each declared input table's version at a run's read snapshot: the last catalog snapshot at
+or before it that changed the table, as the catalog owner reads it (`StorePort.catalog_read`)."""
+
+CONTRACT_VERSION: Final = 1
+"""The contract's version, among a run's key inputs: a run under another contract never takes
+this one's result."""
 
 
 class EffectMode(StrEnum):
@@ -96,19 +120,22 @@ class Lease(DomainModel):
     network: bool = False
 
 
-_KEY_INPUTS = frozenset({"capability_id", "code_role_hash", "params", "catalog_snapshot_id"})
+_KEY_INPUTS = frozenset(
+    {"capability_id", "code_role_hash", "params", "input_versions", "contract_version"}
+)
 
 
 class _ActionKeyInputs(DomainModel):
-    """The four values one run's result is keyed by."""
+    """The values one run's result is keyed by."""
 
     capability_id: ShortString
     code_role_hash: Blake3Identity
     params: JsonObject
-    catalog_snapshot_id: ShortString
+    input_versions: InputVersions
+    contract_version: PositiveInt = CONTRACT_VERSION
 
     def derived_key(self) -> str:
-        """The tagged BLAKE3 digest naming the run's result: the same four inputs, one result.
+        """The tagged BLAKE3 digest naming the run's result: the same inputs, one result.
 
         It hashes the validated values as the wire carries them, in canonical form, so the
         parameters' key order never changes it and a reader of the invocation derives it again.
@@ -117,8 +144,9 @@ class _ActionKeyInputs(DomainModel):
 
 
 class ActionInvocation(_ActionKeyInputs):
-    """One request for a capability's code against one catalog snapshot, with its key."""
+    """One request for a capability's code, read at one catalog snapshot, with its key."""
 
+    catalog_snapshot_id: ShortString
     idempotency_key: Blake3Identity
     is_speculative: bool = False
 
@@ -128,8 +156,19 @@ class ActionInvocation(_ActionKeyInputs):
             raise ValueError("plugin_contract.invocation_key_mismatch")
 
 
+class CatalogRead(DomainModel):
+    """One read of the catalog: the snapshot a run reads at and each declared input's version at
+    that same snapshot, read together by the catalog owner, so a key never pairs one snapshot's
+    data with another's versions."""
+
+    snapshot_id: ShortString
+    input_versions: InputVersions
+
+
 class ActionSpec(DomainModel):
-    """What a capability declares: its identity, effect, execution mode, lease and schemas."""
+    """What a capability declares: its identity, effect, execution mode, lease, schemas, the
+    catalog tables it reads (`inputs`) and the parameter its as-of defaults to today in, if any
+    (`as_of_param`)."""
 
     capability_id: ShortString
     plugin_id: ShortString
@@ -139,23 +178,40 @@ class ActionSpec(DomainModel):
     lease: Lease
     input_schema: JsonObject
     output_schema: JsonObject
+    inputs: tuple[ShortString, ...] = ()
+    as_of_param: ShortString | None = None
 
     def invoke(
         self,
         params: Mapping[str, JsonValue],
-        catalog_snapshot_id: str,
+        read: CatalogRead,
         *,
+        as_of: date | None = None,
         is_speculative: bool = False,
     ) -> ActionInvocation:
-        """The invocation of this capability's code, keyed by its validated inputs."""
+        """The invocation of this capability's code at `read`'s snapshot, keyed by its validated
+        inputs.
+
+        `read` holds one version for each declared input at the snapshot it names. An as-of the
+        parameters leave implicit is resolved into them from `as_of`, the caller's today, before
+        the key; one with no `as_of` is refused by name.
+        """
+        if set(read.input_versions) != set(self.inputs):
+            raise ValueError("plugin_contract.input_versions_mismatch")
+        resolved = dict(params)
+        if self.as_of_param is not None and self.as_of_param not in resolved:
+            if as_of is None:
+                raise ValueError("plugin_contract.as_of_unresolved")
+            resolved[self.as_of_param] = as_of.isoformat()
         inputs = _ActionKeyInputs(
             capability_id=self.capability_id,
             code_role_hash=self.code_role_hash,
-            params=params,
-            catalog_snapshot_id=catalog_snapshot_id,
+            params=resolved,
+            input_versions=read.input_versions,
         )
         return ActionInvocation(
             **inputs.model_dump(),
+            catalog_snapshot_id=read.snapshot_id,
             idempotency_key=inputs.derived_key(),
             is_speculative=is_speculative,
         )

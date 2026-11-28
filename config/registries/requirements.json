@@ -1128,7 +1128,7 @@
       "seconds": 5
     },
     "data_layer.legacy_rows_are_known_from_their_lag_rule": {
-      "description": "StorePort preserves typed catalog rows, derives legacy knowledge from the market's next session close and lag rule, and keeps market and session identities through MIC changes.",
+      "description": "StorePort preserves typed catalog rows, derives legacy knowledge from the market's next session close and lag rule, keeps market and session identities through MIC changes, and moves a table's version only with its own admissions.",
       "lower_layer": "The lag rule is read from a real log's definition and the session close from a real DuckLake catalog.",
       "owner": "alphalattice.foundation.data_layer",
       "layer": "integration",
@@ -2809,11 +2809,18 @@
       "layer": "integration",
       "seconds": 60
     },
+    "plugin_contract.a_run_is_keyed_by_its_declared_inputs_not_the_catalog": {
+      "description": "If a run's key read the catalog's global snapshot, any commit would make every result unreusable; it reads the declared inputs' versions, the resolved as-of and the contract version.",
+      "owner": "alphalattice.protocols.plugin_contract",
+      "layer": "unit",
+      "seconds": 1
+    },
     "plugin_contract.records_are_strict_and_keyed_by_their_four_inputs": {
       "description": "The plugin contract's records round-trip, stay frozen and refuse a wrong type or field by name; the idempotency key ignores parameter order and changes with each of its four inputs.",
       "owner": "alphalattice.protocols.plugin_contract",
       "layer": "unit",
-      "seconds": 1
+      "seconds": 1,
+      "retired": "2026-11-27: the key reads declared input versions, the resolved as-of and the contract version, not the catalog snapshot, proved by plugin_contract.a_run_is_keyed_by_its_declared_inputs_not_the_catalog"
     },
     "portfolio_strategy_lab.a_review_names_its_publication_apart_from_its_rendering": {
       "description": "If a re-render changed the name a review binds, every review of that publication would read as another, and a changed sealed field must name a new one.",
