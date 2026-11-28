@@ -235,6 +235,26 @@ def test_test_placement_and_structural_scope(tmp_path):
             candidate, lambda _name: (_ for _ in ()).throw(FileNotFoundError(post))
         )
 
+    seams = 'name = "x"\n[project.entry-points."alphalattice.capabilities"]\nfactor = "m:run"\n'
+    declared = "TEST_SOURCE = 'src/x.py'\nSEAM = 'alphalattice.capabilities'\n"
+    suite = declared + "def test_each(): pass\n"
+    for found, refused in (
+        ({"tests/contract/x/test_a.py": suite}, ""),  # one suite collects the seam
+        ({}, "no conformance suites"),  # an implementation in a group with no suite
+        ({"tests/contract/x/test_a.py": suite, "tests/contract/y/test_b.py": suite}, "2 ("),
+        ({"tests/contract/x/test_a.py": suite.replace("capabilities", "other")}, "no conformance"),
+        ({"tests/contract/x/test_a.py": declared}, "no conformance"),  # a bare declaration
+        ({"tests/contract/x/helpers.py": suite}, "no conformance"),  # a file the runner skips
+        ({"tests/contract/x/test_a.py.disabled": suite}, "no conformance"),  # renamed away
+    ):
+        problems = " ".join(layout.seam_problems(seams, found))
+        assert (
+            (refused in problems and "alphalattice.capabilities" in problems)
+            if refused
+            else (not problems)
+        ), found
+    assert not layout.seam_problems('[project.scripts]\nalphalattice = "m:main"\n', {})
+
     placement = getattr(layout, "new_test_file_problems", None)
     assert callable(placement), "new test-file placement owner is missing"
     rows = {"testing.example": {"owner": "devtools.testing", "layer": "unit"}}

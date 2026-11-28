@@ -5,6 +5,7 @@ from __future__ import annotations
 import ast
 import json
 import keyword
+import tomllib
 from collections.abc import Iterable, Mapping, Sequence
 from fnmatch import fnmatchcase
 from functools import cache
@@ -153,6 +154,53 @@ def new_test_file_problems(
     except (SyntaxError, UnicodeError, ValueError) as error:
         return [f"TEST-LAYOUT {path}: {error}; repair the declaration or move the file"]
     return []
+
+
+SEAM_SUITES = "tests/contract/"
+"""Where a seam's conformance suite lives: the contract layer, one test file per seam."""
+TEST_FILES = ("test_*.py", "*_test.py")
+"""The runner's Python test-file rule (pytest's default python_files; the project sets none)."""
+
+
+def collected_test_file(path: str) -> bool:
+    """Whether the runner collects tests from the file at `path`, by its name alone."""
+    return any(fnmatchcase(PurePosixPath(path).name, rule) for rule in TEST_FILES)
+
+
+def seam_problems(pyproject: str, suites: Mapping[str, str]) -> list[str]:
+    """Each entry-point group the product declares under `alphalattice.` is a seam, and its
+    implementations are collected by one conformance suite: a file under SEAM_SUITES the runner
+    collects (`collected_test_file`) that declares the group as its literal `SEAM` and defines a
+    module-level test function. A seam no such suite, or several, declares is refused by name, so
+    a new implementation lands only in a group whose suite runs it; a bare declaration, or a suite
+    renamed out of the runner's reach, runs nothing and is not one."""
+    try:
+        groups = tomllib.loads(pyproject).get("project", {}).get("entry-points", {})
+        declared: dict[str, list[str]] = {}
+        for path, source in sorted(suites.items()):
+            tree = ast.parse(source)
+            runnable = any(
+                isinstance(node, ast.FunctionDef | ast.AsyncFunctionDef)
+                and node.name.startswith("test")
+                for node in tree.body
+            )
+            if not (path.startswith(SEAM_SUITES) and collected_test_file(path) and runnable):
+                continue
+            for value in _declarations(tree, "SEAM"):
+                if isinstance(value, ast.Constant) and isinstance(value.value, str):
+                    declared.setdefault(value.value, []).append(path)
+    except (tomllib.TOMLDecodeError, SyntaxError, AttributeError) as error:
+        return [f"TEST-SEAM unmeasured: {error}; repair pyproject.toml or the contract suites"]
+    problems = []
+    for group in sorted(name for name in groups if name.startswith("alphalattice.")):
+        named = declared.get(group, [])
+        if len(named) != 1:
+            found = "no" if not named else f"{len(named)} ({', '.join(named)})"
+            problems.append(
+                f"TEST-SEAM {group}: {found} conformance suites under {SEAM_SUITES} declare"
+                f" SEAM = {group!r}; add the seam's one suite, collecting every implementation"
+            )
+    return problems
 
 
 def new_data_file_problems(paths: Iterable[str], policy: Mapping[str, Any]) -> list[str]:

@@ -34,9 +34,12 @@ from devtools.architecture.git_inputs import staged_changes, staged_moves, uniqu
 from devtools.testing import os_marks
 from devtools.testing.layout import (
     REGISTRIES,
+    SEAM_SUITES,
+    collected_test_file,
     import_violations,
     new_data_file_problems,
     new_test_file_problems,
+    seam_problems,
 )
 from devtools.testing.requirements import PROVES_LINE, file_holders
 from devtools.testing.requirements import parse as parse_requirements
@@ -2425,6 +2428,26 @@ def main(argv: list[str] | None = None) -> int:
         print("TEST-LAYOUT test listing unreadable; restore the Git index", file=sys.stderr)
         return 1
     found += unpackaged_test_dirs(staged, tracked.stdout.split("\0"))
+    removed = (  # a suite's deletion or rename source leaves its seam to be checked again
+        _git("diff", "--name-only", "-z", "--no-renames", "--diff-filter=D", parents[0], "HEAD")
+        if args.base
+        else _git("diff", "--cached", "--name-only", "-z", "--no-renames", "--diff-filter=D")
+    )
+    if removed.returncode:
+        print("TEST-SEAM removed files unreadable; restore the Git index", file=sys.stderr)
+        return 1
+    changed = [*staged, *removed.stdout.split("\0")]
+    if any(p == "pyproject.toml" or p.startswith(SEAM_SUITES) for p in changed):
+        suites = [
+            p
+            for p in tracked.stdout.split("\0")
+            if p.startswith(SEAM_SUITES) and collected_test_file(p)
+        ]
+        seams = _blobs([head + "pyproject.toml"] + [head + p for p in suites])
+        found += seam_problems(
+            seams.get(head + "pyproject.toml", ""),
+            {p: seams[head + p] for p in suites if head + p in seams},
+        )
     added = [p for p in candidates if all(parent + ":" + p not in texts for parent in parents)]
     if added:
         try:

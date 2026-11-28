@@ -2822,6 +2822,12 @@
       "layer": "unit",
       "seconds": 1
     },
+    "plugin_contract.every_capability_keeps_the_contract": {
+      "description": "Every capability, the suite's sample and each one the seam's entry-point group declares, round-trips its spec strictly, keys each run by its inputs alone and refuses inadmissible runs by name.",
+      "owner": "alphalattice.protocols.plugin_contract",
+      "layer": "contract",
+      "seconds": 1
+    },
     "plugin_contract.records_are_strict_and_keyed_by_their_four_inputs": {
       "description": "The plugin contract's records round-trip, stay frozen and refuse a wrong type or field by name; the idempotency key ignores parameter order and changes with each of its four inputs.",
       "owner": "alphalattice.protocols.plugin_contract",
@@ -3523,7 +3529,7 @@
       "seconds": 1
     },
     "testing.test_placement_and_structural_scope": {
-      "description": "New test files must declare their owner and source, and a deferred structural test must have a valid scope before selection.",
+      "description": "New test files must declare their owner and source, each declared seam must have one contract suite, and a deferred structural test must have a valid scope before selection.",
       "owner": "devtools.testing",
       "layer": "integration",
       "lower_layer": "The selection checks read and construct registered policy files, which a unit test cannot access.",
