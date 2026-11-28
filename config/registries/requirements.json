@@ -1988,6 +1988,12 @@
       "seconds": 1,
       "retired": "2026-11-19: the retired retrieval core's per-machine int8 identities are gone; the recipe a new authority takes is proved by knowledge.a_new_authority_takes_the_int8_recipe"
     },
+    "local_application.a_capability_command_takes_its_schemas_options": {
+      "description": "A command that runs a capability makes each scalar property of its input schema, or array of scalars, an option with its type, sends any other property through --params, which the options extend, and lists them in its help.",
+      "owner": "alphalattice.interface.local_application",
+      "layer": "unit",
+      "seconds": 1
+    },
     "local_application.a_disconnected_waiter_reports_the_task_continues": {
       "description": "When a Host stays unavailable through the wait cap the answer reports that the Task continues.",
       "owner": "alphalattice.interface.local_application",
@@ -2947,6 +2953,13 @@
       "owner": "alphalattice.investment.portfolio_strategy_lab",
       "layer": "integration",
       "seconds": 5
+    },
+    "product_host.a_capability_runs_through_the_door_and_its_projections": {
+      "description": "PLUGIN_LIST names each capability from its manifest and PLUGIN_INVOKE runs a built-in over the Host's route, answering its receipt keyed as the plugin contract keys it; `plugin run` takes its options and its help from the capability's input schema.",
+      "owner": "alphalattice.control.product_host",
+      "layer": "integration",
+      "seconds": 20,
+      "lower_layer": "The run crosses the served Host's HTTP route, its kept worker and the real CLI entry, which no unit can compose."
     },
     "product_host.a_detached_launch_hears_its_host_on_its_ready_pipe": {
       "description": "A detached launch's readiness wait ends on its Host's ready byte or the Host's end, and at its bound only when the Host does neither.",

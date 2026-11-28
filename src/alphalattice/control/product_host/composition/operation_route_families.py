@@ -249,6 +249,7 @@ _ROUTES = (
         "experience_read",
         "route",
     ),
+    FamilyRoute(("PLUGIN_INVOKE", "PLUGIN_LIST"), "plugin_operations", "route"),
     FamilyRoute(
         (
             "COMMITTEE_DAILY_SET",

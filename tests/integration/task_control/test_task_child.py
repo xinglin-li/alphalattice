@@ -14,7 +14,7 @@ import tomllib
 from collections.abc import Callable
 from concurrent.futures import Future, ProcessPoolExecutor, ThreadPoolExecutor
 from contextlib import contextmanager
-from datetime import UTC, datetime
+from datetime import UTC, date, datetime
 from importlib import metadata
 from pathlib import Path
 from types import SimpleNamespace
@@ -52,6 +52,7 @@ from alphalattice.control.workspace_runtime.artifacts import ArtifactResolver
 from alphalattice.control.workspace_runtime.mutation_gate import WorkspaceMutationGate
 from alphalattice.foundation.data_layer import create_data_root, reading
 from alphalattice.foundation.data_layer.log import HostLog
+from alphalattice.kernel.door import DECISIONS_DATABASE, Decisions
 from alphalattice.kernel.execution import (
     CANCELLED,
     ExecutionStopped,
@@ -60,7 +61,7 @@ from alphalattice.kernel.execution import (
     interruptible,
     stop_reason,
 )
-from alphalattice.kernel.identity import blake3_from_filename
+from alphalattice.kernel.identity import blake3_digest, blake3_from_filename, canonical_hash
 from alphalattice.kernel.resources import (
     NATIVE_THREAD_VARIABLES,
     ResourceAmounts,
@@ -423,10 +424,50 @@ def sized(*, value: int, size: int, cancelled) -> dict[str, object]:  # type: ig
         pytest.param("trusted-arrow", "", "", id="trusted-arrow"),
         pytest.param("trusted-commit-cancel", "", "", id="trusted-commit-cancel"),
         pytest.param("trusted-output-schema", "", "", id="trusted-output-schema"),
+        pytest.param("invoke-staging", "", "", id="invoke-staging"),
         pytest.param("callable", "dispatch_unverified", "arbitrary", id="trusted-callable"),
         pytest.param("missing", "capability_unlisted", "test.missing", id="trusted-missing"),
         pytest.param("unverified", "closure_changed", "test.registered", id="trusted-unverified"),
         pytest.param("changed", "closure_changed", "test.registered", id="trusted-changed"),
+        pytest.param(
+            "unlisted", "plugin_registry.capability_unlisted", "test.missing", id="invoke-unlisted"
+        ),
+        pytest.param(
+            "missing-required",
+            "task_control.plugin_input_invalid",
+            "test.registered",
+            id="invoke-missing-required",
+        ),
+        pytest.param(
+            "wrong-type",
+            "task_control.plugin_input_invalid",
+            "test.registered",
+            id="invoke-wrong-type",
+        ),
+        pytest.param(
+            "undeclared",
+            "task_control.plugin_input_invalid",
+            "test.registered",
+            id="invoke-undeclared",
+        ),
+        pytest.param(
+            "ledger",
+            "plugin_registry.ledger_commit_unavailable",
+            "test.registered",
+            id="invoke-ledger",
+        ),
+        pytest.param(
+            "unconfirmed",
+            "plugin_registry.confirmation_required",
+            "user.staged",
+            id="invoke-unconfirmed",
+        ),
+        pytest.param(
+            "confirmed",
+            "plugin_registry.workspace_run_unavailable",
+            "user.staged",
+            id="invoke-confirmed",
+        ),
     ],
 )
 def test_calls_spread_over_kept_workers_answer_in_order_and_bring_back_large_answers(
@@ -444,6 +485,12 @@ def test_calls_spread_over_kept_workers_answer_in_order_and_bring_back_large_ans
         return
     if case == "trusted-output-schema":
         _check_readonly_output_schema(tmp_path, monkeypatch)
+        return
+    if case == "invoke-staging":
+        _check_invoke_staging(tmp_path, monkeypatch)
+        return
+    if code.startswith(("plugin_registry.", "task_control.")):
+        _check_invoke_refusal(tmp_path, monkeypatch, case, code, name)
         return
     if case != "spread":
         _check_trusted_refusal(tmp_path, monkeypatch, case, code, name)
@@ -608,7 +655,7 @@ def _check_cancel_ends_tree(request) -> None:
             spawn.stop_tree(first)
 
 
-def _installed_fixture(tmp_path, monkeypatch, name, effect, body, required):
+def _installed_fixture(tmp_path, monkeypatch, name, effect, body, required, schema=None):
     """Give the registry installed group metadata and real package bytes to verify."""
     package = tmp_path / "alphalattice"
     source = package / "control/product_host/plugins/sample.py"
@@ -619,7 +666,7 @@ def _installed_fixture(tmp_path, monkeypatch, name, effect, body, required):
             {
                 "effect_mode": effect,
                 "lease": {"memory_bytes": 1 << 28, "threads": 1, "timeout_ms": 10000},
-                "input_schema": {"type": "object"},
+                "input_schema": schema or {"type": "object"},
                 "output_schema": {
                     "type": "object",
                     "required": required,
@@ -669,6 +716,133 @@ def _check_trusted_refusal(tmp_path, monkeypatch, case, code, name) -> None:
     )
     with pytest.raises(plugins.PluginRefused, match=rf"plugin_registry\.{code}: {name}"):
         registry.run_trusted(request)
+
+
+def _check_invoke_staging(tmp_path, monkeypatch) -> None:
+    """A staging write invoked on request commits through the Host's staging owner under its
+    gate, and its receipt is the one the committed provenance records."""
+    registry = _staging_registry(tmp_path, monkeypatch)
+    snapshot = CatalogRead(snapshot_id="lake:1", input_versions={})
+    held = []
+
+    class Gate(WorkspaceMutationGate):
+        @contextmanager
+        def hold(self):
+            held.append(True)
+            with super().hold():
+                yield
+
+    resolver = ArtifactResolver(tmp_path / "artifacts")
+    staging = PluginStaging(tmp_path, tmp_path, resolver, Gate(), lambda _tables, _at: snapshot)
+    receipt = registry.invoke(
+        "test.stage",
+        {},
+        catalog=lambda _tables: snapshot,
+        as_of=date(2026, 11, 28),
+        attended=False,
+        staging=lambda: staging,
+    )
+    keyed = registry.trusted_spec("test.stage").invoke({}, snapshot)
+    assert (receipt.idempotency_key, receipt.status, held) == (
+        keyed.idempotency_key,
+        ReceiptStatus.OK,
+        [True],
+    )
+    assert receipt.output["values"] == (2, 3) and receipt.output["pid"] != os.getpid()
+    (folder,) = (tmp_path / "artifacts").rglob("provenance.json")
+    recorded = json.loads(folder.read_text(encoding="utf-8"))["receipt"]
+    assert recorded == receipt.model_dump(mode="json")
+    # The same key once its run completed: the run's code runs again, but the committed folder
+    # stays the first run's, so the answer is that folder's receipt, the first one.
+    again = registry.invoke(
+        "test.stage",
+        {},
+        catalog=lambda _tables: snapshot,
+        as_of=date(2026, 11, 28),
+        attended=False,
+        staging=lambda: staging,
+    )
+    assert (again, held) == (receipt, [True, True])
+    assert [p.name for p in (tmp_path / "artifacts").rglob("provenance.json")] == [
+        "provenance.json"
+    ]
+
+
+def _check_invoke_refusal(tmp_path, monkeypatch, case, code, name) -> None:
+    """A request the Host cannot run is refused by name before any worker starts: a capability
+    not listed, parameters the schema refuses, a ledger write, a workspace plugin."""
+    schema = {
+        "type": "object",
+        "required": ["window"],
+        "properties": {"window": {"type": "integer"}},
+    }
+    registry, _ = _installed_fixture(
+        tmp_path,
+        monkeypatch,
+        "test.registered",
+        "LEDGER_COMMIT" if case == "ledger" else "READ_ONLY",
+        "def run(params): return {}\n",
+        (),
+        schema,
+    )
+    if name == "user.staged":
+        folder = tmp_path / "plugins" / name
+        folder.mkdir(parents=True)
+        source, manifest = (
+            b"def run(context, invocation): pass\n",
+            json.dumps(
+                {
+                    "entry": "staged:run",
+                    "files": ["staged.py"],
+                    "effect_mode": "STAGING_WRITE",
+                    "lease": {"memory_bytes": 1024, "threads": 1, "timeout_ms": 1000},
+                    "input_schema": schema,
+                    "output_schema": {"type": "object"},
+                }
+            ).encode(),
+        )
+        (folder / "staged.py").write_bytes(source)
+        (folder / "plugin.json").write_bytes(manifest)
+        digest = canonical_hash(
+            {
+                "form": "plugin-closure-v1",
+                "name": name,
+                "entry": "staged:run",
+                "manifest": blake3_digest(manifest),
+                "sources": {"staged.py": blake3_digest(source)},
+            }
+        )
+        (tmp_path / "plugins.toml").write_text(f'[enabled]\n"{name}" = "{digest}"\n', "utf-8")
+        registry = plugins.PluginRegistry(tmp_path)
+    if case == "confirmed":
+        with pytest.raises(plugins.PluginRefused) as asked:
+            registry.admit_workspace(name, attended=True)
+        question = asked.value.decision
+        Decisions(tmp_path / DECISIONS_DATABASE, lambda: question.id).answer(
+            question, "approve", by_person=True
+        )
+
+    def no_worker(*_args, **_kwargs):
+        pytest.fail("an inadmissible request started a worker")
+
+    monkeypatch.setattr(KeptWorker, "calling", no_worker)
+    params = {
+        "missing-required": {},
+        "wrong-type": {"window": "twenty"},
+        "undeclared": {"window": 20, "universe": ["A"]},
+    }.get(case, {"window": 20})
+    with pytest.raises((plugins.PluginRefused, StagingRefused)) as refused:
+        registry.invoke(
+            name,
+            params,
+            catalog=lambda tables: CatalogRead(snapshot_id="lake:1", input_versions={}),
+            as_of=date(2026, 11, 28),
+            attended=False,
+            staging=no_worker,
+        )
+    assert refused.value.code == code
+    if case == "unconfirmed":
+        assert refused.value.decision is None and not (tmp_path / DECISIONS_DATABASE).exists()
 
 
 def _check_trusted_arrow(tmp_path, monkeypatch) -> None:

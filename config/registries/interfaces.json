@@ -3951,6 +3951,53 @@
       },
       "stability": "userspace"
     },
+    "operation:PLUGIN_INVOKE": {
+      "conformance_suite": [],
+      "consumers": [
+        "cli:plugin run"
+      ],
+      "description": "Runs one installed capability with parameters its input schema admits; answers its receipt.",
+      "implementations": [
+        "alphalattice.control.product_host.composition.plugin_operations:route"
+      ],
+      "kind": "operation",
+      "owner": "alphalattice.control.product_host.composition.plugin_operations",
+      "schema": {
+        "answer": "alphalattice.interface.local_application.answers.PluginInvokeAnswer",
+        "request": {
+          "allowed": [
+            "capability",
+            "params"
+          ],
+          "model": "alphalattice.interface.local_application.portfolio_research.PortfolioResearchRequestDocument",
+          "required": [
+            "capability"
+          ]
+        }
+      },
+      "stability": "userspace"
+    },
+    "operation:PLUGIN_LIST": {
+      "conformance_suite": [],
+      "consumers": [
+        "cli:plugin list"
+      ],
+      "description": "Lists each installed capability: its plugin, effect, state and input schema.",
+      "implementations": [
+        "alphalattice.control.product_host.composition.plugin_operations:route"
+      ],
+      "kind": "operation",
+      "owner": "alphalattice.control.product_host.composition.plugin_operations",
+      "schema": {
+        "answer": "alphalattice.interface.local_application.answers.PluginListAnswer",
+        "request": {
+          "allowed": [],
+          "model": "alphalattice.interface.local_application.portfolio_research.PortfolioResearchRequestDocument",
+          "required": []
+        }
+      },
+      "stability": "userspace"
+    },
     "operation:PORTFOLIO_READBACK": {
       "conformance_suite": [],
       "consumers": [

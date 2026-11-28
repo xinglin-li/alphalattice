@@ -28,6 +28,7 @@ const ROUTES = {
   compare: ['Portfolio', 'Compare', 'portfolio'],
   'alpha-compare': ['Research Lab', 'Compare', 'lab'],
   models: ['Research Lab', 'Models', 'lab'],
+  plugins: ['Research Lab', 'plugins.label.title', 'lab'],
   'feature-research': ['Research Lab', 'Features', 'lab'],
   features: ['Research Lab', 'Research-local formulas', 'lab'], // the product's Local Feature (2026-09-25): reached from the Lab, a Task or its address
   goals: ['Goals', 'Goals', 'goals'],

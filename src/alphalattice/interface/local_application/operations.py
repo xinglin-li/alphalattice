@@ -217,6 +217,19 @@ GRAMMAR: Final[dict[str, Command]] = {
         "Shows the committee's floor: its stage, members, tension points and the messages a "
         "member has not seen.",
     ),
+    "PLUGIN_LIST": Command(
+        "plugin",
+        "list",
+        "Lists each installed capability: its plugin, effect, state and input schema.",
+        collection=True,
+    ),
+    "PLUGIN_INVOKE": Command(
+        "plugin",
+        "run",
+        "Runs one installed capability with parameters its input schema admits; answers its "
+        "receipt.",
+        "capability",
+    ),
     "WAKE_REGISTER": Command(
         "activity",
         "notify",
@@ -1352,6 +1365,7 @@ HELP_GROUPS: Final[tuple[tuple[str, tuple[tuple[str, str], ...]], ...]] = (
             ("trial", "A formula factor tried against a completed study."),
             ("candidate", "Alpha candidates compared from their stored evidence."),
             ("model", "Alpha models an agent scaffolds, checks and sandboxes."),
+            ("plugin", "Installed capabilities: list them, and run one with its parameters."),
             ("training", "A component's model-training inputs."),
         ),
     ),

@@ -36,6 +36,7 @@
     "src/alphalattice/control/product_host/composition/native_usage_reader.py": "COMPOSITION",
     "src/alphalattice/control/product_host/composition/operation_route_families.py": {"kind": "COMPOSITION", "description": "Wires the Host to each operation family on its first request."},
     "src/alphalattice/control/product_host/composition/pending_decisions.py": "COMPOSITION",
+    "src/alphalattice/control/product_host/composition/plugin_operations.py": {"kind": "COMPOSITION", "description": "Routes the installed capabilities' list and run requests to the plugin registry."},
     "src/alphalattice/control/product_host/composition/plain_refusals.py": "COMPOSITION",
     "src/alphalattice/control/product_host/composition/portfolio_application.py": "COMPOSITION",
     "src/alphalattice/control/product_host/composition/portfolio_finalization.py": "COMPOSITION",

@@ -1,6 +1,6 @@
 /* Backend-connected content in the supplied presentation components. No execution owner. */
 const LiveViews = (() => {
-  const mapped = new Set(['overview', 'settings', 'advanced', 'history', 'portfolio', 'compare', 'alpha-compare', 'models', 'feature-research', 'goals', 'goal', 'goal-conversation', 'goal-results', 'cases', 'books', 'inputs', 'tasks', 'lab', 'evidence', 'evidence-stream', 'evidence-reading', 'report', 'handoff','factor','foundation','alpha','risk', 'advanced', 'kit', 'features', 'upgrade']);
+  const mapped = new Set(['overview', 'settings', 'advanced', 'history', 'portfolio', 'compare', 'alpha-compare', 'models', 'plugins', 'feature-research', 'goals', 'goal', 'goal-conversation', 'goal-results', 'cases', 'books', 'inputs', 'tasks', 'lab', 'evidence', 'evidence-stream', 'evidence-reading', 'report', 'handoff','factor','foundation','alpha','risk', 'advanced', 'kit', 'features', 'upgrade']);
   /* The two execution modes the service states, and its one verification policy, in words. */
   const MODES = {RESEARCH_PREPARATION: 'Research preparation: no strategy package is installed; inputs, Features and research are maintained without activation.', DEVELOPMENT_REPLAY: 'Development replay: an installed strategy package is replayed for development; nothing is activated or traded.'};
   const VERIFICATION = {DISCOVERY_ONLY_SELECTED_OPERATIONS_REVALIDATE: 'Discovery reads are not re-validated; the selected operations re-validate what they use before running.'};
@@ -434,6 +434,7 @@ const LiveViews = (() => {
     if (Data.workspaceStatus === 'error') return banner(t('Workspace read refused'), Data.workspaceError, TONE.failure, btn(t('Try again'), 'workspace-refresh'));
     if (LiveGoals.pages.has(app.page)) return LiveGoals.page() || '';
     if (LiveModels.pages.has(app.page)) return LiveModels.page() || '';
+    if (LivePlugins.pages.has(app.page)) return LivePlugins.page() || '';
     if (LiveFeatureResearch.pages.has(app.page)) return LiveFeatureResearch.page() || '';
     if (LiveTeam.pages.has(app.page)) return html`${LiveTeam.section()}`;
     if(LiveWorkspace.pages.has(app.page))return LiveWorkspace.page();

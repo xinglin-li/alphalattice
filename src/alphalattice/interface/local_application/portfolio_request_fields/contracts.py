@@ -191,6 +191,8 @@ type PortfolioResearchOperation = Literal[
     "COMMITTEE_SUBMIT",
     "COMMITTEE_DAILY_SET",
     "COMMITTEE_READ",
+    "PLUGIN_LIST",
+    "PLUGIN_INVOKE",
 ]
 
 

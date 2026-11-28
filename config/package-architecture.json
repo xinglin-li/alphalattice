@@ -726,6 +726,8 @@
     "alphalattice.control.task_control.child": "Take a kept worker only after the installed capability is verified for dispatch.",
     "alphalattice.control.task_control.plugin_staging": "Read or write Arrow only during a verified capability invocation.",
     "alphalattice.control.task_control.scratch": "Open a scratch folder for a verified read-only capability.",
+    "alphalattice.foundation.data_layer.history_runtime": "Read the Host catalog only when a capability is invoked on request.",
+    "alphalattice.interface.local_application.capability_options": "Build a capability command's options from its input schema only when that command runs with them.",
     "alphalattice.control.workspace_runtime.verified_facts": "Read verified plugin source bytes when a capability is requested.",
     "alphalattice.kernel.execution": "Report cancellation inside a kept capability worker.",
     "alphalattice.kernel.egress.http -> httpx": "Load the outbound HTTP backend only when a source opens or reads its session.",

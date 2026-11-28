@@ -79,6 +79,7 @@ APP_FILES = [
     "js/app/live-features.js",
     "js/app/live-goals.js",
     "js/app/live-models.js",
+    "js/app/live-plugins.js",
     "js/app/live-feature-research.js",
     "js/app/live-activation.js",
     "js/app/live-activity.js",

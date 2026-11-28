@@ -7,7 +7,7 @@ const SIDEBAR = [
   {page: 'goals', word: 'Goals', icon: 'flag'},
   {page: 'tasks', word: 'Tasks', icon: 'task', attention: () => openTaskCount(), count: () => runningTaskCount()}, // what needs you apart from what runs (the user, 2026-09-25)
   {page: 'data', word: 'Data', icon: 'data', attention: () => LiveViews.dataNeeds()}, // one row, its pages the place's tabs
-  {group: 'studies', word: 'Studies', icon: 'lab', pages: ['factor', 'feature-research', 'foundation', 'alpha', 'alpha-compare', 'models', 'risk', 'portfolio', 'compare']}, // the research chain's order -- the risk model before the portfolio it sizes (the user, 2026-09-24: risk应该在portfolio上面)
+  {group: 'studies', word: 'Studies', icon: 'lab', pages: ['factor', 'feature-research', 'foundation', 'alpha', 'alpha-compare', 'models', 'plugins', 'risk', 'portfolio', 'compare']}, // the research chain's order -- the risk model before the portfolio it sizes (the user, 2026-09-24: risk应该在portfolio上面)
   {group: 'evidence', word: 'Evidence', icon: 'evidence', pages: ['books', 'evidence', 'evidence-stream', 'evidence-reading', 'handoff', 'report']},
   {group: 'team', word: 'Team', icon: 'team', pages: ['team-sessions', 'team', 'team-committee', 'team-participants', 'team-outputs', 'team-evidence']},
   {page: 'history', word: 'History', icon: 'history'},

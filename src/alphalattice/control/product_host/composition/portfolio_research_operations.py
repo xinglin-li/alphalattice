@@ -353,12 +353,14 @@ if TYPE_CHECKING:
         WorkspaceDataUpdateApplication,
     )
     from alphalattice.control.product_host.maintenance.file_trust_scrub import IdleFileTrustScrub
+    from alphalattice.control.product_host.plugins.registry import PluginRegistry
     from alphalattice.control.product_host.publication.portfolio_research import (
         PortfolioResearchPipelineStore,
     )
     from alphalattice.control.product_host.storage.input_references import (
         ResearchInputStorage,
     )
+    from alphalattice.control.task_control.plugin_staging import PluginStaging
     from alphalattice.evidence.alternative_evidence.publication.artifacts import (
         AlternativeEvidenceArtifactStore,
     )
@@ -561,6 +563,10 @@ class PortfolioResearchOperations:
     """Reads the bound Sessions' usage now (`NativeUsageReader.read`); None without a Host."""
     stop_host: Callable[[], dict[str, object]] | None = None
     """The served Host's own stop (`host stop`), set by its launcher; None without one."""
+    plugins: PluginRegistry | None = None
+    """The Host's installed and enabled capabilities (`PLUGIN_LIST`, `PLUGIN_INVOKE`)."""
+    plugin_staging: PluginStaging | None = None
+    """The Host's one staging owner, made at its first staging run."""
     native_projects: set[Path] = field(default_factory=set)
     """Agent projects this Host admitted a Session binding from, for a workspace kept outside
     them; found again after a restart by the next bind or milestone."""

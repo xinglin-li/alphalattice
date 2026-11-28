@@ -47,6 +47,11 @@ class RequestFields(RequestFieldModel):
     display gave reads as its whole id."""
     event: dict[str, Any] | None = None
     """The event this client declares about its own work (`ExternalActivityEventDocument`)."""
+    capability: str | None = Field(default=None, min_length=1, max_length=200)
+    """The installed capability to run, as `plugin list` names it."""
+    params: dict[str, Any] | None = None
+    """The capability's parameters as a JSON object, inline or `@` and a file; checked against its
+    input schema before it runs."""
     wake_thread: str | None = Field(default=None, pattern=r"^[A-Za-z0-9_-]{8,128}$")
     """The Codex thread to wake (`CODEX_THREAD_ID`)."""
     wake_read: str | None = Field(

@@ -135,6 +135,7 @@ OBSERVED_OPERATIONS: frozenset[str] = OBSERVED_READ_OPERATIONS | frozenset(
         "WAKE_REGISTER",
         "COMMITTEE_OPEN",
         "COMMITTEE_SUBMIT",
+        "PLUGIN_INVOKE",
     }
 )
 """Previews, submissions, confirmations and Task commands: recorded on entry and

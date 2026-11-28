@@ -93,11 +93,14 @@ class StagingRefused(ValueError):
 
 @dataclass(frozen=True)
 class StagedCommit:
-    """A committed run: its key, the published folder's descriptor and the answer it staged."""
+    """A committed run: its key, the published folder's descriptor, the answer it staged and its
+    receipt."""
 
     idempotency_key: str
     artifact: ArtifactDescriptor
     output: object
+    receipt: ActionReceipt
+    """The run's receipt as its provenance records it."""
 
 
 class PluginStaging:
@@ -258,9 +261,13 @@ class PluginStaging:
                 artifact = self._resolver.publish_plugin_result(
                     folder, invocation.idempotency_key, publication=publication()
                 )
-            committed = self._resolver.resolve_plugin_result(artifact) / OUTPUT
-            output = json.loads(committed.read_text(encoding="utf-8"))
-            return StagedCommit(invocation.idempotency_key, artifact, output)
+            # The committed folder may be an earlier run's with this key: its answer and its
+            # receipt, as its provenance recorded it, are the result.
+            committed = self._resolver.resolve_plugin_result(artifact)
+            output = json.loads((committed / OUTPUT).read_text(encoding="utf-8"))
+            recorded = json.loads((committed / PROVENANCE).read_text(encoding="utf-8"))
+            receipt = ActionReceipt.model_validate_json(json.dumps(recorded["receipt"]))
+            return StagedCommit(invocation.idempotency_key, artifact, output, receipt)
         finally:
             try:
                 running.close()

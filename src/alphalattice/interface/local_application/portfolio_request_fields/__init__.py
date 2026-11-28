@@ -176,6 +176,8 @@ FIELD_OWNER: dict[str, RequestFamily] = {
     "committee_seen": "goals",
     "goal_seen": "goals",
     "person_confirmation": "data",
+    "capability": "workspace",
+    "params": "workspace",
 }
 
 

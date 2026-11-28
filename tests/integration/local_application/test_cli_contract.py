@@ -1948,3 +1948,77 @@ def test_the_cli_names_a_closed_output_pipe(monkeypatch, capsys):
             assert entry._closed_output_pipe(OSError(errno.EINVAL, "closed"))
             changed.setattr(ctypes.windll.kernel32, "GetFileType", lambda _: 1)
             assert not entry._closed_output_pipe(OSError(errno.EINVAL, "other"))
+
+
+@pytest.mark.proves("product_host.a_capability_runs_through_the_door_and_its_projections")
+def test_a_capability_runs_over_the_hosts_route_and_its_command_reads_its_schema(
+    live: LocalPortfolioWebSession, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """`plugin list` names each capability from its manifest; a built-in run over the Host's
+    route answers its receipt, keyed as the plugin contract keys it; `plugin run` takes its
+    options, and its help, from the capability's input schema."""
+    from alphalattice.protocols.plugin_contract import CatalogRead
+
+    name, params = (
+        "factor.session_dollar_volume",
+        {"close_raw": [2.0, 3.0], "volume_raw": [4.0, 5.0]},
+    )
+    listed = _json(live, "/api/plugins")
+    assert listed["status"] == "AVAILABLE"
+    row = next(r for r in listed["capabilities"] if r["capability"] == name)
+    assert (row["effect_mode"], row["workspace"]) == ("READ_ONLY", False), row
+    assert row["input_schema"]["required"] == ["close_raw", "volume_raw"], row
+    answer = _json(
+        live, "/api/plugins/run", method="POST", payload={"capability": name, "params": params}
+    )
+    assert live.plugins is not None
+    keyed = live.plugins.trusted_spec(name).invoke(
+        params, CatalogRead(snapshot_id="lake:1", input_versions={})
+    )
+    receipt = answer["receipt"]
+    assert (answer["status"], receipt["status"], receipt["output"]) == (
+        "COMPLETED",
+        "ok",
+        {"values": [8.0, 15.0]},
+    )
+    assert receipt["idempotency_key"] == keyed.idempotency_key, answer
+    # The route answers a refusal by its code and the capability it names, before any worker.
+    from alphalattice.control.product_host.composition import plugin_operations
+    from alphalattice.control.product_host.composition.operation_route_families import (
+        WorkspaceOperationCall,
+    )
+    from alphalattice.interface.local_application.portfolio_research import (
+        PortfolioResearchOperationRequest,
+    )
+
+    unlisted = PortfolioResearchOperationRequest(
+        operation="PLUGIN_INVOKE", capability="factor.not_installed", params={}
+    )
+    owned = plugin_operations.route(WorkspaceOperationCall(live.operations, unlisted, "HUMAN"))
+    assert (owned["failure_code"], owned["capability"]) == (
+        "plugin_registry.capability_unlisted",
+        "factor.not_installed",
+    ), owned
+    run = ("plugin", "run", name, "--close-raw", "2", "3", "--volume-raw", "4", "5")
+    code, body, _ = _inprocess_cli(live.workspace, *run, capsys=capsys)
+    assert (code, body["data"]["receipt"]["output"]) == (0, {"values": [8.0, 15.0]}), body
+    documented = live.workspace.parent / "params.json"  # the reference's own form: --params @file
+    documented.write_text(json.dumps(params), encoding="utf-8")
+    run = ("plugin", "run", name, "--params", f"@{documented}")
+    code, body, _ = _inprocess_cli(live.workspace, *run, capsys=capsys)
+    assert (code, body["data"]["receipt"]["output"]) == (0, {"values": [8.0, 15.0]}), body
+    with pytest.raises(SystemExit) as helped:
+        cli.main(
+            ["--workspace", str(live.workspace), "plugin", "run", name, "--help"],
+            serve=lambda _: 99,
+        )
+    shown = capsys.readouterr().out
+    assert helped.value.code == 0 and "--close-raw NUMBER" in shown and "(required)" in shown, shown
+    # A misspelled schema option is refused in the CLI's own envelope; another command's
+    # misspelled verb keeps its corrected command, its line parsed as before.
+    code, body, _ = _inprocess_cli(
+        live.workspace, "plugin", "run", name, "--close-rw", "2", capsys=capsys
+    )
+    assert (code, body["failure_code"]) == (1, "local_client.usage_invalid"), body
+    code, body, _ = _inprocess_cli(live.workspace, "cpu-budget", "shw", capsys=capsys)
+    assert code == 1 and body["next_commands"]["correct"].endswith(" cpu-budget show"), body

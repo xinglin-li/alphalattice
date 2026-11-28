@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import re
 import sys
+import time
 import tomllib
 from collections.abc import Callable, Iterator, Mapping
 from contextlib import contextmanager
@@ -23,7 +24,7 @@ from types import MappingProxyType, ModuleType
 from typing import TYPE_CHECKING, Annotated, Final, Protocol
 from uuid import uuid4, uuid7
 
-from pydantic import StringConstraints, ValidationError
+from pydantic import JsonValue, StringConstraints, ValidationError
 
 from alphalattice.capabilities.domain_contracts.domain.base import DomainModel, ShortString
 from alphalattice.kernel.door import DECISIONS_DATABASE, Decision, Decisions
@@ -32,6 +33,7 @@ from alphalattice.protocols.plugin_contract import (
     ActionInvocation,
     ActionReceipt,
     ActionSpec,
+    CatalogRead,
     EffectMode,
     ExecutionContext,
     ExecutionMode,
@@ -40,6 +42,7 @@ from alphalattice.protocols.plugin_contract import (
 from alphalattice.protocols.plugin_contract.contracts import JsonObject
 
 if TYPE_CHECKING:
+    from datetime import date
     from importlib.machinery import ModuleSpec
 
     from alphalattice.control.task_control.plugin_staging import PluginStaging
@@ -108,6 +111,18 @@ class VerifiedPlugin:
     spec: ActionSpec
     entry: str
     sources: Mapping[str, bytes]
+
+
+@dataclass(frozen=True, slots=True)
+class PluginListing:
+    """One capability as the Host lists it: its static declaration and its worker state."""
+
+    capability: str
+    plugin: str
+    effect_mode: EffectMode
+    workspace: bool
+    state: PluginState
+    input_schema: Mapping[str, object]
 
 
 @dataclass(frozen=True, slots=True)
@@ -243,6 +258,72 @@ class PluginRegistry:
         """Read the verified closure without seeking a workspace decision or loading a worker."""
         return self._action(capability).registration.verify()
 
+    def listing(self) -> tuple[PluginListing, ...]:
+        """Each capability as its static manifest declares it, with its state; no plugin code is
+        read or imported and no worker started."""
+        return tuple(
+            PluginListing(
+                capability=name,
+                plugin=name,
+                effect_mode=action.registration.manifest.effect_mode,
+                workspace=action.registration.expected_hash is not None,
+                state=self.state(name),
+                input_schema=action.registration.manifest.input_schema,
+            )
+            for name, action in sorted(self._actions.items())
+        )
+
+    def invoke(
+        self,
+        capability: str,
+        params: Mapping[str, JsonValue],
+        *,
+        catalog: Callable[[tuple[str, ...]], CatalogRead],
+        as_of: date,
+        attended: bool,
+        staging: Callable[[], PluginStaging],
+    ) -> ActionReceipt:
+        """Run one capability on request and answer its receipt.
+
+        Refused by name before any worker starts: a capability not listed, a ledger write, a
+        workspace plugin (`admit_workspace`) and parameters its input schema does not admit, a
+        property it does not declare included unless the schema says otherwise. A built-in then
+        runs in a kept worker; a staging write commits through the Host's staging owner.
+        """
+        from alphalattice.control.task_control.plugin_staging import (  # lazy: a run only
+            StagedCommit,
+            check_plugin_input,
+        )
+
+        action = self._action(capability)
+        if action.registration.manifest.effect_mode is EffectMode.LEDGER_COMMIT:
+            raise PluginRefused("plugin_registry.ledger_commit_unavailable", capability)
+        self.admit_workspace(capability, attended=attended)
+        spec = self.trusted_spec(capability)
+        invocation = spec.invoke(params, catalog(spec.inputs), as_of=as_of)
+        schema = dict(spec.input_schema)
+        schema.setdefault("additionalProperties", False)
+        check_plugin_input(invocation, spec.model_copy(update={"input_schema": schema}))
+        if spec.effect_mode is EffectMode.STAGING_WRITE:
+            commit = self.run_trusted(invocation, staging=staging())
+            assert isinstance(commit, StagedCommit)
+            receipt: ActionReceipt = commit.receipt
+            return receipt
+        began = time.perf_counter()
+        output = self.run_trusted(invocation)
+        assert isinstance(output, dict)
+        return invocation.answered(output, wall_ms=round((time.perf_counter() - began) * 1000))
+
+    def admit_workspace(self, capability: str, *, attended: bool) -> None:
+        """Refuse a workspace plugin by name: unconfirmed, its fingerprint's confirmation is
+        required (asked when attended); confirmed, it waits for its guarded child process."""
+        action = self._action(capability)
+        if action.registration.expected_hash is None:
+            return
+        with action.lock:
+            self._confirm(self._verify(action).spec, attended=attended)
+        raise PluginRefused("plugin_registry.workspace_run_unavailable", capability)
+
     def trusted_spec(self, capability: str) -> ActionSpec:
         """Admit a built-in closure for invocation keying, without starting a worker."""
         action = self._action(capability)
@@ -367,12 +448,7 @@ class PluginRegistry:
             pinned = action.registration.expected_hash
             if worker is not None and pinned is None:
                 return worker
-            try:
-                verified = action.registration.verify()
-            except PluginRefused as error:
-                if error.code == "plugin_registry.closure_changed" and pinned is not None:
-                    self._decisions.lapse_plugin_confirmation(capability, pinned)
-                raise
+            verified = self._verify(action)
             if worker is None:
                 action.state = PluginState.VERIFIED
             if pinned is not None:
@@ -385,6 +461,16 @@ class PluginRegistry:
             action.worker = worker
             action.state = PluginState.ACTIVE
             return worker
+
+    def _verify(self, action: _Activation) -> VerifiedPlugin:
+        """The verified closure; a pinned plugin whose closure changed lapses its approval."""
+        try:
+            return action.registration.verify()
+        except PluginRefused as error:
+            pinned = action.registration.expected_hash
+            if error.code == "plugin_registry.closure_changed" and pinned is not None:
+                self._decisions.lapse_plugin_confirmation(action.registration.name, pinned)
+            raise
 
     def _confirm(self, spec: ActionSpec, *, attended: bool) -> None:
         effects = tuple(

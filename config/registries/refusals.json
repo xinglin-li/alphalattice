@@ -751,6 +751,11 @@
   "category": "FAILED_PRECONDITION",
   "classification_note": "The workspace plugin enablement file cannot be read as named BLAKE3 bindings."
 },
+"plugin_registry.ledger_commit_unavailable": {
+  "owner": "alphalattice.control.product_host",
+  "category": "FAILED_PRECONDITION",
+  "classification_note": "A capability that commits to the ledger is not run on request; run a read-only or staging capability."
+},
 "plugin_registry.manifest_invalid": {
   "owner": "alphalattice.control.product_host",
   "category": "FAILED_PRECONDITION",
@@ -765,6 +770,11 @@
   "owner": "alphalattice.control.product_host",
   "category": "NOT_FOUND",
   "classification_note": "The requested capability is absent from the installed and enabled registrations."
+},
+"plugin_registry.catalog_unavailable": {
+  "owner": "alphalattice.control.product_host",
+  "category": "FAILED_PRECONDITION",
+  "classification_note": "Run the capability in a Host whose data root is open; its catalog read has no store."
 },
 "plugin_registry.closure_changed": {
   "owner": "alphalattice.control.product_host",
@@ -790,6 +800,11 @@
   "owner": "alphalattice.control.product_host",
   "category": "FAILED_PRECONDITION",
   "classification_note": "The worker exited before the named plugin could become active."
+},
+"plugin_registry.workspace_run_unavailable": {
+  "owner": "alphalattice.control.product_host",
+  "category": "FAILED_PRECONDITION",
+  "classification_note": "A confirmed workspace plugin runs once its guarded child process is installed; run a built-in capability meanwhile."
 },
 "agent_bundle.analyst_task_required": {
 "owner": "agent_bundle",

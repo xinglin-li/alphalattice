@@ -224,6 +224,15 @@ class _Parser(argparse.ArgumentParser):
         finally:
             _PARSER_LINE.reset(token)
 
+    def parse_known_args(self, args: Any = None, namespace: Any = None) -> Any:
+        if _PARSER_LINE.get() is not None:
+            return super().parse_known_args(args, namespace)
+        token = _PARSER_LINE.set((self, list(sys.argv[1:] if args is None else args), False))
+        try:
+            return super().parse_known_args(args, namespace)
+        finally:
+            _PARSER_LINE.reset(token)
+
     def _print_message(self, message: str, file: Any = None) -> None:
         super()._print_message(message, cli_invocation.stream(file, error=True))
 
@@ -262,6 +271,17 @@ class _Parser(argparse.ArgumentParser):
             )
         )
         raise SystemExit(EXIT_CODES[refusal.outcome])
+
+
+class _SchemaParser(_Parser):
+    """A capability's schema options: refused in the CLI's envelope, pointing to their own help;
+    the command line's corrections (`_repair`) read the command's parser, never this one."""
+
+    def parse_args(self, args: Any = None, namespace: Any = None) -> Any:
+        return argparse.ArgumentParser.parse_args(self, args, namespace)
+
+    def parse_known_args(self, args: Any = None, namespace: Any = None) -> Any:
+        return argparse.ArgumentParser.parse_known_args(self, args, namespace)
 
 
 def _repair(parser: argparse.ArgumentParser, message: str) -> dict[str, Any]:
@@ -643,6 +663,44 @@ def _client_command(child: argparse.ArgumentParser, noun: str, verb: str) -> Non
         )
 
 
+SCHEMA_OPERATIONS: Final = frozenset({("PLUGIN_INVOKE",)})
+"""Commands whose options, after their own, come from the input schema of what they run."""
+
+
+def _schema_line(arguments: Sequence[str]) -> bool:
+    """Whether the line names a command whose options come from a capability's schema."""
+    return any(
+        noun in arguments and verb in arguments
+        for (noun, verb), operations in _commands().items()
+        if operations in SCHEMA_OPERATIONS
+    )
+
+
+def _schema_params(args: argparse.Namespace) -> None:
+    """Fold the options a capability's input schema gives (`capability_options`) into
+    `--params`, after the Host's listing names the schema; `--help` shows them."""
+    options, name = args.schema_options, args.capability
+    if name is None or not options:
+        return
+    listed = client.attached(Path(args.workspace), timeout=args.request_timeout).request(
+        {"operation": "PLUGIN_LIST"}
+    )
+    rows = listed.get("capabilities", ())
+    schema = next((row["input_schema"] for row in rows if row["capability"] == name), None)
+    if schema is None:  # the Host refuses the capability by name
+        return
+    from alphalattice.interface.local_application.capability_options import (  # lazy: one command
+        capability_parser,
+    )
+
+    parsed = capability_parser(name, schema, _SchemaParser).parse_args(options)
+    given = {k: v for k, v in vars(parsed).items() if v is not None}
+    base = _value("params", args.params) if args.params is not None else {}
+    if not isinstance(base, dict):
+        raise client.LocalResearchClientError("local_client.document_unreadable")
+    args.params = json.dumps({**base, **given})
+
+
 def _named(arguments: Sequence[str]) -> frozenset[str]:
     """The operation nouns a command line names, for which alone the parser builds flags: one
     parser serves every line naming them (the seam check reads two thousand lines)."""
@@ -739,6 +797,7 @@ def command_parser(named: frozenset[str] | None = None) -> _Parser:
             verb,
             help=f"{purpose}{' (the person decides it)' if person else ''}  {line}".strip(),
             description=f"{purpose}{_person_words(operations, table) if person else ''}",
+            add_help=operations not in SCHEMA_OPERATIONS,  # its help reads its schema too
         )
         child.set_defaults(operations=operations)
         if positional:
@@ -1492,7 +1551,20 @@ def _command_line(
     surface_token = SURFACE_USE.set(())
     try:
         parser = command_parser(_named(arguments))
-        args = parser.parse_args(floor_numbers(arguments))
+        if _schema_line(arguments):  # its options past its own are its capability's
+            args, extra = parser.parse_known_args(floor_numbers(arguments))
+            if extra and getattr(args, "operations", None) not in SCHEMA_OPERATIONS:
+                args = parser.parse_args(floor_numbers(arguments))  # refuses the unknown options
+        else:
+            args, extra = parser.parse_args(floor_numbers(arguments)), []
+        args.schema_options = extra
+        if (
+            getattr(args, "operations", None) in SCHEMA_OPERATIONS
+            and args.capability is None
+            and {"-h", "--help"} & set(args.schema_options)
+        ):  # no capability yet: the command's own help
+            next(c for c in _commands_of(parser) if c.prog.endswith(" plugin run")).print_help()
+            return 0
         args.command_line = tuple(arguments)
         source = _summary_source(parser, args)  # may settle the view a summary reads as
         READ_VIEW.set((args.view or "compact", source, summary_display))
@@ -2161,6 +2233,8 @@ def _command(
         return client.run(
             argparse.Namespace(**common, format="json", **_client_fields(parser, args))
         )
+    if getattr(args, "operations", None) in SCHEMA_OPERATIONS:
+        _schema_params(args)
     whole = args.noun == "request"
     request = argparse.Namespace(
         **common,

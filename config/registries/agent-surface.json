@@ -19636,6 +19636,161 @@
         "type": "string"
       }
     },
+    "answer:PLUGIN_INVOKE.capability": {
+      "required": true,
+      "schema": {
+        "type": "string"
+      }
+    },
+    "answer:PLUGIN_INVOKE.error_info": {
+      "required": false,
+      "schema": {
+        "anyOf": [
+          {
+            "$ref": "#/$defs/ErrorInfo"
+          },
+          {
+            "type": "null"
+          }
+        ],
+        "default": null
+      }
+    },
+    "answer:PLUGIN_INVOKE.receipt": {
+      "required": true,
+      "schema": {
+        "additionalProperties": true,
+        "type": "object"
+      }
+    },
+    "answer:PLUGIN_INVOKE.status": {
+      "required": true,
+      "schema": {
+        "type": "string"
+      }
+    },
+    "answer:PLUGIN_INVOKE/ErrorInfo.category": {
+      "required": true,
+      "schema": {
+        "type": "string"
+      }
+    },
+    "answer:PLUGIN_INVOKE/ErrorInfo.domain": {
+      "required": true,
+      "schema": {
+        "type": "string"
+      }
+    },
+    "answer:PLUGIN_INVOKE/ErrorInfo.field_violations": {
+      "required": true,
+      "schema": {
+        "items": {
+          "additionalProperties": true,
+          "type": "object"
+        },
+        "type": "array"
+      }
+    },
+    "answer:PLUGIN_INVOKE/ErrorInfo.message": {
+      "required": true,
+      "schema": {
+        "type": "string"
+      }
+    },
+    "answer:PLUGIN_INVOKE/ErrorInfo.message_id": {
+      "required": true,
+      "schema": {
+        "type": "string"
+      }
+    },
+    "answer:PLUGIN_INVOKE/ErrorInfo.reason": {
+      "required": true,
+      "schema": {
+        "type": "string"
+      }
+    },
+    "answer:PLUGIN_LIST.capabilities": {
+      "required": true,
+      "schema": {
+        "items": {},
+        "type": "array"
+      }
+    },
+    "answer:PLUGIN_LIST.error_info": {
+      "required": false,
+      "schema": {
+        "anyOf": [
+          {
+            "$ref": "#/$defs/ErrorInfo"
+          },
+          {
+            "type": "null"
+          }
+        ],
+        "default": null
+      }
+    },
+    "answer:PLUGIN_LIST.read_request": {
+      "required": false,
+      "schema": {
+        "anyOf": [
+          {
+            "additionalProperties": true,
+            "type": "object"
+          },
+          {
+            "type": "null"
+          }
+        ],
+        "default": null
+      }
+    },
+    "answer:PLUGIN_LIST.status": {
+      "required": true,
+      "schema": {
+        "type": "string"
+      }
+    },
+    "answer:PLUGIN_LIST/ErrorInfo.category": {
+      "required": true,
+      "schema": {
+        "type": "string"
+      }
+    },
+    "answer:PLUGIN_LIST/ErrorInfo.domain": {
+      "required": true,
+      "schema": {
+        "type": "string"
+      }
+    },
+    "answer:PLUGIN_LIST/ErrorInfo.field_violations": {
+      "required": true,
+      "schema": {
+        "items": {
+          "additionalProperties": true,
+          "type": "object"
+        },
+        "type": "array"
+      }
+    },
+    "answer:PLUGIN_LIST/ErrorInfo.message": {
+      "required": true,
+      "schema": {
+        "type": "string"
+      }
+    },
+    "answer:PLUGIN_LIST/ErrorInfo.message_id": {
+      "required": true,
+      "schema": {
+        "type": "string"
+      }
+    },
+    "answer:PLUGIN_LIST/ErrorInfo.reason": {
+      "required": true,
+      "schema": {
+        "type": "string"
+      }
+    },
     "answer:PORTFOLIO_READBACK.error_info": {
       "required": false,
       "schema": {
@@ -29619,6 +29774,17 @@
         "OPERATION_LIST"
       ]
     },
+    "command:plugin": {},
+    "command:plugin list": {
+      "operations": [
+        "PLUGIN_LIST"
+      ]
+    },
+    "command:plugin run": {
+      "operations": [
+        "PLUGIN_INVOKE"
+      ]
+    },
     "command:portfolio": {},
     "command:portfolio show": {
       "operations": [
@@ -31560,6 +31726,19 @@
       "required": [
         "spec"
       ]
+    },
+    "operation:PLUGIN_INVOKE": {
+      "allowed": [
+        "capability",
+        "params"
+      ],
+      "required": [
+        "capability"
+      ]
+    },
+    "operation:PLUGIN_LIST": {
+      "allowed": [],
+      "required": []
     },
     "operation:PORTFOLIO_READBACK": {
       "allowed": [
@@ -47657,6 +47836,275 @@
       "required": false,
       "type": null
     },
+    "option:plugin list/--choices": {
+      "choices": null,
+      "nargs": null,
+      "required": false,
+      "type": "Path"
+    },
+    "option:plugin list/--format": {
+      "choices": [
+        "json",
+        "yaml",
+        "html"
+      ],
+      "nargs": null,
+      "required": false,
+      "type": null
+    },
+    "option:plugin list/--from": {
+      "choices": null,
+      "nargs": null,
+      "required": false,
+      "type": "Path"
+    },
+    "option:plugin list/--goal": {
+      "choices": null,
+      "nargs": null,
+      "required": false,
+      "type": null
+    },
+    "option:plugin list/--help": {
+      "choices": null,
+      "nargs": 0,
+      "required": false,
+      "type": null
+    },
+    "option:plugin list/--lang": {
+      "choices": [
+        "en",
+        "zh"
+      ],
+      "nargs": null,
+      "required": false,
+      "type": null
+    },
+    "option:plugin list/--list-next": {
+      "choices": null,
+      "nargs": 0,
+      "required": false,
+      "type": null
+    },
+    "option:plugin list/--max-wait": {
+      "choices": null,
+      "nargs": null,
+      "required": false,
+      "type": "float"
+    },
+    "option:plugin list/--next-from": {
+      "choices": null,
+      "nargs": null,
+      "required": false,
+      "type": "int"
+    },
+    "option:plugin list/--output": {
+      "choices": null,
+      "nargs": null,
+      "required": false,
+      "type": "Path"
+    },
+    "option:plugin list/--request-timeout": {
+      "choices": null,
+      "nargs": null,
+      "required": false,
+      "type": "float"
+    },
+    "option:plugin list/--section": {
+      "choices": null,
+      "nargs": null,
+      "required": false,
+      "type": null
+    },
+    "option:plugin list/--view": {
+      "choices": [
+        "compact",
+        "full",
+        "summary"
+      ],
+      "nargs": null,
+      "required": false,
+      "type": null
+    },
+    "option:plugin list/--wait": {
+      "choices": null,
+      "nargs": 0,
+      "required": false,
+      "type": null
+    },
+    "option:plugin list/--workspace": {
+      "choices": null,
+      "nargs": null,
+      "required": false,
+      "type": "Path"
+    },
+    "option:plugin list/-h": {
+      "choices": null,
+      "nargs": 0,
+      "required": false,
+      "type": null
+    },
+    "option:plugin run/--choices": {
+      "choices": null,
+      "nargs": null,
+      "required": false,
+      "type": "Path"
+    },
+    "option:plugin run/--format": {
+      "choices": [
+        "json",
+        "yaml",
+        "html"
+      ],
+      "nargs": null,
+      "required": false,
+      "type": null
+    },
+    "option:plugin run/--from": {
+      "choices": null,
+      "nargs": null,
+      "required": false,
+      "type": "Path"
+    },
+    "option:plugin run/--goal": {
+      "choices": null,
+      "nargs": null,
+      "required": false,
+      "type": null
+    },
+    "option:plugin run/--help": {
+      "choices": null,
+      "nargs": 0,
+      "required": false,
+      "type": null
+    },
+    "option:plugin run/--lang": {
+      "choices": [
+        "en",
+        "zh"
+      ],
+      "nargs": null,
+      "required": false,
+      "type": null
+    },
+    "option:plugin run/--list-next": {
+      "choices": null,
+      "nargs": 0,
+      "required": false,
+      "type": null
+    },
+    "option:plugin run/--max-wait": {
+      "choices": null,
+      "nargs": null,
+      "required": false,
+      "type": "float"
+    },
+    "option:plugin run/--next-from": {
+      "choices": null,
+      "nargs": null,
+      "required": false,
+      "type": "int"
+    },
+    "option:plugin run/--output": {
+      "choices": null,
+      "nargs": null,
+      "required": false,
+      "type": "Path"
+    },
+    "option:plugin run/--params": {
+      "choices": null,
+      "nargs": null,
+      "required": false,
+      "type": null
+    },
+    "option:plugin run/--request-timeout": {
+      "choices": null,
+      "nargs": null,
+      "required": false,
+      "type": "float"
+    },
+    "option:plugin run/--section": {
+      "choices": null,
+      "nargs": null,
+      "required": false,
+      "type": null
+    },
+    "option:plugin run/--view": {
+      "choices": [
+        "compact",
+        "full",
+        "summary"
+      ],
+      "nargs": null,
+      "required": false,
+      "type": null
+    },
+    "option:plugin run/--wait": {
+      "choices": null,
+      "nargs": 0,
+      "required": false,
+      "type": null
+    },
+    "option:plugin run/--workspace": {
+      "choices": null,
+      "nargs": null,
+      "required": false,
+      "type": "Path"
+    },
+    "option:plugin run/-h": {
+      "choices": null,
+      "nargs": 0,
+      "required": false,
+      "type": null
+    },
+    "option:plugin/--goal": {
+      "choices": null,
+      "nargs": null,
+      "required": false,
+      "type": null
+    },
+    "option:plugin/--help": {
+      "choices": null,
+      "nargs": 0,
+      "required": false,
+      "type": null
+    },
+    "option:plugin/--lang": {
+      "choices": [
+        "en",
+        "zh"
+      ],
+      "nargs": null,
+      "required": false,
+      "type": null
+    },
+    "option:plugin/--request-timeout": {
+      "choices": null,
+      "nargs": null,
+      "required": false,
+      "type": "float"
+    },
+    "option:plugin/--view": {
+      "choices": [
+        "compact",
+        "full",
+        "summary"
+      ],
+      "nargs": null,
+      "required": false,
+      "type": null
+    },
+    "option:plugin/--workspace": {
+      "choices": null,
+      "nargs": null,
+      "required": false,
+      "type": "Path"
+    },
+    "option:plugin/-h": {
+      "choices": null,
+      "nargs": 0,
+      "required": false,
+      "type": null
+    },
     "option:portfolio show/--choices": {
       "choices": null,
       "nargs": null,
@@ -60189,6 +60637,7 @@
     "refusal:data.candidate_recheck_reference_invalid": {},
     "refusal:data.candidate_recheck_scope_invalid": {},
     "refusal:data.completed_onboarding_binding_invalid": {},
+    "refusal:data.conflicting_session_rows": {},
     "refusal:data.current_universe_no_feature_ready_listings": {},
     "refusal:data.empty_payload": {},
     "refusal:data.evidence_churn": {},
@@ -60246,6 +60695,7 @@
     "refusal:data_layer.host_running": {},
     "refusal:data_layer.input_invalid": {},
     "refusal:data_layer.input_missing": {},
+    "refusal:data_layer.input_unversioned": {},
     "refusal:data_layer.lag_rule_unknown": {},
     "refusal:data_layer.lag_rule_version_moved": {},
     "refusal:data_layer.legacy_anchor_missing": {},
@@ -60330,6 +60780,7 @@
     "refusal:devtools.evidence_root_declaration_invalid": {},
     "refusal:devtools.private_evidence_lane_unavailable": {},
     "refusal:domain.invalid": {},
+    "refusal:door.decision_answer_invalid": {},
     "refusal:door.decision_not_pending": {},
     "refusal:door.decisions_unavailable": {},
     "refusal:door.family_import_failed": {},
@@ -61191,6 +61642,22 @@
     "refusal:pipeline.stage_invalid": {},
     "refusal:pipeline.stage_unknown": {},
     "refusal:pipeline.workspace_unreadable": {},
+    "refusal:plugin_contract.as_of_unresolved": {},
+    "refusal:plugin_contract.input_versions_mismatch": {},
+    "refusal:plugin_contract.invocation_key_mismatch": {},
+    "refusal:plugin_contract.json_value_not_finite": {},
+    "refusal:plugin_registry.capability_conflict": {},
+    "refusal:plugin_registry.capability_unlisted": {},
+    "refusal:plugin_registry.catalog_unavailable": {},
+    "refusal:plugin_registry.closure_changed": {},
+    "refusal:plugin_registry.configuration_invalid": {},
+    "refusal:plugin_registry.confirmation_required": {},
+    "refusal:plugin_registry.dispatch_unverified": {},
+    "refusal:plugin_registry.effect_unknown": {},
+    "refusal:plugin_registry.ledger_commit_unavailable": {},
+    "refusal:plugin_registry.manifest_invalid": {},
+    "refusal:plugin_registry.worker_exited": {},
+    "refusal:plugin_registry.workspace_run_unavailable": {},
     "refusal:portfolio_advancement.correction_did_not_supersede": {},
     "refusal:portfolio_advancement.correction_identity_invalid": {},
     "refusal:portfolio_advancement.lane_advanced_without_an_artifact": {},
@@ -63267,6 +63734,25 @@
     "refusal:task_control.orphan_command_mismatch": {},
     "refusal:task_control.orphan_execution_absent": {},
     "refusal:task_control.orphan_execution_mismatch": {},
+    "refusal:task_control.plugin_child_unanswered": {},
+    "refusal:task_control.plugin_confinement_failed": {},
+    "refusal:task_control.plugin_failed": {},
+    "refusal:task_control.plugin_guard_unavailable": {},
+    "refusal:task_control.plugin_import_outside_environment": {},
+    "refusal:task_control.plugin_input_invalid": {},
+    "refusal:task_control.plugin_inputs_changed": {},
+    "refusal:task_control.plugin_lease_memory": {},
+    "refusal:task_control.plugin_lease_timeout": {},
+    "refusal:task_control.plugin_network_refused": {},
+    "refusal:task_control.plugin_not_staging_write": {},
+    "refusal:task_control.plugin_output_invalid": {},
+    "refusal:task_control.plugin_provenance_mismatch": {},
+    "refusal:task_control.plugin_read_unbound": {},
+    "refusal:task_control.plugin_role_hash_mismatch": {},
+    "refusal:task_control.plugin_staged_entry_invalid": {},
+    "refusal:task_control.plugin_staging_unproved": {},
+    "refusal:task_control.plugin_subprocess_refused": {},
+    "refusal:task_control.plugin_write_outside_staging": {},
     "refusal:task_control.projection_unavailable": {},
     "refusal:task_control.queue_full": {},
     "refusal:task_control.queue_setting_unreadable": {},
@@ -63788,6 +64274,22 @@
       "schema": {
         "anyOf": [
           {
+            "minLength": 1,
+            "type": "string"
+          },
+          {
+            "type": "null"
+          }
+        ],
+        "default": null
+      }
+    },
+    "request:Request.capability": {
+      "required": false,
+      "schema": {
+        "anyOf": [
+          {
+            "maxLength": 200,
             "minLength": 1,
             "type": "string"
           },
@@ -65142,6 +65644,21 @@
           {
             "format": "uuid",
             "type": "string"
+          },
+          {
+            "type": "null"
+          }
+        ],
+        "default": null
+      }
+    },
+    "request:Request.params": {
+      "required": false,
+      "schema": {
+        "anyOf": [
+          {
+            "additionalProperties": true,
+            "type": "object"
           },
           {
             "type": "null"
@@ -66565,7 +67082,9 @@
         "COMMITTEE_OPEN",
         "COMMITTEE_SUBMIT",
         "COMMITTEE_DAILY_SET",
-        "COMMITTEE_READ"
+        "COMMITTEE_READ",
+        "PLUGIN_LIST",
+        "PLUGIN_INVOKE"
       ],
       "type": "string"
     },

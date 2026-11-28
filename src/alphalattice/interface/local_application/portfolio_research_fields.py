@@ -405,6 +405,8 @@ requirements = {
     ),
     "USAGE_READING_SET": (frozenset({"usage_reading_enabled"}),) * 2,
     "COMMITTEE_DAILY_SET": (frozenset({"committee_daily_enabled"}),) * 2,
+    "PLUGIN_LIST": (frozenset(), frozenset()),
+    "PLUGIN_INVOKE": (frozenset({"capability"}), frozenset({"capability", "params"})),
     "ANALYST_READS": (frozenset(), frozenset({"analyst_reads_bundles"})),
     "ANALYST_READS_SET": (frozenset({"analyst_reads_mode", "analyst_reads_bundles"}),) * 2,
     # One of the three, which the owner holds to: a setting a request.

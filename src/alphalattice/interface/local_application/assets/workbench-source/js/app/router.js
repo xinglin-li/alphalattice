@@ -376,6 +376,7 @@ function patchPage() {
   // arrival is a patch of the same page -- without this, the link never opened its object.
   if (LiveGoals.pages.has(app.page)) queueMicrotask(LiveGoals.ensure);
   if (LiveModels.pages.has(app.page)) queueMicrotask(LiveModels.ensure);
+  if (LivePlugins.pages.has(app.page)) queueMicrotask(LivePlugins.ensure);
   if (LiveFeatureResearch.pages.has(app.page)) queueMicrotask(LiveFeatureResearch.ensure);
   if (LiveReview.pages.has(app.page)) queueMicrotask(LiveReview.ensure);
   if (LiveStudy.pages.has(app.page)) queueMicrotask(LiveStudy.ensure);
@@ -465,6 +466,7 @@ function renderPage() {
   }
   if (pageChanged && lastRenderedPage === 'features') LiveFeatures.leave(); // its late answers no longer take the page
   if (pageChanged && LiveModels.pages.has(lastRenderedPage)) LiveModels.leave(); // the packets are read once a visit
+  if (pageChanged && LivePlugins.pages.has(lastRenderedPage)) LivePlugins.leave(); // as Models
   if (pageChanged && LiveFeatureResearch.pages.has(lastRenderedPage)) LiveFeatureResearch.leave(); // as Models
   if (pageChanged && lastRenderedPage === 'team-outputs') LiveTeam.leaveOutputs(); // the session's Tasks are read once a visit
   const previousKey = Places.key();
@@ -504,6 +506,7 @@ function renderPage() {
   if (app.page==='lab') queueMicrotask(LiveResearch.ready);
   if (LiveGoals.pages.has(app.page)) queueMicrotask(LiveGoals.ensure);
   if (LiveModels.pages.has(app.page)) queueMicrotask(LiveModels.ensure);
+  if (LivePlugins.pages.has(app.page)) queueMicrotask(LivePlugins.ensure);
   if (LiveFeatureResearch.pages.has(app.page)) queueMicrotask(LiveFeatureResearch.ensure);
   // the review reader learns of every navigation from the route it did not write itself
   if (typeof LiveReview.observeRoute==='function') LiveReview.observeRoute();

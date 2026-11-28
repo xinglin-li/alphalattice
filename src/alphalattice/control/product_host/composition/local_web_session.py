@@ -1094,6 +1094,7 @@ class LocalPortfolioWebSession:
             ),
             data_update_factory=open_data_update,
             timers=self._timers,
+            plugins=self.plugins,
         )
         self.operations.start_file_scrub()
         # The activity observer is composed after every owner it reads and before the socket opens,
@@ -1729,6 +1730,8 @@ OPERATION_ROUTES: Final[tuple[tuple[str, str, str], ...]] = (
     ("GET", "/api/models", "MODEL_EXTENSIONS"),
     ("POST", "/api/models/activate", "MODEL_ACTIVATE"),
     ("POST", "/api/models/deactivate", "MODEL_DEACTIVATE"),
+    ("GET", "/api/plugins", "PLUGIN_LIST"),
+    ("POST", "/api/plugins/run", "PLUGIN_INVOKE"),
     # A person runs a reviewed research book's strategy forward, or stops it (LS1, OW12).
     ("POST", "/api/strategy/activate", "STRATEGY_ACTIVATE"),
     ("POST", "/api/strategy/deactivate", "STRATEGY_DEACTIVATE"),

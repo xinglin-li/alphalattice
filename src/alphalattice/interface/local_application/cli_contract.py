@@ -1712,6 +1712,7 @@ READ_OPERATIONS: frozenset[str] = frozenset(
         "DATA_ISSUES",
         "DATA_UPDATE_READBACK",
         "COMMITTEE_READ",
+        "PLUGIN_LIST",
         "EVIDENCE_CRO",
         "EVIDENCE_CRO_EXPORT",
         "EVIDENCE_DOCUMENTS",

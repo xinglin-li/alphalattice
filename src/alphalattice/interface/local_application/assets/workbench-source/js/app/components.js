@@ -1994,6 +1994,8 @@ const CODE_WORDS = {
   EVIDENCE_INSTALL: "Install the Evidence package",
   OPERATION_LIST: "Operations",
   PENDING_DECISIONS: "Pending decisions",
+  PLUGIN_INVOKE: "plugins.label.run",
+  PLUGIN_LIST: "plugins.label.list",
   PORTFOLIO_READBACK: "Read Portfolio view",
   PORTFOLIO_UPDATE_PLAN: "Portfolio update PLAN",
   PORTFOLIO_UPDATE_READBACK: "Read Portfolio update",

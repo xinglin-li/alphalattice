@@ -22,6 +22,7 @@ from enum import StrEnum
 from pathlib import Path
 from types import MappingProxyType
 from typing import Annotated, Final, cast
+from uuid import uuid4
 
 from pydantic import AfterValidator, JsonValue, NonNegativeInt, PlainSerializer, PositiveInt
 
@@ -154,6 +155,18 @@ class ActionInvocation(_ActionKeyInputs):
         """An invocation carries only the key its own validated inputs derive."""
         if self.idempotency_key != self.derived_key():
             raise ValueError("plugin_contract.invocation_key_mismatch")
+
+    def answered(self, output: Mapping[str, JsonValue], *, wall_ms: int) -> ActionReceipt:
+        """The receipt of this invocation's read-only run, which stages nothing: its answer and
+        its time; a read-only run's peak memory is not measured, so it reads 0."""
+        return ActionReceipt(
+            invocation_id=uuid4(),
+            idempotency_key=self.idempotency_key,
+            status=ReceiptStatus.OK,
+            output=output,
+            wall_ms=wall_ms,
+            peak_bytes=0,
+        )
 
     def staged_receipt(
         self, invocation_id: Uuid4, *, wall_ms: int, peak_bytes: int

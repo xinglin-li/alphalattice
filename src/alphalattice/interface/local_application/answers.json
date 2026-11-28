@@ -11746,6 +11746,44 @@
    }
   ]
  },
+ "PLUGIN_LIST": {
+  "fields": [
+   {
+    "name": "status",
+    "kind": "string",
+    "required": true,
+    "meaning": "The answer's status: `AVAILABLE`."
+   },
+   {
+    "name": "capabilities",
+    "kind": "array",
+    "required": true,
+    "meaning": "Each installed or enabled capability, by name: its `plugin`, `effect_mode` (`READ_ONLY`, `STAGING_WRITE` or `LEDGER_COMMIT`), whether it is a `workspace` plugin, its `state` (`DISCOVERED`, `VERIFIED`, `ACTIVE` or `EVICTED`) and its `input_schema`, read from its static manifest; no plugin code is read and no worker started."
+   }
+  ]
+ },
+ "PLUGIN_INVOKE": {
+  "fields": [
+   {
+    "name": "status",
+    "kind": "string",
+    "required": true,
+    "meaning": "The answer's status: `COMPLETED` after the run."
+   },
+   {
+    "name": "capability",
+    "kind": "string",
+    "required": true,
+    "meaning": "The capability that ran."
+   },
+   {
+    "name": "receipt",
+    "kind": "object",
+    "required": true,
+    "meaning": "The run's receipt: its `invocation_id`, its `idempotency_key` (named by the capability, its code, its parameters and its inputs' versions), its `status`, its `output`, a staging write's committed `staging_manifest` and `provenance_ids`, and its `wall_ms` and `peak_bytes`."
+   }
+  ]
+ },
  "$defs": {
   "error_info": {
    "name": "error_info",

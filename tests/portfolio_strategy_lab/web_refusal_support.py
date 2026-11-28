@@ -117,6 +117,7 @@ REQUIRED_SEED_FIELDS = frozenset(
         "calibration_plan_hash",
         "candidate_hash",
         "candidate_id",
+        "capability",
         "change_reason",
         "component_id",
         "continuation_of",
