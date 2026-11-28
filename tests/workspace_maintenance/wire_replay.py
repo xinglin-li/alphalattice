@@ -263,8 +263,9 @@ class WireReplay:
         if query.get("range") == "1d":
             sessions = list(bars)[-1:]
         else:
-            first = datetime.fromtimestamp(int(query["period1"]), UTC).date()
-            last = datetime.fromtimestamp(int(query["period2"]), UTC).date()
+            epoch = datetime(1970, 1, 1, tzinfo=UTC)
+            first = (epoch + timedelta(seconds=int(query["period1"]))).date()
+            last = (epoch + timedelta(seconds=int(query["period2"]))).date()
             sessions = [item for item in bars if first <= item < last]
         for event in self.events:
             if event.kind == "ticker-change" and event.symbol == symbol and event.on <= self.today:

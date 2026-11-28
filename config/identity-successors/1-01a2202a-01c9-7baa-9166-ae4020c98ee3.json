@@ -1,0 +1,34 @@
+{
+ "schema": "identity-successors",
+ "version": 1,
+ "moves": [
+  {
+   "role": "portfolio_strategy_lab.public_path",
+   "predecessor": "blake3:2d71ac32634a2e16ec3a221ea3c5da0485dc2043212ad108aee194c70098f2bd",
+   "successor": "blake3:c5928390584c53a91f3f9cb04b8f5daaf363aabe5a82d813a70a0881f7d0d640",
+   "change": "Reject conflicting Yahoo rows before daily deduplication",
+   "reason": "A provider answer with two different rows for one day is now refused by name instead of keeping whichever came first; the stored identities that name the provider's code are re-signed, and every result value is unchanged (ALL EQUAL over 48,884 records and 11 listings)"
+  },
+  {
+   "role": "product_host.conditional_decision_advancement",
+   "predecessor": "blake3:9df84e696ad071b15f0bec73fcc05affd043d45a7cea33b57ce49cc7f76c44d4",
+   "successor": "blake3:fdca2b2fbab90c8f2164c1229162e89291a117fa8a1aaf8f0b0f907a2ab84955",
+   "change": "Reject conflicting Yahoo rows before daily deduplication",
+   "reason": "A provider answer with two different rows for one day is now refused by name instead of keeping whichever came first; the stored identities that name the provider's code are re-signed, and every result value is unchanged (ALL EQUAL over 48,884 records and 11 listings)"
+  },
+  {
+   "role": "product_host.strategy_scoring",
+   "predecessor": "blake3:8881ed4b3bdd49f36ae8a4363186420db1ffd01f31a5284d567cffbfa3e002e6",
+   "successor": "blake3:7ef643ad637540e8dc9b519153a9a94fad2def485e8378352683f5ea1af4cd67",
+   "change": "Reject conflicting Yahoo rows before daily deduplication",
+   "reason": "A provider answer with two different rows for one day is now refused by name instead of keeping whichever came first; the stored identities that name the provider's code are re-signed, and every result value is unchanged (ALL EQUAL over 48,884 records and 11 listings)"
+  },
+  {
+   "role": "product_host.workspace_preparation",
+   "predecessor": "blake3:f20be229fa5aa78d4a361c7a234d88f72dc093d1d15e0f7ca967abb1023fc4cf",
+   "successor": "blake3:2a56a61e8178da7b0a1633bfb88cd52803bb30d4fa8c69a19a1d1f3023bf3382",
+   "change": "Reject conflicting Yahoo rows before daily deduplication",
+   "reason": "A provider answer with two different rows for one day is now refused by name instead of keeping whichever came first; the stored identities that name the provider's code are re-signed, and every result value is unchanged (ALL EQUAL over 48,884 records and 11 listings)"
+  }
+ ]
+}

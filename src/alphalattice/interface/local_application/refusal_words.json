@@ -1351,6 +1351,11 @@
   "detail": "The source document has a media type the Evidence owner does not admit. Supply a document declared as `text/html`, `text/plain` or `text/markdown`, then prepare the source again.",
   "next_action": "SUPPLY_A_DOCUMENT_WITH_AN_ADMITTED_MEDIA_TYPE"
  },
+ "data.conflicting_session_rows": {
+  "message_id": "data.conflicting_session_rows",
+  "detail": "data.conflicting_session_rows",
+  "next_action": "DATA_UPDATE_READBACK"
+ },
  "data.empty_payload": {
   "detail": "The provider returned no daily price history for a listing in the requested period, so no bars were admitted. Read the data update's current record for the affected listing and period. Retry the same approved update later when the source history is available.",
   "next_action": "DATA_UPDATE_READBACK"

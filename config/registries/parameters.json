@@ -11263,6 +11263,11 @@
 "count": 1,
 "description": "The longest a later unit waits for its book's first unit before it takes its share of the cores."
 },
+"src/alphalattice/foundation/market_data_ops/sources/providers.py::_YAHOO_DST_MIDNIGHT_HOUR::22": {
+"class": "METHOD",
+"count": 1,
+"description": "Match yfinance's daily chart normalization: its DST-shifted 22:00 and 23:00 timestamps belong to the following local session."
+},
 "src/alphalattice/foundation/market_data_ops/sources/providers.py::RATE_LIMIT_BACKOFF_CAP_SECONDS::30.0": {
 "class": "EXECUTION",
 "count": 1,

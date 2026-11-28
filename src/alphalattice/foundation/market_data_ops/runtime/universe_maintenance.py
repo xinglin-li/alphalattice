@@ -43,6 +43,7 @@ from alphalattice.foundation.market_data_ops.sources.price_integrity import (
     evaluate_price_action_integrity_sentinels,
 )
 from alphalattice.foundation.market_data_ops.sources.providers import (
+    ConflictingSessionRowsError,
     HistoricalHydrationProvider,
     HydrationEvidence,
     MarketDataProvider,
@@ -1090,7 +1091,12 @@ class CurrentUniverseMaintenance:
                     ),
                 )
                 return f"DEFERRED:{exc.code}"
-            self._record_failure(item, code=exc.code, observed_at=observed_at)
+            self._record_failure(
+                item,
+                code=exc.code,
+                observed_at=observed_at,
+                exception=exc if isinstance(exc, ConflictingSessionRowsError) else None,
+            )
             return "FAILED"
         except ActionAuditScopeInsufficient as exc:
             if connection is not None:
@@ -1202,7 +1208,9 @@ class CurrentUniverseMaintenance:
                     return f"DEFERRED:{exc.code}"
                 self._record_failure(
                     item,
-                    code="data.full_history_audit_failed",
+                    code=exc.code
+                    if isinstance(exc, ConflictingSessionRowsError)
+                    else "data.full_history_audit_failed",
                     observed_at=observed_at,
                     exception=exc,
                 )
@@ -1505,10 +1513,10 @@ class CurrentUniverseMaintenance:
                 if last_bar is not None
                 else {
                     "exception_type": type(exception).__name__ if exception else "UNKNOWN",
-                    "detail": "The provider price history could not be read."
+                    "detail": " ".join(str(exception).split())[:400]
+                    if audit_error or isinstance(exception, ConflictingSessionRowsError)
+                    else "The provider price history could not be read."
                     if isinstance(exception, ProviderFetchError)
-                    else " ".join(str(exception).split())[:400]
-                    if audit_error
                     else "The provider price history failed validation."
                     if exception
                     else "The source failure cause was not recorded.",

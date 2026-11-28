@@ -204,17 +204,18 @@ def test_the_native_market_session_enforces_egress(
                 fetch()
             assert caught.value.code == refusal
         else:
-            session = provider._ticker(provider._module(), "AAPL").session
-            url = "https://query1.finance.yahoo.com/data"
-            if proxied:
-                with pytest.raises(ConnectionReady, match="direct connection configured"):
-                    session.get(url, timeout=8)
-            elif refusal is None:
-                assert session.get(url, timeout=8).status_code == 200
-            else:
-                with pytest.raises(EgressRefusal) as caught:
-                    session.get(url, timeout=8)
-                assert caught.value.failure_code == refusal
+            with provider._ticker(provider._module(), "AAPL") as ticker:
+                session = ticker.session
+                url = "https://query1.finance.yahoo.com/data"
+                if proxied:
+                    with pytest.raises(ConnectionReady, match="direct connection configured"):
+                        session.get(url, timeout=8)
+                elif refusal is None:
+                    assert session.get(url, timeout=8).status_code == 200
+                else:
+                    with pytest.raises(EgressRefusal) as caught:
+                        session.get(url, timeout=8)
+                    assert caught.value.failure_code == refusal
     finally:
         if provider._session is not None:
             provider._session.close()

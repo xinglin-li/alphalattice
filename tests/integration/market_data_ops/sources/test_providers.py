@@ -344,19 +344,93 @@ def test_a_provider_rerounding_within_the_rules_precision_leaves_the_stored_clos
     assert {day: after[day] for day in held} == held
 
 
+def _duplicate_chart_row(replay, order, monkeypatch):
+    original = replay.chart
+
+    def chart(symbol, query):
+        answer = original(symbol, query)
+        if symbol != "AAPL" or replay.today != replay.days[1] or not answer["timestamp"]:
+            return answer
+        answer["timestamp"].append(answer["timestamp"][-1])
+        indicators = answer["indicators"]
+        series = {
+            **indicators["quote"][0],
+            "adjclose": indicators["adjclose"][0]["adjclose"],
+        }
+        for name, values in series.items():
+            value = values[-1]
+            other = value if order == "identical" or name == "volume" else value * 1.08
+            if order == "conflict-first":
+                values.insert(len(values) - 1, other)
+            else:
+                values.append(other)
+        return answer
+
+    monkeypatch.setattr(replay, "chart", chart)
+
+
+def _assert_conflict_detail(detail, session):
+    description, _, fields = detail.rpartition(": ")
+    assert "AAPL" in description and session.isoformat() in description, detail
+    assert set(fields.split(", ")) == {"adjclose", "close", "high", "low", "open"}
+
+
+def _assert_duplicate_chart_reads(replay, workspace, first_day):
+    replay.today = first = replay.days[1]
+    fetch_daily = partial(workspace.provider.fetch_daily, ("AAPL",), start=first, end=first)
+    if first_day is None:
+        rows = fetch_daily()["AAPL"]
+        assert [row["session_date"] for row in rows] == [first.isoformat()]
+        assert rows[0]["close"] == pytest.approx(replay.history("AAPL", first)[first]["close"])
+        return
+
+    for fetch in (
+        fetch_daily,
+        partial(
+            workspace.provider.fetch_hydration,
+            listing_id=LISTING,
+            provider_symbol="AAPL",
+            start=replay.start,
+            end=first,
+        ),
+        partial(
+            workspace.provider.fetch_adjusted_close_history,
+            listing_id=LISTING,
+            provider_symbol="AAPL",
+            start=first,
+            end=first,
+        ),
+        partial(
+            workspace.provider.fetch_action_history,
+            listing_id=LISTING,
+            provider_symbol="AAPL",
+            start=first,
+            end=first,
+        ),
+    ):
+        with pytest.raises(ProviderFetchError) as refused:
+            fetch()
+        error = refused.value
+        assert (error.code, error.retryable) == (first_day, True)
+        _assert_conflict_detail(str(error), first)
+
+
 @pytest.mark.proves("market_data_ops.provider_outages_end_as_their_failure_through_the_wire")
 @pytest.mark.parametrize(
-    ("case", "first_day", "transport_retry"),
+    ("case", "first_day", "transport_retry", "duplicate"),
     [
-        ("outage-rate-limited", None, ([2.0], 1)),
-        ("outage-server-error", None, ([], 1)),
+        ("outage-rate-limited", None, ([2.0], 1), None),
+        ("outage-server-error", None, ([], 1), None),
         # A transport timeout ends as a permanent fetch failure, not a retryable timeout: the
         # product's error mapping reads no timeout in libcurl's message, a defect still open.
-        ("outage-timeout", "data.provider_fetch_failed", ([], 0)),
-        ("chart-empty-200", "data.empty_payload", None),
-        ("chart-nan-close", "data.provider_fetch_failed", None),
-        ("chart-zero-close", "data.invalid_adjusted_close_payload", None),
-        ("cash-acquisition-delists", None, None),
+        ("outage-timeout", "data.provider_fetch_failed", ([], 0), None),
+        ("chart-empty-200", "data.empty_payload", None, None),
+        ("chart-nan-close", "data.provider_fetch_failed", None, None),
+        ("chart-zero-close", "data.invalid_adjusted_close_payload", None, None),
+        ("cash-acquisition-delists", None, None, None),
+        (None, "data.conflicting_session_rows", None, "conflict-first"),
+        (None, "data.conflicting_session_rows", None, "conflict-last"),
+        (None, None, None, "identical"),
     ],
     ids=(
         "rate-limited",
@@ -366,10 +440,13 @@ def test_a_provider_rerounding_within_the_rules_precision_leaves_the_stored_clos
         "nan-close",
         "zero-close",
         "cash-acquisition",
+        "conflict-first",
+        "conflict-last",
+        "identical",
     ),
 )
 def test_a_provider_outage_ends_as_its_failure_or_its_retry(
-    tmp_path, monkeypatch, request, case, first_day, transport_retry
+    tmp_path, monkeypatch, request, case, first_day, transport_retry, duplicate
 ):
     """Transport retries and bad chart answers preserve valid history. An unavailable delisted
     chart leaves the cash settlement and active manifest intact."""
@@ -400,6 +477,9 @@ def test_a_provider_outage_ends_as_its_failure_or_its_retry(
             quality_admission_hash=canonical_hash([LISTING]),
             observed_at=evening(initial),
         )
+    if duplicate is not None:
+        _duplicate_chart_row(replay, duplicate, monkeypatch)
+        _assert_duplicate_chart_reads(replay, workspace, first_day)
     state = workspace.daily(first)
     assert (state.state, state.failure_code) == (
         "UPDATED" if first_day is None else "FAILED",
@@ -410,6 +490,8 @@ def test_a_provider_outage_ends_as_its_failure_or_its_retry(
         assert (slept, asked.count("/v1/test/getcrumb")) == transport_retry
     if first_day is not None:
         assert _closes(workspace) == before
+        if duplicate is not None:
+            _assert_conflict_detail(state.change_document["failure_cause"]["detail"], first)
 
     if case == "cash-acquisition-delists":
         settled = _closes(workspace)

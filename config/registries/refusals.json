@@ -6599,6 +6599,11 @@
 "category": "FAILED_PRECONDITION",
 "classification_note": "Required installed, stored, or bound evidence state cannot satisfy _open_run; repair/setup/replan before retry. IF revision != completed.research_manifest_revision or members != qualified or (manifest is None and (not self.requested_listing_ids)) AND IF completed.lifecycle == 'COMPLETED'"
 },
+"data.conflicting_session_rows": {
+"owner": "data",
+"category": "UNAVAILABLE",
+"classification_note": "The provider supplied different values for the same listing and session. No conflicting row was admitted. Retry when the provider supplies consistent data."
+},
 "data.current_universe_no_feature_ready_listings": {
 "owner": "data",
 "category": "FAILED_PRECONDITION"

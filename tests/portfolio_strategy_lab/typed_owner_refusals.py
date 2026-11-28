@@ -224,6 +224,8 @@ def make_owner_exception(cls: type[Exception]) -> tuple[Exception, str]:
     if name == "DataTargetSessionLag":
         day = date(2026, 1, 2)
         return cls(target=day, reaching=0, total=1, minimum=1, latest=day), cls.failure_code
+    if name == "ConflictingSessionRowsError":
+        return cls("AAPL", date(2026, 1, 2), ("close",)), "data.conflicting_session_rows"
     if name == "SplitBasisRevision":
         action = module.CorporateActionEvent("listing", "fixture", date(2026, 1, 2), "SPLIT", 2.0)
         return cls((), (action,)), (

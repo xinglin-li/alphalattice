@@ -9,15 +9,17 @@ from __future__ import annotations
 
 import json
 import math
-from collections.abc import Callable, Mapping, Sequence
+from collections.abc import Callable, Iterator, Mapping, Sequence
+from contextlib import contextmanager
 from dataclasses import dataclass, field
-from datetime import date, timedelta
+from datetime import UTC, date, datetime, timedelta
 from functools import cache
 from importlib.metadata import PackageNotFoundError, version
 from pathlib import Path
 from threading import Lock
 from types import SimpleNamespace
 from typing import Any, Protocol, runtime_checkable
+from zoneinfo import ZoneInfo
 
 from alphalattice.capabilities.domain_contracts.spans import spanned
 from alphalattice.capabilities.domain_contracts.waits import pause
@@ -73,6 +75,19 @@ class ProviderFetchError(RuntimeError):
                 min(RATE_LIMIT_BACKOFF_CAP_SECONDS, RATE_LIMIT_BACKOFF_SECONDS * 2 ** (attempt - 1))
             )
         return self
+
+
+class ConflictingSessionRowsError(ProviderFetchError):
+    """Safe diagnostics for a rejected daily chart, without the provider's row values."""
+
+    def __init__(self, symbol: str, session: date, fields: Sequence[str]) -> None:
+        """Name the rejected session and the fields whose observed values disagree."""
+        super().__init__(
+            "data.conflicting_session_rows",
+            f"Yahoo returned conflicting rows for {symbol} on {session.isoformat()}: "
+            + ", ".join(fields),
+            retryable=True,
+        )
 
 
 RATE_LIMIT_BACKOFF_SECONDS = 2.0
@@ -203,6 +218,80 @@ def _error(exc: Exception) -> ProviderFetchError:
     )
 
 
+_CHART_EPOCH = datetime.fromtimestamp(0, tz=UTC)
+_YAHOO_DST_MIDNIGHT_HOUR = 22
+
+
+def _chart_session(stamp: int, timezone: ZoneInfo) -> date:
+    local_time = (_CHART_EPOCH + timedelta(seconds=stamp)).astimezone(timezone)
+    session = local_time.date()
+    # Match yfinance's daily normalization of Yahoo's DST-shifted midnight stamps.
+    if local_time.minute == 0 and local_time.hour >= _YAHOO_DST_MIDNIGHT_HOUR:
+        return session + timedelta(days=1)
+    return session
+
+
+def _same_chart_value(left: Any, right: Any) -> bool:
+    return left == right or (
+        isinstance(left, float)
+        and isinstance(right, float)
+        and math.isnan(left)
+        and math.isnan(right)
+    )
+
+
+def _reject_conflicting_daily_rows(document: Any, symbol: str) -> None:
+    """Check quote values before yfinance merges observations with the same session date."""
+    try:
+        chart = document["chart"]["result"][0]
+        stamps = chart["timestamp"]
+        if not stamps:
+            return
+        timezone = ZoneInfo(chart["meta"]["exchangeTimezoneName"])
+        indicators = chart["indicators"]
+        quote = indicators["quote"][0]
+        columns = {name: quote[name] for name in ("close", "high", "low", "open", "volume")}
+        if "adjclose" in indicators:
+            columns["adjclose"] = indicators["adjclose"][0]["adjclose"]
+        by_session: dict[date, int] = {}
+        for position, stamp in enumerate(stamps):
+            session = _chart_session(stamp, timezone)
+            first = by_session.setdefault(session, position)
+            if first == position:
+                continue
+            differing = sorted(
+                name
+                for name, column in columns.items()
+                if not _same_chart_value(column[first], column[position])
+            )
+            if differing:
+                raise ConflictingSessionRowsError(symbol, session, differing)
+    except (
+        IndexError,
+        KeyError,
+        OSError,
+        OverflowError,
+        TypeError,
+        ValueError,
+    ):
+        # Let the library handle missing or malformed chart metadata and array shapes as before.
+        return
+
+
+@dataclass(frozen=True)
+class _DailyChartResponse:
+    response: Any
+    verify: Callable[[Any], None]
+
+    def __getattr__(self, name: str) -> Any:
+        return getattr(self.response, name)
+
+    def json(self) -> Any:
+        document = self.response.json()
+        self.verify(document)
+        return document
+
+
 @dataclass
 class YFinanceMarketDataProvider:
     """Explicit yfinance adapter with per-symbol evidence and host-owned concurrency."""
@@ -213,13 +302,42 @@ class YFinanceMarketDataProvider:
     _session: Any = field(default=None, init=False, repr=False)
     _initialization_lock: Lock = field(default_factory=Lock, init=False, repr=False)
 
-    def _ticker(self, yf: Any, symbol: str) -> Any:
-        """Coalesce native GETs only within this acquisition; never reuse older bodies."""
+    @contextmanager
+    def _ticker(self, yf: Any, symbol: str) -> Iterator[Any]:
+        """Coalesce native GETs and check daily chart bodies before normalization."""
         require_network(HttpSource.YAHOO_FINANCE)
         ticker = yf.Ticker(symbol, session=self._session)
-        get = yf.data.lru_cache_freezeargs(cache(ticker._data.get))
+        native_get = ticker._data.get
+        refusal: ProviderFetchError | None = None
+
+        def verify(document: Any) -> None:
+            nonlocal refusal
+            try:
+                _reject_conflicting_daily_rows(document, symbol)
+            except ProviderFetchError as error:
+                refusal = error
+                raise
+
+        def checked_get(url: str, params: Any = None, **options: Any) -> Any:
+            response = native_get(url, params=params, **options)
+            # The one-day timezone probe reads metadata only. Repair can request intraday bars.
+            if (
+                "/v8/finance/chart/" in url
+                and params is not None
+                and params.get("interval") == "1d"
+                and params.get("range") != "1d"
+            ):
+                return _DailyChartResponse(response, verify)
+            return response
+
+        get = yf.data.lru_cache_freezeargs(cache(checked_get))
         ticker._data = SimpleNamespace(get=get, cache_get=get)
-        return ticker
+        try:
+            yield ticker
+        finally:
+            # yfinance can suppress its history exception when reading the actions property.
+            if refusal is not None:
+                raise refusal
 
     def execution_identity(self) -> Mapping[str, object]:
         """Return the exact provider behavior that can change stored observations."""
@@ -267,6 +385,17 @@ class YFinanceMarketDataProvider:
             self._runtime_module = yf
             return yf
 
+    def _daily_history(self, yf: Any, symbol: str, start: date, end: date) -> Any:
+        with self._ticker(yf, symbol) as ticker:
+            return ticker.history(
+                start=start.isoformat(),
+                end=(end + timedelta(days=1)).isoformat(),
+                auto_adjust=False,
+                actions=True,
+                repair=True,
+                raise_errors=True,
+            )
+
     @spanned("network", "yfinance_daily")
     def fetch_daily(
         self, symbols: Sequence[str], *, start: date, end: date
@@ -284,14 +413,7 @@ class YFinanceMarketDataProvider:
         payload: dict[str, Sequence[Mapping[str, object]]] = {}
         for symbol in symbols:
             try:
-                frame = self._ticker(yf, symbol).history(
-                    start=start.isoformat(),
-                    end=(end + timedelta(days=1)).isoformat(),
-                    auto_adjust=False,
-                    actions=True,
-                    repair=True,
-                    raise_errors=True,
-                )
+                frame = self._daily_history(yf, symbol, start, end)
             except ProviderFetchError:
                 raise
             except Exception as exc:
@@ -321,14 +443,9 @@ class YFinanceMarketDataProvider:
             raise ValueError("hydration provider range start is after end")
         yf = self._module()
         try:
-            frame = self._ticker(yf, provider_symbol).history(
-                start=start.isoformat(),
-                end=(end + timedelta(days=1)).isoformat(),
-                auto_adjust=False,
-                actions=True,
-                repair=True,
-                raise_errors=True,
-            )
+            frame = self._daily_history(yf, provider_symbol, start, end)
+        except ProviderFetchError:
+            raise
         except Exception as exc:
             raise _error(exc) from exc
         if frame.empty:
@@ -383,14 +500,9 @@ class YFinanceMarketDataProvider:
             raise ValueError("adjusted-close provider range start is after end")
         yf = self._module()
         try:
-            frame = self._ticker(yf, provider_symbol).history(
-                start=start.isoformat(),
-                end=(end + timedelta(days=1)).isoformat(),
-                auto_adjust=False,
-                actions=True,
-                repair=True,
-                raise_errors=True,
-            )
+            frame = self._daily_history(yf, provider_symbol, start, end)
+        except ProviderFetchError:
+            raise
         except Exception as exc:
             raise _error(exc) from exc
         if frame.empty or "Adj Close" not in frame:
@@ -454,7 +566,10 @@ class YFinanceMarketDataProvider:
             raise ValueError("action provider range start is after end")
         yf = self._module()
         try:
-            frame = self._ticker(yf, provider_symbol).actions
+            with self._ticker(yf, provider_symbol) as ticker:
+                frame = ticker.actions
+        except ProviderFetchError:
+            raise
         except Exception as exc:
             raise _error(exc) from exc
         if frame is None or frame.empty:
