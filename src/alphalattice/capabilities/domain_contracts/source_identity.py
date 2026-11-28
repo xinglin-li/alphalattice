@@ -10,6 +10,7 @@ import sys
 from collections.abc import Callable, Iterable, Iterator, Mapping
 from contextlib import contextmanager, suppress
 from contextvars import ContextVar
+from copy import deepcopy
 from dataclasses import dataclass
 from pathlib import Path, PurePosixPath
 from threading import Lock, get_ident
@@ -138,9 +139,11 @@ def source_component_id_from_tracked_path(tracked_path: str) -> str:
     return component_id
 
 
-_PARSED: dict[tuple[str, str, tuple[tuple[str, str], ...]], tuple[str, tuple[str, ...]]] = {}
-"""A module's syntax digest and imports, by its bytes' SHA-256 and its package: the same bytes
-are parsed once a process, and any edit is a new key, so the cache never answers stale."""
+type SourceSyntaxKey = tuple[bytes, str, tuple[tuple[str, str], ...]]
+type SourceSyntaxValue = tuple[str, tuple[str, ...]]
+type SourceSyntaxProofs = dict[SourceSyntaxKey, SourceSyntaxValue]
+_PARSED: BoundedMemo[SourceSyntaxKey, SourceSyntaxValue] = BoundedMemo(capacity=2048)
+"""Syntax and imports indexed by exact bytes, package and import bindings."""
 
 
 def source_syntax_digest(path: Path) -> str:
@@ -335,17 +338,40 @@ def _parsed(
     return _parsed_payload(payload, package=package, filename=path.name, bindings=bindings)
 
 
+_SYNTAX_PROOFS = ContextVar[SourceSyntaxProofs | None]("source_syntax_proofs", default=None)
+
+
+@contextmanager
+def source_syntax_proofs(held: SourceSyntaxProofs | None = None) -> Iterator[SourceSyntaxProofs]:
+    """Carry verified syntax to a worker sharing the caller's installed code.
+
+    A lookup uses the worker's actual bytes, package and import binding. A changed source
+    takes its own parse and the receiving owner still checks its full capability.
+    """
+    proofs = {} if held is None else held
+    token = _SYNTAX_PROOFS.set(proofs)
+    try:
+        yield proofs
+    finally:
+        _SYNTAX_PROOFS.reset(token)
+
+
 def _parsed_payload(
     payload: bytes, *, package: str, filename: str, bindings: tuple[tuple[str, str], ...] = ()
 ) -> tuple[str, tuple[str, ...]]:
-    key = (*_bytes_key(payload, package), bindings)
-    kept = _PARSED.get(key)
+    proofs = _SYNTAX_PROOFS.get()
+    exact = (payload, package, bindings)
+    if proofs is not None and (held := proofs.get(exact)) is not None:
+        return held
+    kept = _PARSED.get(exact)
     if kept is None:
-        tree = _tree(payload, filename)
+        tree = _mutable_tree(payload, filename, change_xxh3_128_hex(payload))
         imported = _imports(tree, package=package)
         if bindings:
             _bind_syntax_imports(tree, dict(bindings))
-        kept = _PARSED[key] = (_syntax_digest(tree), imported)
+        kept = _PARSED[exact] = (_syntax_digest(tree), imported)
+    if proofs is not None:
+        proofs[exact] = kept
     return kept
 
 
@@ -775,7 +801,7 @@ def _cached_canonical(payload: bytes, key: tuple[str, str], filename: str) -> _C
     """
     place = _cache_place()
     if place is None:
-        return _canonical_tree(_tree(payload, filename), key)
+        return _canonical_tree(_mutable_tree(payload, filename, key[0]), key)
     folder, canonicaliser, tag = place
     named = {
         "bytes": tagged_blake3(identity_blake3(payload)),
@@ -788,7 +814,7 @@ def _cached_canonical(payload: bytes, key: tuple[str, str], filename: str) -> _C
         held = _proved(entry, digest)
         if held is not None and held.get("key") == named and (form := _shaped(held, key)):
             return form
-    canonical = _canonical_tree(_tree(payload, filename), key)
+    canonical = _canonical_tree(_mutable_tree(payload, filename, key[0]), key)
     _keep(folder, stem, named, canonical)
     return canonical
 
@@ -913,6 +939,20 @@ def _keyed(path: Path, package: str) -> tuple[tuple[str, str], bytes]:
     except OSError as error:
         raise ValueError("shared_kernel.source_syntax_unreadable") from error
     return _bytes_key(payload, package), payload
+
+
+_TREES: BoundedMemo[tuple[str, bytes], ast.Module] = BoundedMemo()
+_TREE_LOCK = Lock()
+
+
+def _mutable_tree(payload: bytes, filename: str, change_key: str) -> ast.Module:
+    """Return a private tree from the observed source change key and exact bytes."""
+    key = change_key, payload
+    with _TREE_LOCK:
+        tree = _TREES.get(key)
+        if tree is None:
+            tree = _TREES[key] = _tree(payload, filename)
+    return deepcopy(tree)
 
 
 def _tree(payload: bytes, filename: str) -> ast.Module:

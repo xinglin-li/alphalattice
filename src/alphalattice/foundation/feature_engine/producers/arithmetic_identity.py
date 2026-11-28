@@ -33,7 +33,7 @@ from collections.abc import Mapping
 from functools import cache, lru_cache
 from importlib.util import find_spec
 from pathlib import Path
-from typing import Final
+from typing import Final, cast
 
 from alphalattice.capabilities.domain_contracts import source_identity
 from alphalattice.capabilities.domain_contracts.identity import canonical_hash
@@ -183,17 +183,45 @@ def feature_component_identity(
             {
                 "semantic_owner": semantic_owner,
                 "numerical_role": numerical_role,
-                "modules": source_identity.number_deciding_closure(
-                    inside,
-                    root=_ROOT,
-                    rule=source_identity.number_deciding_rule(_ROOT),
-                    excluded=excluded,
-                ),
+                "modules": _feature_source_closure(inside, excluded),
                 "outside": outside,
             }
         )
     )
     return rule
+
+
+def _feature_source_closure(owners: tuple[str, ...], excluded: frozenset[str]) -> dict[str, str]:
+    return source_identity.number_deciding_closure(
+        owners, root=_ROOT, rule=source_identity.number_deciding_rule(_ROOT), excluded=excluded
+    )
+
+
+def _extension_owners(owners: tuple[str, ...]) -> tuple[str, ...]:
+    return (*SHARED_FACTOR_ARITHMETIC_OWNERS, *EXTENSION_KERNEL_OWNERS, *owners)
+
+
+def shipped_kernel_source_proofs(
+    capability: dict[str, object],
+) -> source_identity.SourceSyntaxProofs:
+    """Collect the syntax read by the shipped capability's installed method owners."""
+    kernels = cast("list[dict[str, object]]", capability["kernels"])
+    owners = tuple(
+        owner for kernel in kernels for owner in cast("list[str]", kernel["method_family_owners"])
+    )
+    with source_identity.source_syntax_proofs() as proofs:
+        if owners:
+            _feature_source_closure(_extension_owners(owners), WALK_EXCLUDED)
+    return proofs
+
+
+def panel_preprocessing_source_proofs(
+    owners: tuple[str, ...],
+) -> source_identity.SourceSyntaxProofs:
+    """Collect syntax for the installed Panel preprocessing binding's declared owners."""
+    with source_identity.source_syntax_proofs() as proofs:
+        _feature_source_closure(owners, PREPROCESSING_WALK_EXCLUDED)
+    return proofs
 
 
 def control_arithmetic_rule_identity() -> str:
@@ -245,7 +273,7 @@ def method_family_rule_identity(method_family: str, owners: tuple[str, ...]) -> 
     if not owners:
         raise ValueError("feature_engine.factor_method_family_owners_required")
     return feature_component_identity(
-        owners=(*SHARED_FACTOR_ARITHMETIC_OWNERS, *EXTENSION_KERNEL_OWNERS, *owners),
+        owners=_extension_owners(owners),
         excluded=WALK_EXCLUDED,
         semantic_owner="feature_engine.producers.factors",
         numerical_role="FACTOR_VALUE",

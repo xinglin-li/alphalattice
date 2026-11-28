@@ -295,18 +295,24 @@ def research_update_findings(
     ]
 
 
-def evidence_reuse_findings(store: Path, before: frozenset[str]) -> list[dict[str, str]]:
+def evidence_reuse_findings(
+    store: Path,
+    before: frozenset[str],
+    *,
+    document_set_filename: Callable[[str], str],
+) -> list[dict[str, str]]:
     """A later day reads no filing an earlier analysis read, nor scores a selection over one.
 
     The filing is the unit of reuse. `store` is the Evidence artifact root and `before`
     the records it held before the day; the day's own records are the rest.
+    The caller provides the Evidence store's mapping from a document-set identity to its name.
     """
 
     def load(record: str) -> dict[str, Any]:
         return dict(json.loads((store / record).read_text(encoding="utf-8")))
 
     def filings(document_set: str) -> set[tuple[str, str]]:
-        held = load(f"document-sets/{document_set}.json")["documents"]
+        held = load(f"document-sets/{document_set_filename(document_set)}.json")["documents"]
         return {(d["entity_id"], d["revision_label"]) for d in held}
 
     def read(records: Any) -> set[tuple[str, str]]:

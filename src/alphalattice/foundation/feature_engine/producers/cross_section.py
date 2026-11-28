@@ -18,6 +18,10 @@ from alphalattice.capabilities.domain_contracts.sealing import (
     seal_payload_digest,
     seal_scoped_model,
 )
+from alphalattice.capabilities.domain_contracts.source_identity import (
+    SourceSyntaxProofs,
+    source_syntax_proofs,
+)
 from alphalattice.capabilities.domain_contracts.spans import span
 from alphalattice.capabilities.quant.cross_section import (
     MAD_SCALE,
@@ -440,6 +444,7 @@ def materialize_panel_chunk(
     members_by_session: Mapping[date, Sequence[str]],
     source_exclusions_by_session: Mapping[date, Sequence[str]] | None,
     cancelled: Callable[[], bool],
+    preprocessing_source_proofs: SourceSyntaxProofs | None = None,
 ) -> PanelMaterialization:
     """One chunk of a build's Panel sessions, transformed cross-section by cross-section.
 
@@ -452,7 +457,8 @@ def materialize_panel_chunk(
     key = (catalog.binding.catalog_hash, implementation_binding_hash)
     materializer = _WORKER_PANELS.get(key)
     if materializer is None:
-        materializer = SectorNeutralPanelMaterializer(catalog)
+        with source_syntax_proofs(preprocessing_source_proofs):
+            materializer = SectorNeutralPanelMaterializer(catalog)
         if materializer.implementation.implementation_binding_hash != implementation_binding_hash:
             raise ValueError("feature.worker_panel_implementation_mismatch")
         _WORKER_PANELS[key] = materializer

@@ -20,6 +20,7 @@ from typing import cast
 from pydantic import BaseModel
 
 from alphalattice.capabilities.domain_contracts.identity import canonical_hash
+from alphalattice.capabilities.domain_contracts.sealing import seal_payload_digest
 
 
 def recipe_payload(model: BaseModel, *, exclude: frozenset[str] = frozenset()) -> dict[str, object]:
@@ -34,7 +35,9 @@ def recipe_payload(model: BaseModel, *, exclude: frozenset[str] = frozenset()) -
 
 def recipe_identity(model: BaseModel, *, exclude: frozenset[str] = frozenset()) -> str:
     """The canonical hash of the model's content without its labels."""
-    return canonical_hash(recipe_payload(model, exclude=exclude))
+    return seal_payload_digest(
+        "recipe", recipe_payload(model, exclude=exclude), digest=canonical_hash
+    )
 
 
 def recipe_seal_holds(model: BaseModel, seal: str) -> bool:

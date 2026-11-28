@@ -39,7 +39,13 @@ def scoped_payload_digest(
     wire = _PAYLOAD_WIRE.encode(payload)
     # Keyed by the exact wire: one record read in two encodings holds a slot for each, never
     # evicting the other.
-    return stage_digest((digest, field, wire), payload, digest, snapshot=lambda _: wire)
+    return stage_digest(
+        (digest, wire),
+        payload,
+        digest,
+        snapshot=lambda _: wire,
+        canonical_wire=wire if digest is canonical_hash else None,
+    )
 
 
 def _sealed_identity(model: Any, values: Mapping[str, object], field: str) -> dict[str, Any]:
@@ -70,7 +76,13 @@ def seal_payload_digest(
     """Carry the digest of the exact canonical payload to its validator in this stage. The same
     payload sealed again in the stage answers the identity it sealed, with no second hash."""
     wire = _PAYLOAD_WIRE.encode(payload)
-    return stage_digest((digest, field, wire), payload, digest, snapshot=lambda _: wire)
+    return stage_digest(
+        (digest, wire),
+        payload,
+        digest,
+        snapshot=lambda _: wire,
+        canonical_wire=wire if digest is canonical_hash else None,
+    )
 
 
 def seal_model[M](model: type[M], values: Mapping[str, object], *, field: str) -> M:

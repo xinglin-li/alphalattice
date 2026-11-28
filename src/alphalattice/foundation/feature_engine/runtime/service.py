@@ -20,6 +20,10 @@ from alphalattice.capabilities.domain_contracts.bounded_memo import (
 from alphalattice.capabilities.domain_contracts.domain.errors import WorkspaceConflictError
 from alphalattice.capabilities.domain_contracts.host_stop import HostStopping
 from alphalattice.capabilities.domain_contracts.sector_treatment import sector_treatment
+from alphalattice.capabilities.domain_contracts.source_identity import (
+    SourceSyntaxProofs,
+    source_syntax_proofs,
+)
 from alphalattice.capabilities.domain_contracts.spans import span, spanned
 from alphalattice.control.observation_runtime.telemetry.process_metrics import worker_processes
 from alphalattice.control.observation_runtime.telemetry.progress import WorkProgressUpdate
@@ -70,6 +74,10 @@ from alphalattice.foundation.feature_engine.panels.materialization_identity impo
     feature_source_values_hash,
 )
 from alphalattice.foundation.feature_engine.producers import cross_section
+from alphalattice.foundation.feature_engine.producers.arithmetic_identity import (
+    panel_preprocessing_source_proofs,
+    shipped_kernel_source_proofs,
+)
 from alphalattice.foundation.feature_engine.producers.base_materializer import (
     _REQUIRED_COLUMNS,
     BaseFeatureMaterializer,
@@ -222,6 +230,7 @@ def materialize_listing_rows(
     sessions: tuple[date, ...],
     identity_axis: tuple[str, tuple[str, ...]] | None,
     cancelled: Callable[[], bool],
+    kernel_source_proofs: SourceSyntaxProofs | None = None,
 ) -> tuple[pd.DataFrame, pd.DataFrame, tuple[FeatureRowIdentity, ...] | None, str]:
     """One listing's Feature rows for `sessions` and its ineligibility facts, in a Host worker.
 
@@ -242,8 +251,9 @@ def materialize_listing_rows(
         registry = _WORKER_KERNELS.get(kernel_capability)
         if registry is None:
             registry = default_extension_kernel_registry()
-            if registry.capability_payload() != kernel_capability_payload:
-                raise ValueError("feature.worker_kernel_capability_mismatch")
+            with source_syntax_proofs(kernel_source_proofs):
+                if registry.capability_payload() != kernel_capability_payload:
+                    raise ValueError("feature.worker_kernel_capability_mismatch")
             _WORKER_KERNELS[kernel_capability] = registry
     with span("features", "listing_rows"):
         block = BaseFeatureMaterializer(catalog, kernel_registry=registry).materialize_listing(
@@ -662,6 +672,16 @@ class FeatureFoundationService:
             and len(axis_listings) <= PREPARATION_HOST_LISTINGS
             and (request.as_of_session - request.history_start).days < _PREPARATION_HOST_DAYS
         )
+        kernel_proof_argument = (
+            {
+                "kernel_source_proofs": (
+                    f"kernel-source-proofs:{kernel_capability}",
+                    shipped_kernel_source_proofs(kernel_payload),
+                )
+            }
+            if kernel_payload is not None and not in_host
+            else {}
+        )
         if in_host:
             workers = 1
         try:
@@ -934,6 +954,7 @@ class FeatureFoundationService:
                                 },
                                 # The same for every listing: each worker receives them once.
                                 shared={
+                                    **kernel_proof_argument,
                                     "catalog": (f"catalog:{part.binding.catalog_hash}", part),
                                     "market_bars": (
                                         f"market:{market_input_hashes[request.as_of_session]}",
@@ -1412,7 +1433,18 @@ class FeatureFoundationService:
             total=panel_chunk_total,
             unit_name="chunks",
         )
-        implementation = self.panel.implementation.implementation_binding_hash
+        preprocessing = self.panel.implementation
+        implementation = preprocessing.implementation_binding_hash
+        shared_proofs = (
+            {
+                "preprocessing_source_proofs": (
+                    f"panel-source-proofs:{implementation}",
+                    panel_preprocessing_source_proofs(preprocessing.implementation_owners),
+                )
+            }
+            if panel_groups and not in_host
+            else {}
+        )
         axis_listing_ids_hash = listing_set_digest(axis_listing_ids) if panel_groups else None
         # A connection block's chunks compute in the Host's kept workers while the writer
         # reads the next chunk's Feature rows; the writer then stages, publishes and
@@ -1477,7 +1509,8 @@ class FeatureFoundationService:
                                         if membership.source_exclusions
                                         else None
                                     ),
-                                }
+                                },
+                                shared=shared_proofs,
                             )
                         for chunk_sessions, run_sessions, _run_sectors in block:
                             panel = cast(PanelMaterialization, panel_calls.answer())

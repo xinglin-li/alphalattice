@@ -11413,6 +11413,16 @@
 "count": 1,
 "description": "Years are zero-padded to 4 digits in each ISO date's text, as %04d-%02d-%02d."
 },
+"src/alphalattice/capabilities/domain_contracts/bounded_memo.py::_MAX_CANONICAL_PROOF_BYTES::32768": {
+"class": "LIMIT",
+"count": 1,
+"description": "The process proof memo keeps exact canonical payloads up to 32 KiB, with larger payloads kept in their stage."
+},
+"src/alphalattice/capabilities/domain_contracts/bounded_memo.py::capacity::2048": {
+"class": "LIMIT",
+"count": 1,
+"description": "The process retains at most 2048 exact canonical payload proofs to bound their wire content to 64 MiB."
+},
 "src/alphalattice/capabilities/domain_contracts/bounded_memo.py::default_capacity::1024": {
 "class": "LIMIT",
 "count": 1,
@@ -11575,8 +11585,8 @@
 },
 "src/alphalattice/capabilities/domain_contracts/source_identity.py::capacity::2048": {
 "class": "LIMIT",
-"count": 1,
-"description": "A process keeps the parsed canonical forms of at most 2048 settled module files."
+"count": 2,
+"description": "The exact source-syntax projection memo and the settled canonical module memo each retain at most 2048 entries."
 },
 "src/alphalattice/capabilities/domain_contracts/source_identity.py::deciding::3": {
 "class": "METHOD",

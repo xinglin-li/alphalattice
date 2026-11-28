@@ -146,6 +146,10 @@ class BoundedMemo[K: Hashable, V](MutableMapping[K, V]):
 StageDigests = BoundedMemo[tuple[object, ...], tuple[object, str]]
 """A stage's digests, held to BoundedMemo's capacity: an evicted slot digests its inputs again."""
 _STAGE_DIGESTS: ContextVar[StageDigests | None] = ContextVar("stage_digests", default=None)
+_CANONICAL_PROOFS: BoundedMemo[tuple[Callable[..., str], str], str] = BoundedMemo(capacity=2048)
+_CANONICAL_PROOF_LOCK = RLock()
+_MAX_CANONICAL_PROOF_BYTES = 32_768
+"""Bound process-lived canonical wires to 64 MiB; larger inputs stay in the stage."""
 
 
 @contextmanager
@@ -169,6 +173,7 @@ def stage_digest[T](
     digest: Callable[[T], str],
     *,
     snapshot: Callable[[T], object] | None = None,
+    canonical_wire: str | None = None,
 ) -> str:
     """Reuse a digest when its immutable input holds.
 
@@ -182,6 +187,15 @@ def stage_digest[T](
     prior = held.get(slot)
     if prior is not None and prior[0] == bound:
         return prior[1]
-    value = digest(inputs)
+    if canonical_wire is not None and len(canonical_wire) <= _MAX_CANONICAL_PROOF_BYTES:
+        # A sealed JSON payload can cross stage holders without changing the content
+        # verified. Keep the result in this stage even if the process memo evicts it.
+        key = digest, canonical_wire
+        with _CANONICAL_PROOF_LOCK:
+            value = _CANONICAL_PROOFS.get(key)
+            if value is None:
+                value = _CANONICAL_PROOFS[key] = digest(inputs)
+    else:
+        value = digest(inputs)
     held[slot] = bound, value
     return value

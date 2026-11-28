@@ -1,0 +1,118 @@
+{
+ "schema": "identity-successors",
+ "version": 1,
+ "moves": [
+  {
+   "role": "alpha_research.model_lifecycle_replay",
+   "predecessor": "blake3:407c646df7091196328054208156e829ac68ae7f60243d611ac7b72af00141c1",
+   "successor": "blake3:eb44a0e69aed66ce705379d11949e1383fa1fe468c6adb9b912bcba58f6f6b00",
+   "change": "Daily reuses verification results for inputs it has already checked",
+   "reason": "The Daily now verifies each source once, including in the Panel workers; the stored feature and model identities that name those source checks are re-signed, and every result value is unchanged (carried across composition on 2a113977c9b805fa7f51c826517127eddc11fc03)"
+  },
+  {
+   "role": "product_host.conditional_decision_advancement",
+   "predecessor": "blake3:47357992ade8390c857764903f29f6f7ae077745de73976a9216321e9492a7e2",
+   "successor": "blake3:9df84e696ad071b15f0bec73fcc05affd043d45a7cea33b57ce49cc7f76c44d4",
+   "change": "Daily reuses verification results for inputs it has already checked",
+   "reason": "The Daily now verifies each source once, including in the Panel workers; the stored feature and model identities that name those source checks are re-signed, and every result value is unchanged (carried across composition on 2a113977c9b805fa7f51c826517127eddc11fc03)"
+  },
+  {
+   "role": "product_host.portfolio_updates",
+   "predecessor": "blake3:010579643257181df7a3f7ce10fb622e1e8b76ce53f746bcdfc9f59bd7223ac3",
+   "successor": "blake3:5d4589f72c503bc32bf128935c615f584859d55531a10faeb3bbf26b93ebcf91",
+   "change": "Daily reuses verification results for inputs it has already checked",
+   "reason": "The Daily now verifies each source once, including in the Panel workers; the stored feature and model identities that name those source checks are re-signed, and every result value is unchanged (carried across composition on 2a113977c9b805fa7f51c826517127eddc11fc03)"
+  },
+  {
+   "role": "product_host.research_component_training_input",
+   "predecessor": "blake3:e8486359df6a0ee073bfc5e4d20db2f6504d9f70e7cf36b99968c7ab5010af46",
+   "successor": "blake3:d5e86181858893796cea76a2916eed6eb09ce6763f7167ffad251d6762944042",
+   "change": "Daily reuses verification results for inputs it has already checked",
+   "reason": "The Daily now verifies each source once, including in the Panel workers; the stored feature and model identities that name those source checks are re-signed, and every result value is unchanged (carried across composition on 2a113977c9b805fa7f51c826517127eddc11fc03)"
+  },
+  {
+   "role": "product_host.research_feature_materialization",
+   "predecessor": "blake3:17573aec630a31adabef2c047ec708112b7ed52cde8a174177a8f6a7ff545991",
+   "successor": "blake3:a356fd873e613cc3e19a14989d9ac307cd99edbb48a8a1338569fe5d95d94493",
+   "change": "Daily reuses verification results for inputs it has already checked",
+   "reason": "The Daily now verifies each source once, including in the Panel workers; the stored feature and model identities that name those source checks are re-signed, and every result value is unchanged (carried across composition on 2a113977c9b805fa7f51c826517127eddc11fc03)"
+  },
+  {
+   "role": "product_host.research_feature_materialization.prepared",
+   "predecessor": "blake3:98183f581893ee2a565337607e258823a872ba8a0a7e7369dd2b7a5198e08d16",
+   "successor": "blake3:9451b05db010bba950e4304a50c817f48a337860c81d2269a1c7e0374b6efc92",
+   "change": "Daily reuses verification results for inputs it has already checked",
+   "reason": "The Daily now verifies each source once, including in the Panel workers; the stored feature and model identities that name those source checks are re-signed, and every result value is unchanged (carried across composition on 2a113977c9b805fa7f51c826517127eddc11fc03)"
+  },
+  {
+   "role": "product_host.research_feature_source_projection",
+   "predecessor": "blake3:3664b9329cf9671c145b661c70788a366b0c5493c855787f0ddeb3692ba4122d",
+   "successor": "blake3:32ba0a890c7d7faefb9f77bf6b0f624363abf3c246920b396058e3cace8d090b",
+   "change": "Daily reuses verification results for inputs it has already checked",
+   "reason": "The Daily now verifies each source once, including in the Panel workers; the stored feature and model identities that name those source checks are re-signed, and every result value is unchanged (carried across composition on 2a113977c9b805fa7f51c826517127eddc11fc03)"
+  },
+  {
+   "role": "product_host.research_input_materializer",
+   "predecessor": "blake3:4f1af9911bc687ff594724d1b699eac82bc8301ce742df262a88bc67ddea17c7",
+   "successor": "blake3:c895ab50c0b5f0c2e6a91c7b1c5271cfc85917bae0f1e2e51e9a47c2f9560311",
+   "change": "Daily reuses verification results for inputs it has already checked",
+   "reason": "The Daily now verifies each source once, including in the Panel workers; the stored feature and model identities that name those source checks are re-signed, and every result value is unchanged (carried across composition on 2a113977c9b805fa7f51c826517127eddc11fc03)"
+  },
+  {
+   "role": "product_host.research_strategy_preparation",
+   "predecessor": "blake3:7e3facba12bf1ae13c47abddbd4ad55a0c3dbfd2777da00ac67de8d5d25cc3ae",
+   "successor": "blake3:12f7ab31bfd12126292edd741f475d8fe481bac207f8daa26a26e088cfe04455",
+   "change": "Daily reuses verification results for inputs it has already checked",
+   "reason": "The Daily now verifies each source once, including in the Panel workers; the stored feature and model identities that name those source checks are re-signed, and every result value is unchanged (carried across composition on 2a113977c9b805fa7f51c826517127eddc11fc03)"
+  },
+  {
+   "role": "product_host.strategy_calibration",
+   "predecessor": "blake3:98b4c1ee2a4e9922ee4d25df91b9dd899499933c5807e4fc842b683f0df1a171",
+   "successor": "blake3:9b981e5feb703ea47b1b9d90cc72d443d9708c112e1c00156bca9eb03d626d9e",
+   "change": "Daily reuses verification results for inputs it has already checked",
+   "reason": "The Daily now verifies each source once, including in the Panel workers; the stored feature and model identities that name those source checks are re-signed, and every result value is unchanged (carried across composition on 2a113977c9b805fa7f51c826517127eddc11fc03)"
+  },
+  {
+   "role": "product_host.strategy_scoring",
+   "predecessor": "blake3:e50136ba8180a07bc38ec72bddc737986265550f175e3245a9e26b7a13c20cb1",
+   "successor": "blake3:8881ed4b3bdd49f36ae8a4363186420db1ffd01f31a5284d567cffbfa3e002e6",
+   "change": "Daily reuses verification results for inputs it has already checked",
+   "reason": "The Daily now verifies each source once, including in the Panel workers; the stored feature and model identities that name those source checks are re-signed, and every result value is unchanged (carried across composition on 2a113977c9b805fa7f51c826517127eddc11fc03)"
+  },
+  {
+   "role": "product_host.workspace_preparation",
+   "predecessor": "blake3:fe7248d54208fbd48ba34ef5cb3e07cb25f098fc1a6172371030557234ef70db",
+   "successor": "blake3:f20be229fa5aa78d4a361c7a234d88f72dc093d1d15e0f7ca967abb1023fc4cf",
+   "change": "Daily reuses verification results for inputs it has already checked",
+   "reason": "The Daily now verifies each source once, including in the Panel workers; the stored feature and model identities that name those source checks are re-signed, and every result value is unchanged (carried across composition on 2a113977c9b805fa7f51c826517127eddc11fc03)"
+  },
+  {
+   "role": "research_experiment.alpha.model-development.implementation",
+   "predecessor": "blake3:bb13bc2c7888663d02080a46767d90fe267dcfff5b4abe78ae4e53dcbf11eace",
+   "successor": "blake3:a637726d7d2ba8b7f4c892c65affb0fbb8f84a21d11c80358746d8ef3662fcac",
+   "change": "Daily reuses verification results for inputs it has already checked",
+   "reason": "The Daily now verifies each source once, including in the Panel workers; the stored feature and model identities that name those source checks are re-signed, and every result value is unchanged (carried across composition on 2a113977c9b805fa7f51c826517127eddc11fc03)"
+  },
+  {
+   "role": "research_experiment.alpha.model-development.lifecycle.implementation",
+   "predecessor": "blake3:bb13bc2c7888663d02080a46767d90fe267dcfff5b4abe78ae4e53dcbf11eace",
+   "successor": "blake3:a637726d7d2ba8b7f4c892c65affb0fbb8f84a21d11c80358746d8ef3662fcac",
+   "change": "Daily reuses verification results for inputs it has already checked",
+   "reason": "The Daily now verifies each source once, including in the Panel workers; the stored feature and model identities that name those source checks are re-signed, and every result value is unchanged (carried across composition on 2a113977c9b805fa7f51c826517127eddc11fc03)"
+  },
+  {
+   "role": "research_experiment.alpha.qualification.implementation",
+   "predecessor": "blake3:3fb47a73fd7daa0d30eb18b2419f54850801b571eaa1d3f65e7eee61297bf7d4",
+   "successor": "blake3:c38bd71d5a51b13b9b2dbc86c7e4a0595db242b4f4ed48e276f14ad09792298d",
+   "change": "Daily reuses verification results for inputs it has already checked",
+   "reason": "The Daily now verifies each source once, including in the Panel workers; the stored feature and model identities that name those source checks are re-signed, and every result value is unchanged (carried across composition on 2a113977c9b805fa7f51c826517127eddc11fc03)"
+  },
+  {
+   "role": "research_experiment.portfolio.policy-development.implementation",
+   "predecessor": "blake3:b1876979842ac08837fe01a678197717f246564e7b64f1aab0340531afa277a2",
+   "successor": "blake3:f2b631aae0db541e9d576c1d86001ec83944b5ca423cba4ff8a6ff8822744187",
+   "change": "Daily reuses verification results for inputs it has already checked",
+   "reason": "The Daily now verifies each source once, including in the Panel workers; the stored feature and model identities that name those source checks are re-signed, and every result value is unchanged (carried across composition on 2a113977c9b805fa7f51c826517127eddc11fc03)"
+  }
+ ]
+}

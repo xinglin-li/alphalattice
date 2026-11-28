@@ -747,20 +747,39 @@
       "defined_by": [
         "src/alphalattice/capabilities/domain_contracts/source_identity.py::_PARSED"
       ],
-      "definition_line": 93,
-      "key": "Source content digest, relative-import package and moved module bindings",
+      "definition_line": 145,
+      "key": "Complete source bytes, relative-import package and moved-module bindings",
       "dependency_coverage": "Yes: source bytes, relative-import package and bindings used to name syntax imports",
       "invalidation_rule": "A change to any key input computes a new entry",
-      "size_bound": "unbounded",
-      "bound_scope": "unbounded",
-      "eviction": "none",
+      "size_bound": "2048 entries",
+      "bound_scope": "process",
+      "eviction": "LRU at capacity",
       "safe_to_drop": "Yes",
       "location": {
         "scope": "process",
         "path_expression": "In-memory _PARSED in its module, instance, or call namespace"
       },
-      "source_commit": "4e29de787036643360b3448d9cddba114f06d739",
-      "description": "Caches Python syntax digests and imports by source-byte hash and package, so changed bytes or package context require a new parse."
+      "source_commit": "d058b5a3630e1e14b1713299f0ac176916f07d0e",
+      "description": "Keeps Python syntax digests and import bindings for identical source bytes and package context."
+    },
+    "src/alphalattice/capabilities/domain_contracts/source_identity.py::<module>._TREES::source-ast-bytes": {
+      "owner": "alphalattice.capabilities.domain_contracts",
+      "defined_by": [
+        "src/alphalattice/capabilities/domain_contracts/source_identity.py::_TREES"
+      ],
+      "definition_line": 944,
+      "key": "Source change key and complete source bytes",
+      "dependency_coverage": "Yes: the key names the complete input used to derive the held value",
+      "invalidation_rule": "A change to any key input computes a new entry",
+      "size_bound": "BoundedMemo owner capacity, default 1024 entries per logical CPU",
+      "bound_scope": "process",
+      "eviction": "LRU at capacity",
+      "safe_to_drop": "Yes: derive the entry again from its exact input",
+      "location": {
+        "scope": "process",
+        "path_expression": "In-memory _TREES in its module"
+      },
+      "description": "Keeps the parsed tree by exact source bytes and gives each transformation its own copy."
     },
     "src/alphalattice/control/workspace_runtime/paths.py::<module>._ROOT_IDENTITY_LIMIT::workspace-root-resolution-root-identities": {
       "owner": "alphalattice.control.workspace_runtime",
@@ -3812,6 +3831,25 @@
         "path_expression": "In-memory _request_document in its module, instance, or call namespace"
       },
       "description": "Keeps the request document model for each operation's admitted fields and for every field, building one on first use."
+    },
+    "src/alphalattice/capabilities/domain_contracts/bounded_memo.py::<module>._CANONICAL_PROOFS::canonical-payload-proofs": {
+      "owner": "alphalattice.capabilities.domain_contracts",
+      "defined_by": [
+        "src/alphalattice/capabilities/domain_contracts/bounded_memo.py::_CANONICAL_PROOFS"
+      ],
+      "definition_line": 149,
+      "key": "Canonical hash function and complete canonical JSON wire",
+      "dependency_coverage": "Yes: the key names the complete input used to derive the held value",
+      "invalidation_rule": "A change to any key input computes a new entry",
+      "size_bound": "2048 entries",
+      "bound_scope": "process",
+      "eviction": "LRU at capacity",
+      "safe_to_drop": "Yes: derive the entry again from its exact input",
+      "location": {
+        "scope": "process",
+        "path_expression": "In-memory _CANONICAL_PROOFS in its module"
+      },
+      "description": "Keeps exact canonical payload digests for active stages, with wire content limited to 64 MiB."
     },
     "src/alphalattice/capabilities/domain_contracts/bounded_memo.py::<module>._STAGE_DIGESTS::stage-input-digests": {
       "owner": "alphalattice.capabilities.domain_contracts",
