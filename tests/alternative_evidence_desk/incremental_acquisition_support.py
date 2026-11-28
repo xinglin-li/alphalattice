@@ -24,7 +24,10 @@ from alphalattice.evidence.alternative_evidence.sources.contracts import (
     SOURCE_COMMIT_CATEGORY,
     SOURCE_OBJECT_ROOT,
 )
-from alphalattice.evidence.alternative_evidence.sources.sec_edgar import SecEdgarSource
+from alphalattice.evidence.alternative_evidence.sources.sec_edgar import (
+    SecEdgarSource,
+    SecOfficialTransport,
+)
 from tests.alternative_evidence_desk.document_intelligence_support import INTEGRATED_SELECTION
 from tests.alternative_evidence_desk.sec_scenario_transport import (
     NOW,
@@ -136,7 +139,7 @@ def _admission(request: AlternativeEvidenceRequest) -> AlternativeEvidenceAdmiss
 
 def _acquire(
     runtime: AlternativeEvidenceDocumentIntelligenceRuntime,
-    transport: SecScenarioTransport,
+    transport: SecOfficialTransport,
     request: AlternativeEvidenceRequest,
     *,
     registry=None,

@@ -8,9 +8,11 @@ controlled transport seam -- no network, synthetic bodies labelled as such.
 
 from __future__ import annotations
 
+from contextlib import closing
 from datetime import timedelta
 from pathlib import Path
 
+import httpx
 import pytest
 
 from alphalattice.evidence.alternative_evidence.contracts import (
@@ -28,6 +30,7 @@ from alphalattice.evidence.alternative_evidence.sources.contracts import (
 )
 from alphalattice.evidence.alternative_evidence.sources.sec_edgar import (
     AlternativeEvidenceCommitRefused,
+    HttpxSecOfficialTransport,
     SecEdgarSource,
 )
 from alphalattice.evidence.alternative_evidence.storage import world_reads
@@ -66,40 +69,109 @@ def _objects_are_the_authority(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(world_reads, "serving", lambda: None)
 
 
-def test_a_fresh_source_check_with_no_change_downloads_no_body_again(tmp_path: Path) -> None:
-    """A fresh source check with no change downloads no body again."""
+@pytest.mark.proves("alternative_evidence.sec_events_replay_through_http_and_cache")
+def test_a_fresh_source_check_with_no_change_downloads_no_body_again(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """The real HTTP retry and reopened durable cache require one acquisition journey."""
 
     transport = _transport()
-    runtime = _runtime(tmp_path)
-    try:
-        registry, snapshot, source_set = _acquire(runtime, transport, _request())
-        assert len(source_set.documents) == 3 and snapshot.status.value == "COMPLETE"
-        assert len(transport.body_calls) == 3 and transport.inventory_calls == 1
-        assert _commits(runtime) == 3, "each body is committed on its own as it arrives"
-        first_calls = list(transport.calls)
-        transport.reset_calls()
+    index_url = f"https://data.sec.gov/submissions/CIK{AAPL}.json"
+    first_index_request = True
+    delays: list[float] = []
 
-        later = NOW + timedelta(days=3)
-        _registry, snapshot_again, source_set_again = _acquire(
-            runtime, transport, _request(as_of=later), registry=registry
+    def respond(request: httpx.Request) -> httpx.Response:
+        nonlocal first_index_request
+        url = str(request.url)
+        if url == index_url and first_index_request:
+            first_index_request = False
+            return httpx.Response(429, headers={"Retry-After": "2"})
+        response = transport.get(url, maximum_bytes=100_000)
+        return httpx.Response(
+            response.status_code,
+            headers={"Content-Type": response.content_type},
+            content=response.content,
         )
-        assert transport.inventory_calls == 1, "a fresh check reads the inventory once"
-        assert transport.body_calls == [], f"no body is fetched again: {transport.body_calls}"
-        assert transport.registry_calls == 0, "the registry the caller supplies is reused"
-        assert {d.content_digest for d in source_set_again.documents} == {
-            d.content_digest for d in source_set.documents
+
+    # The client's only transport is the in-process response script.
+    monkeypatch.setenv("ALPHALATTICE_NETWORK_DISABLED", "0")
+    with HttpxSecOfficialTransport(
+        user_agent="AlphaLattice QA qa@example.test",
+        transport=httpx.MockTransport(respond),
+        monotonic=lambda: 0.0,
+        sleeper=delays.append,
+    ) as http:
+        with closing(_runtime(tmp_path)) as runtime:
+            registry, snapshot, source_set = _acquire(runtime, http, _request())
+            assert len(source_set.documents) == 3 and snapshot.status.value == "COMPLETE"
+            assert len(transport.body_calls) == 3 and transport.inventory_calls == 1
+            assert _commits(runtime) == 3, "each body is committed on its own as it arrives"
+            first_calls = list(transport.calls)
+            transport.reset_calls()
+
+            later = NOW + timedelta(days=3)
+            _registry, snapshot_again, source_set_again = _acquire(
+                runtime, http, _request(as_of=later), registry=registry
+            )
+            assert transport.inventory_calls == 1, "a fresh check reads the inventory once"
+            assert transport.body_calls == [], f"no body is fetched again: {transport.body_calls}"
+            assert transport.registry_calls == 0, "the registry the caller supplies is reused"
+            assert {d.content_digest for d in source_set_again.documents} == {
+                d.content_digest for d in source_set.documents
+            }
+            assert snapshot_again.status.value == "COMPLETE"
+            accounting = snapshot_again.acquisition
+            assert accounting is not None
+            assert accounting.reused_local_count == 3 and accounting.fetched_count == 0
+            assert accounting.inventory_request_count == 1 and accounting.body_request_count == 0
+            assert accounting.fetched_bytes == 0 and accounting.reused_bytes > 0
+            assert len(first_calls) == 5, "registry, inventory and three bodies on the first pass"
+            assert len(_source_objects(runtime)) == 3, "three bodies, each held once"
+            assert _commits(runtime) == 3, "a reuse commits nothing new"
+            assert (http.rate_limited_count, http.retry_count) == (1, 1)
+            assert delays.count(2.0) == 1
+
+        transport.registry = {
+            "WIREX" if ticker == "AAPL" else ticker: issuer
+            for ticker, issuer in transport.registry.items()
         }
-        assert snapshot_again.status.value == "COMPLETE"
-        accounting = snapshot_again.acquisition
-        assert accounting is not None
-        assert accounting.reused_local_count == 3 and accounting.fetched_count == 0
-        assert accounting.inventory_request_count == 1 and accounting.body_request_count == 0
-        assert accounting.fetched_bytes == 0 and accounting.reused_bytes > 0
-        assert len(first_calls) == 5, "registry, inventory and three bodies on the first pass"
-        assert len(_source_objects(runtime)) == 3, "three bodies, each held once"
-        assert _commits(runtime) == 3, "a reuse commits nothing new"
-    finally:
-        runtime.close()
+        filings = transport.filings[AAPL]
+        original_bodies = {
+            filing.accession: transport.bodies[transport.locator(AAPL, filing)]
+            for filing in filings
+        }
+        with closing(_runtime(tmp_path)) as runtime:
+            for day, selected, expected_bodies, status in (
+                (1, filings, original_bodies, "COMPLETE"),
+                (2, [], {}, "EMPTY"),
+            ):
+                transport.reset_calls()
+                transport.filings[AAPL] = selected
+                renamed_registry, result, cached = _acquire(
+                    runtime, http, _request(("WIREX",), as_of=later + timedelta(days=day))
+                )
+                assert {entry.ticker: entry.cik for entry in renamed_registry.entries} == {
+                    "WIREX": AAPL,
+                    "MSFT": MSFT,
+                }
+                assert result.status == status
+                assert result.missing_source_count == (status == "EMPTY")
+                assert result.failed_source_count == 0
+                assert _outcomes(result) == dict.fromkeys(expected_bodies, "REUSED_LOCAL")
+                assert all(ref.entity_id == "WIREX" for ref in cached.documents)
+                assert {
+                    ref.revision: runtime.documents.resolve_source_object(ref, as_of=None).content
+                    for ref in cached.documents
+                } == expected_bodies
+                assert transport.inventory_calls == 1 and not transport.body_calls
+                if status == "EMPTY":
+                    assert not result.citations
+                    assert any(
+                        "0 cutoff-valid filing(s) discovered" in value
+                        for value in result.limitations
+                    )
+            assert _commits(runtime) == 3
 
 
 def test_one_added_filing_fetches_only_its_own_body(tmp_path: Path) -> None:
