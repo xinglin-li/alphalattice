@@ -30,6 +30,7 @@ from pathlib import Path
 from zipfile import ZipFile
 
 from packaging.requirements import Requirement
+from packaging.specifiers import SpecifierSet
 from scripts.release import wheel_smoke
 
 from alphalattice.capabilities.domain_contracts import spawn
@@ -100,12 +101,27 @@ def documented_doctor() -> list[str]:
     return shlex.split(match.group())
 
 
-def wheel_launcher(command: list[str], wheel: str, requirements: str, overrides: str) -> list[str]:
-    """Use the documented launcher flags with sidecars from this build."""
+def declared_python(wheel: Path) -> str:
+    """The interpreter a wheel declares: the lowest minor version its Requires-Python admits."""
+    with ZipFile(wheel) as package:
+        (name,) = (item for item in package.namelist() if item.endswith(".dist-info/METADATA"))
+        metadata = package.read(name).decode("utf-8")
+    match = re.search(r"^Requires-Python: (.+)$", metadata, re.MULTILINE)
+    assert match is not None, "install_smoke.requires_python_missing"
+    admitted = SpecifierSet(match.group(1))
+    return next(f"3.{minor}" for minor in range(8, 40) if admitted.contains(f"3.{minor}.0"))
+
+
+def wheel_launcher(
+    command: list[str], wheel: Path, location: str, requirements: str, overrides: str
+) -> list[str]:
+    """Use the documented launcher flags with this build's wheel at `location`, its sidecars and
+    the interpreter it declares: the documented command installs the published release, whose
+    interpreter may differ from this build's."""
     prefix = command[:-4]
     for flag, asset in zip(
-        ("--from", "--with-requirements", "--overrides"),
-        (wheel, requirements, overrides),
+        ("--from", "--with-requirements", "--overrides", "--python"),
+        (location, requirements, overrides, declared_python(wheel)),
         strict=True,
     ):
         prefix[prefix.index(flag) + 1] = asset
@@ -147,7 +163,9 @@ def first_use(wheel: Path, output: Path, *, prepare_only: bool = False) -> None:
             ],
             ROOT,
         )
-        argv = wheel_launcher(command, wheel.as_uri(), requirements.as_uri(), overrides.as_uri())
+        argv = wheel_launcher(
+            command, wheel, wheel.as_uri(), requirements.as_uri(), overrides.as_uri()
+        )
         argv[1:1] = [
             "--constraints",
             test_requirements.as_uri(),
@@ -340,6 +358,7 @@ def verify(wheel: Path, output: Path, claude: str) -> dict[str, object]:
                 base = f"http://127.0.0.1:{server.server_port}"
                 prefix = wheel_launcher(
                     command,
+                    wheel,
                     f"{base}/{wheel.name}",
                     *(f"{base}/alphalattice-{name}" for name in SIDECARS),
                 )

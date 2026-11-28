@@ -2199,6 +2199,12 @@
       "layer": "unit",
       "seconds": 1
     },
+    "local_application.the_install_smoke_launches_its_build_on_its_python": {
+      "description": "If the install smoke launched the wheel it built on the interpreter the published release declares, an interpreter move would fail every fresh install check before the Host starts.",
+      "owner": "alphalattice.interface.local_application",
+      "layer": "unit",
+      "seconds": 1
+    },
     "local_application.the_label_table_reads_as_its_schema_or_is_refused_by_name": {
       "description": "If the installed label table read with a field its schema lacks, an unknown kind or empty words, the CLI and Workbench would show names nothing checked.",
       "owner": "alphalattice.interface.local_application",
