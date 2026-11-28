@@ -83,19 +83,21 @@ negative word, so the prevention sentence read as a certain negative.
 from __future__ import annotations
 
 import re
+from collections.abc import Iterator, Sequence
 from dataclasses import dataclass
-from datetime import date
+from datetime import date, datetime
 from enum import StrEnum
 
 from alphalattice.capabilities.domain_contracts.identity import canonical_hash
 
+from ..documents.contracts import AlternativeEvidenceDocumentReference
 from ..documents.structure import (
     DocumentStructure,
     ItemRegion,
     ReportPeriod,
     parse_source_date,
 )
-from ..retrieval.session import sentence_ends
+from ..retrieval.session import InspectedDocument, sentence_ends
 
 TYPED_DISCLOSURE_RULES_ID = "alternative-evidence.typed-disclosures.v6"
 
@@ -376,6 +378,7 @@ class DocumentExtraction:
     observations: tuple[DraftObservation, ...]
     incomplete_reason: str | None
     amendment_scope: tuple[str, ...] | None
+    carried_families: frozenset[TypedDisclosureFamily] = frozenset()
 
 
 # --------------------------------------------------------------------------
@@ -393,6 +396,27 @@ _AMENDMENT_SOLELY = re.compile(
     re.IGNORECASE | re.DOTALL,
 )
 _AMENDMENT_ITEM = re.compile(r"Part\s+([IVX]+),?\s+Item\s+(\d{1,2}[A-C]?)", re.IGNORECASE)
+_AMENDMENT_ITEM_NUMBER = r"\d{1,2}[A-C]?\b"
+_AMENDMENT_RANGE = r"\s*(?:\b(?:through|to)\b|[-\u2013\u2014])\s*"
+_AMENDMENT_TERM = rf"{_AMENDMENT_ITEM_NUMBER}(?:{_AMENDMENT_RANGE}{_AMENDMENT_ITEM_NUMBER})?"
+_AMENDMENT_PART = re.compile(
+    r"\bPart\s+(?P<part>[IVX]+)\b"
+    r"(?:(?:\s*[,:]\s*|\s+)(?P<marker>Items?)\b"
+    rf"(?:\s+(?P<items>{_AMENDMENT_TERM}"
+    rf"(?:(?:\s*,\s*(?:and\s+)?|\s+and\s+){_AMENDMENT_TERM})*))?)?",
+    re.IGNORECASE,
+)
+_AMENDMENT_TERM_VALUES = re.compile(
+    rf"({_AMENDMENT_ITEM_NUMBER})(?:{_AMENDMENT_RANGE}({_AMENDMENT_ITEM_NUMBER}))?",
+    re.IGNORECASE,
+)
+_AMENDMENT_PART_JOIN = re.compile(
+    r"(?:\s*[,;]\s*(?:and\s+)?|\s+and\s+)Part\s+[IVX]+\b", re.IGNORECASE
+)
+_AMENDMENT_SCOPE_END = re.compile(
+    r"\s*(?:$|\.(?:\s|$)|(?:regarding|concerning|relating\s+to|of)\b)", re.IGNORECASE
+)
+_AMENDMENT_UNRESOLVED_WORDS = re.compile(r"\b(?:Parts?|Items?|except|excluding)\b", re.IGNORECASE)
 _ORIGINAL_FILING = re.compile(
     r"originally filed its (?P<form>Annual|Quarterly) Report on Form (?P<kind>10-[KQ])[^.]{0,160}?"
     r"on (?P<date>[A-Z][a-z]+\s+\d{1,2},\s+\d{4})",
@@ -1438,21 +1462,8 @@ def _body_has_text(text: str, region: ItemRegion, structure: DocumentStructure) 
     return bool(_plain(body))
 
 
-def _regions_for(
-    spec: RegionSpec, structure: DocumentStructure, text: str
-) -> tuple[tuple[ItemRegion, ...], tuple[ItemRegion, ...]]:
-    """`(body regions, contents-only regions)` of the spec's item on this document.
-
-    `(body regions, contents-only regions)` of the spec's item on this
-    document: the item number must match; the title decides when it names
-    the item, else the part does (a 10-Q has an Item 4 in both parts).
-    """
-    body: list[ItemRegion] = []
-    contents: list[ItemRegion] = []
-    if spec.note_keywords:
-        for region in _note_regions(spec, structure, text):
-            (body if _body_has_text(text, region, structure) else contents).append(region)
-        return tuple(body), tuple(contents)
+def _item_regions_for(spec: RegionSpec, structure: DocumentStructure) -> Iterator[ItemRegion]:
+    """Match an item by title when present and by part otherwise."""
     for region in structure.item_regions():
         if region.item != spec.item:
             continue
@@ -1462,6 +1473,21 @@ def _regions_for(
                 continue
         elif region.part is not None and region.part != spec.part:
             continue
+        yield region
+
+
+def _regions_for(
+    spec: RegionSpec, structure: DocumentStructure, text: str
+) -> tuple[tuple[ItemRegion, ...], tuple[ItemRegion, ...]]:
+    """Separate the spec's body regions from its contents-only regions."""
+    body: list[ItemRegion] = []
+    contents: list[ItemRegion] = []
+    regions = (
+        _note_regions(spec, structure, text)
+        if spec.note_keywords
+        else _item_regions_for(spec, structure)
+    )
+    for region in regions:
         (body if _body_has_text(text, region, structure) else contents).append(region)
     return tuple(body), tuple(contents)
 
@@ -1503,8 +1529,40 @@ def _note_regions(
     return tuple(regions)
 
 
+def _sec_amendment_sections(text: str) -> tuple[str, ...] | None:
+    """Read a complete SEC section declaration or leave it unresolved."""
+    sections: list[str] = []
+    for declaration in _AMENDMENT_PART.finditer(text):
+        if not sections and _AMENDMENT_UNRESOLVED_WORDS.search(text, 0, declaration.start()):
+            return None
+        part = f"PART {declaration['part'].upper()}"
+        if declaration["marker"] is None:
+            sections.append(part)
+        elif items := declaration["items"]:
+            for first, last in _AMENDMENT_TERM_VALUES.findall(items.upper()):
+                if not last:
+                    sections.append(f"{part} ITEM {first}")
+                elif first.isdecimal() and last.isdecimal() and int(first) <= int(last):
+                    sections.extend(
+                        f"{part} ITEM {item}" for item in range(int(first), int(last) + 1)
+                    )
+                else:
+                    return None
+        else:
+            return None
+        if _AMENDMENT_PART_JOIN.match(text, declaration.end()):
+            continue
+        tail = text[declaration.end() :]
+        if not _AMENDMENT_SCOPE_END.match(tail):
+            return None
+        if _AMENDMENT_UNRESOLVED_WORDS.search(tail.partition(".")[0]):
+            return None
+        return tuple(dict.fromkeys(sections))
+    return None
+
+
 def _amendment_scope(
-    text: str, structure: DocumentStructure
+    text: str, structure: DocumentStructure, *, sec_amendment_scope: bool
 ) -> tuple[tuple[str, ...] | None, tuple[int, int] | None, str | None]:
     """An amendment's own statement of what it amends.
 
@@ -1520,10 +1578,15 @@ def _amendment_scope(
     solely = _AMENDMENT_SOLELY.search(window)
     if solely is None:
         return None, None, None
-    scope = tuple(
-        dict.fromkeys(
-            f"PART {part.upper()} ITEM {item.upper()}"
-            for part, item in _AMENDMENT_ITEM.findall(solely.group("scope"))
+    statement = solely.group("scope")
+    sections = (
+        _sec_amendment_sections(statement)
+        if sec_amendment_scope
+        else tuple(
+            dict.fromkeys(
+                f"PART {part.upper()} ITEM {item.upper()}"
+                for part, item in _AMENDMENT_ITEM.findall(statement)
+            )
         )
     )
     base = note.start() if note is not None else 0
@@ -1533,10 +1596,12 @@ def _amendment_scope(
         if original is None
         else f"the original Form {original.group('kind').upper()} filed {original.group('date')}"
     )
-    return scope, (base + solely.start(), base + solely.end()), named
+    return sections, (base + solely.start(), base + solely.end()), named
 
 
-def extract_document(text: str, structure: DocumentStructure) -> DocumentExtraction:
+def extract_document(
+    text: str, structure: DocumentStructure, *, sec_amendment_scope: bool = False
+) -> DocumentExtraction:
     """Every family's observation on one canonical filing text, from its own sections.
 
     Every family's observation on one canonical filing text, from its own
@@ -1547,9 +1612,12 @@ def extract_document(text: str, structure: DocumentStructure) -> DocumentExtract
     form = structure.family_form
     report_period = structure.report_period
     observations: list[DraftObservation] = []
+    carried_families: set[TypedDisclosureFamily] = set()
     if form not in {"10-K", "10-Q"}:
         return DocumentExtraction((), None, None)
-    amendment_scope, scope_range, original = _amendment_scope(text, structure)
+    amendment_scope, scope_range, original = _amendment_scope(
+        text, structure, sec_amendment_scope=sec_amendment_scope
+    )
     incomplete: str | None = None
     if not structure.document_type.endswith("/A"):
         for definition in DEFINITIONS:
@@ -1583,9 +1651,17 @@ def extract_document(text: str, structure: DocumentStructure) -> DocumentExtract
             continue
         spec = specs[0]
         body, contents = _regions_for(spec, structure, text)
+        if body or (
+            spec.note_keywords
+            and any(
+                _body_has_text(text, region, structure)
+                for region in _item_regions_for(spec, structure)
+            )
+        ):
+            carried_families.add(definition.family)
         if amendment_scope is not None:
             wanted = f"{spec.part} ITEM {spec.item}"
-            if wanted not in amendment_scope and not body:
+            if wanted not in amendment_scope and spec.part not in amendment_scope and not body:
                 observations.append(
                     DraftObservation(
                         family=definition.family,
@@ -1613,6 +1689,11 @@ def extract_document(text: str, structure: DocumentStructure) -> DocumentExtract
                     f"an amendment with no stated scope and no {spec.part} Item {spec.item}: "
                     "whether the item was amended or omitted requires reading the original filing",
                 )
+                if sec_amendment_scope and scope_range is not None:
+                    reason = (
+                        f"the amendment has no {spec.part} Item {spec.item} body in its canonical "
+                        "text; read the complete amendment and the original filing for the section"
+                    )
             elif incomplete is not None:
                 state, reason = TypedDisclosureState.SOURCE_UNAVAILABLE, incomplete
             elif spec.mandatory:
@@ -1655,7 +1736,72 @@ def extract_document(text: str, structure: DocumentStructure) -> DocumentExtract
         observations.append(
             _observe_regions(definition, spec, body, text, structure, report_period, incomplete)
         )
-    return DocumentExtraction(tuple(observations), incomplete, amendment_scope)
+    return DocumentExtraction(
+        tuple(observations), incomplete, amendment_scope, frozenset(carried_families)
+    )
+
+
+def effective_observations(
+    filings: Sequence[
+        tuple[InspectedDocument, AlternativeEvidenceDocumentReference, DocumentExtraction]
+    ],
+) -> Iterator[tuple[InspectedDocument, DraftObservation]]:
+    """Read each carried section from the latest filing of an amended report.
+
+    Only reports with an amendment can replace existing observations. Keep the
+    original observations when the filing times or covered periods cannot
+    establish a replacement. Resolve before any issuance of citation spans.
+    """
+    reports: dict[tuple[str, str, date], list[int]] = {}
+    for index, (document, reference, _extraction) in enumerate(filings):
+        if reference.source_name != "SEC_EDGAR":
+            continue
+        period = reference.report_period_end or document.structure.report_period.period_end
+        if period is not None:
+            key = (document.entity_id, document.structure.family_form, period)
+            reports.setdefault(key, []).append(index)
+
+    suppress: set[tuple[int, TypedDisclosureFamily]] = set()
+    for indices in reports.values():
+        if not any(filings[index][0].document_type.endswith("/A") for index in indices):
+            continue
+        clocks = {
+            index: filings[index][1].accepted_at or filings[index][1].published_at
+            for index in indices
+        }
+        if any(clock is None for clock in clocks.values()):
+            continue
+        candidates: dict[
+            tuple[TypedDisclosureFamily, str, str], list[tuple[int, datetime, bool]]
+        ] = {}
+        for index in indices:
+            _document, _reference, extraction = filings[index]
+            clock = clocks[index]
+            assert clock is not None
+            for draft in extraction.observations:
+                if draft.part is None or draft.item is None:
+                    continue
+                section = (draft.part, draft.item)
+                has_section = draft.family in extraction.carried_families
+                candidates.setdefault((draft.family, *section), []).append(
+                    (index, clock, has_section)
+                )
+        for (family, _part, _item), rows in candidates.items():
+            latest = max((clock for _, clock, carried in rows if carried), default=None)
+            if latest is not None:
+                suppress.update(
+                    (index, family)
+                    for index, clock, carried in rows
+                    if not carried or clock != latest
+                )
+
+    for index, (document, _reference, extraction) in enumerate(filings):
+        for draft in extraction.observations:
+            if (
+                draft.state is not TypedDisclosureState.NOT_APPLICABLE
+                and (index, draft.family) not in suppress
+            ):
+                yield document, draft
 
 
 # --------------------------------------------------------------------------

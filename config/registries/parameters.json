@@ -1281,7 +1281,7 @@
 },
 "src/alphalattice/evidence/alternative_evidence/analysis/contracts.py::max_length::120": {
 "class": "LIMIT",
-"count": 3
+"count": 4
 },
 "src/alphalattice/evidence/alternative_evidence/analysis/contracts.py::max_length::1200": {
 "class": "LIMIT",
@@ -1381,7 +1381,7 @@
 },
 "src/alphalattice/evidence/alternative_evidence/analysis/contracts.py::max_length::96": {
 "class": "LIMIT",
-"count": 1
+"count": 2
 },
 "src/alphalattice/evidence/alternative_evidence/analysis/contracts.py::validate_candidate::2": {
 "class": "METHOD",

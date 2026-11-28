@@ -323,6 +323,14 @@ class TypedDisclosureObservation(AlternativeEvidenceContract):
     undelivered_instance_count: int = Field(default=0, ge=0)
 
 
+class TypedDisclosureAmendmentScope(AlternativeEvidenceContract):
+    """Identify a reviewed amendment and the sections named by its explanatory note."""
+
+    document_handle: str = Field(pattern=r"^DOC-[A-Z0-9-]{1,48}$")
+    revision_label: str = Field(min_length=1, max_length=120)
+    declared_sections: tuple[str, ...] | None = None
+
+
 class TypedDisclosureRecord(AlternativeEvidenceContract):
     """Retain typed-family rules and observations beside question-program evidence.
 
@@ -341,6 +349,9 @@ class TypedDisclosureRecord(AlternativeEvidenceContract):
     span_handles: tuple[str, ...] = Field(default=(), max_length=64)
     read_call_count: int = Field(ge=0, le=16)
     issuers_without_periodic_filing: tuple[str, ...] = Field(default=(), max_length=8)
+    amendment_scopes: tuple[TypedDisclosureAmendmentScope, ...] = Field(
+        default=(), max_length=96, exclude_if=lambda value: not value
+    )
 
 
 class LitigationRegionRecord(AlternativeEvidenceContract):

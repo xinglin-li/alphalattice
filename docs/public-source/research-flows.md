@@ -47,6 +47,8 @@ For the daily road, name the date on which the positions will be entered. A plan
 
 On later days, Evidence omits filing revisions already read and reuses earlier selections when their recorded inputs and bindings still match and verify. Analysts receive the new filings; earlier readings supplied as context are not new evidence to cite. Changed inputs require a fresh selection, and coverage gaps remain explicit.
 
+When the admitted SEC filings include an amendment for the same report period, typed disclosures read each section from the latest filing that carries it. A Part III amendment leaves the original's financial sections effective. The packet identifies the filing for each typed observation and records the amendment's declared scope alongside it. Both filings remain available in source history.
+
 ## Read review standing and claim limits
 
 Evidence preparation reports admitted source scope and gaps. Analysts provide cited issuer findings; the CRO separately challenges the exact book against them. Both give judgment without computing weights. Approved bundles preserve source restrictions. Read review standing, contrary evidence, citations and coverage together: a published review may be incomplete.

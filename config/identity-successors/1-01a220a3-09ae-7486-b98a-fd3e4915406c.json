@@ -1,0 +1,20 @@
+{
+ "schema": "identity-successors",
+ "version": 1,
+ "moves": [
+  {
+   "role": "alternative_evidence.analysis_policy",
+   "predecessor": "blake3:6fda3648093257a1b70ee63cdcc3d784986d6aeae6e54273918907589e81d755",
+   "successor": "blake3:6875e50e43e7887dd8c7838c5f0d8e0e8d38802ba1b8ea125cc754a699a54fd4",
+   "change": "Read SEC amendment scope by section and keep the original history",
+   "reason": "An amended filing now supersedes only the sections it carries; the earlier evidence binding becomes history and results are recomputed under a new current binding, with every non-amendment result unchanged (ALL EQUAL over 48,884 records and 11 listings)"
+  },
+  {
+   "role": "alternative_evidence.retrieval_binding",
+   "predecessor": "blake3:a5518935874d045eeae270408991721ac332b3ae46d3c560fb4cb87999d21751",
+   "successor": "blake3:20cd959b34ae18dbf48fe9c95e38284d8bfc690cd9f9d6f2fc6e665ddf94c108",
+   "change": "Read SEC amendment scope by section and keep the original history",
+   "reason": "An amended filing now supersedes only the sections it carries; the earlier evidence binding becomes history and results are recomputed under a new current binding, with every non-amendment result unchanged (ALL EQUAL over 48,884 records and 11 listings)"
+  }
+ ]
+}

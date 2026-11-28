@@ -46,6 +46,7 @@ from alphalattice.evidence.alternative_evidence.sources.contracts import (
     AcquiredEvidenceDocumentSet,
     AcquiredEvidenceSourceReferenceSet,
 )
+from alphalattice.kernel.identity import blake3_from_filename
 
 
 def alternative_evidence_playpen_root(source_path: Path) -> Path:
@@ -95,7 +96,28 @@ class HistoricalEvidenceBindings:
         )
 
 
-SUPPORTED_HISTORICAL_BINDINGS: tuple[HistoricalEvidenceBindings, ...] = ()
+def _historical_bindings(*stems: str) -> HistoricalEvidenceBindings:
+    """Decode the predecessor tuple through the digest owner's filename reader."""
+    bindings: list[str] = []
+    for stem in stems:
+        digest = blake3_from_filename(stem)
+        if digest is None:
+            raise ValueError("identity.blake3_digest_invalid")
+        bindings.append(digest)
+    return HistoricalEvidenceBindings(*bindings)
+
+
+SUPPORTED_HISTORICAL_BINDINGS: tuple[HistoricalEvidenceBindings, ...] = (
+    # The earlier publication could cite a section superseded by an amendment.
+    _historical_bindings(
+        "blake3-02cbca47334aaec71fe962a334e1207399e8ad169411f4514f56691ab69abdf5",
+        "blake3-eff603f5e6a874bcee540bc2f2c83d37fdf0d152dcc51015684cf04c081c8df7",
+        "blake3-a5518935874d045eeae270408991721ac332b3ae46d3c560fb4cb87999d21751",
+        "blake3-6fda3648093257a1b70ee63cdcc3d784986d6aeae6e54273918907589e81d755",
+        "blake3-ce2c85a7930e3336840d939a0ac98a08e691bd6ba2702799919965291b00830e",
+        "blake3-b45031d606e0056ce6c8e5a080b4da82489dfbdd27384c2af223e02c03fa9bb7",
+    ),
+)
 
 
 @dataclass(frozen=True, slots=True)

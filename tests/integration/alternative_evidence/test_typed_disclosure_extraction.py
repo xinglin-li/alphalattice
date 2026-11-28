@@ -14,9 +14,14 @@ The real forms are measured separately.
 
 from __future__ import annotations
 
+from contextlib import closing
+from dataclasses import replace
+from datetime import timedelta
+from html import escape
 from pathlib import Path
 from typing import Any
 
+import httpx
 import pytest
 
 from alphalattice.evidence.alternative_evidence.analysis import packet as packet_module
@@ -48,6 +53,10 @@ from alphalattice.evidence.alternative_evidence.retrieval.session import (
     MAXIMUM_SPAN_READS,
     MAXIMUM_TYPED_SPAN_READS,
 )
+from alphalattice.evidence.alternative_evidence.sources.sec_edgar import (
+    HttpxSecOfficialTransport,
+    SecEdgarSource,
+)
 from tests._support.identity_fixtures import fixture_digest
 from tests.alternative_evidence_desk.document_intelligence_support import (
     _document_with_text as _document,
@@ -56,7 +65,20 @@ from tests.alternative_evidence_desk.document_intelligence_support import (
     _obligation,
     _open_recorded,
 )
-from tests.alternative_evidence_desk.planted_corpus import tampered_reference
+from tests.alternative_evidence_desk.incremental_acquisition_support import (
+    AAPL,
+    MSFT,
+    MSFT_TEN_K,
+    TEN_K,
+    TEN_Q,
+    _admission,
+    _transport,
+)
+from tests.alternative_evidence_desk.incremental_acquisition_support import (
+    _request as _live_request,
+)
+from tests.alternative_evidence_desk.planted_corpus import _runtime, tampered_reference
+from tests.alternative_evidence_desk.sec_scenario_transport import NOW
 
 DCP = TypedDisclosureFamily.DISCLOSURE_CONTROLS_CONCLUSION.value
 SALES = TypedDisclosureFamily.UNREGISTERED_EQUITY_SALES.value
@@ -556,9 +578,12 @@ def test_a_bulleted_list_of_arrangements_is_read_sentence_by_sentence() -> None:
     assert len(observation.unrecognized) == 1 and "were as follows" in observation.unrecognized[0]
 
 
-def test_an_amendment_of_limited_scope_refers_to_the_original_filing() -> None:
-    """requirement: amendment with limited scope; absence of the item in an
-    amendment is neither none nor not found."""
+@pytest.mark.proves("alternative_evidence.sec_amendments_resolve_effective_sections")
+def test_an_amendment_of_limited_scope_refers_to_the_original_filing(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A valid amendment needs source provenance from HTTP through verified disclosure spans."""
 
     text = _text(
         [
@@ -585,6 +610,180 @@ def test_an_amendment_of_limited_scope_refers_to_the_original_filing() -> None:
     assert observations[DCP].scope_range is not None
     unscoped = text.replace("is being filed solely to provide", "provides")
     assert _observe(unscoped, "10-K/A")[DCP].state is TypedDisclosureState.AMBIGUOUS
+
+    _replay_amendment_sections(tmp_path, monkeypatch)
+
+
+def _replay_amendment_sections(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """Read amendments by their carried sections and source through the sealed packet."""
+    original = _ten_k()
+    partial = _text(
+        [
+            *COVER_10K[:2],
+            "FORM 10-K/A",
+            COVER_10K[3],
+            "EXPLANATORY NOTE",
+            "This Amendment No. 1 on Form 10-K/A is being filed solely to provide the "
+            "disclosure in Part III, Items 10 and 11 regarding directors and compensation.",
+            "PART III",
+            "ITEM 10. DIRECTORS, EXECUTIVE OFFICERS AND CORPORATE GOVERNANCE",
+            "The board appointed a director to serve for the next year.",
+        ]
+    )
+    restated = original.replace("FORM 10-K", "FORM 10-K/A", 1).replace(
+        DCP_EFFECTIVE, DCP_NOT_EFFECTIVE.replace("June 30, 2026", "December 31, 2025")
+    )
+    mine_safety = _text(
+        [
+            *COVER_10Q[:2],
+            "FORM 10-Q/A",
+            *COVER_10Q[3:],
+            "EXPLANATORY NOTE",
+            "This amendment is being filed solely to provide Part II, Items 2 through 5.",
+            "ITEM 4. MINE SAFETY DISCLOSURES",
+            "The registrant operated no mines during the reporting period.",
+        ]
+    )
+    scenario = _transport(msft=True)
+    scenario.filings[AAPL] = []
+    scenario.filings[MSFT] = []
+    issued = [
+        (AAPL, replace(TEN_K, report_date="2025-12-31"), "0000320193-26-000090", original, partial),
+        (
+            MSFT,
+            replace(MSFT_TEN_K, report_date="2025-12-31"),
+            "0000789019-26-000090",
+            original,
+            restated,
+        ),
+        (
+            AAPL,
+            replace(TEN_Q, report_date="2026-06-30"),
+            "0000320193-26-000091",
+            _ten_q(),
+            mine_safety,
+        ),
+    ]
+    for cik, filing, amended_accession, before, correction in issued:
+        amendment = replace(
+            filing,
+            accession=amended_accession,
+            form=f"{filing.form}/A",
+            filed_on="2026-08-14",
+            accepted_at="2026-08-14T21:00:00Z",
+            primary_document="amendment.htm",
+        )
+        for entry, text in ((filing, before), (amendment, correction)):
+            body = "".join(f"<p>{escape(line)}</p>" for line in text.split("\n\n") if line.strip())
+            scenario.add_filing(cik, entry, f"<html><body>{body}</body></html>".encode())
+
+    def respond(request: httpx.Request) -> httpx.Response:
+        payload = scenario.get(str(request.url), maximum_bytes=100_000)
+        return httpx.Response(
+            payload.status_code,
+            headers={"Content-Type": payload.content_type},
+            content=payload.content,
+        )
+
+    monkeypatch.setenv("ALPHALATTICE_NETWORK_DISABLED", "0")
+    at = NOW + timedelta(days=3)
+    request = _live_request(("AAPL", "MSFT"), as_of=at, budget=4)
+    with (
+        HttpxSecOfficialTransport(
+            user_agent="AlphaLattice QA qa@example.test",
+            transport=httpx.MockTransport(respond),
+            monotonic=lambda: 0.0,
+            sleeper=lambda _seconds: None,
+        ) as http,
+        closing(_runtime(tmp_path)) as runtime,
+    ):
+        _registry, snapshot, sources = runtime.acquire_live(
+            request=request,
+            admission=_admission(request),
+            source=SecEdgarSource(http),
+            published_at=at,
+            clock=lambda: at,
+        )
+        assert snapshot.status == "COMPLETE"
+        assert {ref.revision for ref in sources.documents} == {
+            accession
+            for _, filing, amendment, _, _ in issued
+            for accession in (filing.accession, amendment)
+        }
+        documents = runtime.canonicalize(source_set=sources, published_at=at, as_of=at)
+        generation = runtime.build_retrieval(document_set=documents, built_at=at)
+        with closing(
+            runtime.retrieval.open_session(
+                document_set=documents,
+                generation=generation,
+                evidence_as_of=at,
+            )
+        ) as session:
+            record, _spans = packet_module.select_typed_disclosures(session=session)
+    controls = {
+        (
+            value.entity_id,
+            value.revision_label,
+            tuple(instance.polarity for instance in value.instances),
+        )
+        for value in record.observations
+        if value.family == DCP
+    }
+    recorded_original = _document(text=original, form="10-K", revision="recorded-original")
+    recorded_amendment = _document(
+        text=partial, form="10-K/A", revision="recorded-amendment"
+    ).model_copy(update={"published_at": recorded_original.captured_at})
+    runtime, request, _, _, documents, generation = _open_recorded(
+        tmp_path / "recorded", documents=(recorded_original, recorded_amendment)
+    )
+    with (
+        closing(runtime),
+        closing(
+            runtime.retrieval.open_session(
+                document_set=documents, generation=generation, evidence_as_of=request.evidence_as_of
+            )
+        ) as session,
+    ):
+        recorded, _spans = packet_module.select_typed_disclosures(session=session)
+    assert {
+        "sec_controls": controls,
+        "declared_sections": {
+            scope.revision_label: scope.declared_sections for scope in record.amendment_scopes
+        },
+        "unread_item_in_range": next(
+            value.state
+            for value in record.observations
+            if value.revision_label == "0000320193-26-000091" and value.family == PLANS
+        ),
+        "recorded_controls": {
+            value.revision_label for value in recorded.observations if value.family == DCP
+        },
+        "recorded_scopes": recorded.amendment_scopes,
+        "recorded_scope_reason": next(
+            value.reason
+            for value in recorded.observations
+            if value.revision_label == "recorded-amendment" and value.family == DCP
+        ),
+    } == {
+        "sec_controls": {
+            ("AAPL", TEN_K.accession, ("EFFECTIVE",)),
+            ("AAPL", TEN_Q.accession, ("EFFECTIVE",)),
+            ("MSFT", "0000789019-26-000090", ("NOT_EFFECTIVE",)),
+        },
+        "declared_sections": {
+            "0000320193-26-000090": ("PART III ITEM 10", "PART III ITEM 11"),
+            "0000320193-26-000091": tuple(f"PART II ITEM {item}" for item in (2, 3, 4, 5)),
+            "0000789019-26-000090": None,
+        },
+        "unread_item_in_range": TypedDisclosureState.AMBIGUOUS,
+        "recorded_controls": {"recorded-original", "recorded-amendment"},
+        "recorded_scopes": (),
+        "recorded_scope_reason": (
+            "the amendment states it is filed solely for other items; PART II Item 9A "
+            "is outside that scope and the information stays in "
+            "the original filing, which is not admitted"
+        ),
+    }
 
 
 def test_part_decides_item_four_when_the_heading_carries_no_title() -> None:

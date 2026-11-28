@@ -70,6 +70,7 @@ from .contracts import (
     TableViewRecord,
     TableViewRefusalRecord,
     TopicRoutingRecord,
+    TypedDisclosureAmendmentScope,
     TypedDisclosureField,
     TypedDisclosureInstance,
     TypedDisclosureObservation,
@@ -83,6 +84,7 @@ from .disclosures import (
     DraftObservation,
     TypedDisclosureState,
     definitions_hash,
+    effective_observations,
     extract_document,
 )
 from .events import (
@@ -751,16 +753,28 @@ def select_typed_disclosures(
     drafts: list[tuple[str, DraftObservation, list[DraftInstance]]] = []
     skipped = 0
     issuers_with_periodic: set[str] = set()
-    for document in documents:
-        extraction = extract_document(document.text, document.structure)
+    filings = []
+    amendment_scopes: list[TypedDisclosureAmendmentScope] = []
+    for document, reference in zip(documents, session.document_set.documents, strict=True):
+        sec_filing = reference.source_name == "SEC_EDGAR"
+        extraction = extract_document(
+            document.text, document.structure, sec_amendment_scope=sec_filing
+        )
         if not extraction.observations:
             skipped += 1
             continue
         issuers_with_periodic.add(document.entity_id)
-        for draft in extraction.observations:
-            if draft.state is TypedDisclosureState.NOT_APPLICABLE:
-                continue
-            drafts.append((document.document_id, draft, list(draft.instances)))
+        filings.append((document, reference, extraction))
+        if sec_filing and document.document_type.endswith("/A"):
+            amendment_scopes.append(
+                TypedDisclosureAmendmentScope(
+                    document_handle=document.document_handle,
+                    revision_label=document.revision_label,
+                    declared_sections=extraction.amendment_scope,
+                )
+            )
+    for document, draft in effective_observations(filings):
+        drafts.append((document.document_id, draft, list(draft.instances)))
     # Spans are issued in two passes under the session's typed budget --
     # every observation's assertions document by document, then the
     # inspected scopes of the non-extracted observations; what the budget
@@ -918,6 +932,7 @@ def select_typed_disclosures(
         span_handles=tuple(ordered_handles),
         read_call_count=session.typed_span_read_count,
         issuers_without_periodic_filing=issuers[:8],
+        amendment_scopes=tuple(amendment_scopes[:96]),
     )
     return record, tuple(spans)
 
@@ -3636,12 +3651,22 @@ def typed_disclosure_summary(
         "issuers_without_periodic_filing": typed.issuers_without_periodic_filing,
         "span_handles": typed.span_handles,
         "read_call_count": typed.read_call_count,
+        **(
+            {
+                "amendment_scopes": tuple(
+                    value.model_dump(mode="json") for value in typed.amendment_scopes
+                )
+            }
+            if typed.amendment_scopes
+            else {}
+        ),
         "observations": tuple(
             {
                 "observation_id": value.observation_id,
                 "entity_id": value.entity_id,
                 "document_handle": value.document_handle,
                 "document_type": value.document_type,
+                **({"revision_label": value.revision_label} if typed.amendment_scopes else {}),
                 "family": value.family,
                 "state": value.state,
                 "reason": value.reason,

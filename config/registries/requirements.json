@@ -204,6 +204,13 @@
       "seconds": 5,
       "lower_layer": "The check opens sealed workspace authority and computes the runtime capability through the product verifier."
     },
+    "alternative_evidence.sec_amendments_resolve_effective_sections": {
+      "description": "For two annual filings in the same period, a partial amendment keeps unaffected sections effective and a full correction names the amendment as the effective source.",
+      "owner": "alphalattice.evidence.alternative_evidence",
+      "layer": "integration",
+      "lower_layer": "The wire fixture proves source acceptance and accession provenance through canonicalization and the disclosure packet's verified reader.",
+      "seconds": 10
+    },
     "alternative_evidence.sec_events_replay_through_http_and_cache": {
       "description": "SEC filing acquisition honors Retry-After, reuses bodies by CIK after a ticker change, and distinguishes an empty index from a failure.",
       "owner": "alphalattice.evidence.alternative_evidence",
