@@ -2066,6 +2066,20 @@
       "layer": "unit",
       "seconds": 1
     },
+    "local_application.cli_profile_loads_only_selected_modules": {
+      "description": "A fresh CLI command loads its selected profile modules and reports their canonical composition identity.",
+      "owner": "alphalattice.interface.local_application",
+      "layer": "integration",
+      "seconds": 5,
+      "lower_layer": "Only a fresh console process observes the import set without modules from pytest or previous commands."
+    },
+    "local_application.cli_profile_refuses_unregistered_and_duplicate_commands": {
+      "description": "The CLI refuses unknown commands and its profile refuses two registrations claiming the same command, naming the command in each case.",
+      "owner": "alphalattice.interface.local_application",
+      "layer": "integration",
+      "seconds": 5,
+      "lower_layer": "The real CLI parser reads its installed operation table and writes its refusal to the process console."
+    },
     "local_application.cli_request_keeps_read_admission": {
       "description": "The bounded CLI carrier receives read admission through its authenticated operation route, so it never renews the Host idle deadline and remains admissible while writes are stopping.",
       "owner": "alphalattice.interface.local_application",

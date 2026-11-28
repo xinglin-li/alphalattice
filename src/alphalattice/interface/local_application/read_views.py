@@ -9,7 +9,7 @@ from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
 from alphalattice.interface.local_application import cli_contract as contract
-from alphalattice.interface.local_application import client
+from alphalattice.interface.local_application.cli_profile import note_loaded
 
 if TYPE_CHECKING:
     from alphalattice.interface.local_application import client
@@ -23,6 +23,10 @@ def emit_owner(
     replace: bool | None = None,
 ) -> int:
     """Save exact owner JSON and render its selected view with named local file failures."""
+    from alphalattice.interface.local_application import client  # lazy: save answer
+
+    note_loaded(client.__name__)
+
     output: Path | None = getattr(args, "output", None)
     line: tuple[str, ...] = args.command_line
     indent: int | None = getattr(args, "legacy_indent", None)
@@ -68,6 +72,9 @@ def summary_display(
     answer: dict[str, Any], *, default: Callable[[object], Any] | None = None
 ) -> dict[str, Any]:
     """Bound the whole encoded read; keep references and offers as indivisible units."""
+    from alphalattice.interface.local_application import client  # lazy: bound summary
+
+    note_loaded(client.__name__)
 
     def size(value: object) -> int:
         return len(json.dumps(value, default=default).encode("utf-8"))

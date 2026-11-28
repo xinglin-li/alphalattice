@@ -43,9 +43,9 @@ from collections.abc import Callable, Iterator, Sequence
 from contextlib import suppress
 from contextvars import ContextVar
 from pathlib import Path
-from typing import Any, Final, Literal
+from typing import TYPE_CHECKING, Any, Final, Literal
 
-from alphalattice.interface.local_application import call_span, cli_invocation, client
+from alphalattice.interface.local_application import call_span, cli_invocation
 from alphalattice.interface.local_application.cli_contract import (
     ANSWER_LANGUAGE,
     BOUND_WORKSPACE,
@@ -77,89 +77,35 @@ from alphalattice.interface.local_application.cli_contract import (
 )
 from alphalattice.interface.local_application.cli_invocation import cli_print as print
 from alphalattice.interface.local_application.cli_invocation import command_prefix
+from alphalattice.interface.local_application.cli_profile import (
+    LOCAL_COMMANDS,
+    ROOT_COMMANDS,
+    LocalCommand,
+    composing,
+    note_loaded,
+    registered_commands,
+    selected_command,
+)
 from alphalattice.interface.local_application.failure_codes import (
+    LocalResearchClientError,
     owner_failure_code,
     public_failure,
     safe_failure_code,
 )
 from alphalattice.interface.local_application.host_lookup import serving_workspace_notice
 from alphalattice.interface.local_application.read_views import summary_display
+from alphalattice.interface.local_application.thin_cli import DEFAULT_HTTP_WAIT_SECONDS
 
-CLIENT_COMMANDS: Final[dict[tuple[str, str], str]] = {
-    (
-        "problem",
-        "report",
-    ): "Write a redacted problem report for review; sending needs the person's yes.",
-    ("answer", "show"): "Read a saved full answer locally, without a Host or fresh verification.",
-    ("schema", "show"): "A command's request schema (each branch of a two-operation command), "
-    "its answer's and a YAML template.",
-    ("activity", "wait"): "Wait, with no timer, for a Task or a goal's work to end or need you.",
-    ("storage", "reclaim"): "Show the exact storage cleanup plan and ask before applying it.",
-    ("committee", "wait"): "Wait, as one committee member, for what its floor addresses to it: "
-    "the revealed stances, a challenge, a reply or ruling on its message, or the close.",
-    ("first-use", "prepare"): "Open the first use from the person's sentence and named date "
-    "and prepare its data under its delegation, following each Task to its end; the answer "
-    "echoes the date's sessions and lays out the whole first use. The first stop is the answer.",
-    ("strategy", "build"): "Run the research strategy's required Alpha and Risk studies on the "
-    "workspace's one input with their defaults, one at a time, then prepare and install the "
-    "strategy, following each Task to its end; the first stop is the answer.",
-    ("strategy-book", "review"): "Run or reuse an installed strategy's whole-support book, or "
-    "with --update read a date's published positions, prepare their Evidence and write every "
-    "Analyst bundle, following each Task to its end; the first stop is the answer.",
-    ("review", "continue"): "Submit every specialist answer in a folder and follow each "
-    "publication; after the Analysts, write the CRO's bundle; after the CRO, read the review and "
-    "the strategy's activation offer. The first stop is the answer.",
-    ("backup", "restore"): "Restore a backup generation of the held state onto a new "
-    "directory, from the backup root alone.",
-    ("model", "scaffold"): "Write a new Alpha model's adapter, declaration and contract test "
-    "from its YAML declaration.",
-    ("model", "check"): "Run a model's contract: each check passes or names what it found.",
-    ("plugin", "new"): "Write a factor plugin's manifest, entry module, sample slice and test "
-    "into the workspace's plugins folder; the author then writes only its logic.",
-    ("plugin", "verify"): "Run a workspace plugin in its guarded child on its sample slice: each "
-    "check passes, or the first fault names what is wrong and what to change.",
-    ("model", "sandbox"): "Try a model on a copy of the workspace at rest: one Alpha study, "
-    "every saved object of the copy read before and after it, recorded for a person's activation.",
-    ("session", "bind"): "Ask the workspace Host to bind this agent session in its exact project: "
-    "its commands and its own specialists' may then leave --workspace out. Hook trust and "
-    "prospective child observation are checked separately.",
-    ("session", "unbind"): "Remove this project's binding: the bound session's own, or the "
-    "person's from their own shell, outside any agent session. The research is unchanged.",
-    ("session", "exporters"): "Print native agent exporter settings for the served Host; "
-    "only on the person's yes, write Claude Code's project settings. "
-    "Codex's user config is printed.",
-}
-"""The client's own commands, answered by the client itself, as `serve` and `request` are; every
-other command is an operation of the registry (OP1)."""
+if TYPE_CHECKING:
+    from alphalattice.interface.local_application import client
 
-AGENT_VERBS: Final = {verb.words: name for name, verb in client.AGENT_VERBS.items()}
-"""The client's agent verbs by their words, each with the name its `run` knows it by."""
-
-OFFLINE_COMMANDS: Final = frozenset(
-    {
-        ("answer", "show"),
-        ("problem", "report"),
-        ("schema", "show"),
-        ("backup", "restore"),
-        ("model", "scaffold"),
-        ("model", "check"),
-        ("model", "sandbox"),
-        ("plugin", "new"),
-        ("plugin", "verify"),
-        ("session", "unbind"),
-    }
-)
-"""The client's commands that answer without a Host: a restore's workspace may be lost, a
-model's files are the checkout's, and a session can detach its project's binding."""
+# The inventory and its conformance checks consume these views of the registrations.
+CLIENT_COMMANDS: Final = {row.words: row.purpose for row in LOCAL_COMMANDS}
+OFFLINE_COMMANDS: Final = frozenset(row.words for row in LOCAL_COMMANDS if row.offline)
 
 
 def _commands() -> dict[tuple[str, str], tuple[str, ...]]:
-    table: dict[str, list[str]] = command_table()["commands"]
-    commands = {
-        (name.split(" ")[0], name.split(" ")[1]): tuple(operations)
-        for name, operations in table.items()
-    }
-    return commands | {alias: commands[named] for alias, named in VERB_ALIASES.items()}
+    return registered_commands().operations
 
 
 def _fields(operation: str) -> tuple[frozenset[str], frozenset[str]]:
@@ -182,6 +128,10 @@ def _value(field: str, text: str) -> object:
     if text.startswith("@@"):
         text = text[1:]
     elif text.startswith("@"):
+        from alphalattice.interface.local_application import client  # lazy: file-valued flag
+
+        note_loaded(client.__name__)
+
         path = Path(text[1:])
         if kinds == {"string"}:
             return client._text(path)
@@ -192,20 +142,20 @@ def _value(field: str, text: str) -> object:
         try:
             return json.loads(text)
         except ValueError as error:
-            raise client.LocalResearchClientError("local_client.document_unreadable") from error
+            raise LocalResearchClientError("local_client.document_unreadable") from error
     if "integer" in kinds:
         try:
             return int(text)
         except ValueError as error:
-            raise client.LocalResearchClientError("local_client.request_invalid") from error
+            raise LocalResearchClientError("local_client.request_invalid") from error
     if "number" in kinds:
         try:
             return float(text)
         except ValueError as error:
-            raise client.LocalResearchClientError("local_client.request_invalid") from error
+            raise LocalResearchClientError("local_client.request_invalid") from error
     if "boolean" in kinds:
         if text.lower() not in {"true", "false"}:
-            raise client.LocalResearchClientError("local_client.boolean_invalid")
+            raise LocalResearchClientError("local_client.boolean_invalid")
         return text.lower() == "true"
     return text
 
@@ -329,6 +279,12 @@ def _repair(parser: argparse.ArgumentParser, message: str) -> dict[str, Any]:
             repaired = command_parser(_named(corrected))
             args = repaired.parse_args(corrected)
             if args.noun == "request":
+                from alphalattice.interface.local_application import (  # lazy: whole request
+                    client,
+                )
+
+                note_loaded(client.__name__)
+
                 args.primary_file = args.file if args.from_response is not None else None
                 args.file = args.choices if args.from_response is not None else args.file
                 request = client._next_request(args)
@@ -341,6 +297,8 @@ def _repair(parser: argparse.ArgumentParser, message: str) -> dict[str, Any]:
                 validate_request_document,
             )
 
+            note_loaded("alphalattice.interface.local_application.portfolio_research")
+
             validate_request_document(request)
             return {
                 "repair": worded(
@@ -350,7 +308,7 @@ def _repair(parser: argparse.ArgumentParser, message: str) -> dict[str, Any]:
                 "help": help_line,
                 "next_requests": {"correct": request},
             }
-        except (ValueError, OSError, StopIteration, client.LocalResearchClientError):
+        except (ValueError, OSError, StopIteration, LocalResearchClientError):
             pass
         finally:
             _PARSER_LINE.reset(token)
@@ -470,7 +428,8 @@ def _first_use_options(child: argparse.ArgumentParser) -> None:
     child.add_argument("--new-research", action="store_true", help=NEW_RESEARCH_HELP)
 
 
-def _client_command(child: argparse.ArgumentParser, noun: str, verb: str) -> None:
+def _client_command(child: argparse.ArgumentParser, row: LocalCommand) -> None:
+    noun, verb = row.words
     child.add_argument(
         "--output",
         type=Path,
@@ -660,7 +619,7 @@ def _client_command(child: argparse.ArgumentParser, noun: str, verb: str) -> Non
             type=Path,
             help="The backup root, when not ALPHALATTICE_BACKUP_ROOT or the default.",
         )
-    if (noun, verb) in AGENT_VERBS:
+    if row.agent:
         child.add_argument(
             "--max-wait",
             type=float,
@@ -694,6 +653,10 @@ def _schema_params(args: argparse.Namespace) -> None:
     options, name = args.schema_options, args.capability
     if name is None or not options:
         return
+    from alphalattice.interface.local_application import client  # lazy: read capability schema
+
+    note_loaded(client.__name__)
+
     listed = client.attached(Path(args.workspace), timeout=args.request_timeout).request(
         {"operation": "PLUGIN_LIST"}
     )
@@ -705,11 +668,13 @@ def _schema_params(args: argparse.Namespace) -> None:
         capability_parser,
     )
 
+    note_loaded("alphalattice.interface.local_application.capability_options")
+
     parsed = capability_parser(name, schema, _SchemaParser).parse_args(options)
     given = {k: v for k, v in vars(parsed).items() if v is not None}
     base = _value("params", args.params) if args.params is not None else {}
     if not isinstance(base, dict):
-        raise client.LocalResearchClientError("local_client.document_unreadable")
+        raise LocalResearchClientError("local_client.document_unreadable")
     args.params = json.dumps({**base, **given})
 
 
@@ -764,12 +729,9 @@ def command_parser(named: frozenset[str] | None = None) -> _Parser:
     nouns = parser.add_subparsers(
         dest="noun", required=True, metavar="<object>", help="One of the objects below."
     )
-    start = nouns.add_parser("serve", description="Start the Local Web Host on this workspace.")
+    start = nouns.add_parser("serve", description=ROOT_COMMANDS["serve"])
     _serve_options(start)
-    whole = nouns.add_parser(
-        "request",
-        description="Send one whole request document, or one next request of a saved answer.",
-    )
+    whole = nouns.add_parser("request", description=ROOT_COMMANDS["request"])
     whole.add_argument(
         "--file",
         type=Path,
@@ -784,17 +746,18 @@ def command_parser(named: frozenset[str] | None = None) -> _Parser:
     )
     _answers(whole, declaration=True)
     by_noun: dict[str, argparse._SubParsersAction[Any]] = {}
-    for (noun, verb), purpose in CLIENT_COMMANDS.items():
+    profile = registered_commands()
+    for (noun, verb), row in profile.local.items():
         if noun not in by_noun:
             by_noun[noun] = nouns.add_parser(noun, description=_NOUN_WORDS).add_subparsers(
                 dest="verb", required=True
             )
-        child = by_noun[noun].add_parser(verb, help=purpose, description=purpose)
-        child.set_defaults(client_command=(noun, verb))
-        _client_command(child, noun, verb)
+        child = by_noun[noun].add_parser(verb, help=row.purpose, description=row.purpose)
+        child.set_defaults(client_command=row.words, local_registration=row)
+        _client_command(child, row)
         _section(child, wanted=verb == "wait")  # a wait prints a compact answer too
     table = command_table()
-    for (noun, verb), operations in sorted(_commands().items()):
+    for (noun, verb), operations in sorted(profile.operations.items()):
         if noun not in by_noun:
             by_noun[noun] = nouns.add_parser(noun, description=_NOUN_WORDS).add_subparsers(
                 dest="verb", required=True
@@ -922,7 +885,7 @@ def _global_options(parser: argparse.ArgumentParser, *, anywhere: bool) -> None:
         choices=("compact", "full", "summary"),
         help=worded("cli.read.view"),
     )
-    add("--request-timeout", type=float, default=client.DEFAULT_HTTP_WAIT_SECONDS)
+    add("--request-timeout", type=float, default=DEFAULT_HTTP_WAIT_SECONDS)
     add(
         "--goal",
         help="The goal this request works for, where no agent session has taken one.",
@@ -1014,10 +977,10 @@ def _client_fields(parser: argparse.ArgumentParser, args: argparse.Namespace) ->
             "command": "storage-reclaim",
             "storage_reclaim_confirmation": (plan, args.asked, args.person_said) if plan else None,
         }
-    if args.client_command in AGENT_VERBS:
-        name = AGENT_VERBS[args.client_command]
-        fields = (*(field for _flag, field in client.AGENT_VERBS[name].fields), "max_wait")
-        return {"command": name, **{field: getattr(args, field) for field in (*fields, "notify")}}
+    row: LocalCommand = args.local_registration
+    if row.agent:
+        fields = (*(field for _flag, field in row.fields), "max_wait", "notify")
+        return {"command": row.agent, **{field: getattr(args, field) for field in fields}}
     return {
         "command": "activity-wait",
         "task_id": args.task_id,
@@ -1037,6 +1000,11 @@ def schema(operation: str) -> dict[str, Any]:
     from alphalattice.interface.local_application.answers import ANSWERS  # lazy: schema read
     from alphalattice.interface.local_application.portfolio_research import (  # lazy: schema read
         full_request_document,
+    )
+
+    note_loaded(
+        "alphalattice.interface.local_application.answers",
+        "alphalattice.interface.local_application.portfolio_research",
     )
 
     required, allowed = _fields(operation)
@@ -1111,6 +1079,13 @@ def _answer_parts(operation: str) -> dict[str, Any] | None:
     )
     from alphalattice.interface.local_application.answers import outline  # lazy: readback schema
 
+    note_loaded(
+        "alphalattice.foundation.factor_research.experiments.authoring",
+        "alphalattice.foundation.factor_research.experiments.development_evidence",
+        "alphalattice.foundation.factor_research.programs.program",
+        "alphalattice.interface.local_application.answers",
+    )
+
     return {
         FACTOR_EXPERIMENT_KIND: {
             "receipt": outline(FactorDevelopmentReceipt),
@@ -1137,6 +1112,15 @@ def _declaration_sections() -> dict[str, Any]:
         PortfolioExperimentSpec,
     )
     from alphalattice.investment.risk_research.experiments.compiler import RiskSection
+
+    note_loaded(
+        "alphalattice.foundation.factor_research.experiments.authoring",
+        "alphalattice.investment.alpha_research.experiments.authoring",
+        "alphalattice.investment.alpha_research.experiments.lifecycle_authoring",
+        availability.__name__,
+        "alphalattice.investment.portfolio_strategy_lab.application.research_experiment",
+        "alphalattice.investment.risk_research.experiments.compiler",
+    )
 
     return {
         "alpha": AlphaDevelopmentSection.model_json_schema(),
@@ -1251,11 +1235,15 @@ def _saved(args: argparse.Namespace, body: dict[str, Any]) -> dict[str, Any]:
     output = getattr(args, "output", None)
     if output is None:
         return {}
+    from alphalattice.interface.local_application import client  # lazy: save selected output
+
+    note_loaded(client.__name__)
+
     try:
         replace = client.output_replacement(output)
         raw = json.dumps(body, sort_keys=True).encode("utf-8")
         client._save_output(output, body, raw, getattr(args, "format", "json"), replace=replace)
-    except client.LocalResearchClientError as error:
+    except LocalResearchClientError as error:
         code = public_failure(error, "local_client.output_write_refused")
         refusal = client_refusal(code)
         return {
@@ -1358,19 +1346,19 @@ def _model(args: argparse.Namespace, started: float) -> int:
     A contract that fails is refused by its first failing check's code, with every finding in the
     answer; a refusal says the way on (OP12).
     """
-    from alphalattice.capabilities.alpha_modeling.model_contract import check_model
-    from alphalattice.capabilities.alpha_modeling.model_scaffold import scaffold_model
-
     scaffold = args.client_command == ("model", "scaffold")
     operation = "MODEL_SCAFFOLD" if scaffold else "MODEL_CHECK"
     written = getattr(args, "model_declaration_out", None)
     if scaffold and written is not None:
         # The first step of a model of one's own: a declaration to edit.
         from alphalattice.capabilities.alpha_modeling.model_scaffold import declaration_template
+        from alphalattice.interface.local_application import client  # lazy: model command output
+
+        note_loaded(client.__name__, "alphalattice.capabilities.alpha_modeling.model_scaffold")
 
         try:
             client._write_new(written, declaration_template().encode("utf-8"))
-        except client.LocalResearchClientError as error:
+        except LocalResearchClientError as error:
             code = public_failure(error, "local_client.output_write_refused")
             return _model_refused(args, operation, started, code)
         body = {
@@ -1391,11 +1379,18 @@ def _model(args: argparse.Namespace, started: float) -> int:
         )
         return EXIT_CODES["OK"]
     try:
-        answer = (
-            scaffold_model(Path(str(args.declaration).removeprefix("@")))
-            if scaffold
-            else check_model(args.model_id)
-        )
+        if scaffold:
+            from alphalattice.capabilities.alpha_modeling.model_scaffold import scaffold_model
+
+            note_loaded("alphalattice.capabilities.alpha_modeling.model_scaffold")
+
+            answer = scaffold_model(Path(str(args.declaration).removeprefix("@")))
+        else:
+            from alphalattice.capabilities.alpha_modeling.model_contract import check_model
+
+            note_loaded("alphalattice.capabilities.alpha_modeling.model_contract")
+
+            answer = check_model(args.model_id)
     except (ValueError, OSError) as error:
         code = public_failure(error, "model_extension.refused")
         if scaffold and code == "model_declaration.invalid":
@@ -1466,6 +1461,8 @@ def _declaration_fields(path: Path) -> str:
 
     from alphalattice.capabilities.alpha_modeling.declaration import AlphaModelDeclaration
 
+    note_loaded(yaml.__name__, "pydantic", "alphalattice.capabilities.alpha_modeling.declaration")
+
     try:
         AlphaModelDeclaration.model_validate(yaml.safe_load(path.read_text(encoding="utf-8")))
     except ValidationError as error:
@@ -1506,11 +1503,15 @@ def _offline(args: argparse.Namespace, started: float) -> int:
     body = command_schema(named) if named in commands else schema(args.operation_name)
     saved: dict[str, Any] = {}
     if args.output is not None:
+        from alphalattice.interface.local_application import client  # lazy: write schema answer
+
+        note_loaded(client.__name__)
+
         # The file is written as any answer's is, and never over one.
         try:
             client._write_new(args.output, json.dumps(body, sort_keys=True).encode("utf-8"))
             saved["output_file"] = str(args.output.resolve())
-        except client.LocalResearchClientError as error:
+        except LocalResearchClientError as error:
             code = public_failure(error, "local_client.output_write_refused")
             refusal = client_refusal(code)
             saved["local_failure"] = {
@@ -1556,7 +1557,8 @@ def main(
     scope = call_span.CALL.set(None)
     code = 1  # what Python exits with when the line raises
     try:
-        code = _command_line(argv, serve=serve, restore=restore, sandbox=sandbox, plugin=plugin)
+        with composing(__name__):
+            code = _command_line(argv, serve=serve, restore=restore, sandbox=sandbox, plugin=plugin)
         return code
     except SystemExit as stopped:  # a refusal raised as the process's exit carries its code
         code = stopped.code if isinstance(stopped.code, int) else code
@@ -1606,6 +1608,8 @@ def _command_line(
         else:
             args, extra = parser.parse_args(floor_numbers(arguments)), []
         args.schema_options = extra
+        form = " ".join(filter(None, (args.noun, getattr(args, "verb", ""))))
+        selected_command(form)
         if (
             getattr(args, "operations", None) in SCHEMA_OPERATIONS
             and args.capability is None
@@ -1616,17 +1620,25 @@ def _command_line(
         args.command_line = tuple(arguments)
         source = _summary_source(parser, args)  # may settle the view a summary reads as
         READ_VIEW.set((args.view or "compact", source, summary_display))
-        form = " ".join(filter(None, (args.noun, getattr(args, "verb", ""))))
         tags = tuple(f"option:{form}/{a.split('=')[0]}" for a in arguments if a.startswith("-"))
         SURFACE_USE.set((f"command:{form}", *tags))
         if args.noun != "serve":  # the Host itself is no call of its own
             call_span.begin(cli_invocation.environment(), form)
         if getattr(args, "client_command", None) == ("answer", "show"):
             return _saved_answer(args, started)
-        if getattr(args, "client_command", None) in OFFLINE_COMMANDS | {("session", "bind")}:
+        local: LocalCommand | None = getattr(args, "local_registration", None)
+        if (
+            local
+            and args.output is not None
+            and (local.offline or local.words == ("session", "bind"))
+        ):
+            from alphalattice.interface.local_application import client  # lazy: check named output
+
+            note_loaded(client.__name__)
+
             try:
                 client.output_replacement(args.output, line=args.command_line)
-            except client.LocalResearchClientError as error:
+            except LocalResearchClientError as error:
                 return _refused(error, started, line=arguments)
         if getattr(args, "client_command", None) in WORKSPACE_FREE:
             return _unbind(args, started)
@@ -1638,7 +1650,7 @@ def _command_line(
                 directory,
                 args.request_timeout,
             )
-        except client.LocalResearchClientError as error:
+        except LocalResearchClientError as error:
             return _refused(error, started, line=arguments)
         if args.workspace is not None:
             call_span.at(Path(args.workspace))  # where the call's span ends
@@ -1649,7 +1661,7 @@ def _command_line(
             return _command(
                 parser, args, started, serve=serve, restore=restore, sandbox=sandbox, plugin=plugin
             )
-        except client.LocalResearchClientError as error:
+        except LocalResearchClientError as error:
             return _refused(error, started, line=arguments)
         finally:
             WORKSPACE_FROM.reset(chosen_token)
@@ -1663,6 +1675,7 @@ def _command_line(
 
 def bundle_workspace(directory: Path | None) -> Path | None:
     """Read a bundle's location, never its authority; legacy bundles keep their route."""
+
     if directory is None:
         return None
     locator = directory / BUNDLE_WORKSPACE
@@ -1693,7 +1706,7 @@ def bundle_workspace(directory: Path | None) -> Path | None:
         value.encode("utf-8")
         return Path(value)
     except (OSError, UnicodeError, ValueError) as error:
-        raise client.LocalResearchClientError("local_client.bundle_workspace_invalid") from error
+        raise LocalResearchClientError("local_client.bundle_workspace_invalid") from error
 
 
 def _routing_bundle(parser: _Parser, args: argparse.Namespace) -> Path | None:
@@ -1701,6 +1714,10 @@ def _routing_bundle(parser: _Parser, args: argparse.Namespace) -> Path | None:
     args.routed_document = None
     try:
         if args.noun == "request":
+            from alphalattice.interface.local_application import client  # lazy: route request
+
+            note_loaded(client.__name__)
+
             fields = vars(args) | {
                 "primary_file": args.file if args.from_response is not None else None,
                 "file": args.choices if args.from_response is not None else args.file,
@@ -1708,7 +1725,7 @@ def _routing_bundle(parser: _Parser, args: argparse.Namespace) -> Path | None:
             args.routed_document = client._next_request(argparse.Namespace(**fields))
         elif any("bundle_directory" in _fields(op)[1] for op in getattr(args, "operations", ())):
             args.routed_document = _line_document(parser, args)()
-    except client.LocalResearchClientError as error:
+    except LocalResearchClientError as error:
         args.routed_document = error  # Keep no-Host precedence without rereading the input.
     document = args.routed_document if isinstance(args.routed_document, dict) else {}
     value = (
@@ -1732,7 +1749,7 @@ def _routing_bundle(parser: _Parser, args: argparse.Namespace) -> Path | None:
 def _workspace(
     named: Path | None,
     directory: Path | None = None,
-    timeout: float = client.DEFAULT_HTTP_WAIT_SECONDS,
+    timeout: float = DEFAULT_HTTP_WAIT_SECONDS,
 ) -> tuple[Path, Path | None, Literal["OPTION", "BINDING", "BUNDLE"]]:
     """The workspace a command works in, the one its agent session is bound to, and which chose
     it.
@@ -1754,6 +1771,7 @@ def _workspace(
         LocalResearchClientError: ``local_client.workspace_unbound`` or
             ``local_client.workspace_bound_to_another_session`` for a workspace left out.
     """
+
     session = agent_session(cli_invocation.environment())
     found = None
     bound: Path | None = None
@@ -1763,6 +1781,8 @@ def _workspace(
             NativeBridgeError,
             NativeResearchBinding,
         )
+
+        note_loaded("alphalattice.interface.local_application.native_bridge")
 
         with suppress(NativeBridgeError, OSError):
             found = NativeResearchBinding.find(cli_invocation.cwd(), session=session)
@@ -1785,16 +1805,17 @@ def _workspace(
     if bound is not None:
         return bound, bound, "BINDING"
     if found is not None:
-        raise client.LocalResearchClientError("local_client.workspace_bound_to_another_session")
-    raise client.LocalResearchClientError("local_client.workspace_unbound")
+        raise LocalResearchClientError("local_client.workspace_bound_to_another_session")
+    raise LocalResearchClientError("local_client.workspace_unbound")
 
 
 def bound_workspace() -> Path | None:
     """The workspace this command's agent session is bound to, as a line that names none reads
     it (`_workspace`); None when the line would be refused."""
+
     try:
         return _workspace(None)[0].resolve()
-    except client.LocalResearchClientError:
+    except LocalResearchClientError:
         return None
 
 
@@ -1806,8 +1827,12 @@ def _binding_mismatch(
     own: bool,
     timeout: float,
     serving: client.LocalResearchClient | None = None,
-) -> client.LocalResearchClientError:
+) -> LocalResearchClientError:
     """Diagnose both Hosts; recovery changes only this caller's binding."""
+    from alphalattice.interface.local_application import client  # lazy: read workspace context
+
+    note_loaded(client.__name__)
+
     hosts = {}
     for name, workspace in (("selected", selected), ("requested", intended)):
         try:
@@ -1821,12 +1846,12 @@ def _binding_mismatch(
                     {"operation": "OPERATION_LIST", "schema_operation": "WORKSPACE_SHOW"}
                 )
             hosts[name] = {"status": "SERVING", "url": transport.connection.url}
-        except client.LocalResearchClientError as unavailable:
+        except LocalResearchClientError as unavailable:
             hosts[name] = {
                 "status": "UNAVAILABLE",
                 "failure_code": public_failure(unavailable, "local_client.connection_unreadable"),
             }
-    error = client.LocalResearchClientError("local_client.workspace_context_mismatch")
+    error = LocalResearchClientError("local_client.workspace_context_mismatch")
     error.binding_context = {
         "bound_workspace": str(bound) if bound else None,
         "selected_workspace": str(selected.resolve()),
@@ -1847,6 +1872,10 @@ def _saved_answer(args: argparse.Namespace, started: float) -> int:
     The existing answer-part owner selects the display; the full snapshot is saved
     through the same format and refusal-retry owner as a live answer.
     """
+    from alphalattice.interface.local_application import client  # lazy: read saved response
+
+    note_loaded(client.__name__)
+
     try:
         replace = client.output_replacement(args.output, line=args.command_line)
         body = client.saved_answer(
@@ -1877,7 +1906,7 @@ def _saved_answer(args: argparse.Namespace, started: float) -> int:
             **saved,
         )
         exit_code = 0
-    except client.LocalResearchClientError as error:
+    except LocalResearchClientError as error:
         code = public_failure(error, "local_client.saved_answer_invalid")
         # Word the owner's family even when its unsafe path suffix is withheld publicly.
         refusal = client_refusal(str(error))
@@ -1903,7 +1932,7 @@ def _saved_answer(args: argparse.Namespace, started: float) -> int:
 
 
 def _refused(
-    error: str | client.LocalResearchClientError,
+    error: str | LocalResearchClientError,
     started: float,
     line: Sequence[str] = (),
     workspace: Path | None = None,
@@ -1920,6 +1949,10 @@ def _refused(
     if workspace is not None and refusal.outcome == "NO_HOST":
         detail = host_checked(detail, workspace)
         if code == "local_client.service_not_running":
+            from alphalattice.interface.local_application import client  # lazy: recovery context
+
+            note_loaded(client.__name__)
+
             detail += serving_workspace_notice(cli_invocation.cwd(), client.LocalResearchClient)
     if line and code == "local_client.workspace_unbound":
         again = join([*command_prefix(), "--workspace", "<dir>", *line], shell())
@@ -1947,7 +1980,7 @@ def _refused(
                 next_commands=getattr(error, "next_commands", None),
                 **(
                     {"binding_context": context}
-                    if context and isinstance(error, client.LocalResearchClientError)
+                    if context and isinstance(error, LocalResearchClientError)
                     else {}
                 ),
             ),
@@ -1972,12 +2005,19 @@ person's own shell, which names none, may remove it."""
 
 def _exporters(args: argparse.Namespace, started: float) -> int:
     """Print both native exporters; the explicit person-consent flag writes Claude's only."""
+    from alphalattice.interface.local_application import client  # lazy: read the served Host
     from alphalattice.interface.local_application.native_bridge import (  # lazy: exporters only
         NativeBridgeError,
         session_project,
     )
     from alphalattice.interface.local_application.native_setup import (  # lazy: exporters only
         agent_exporters,
+    )
+
+    note_loaded(
+        client.__name__,
+        "alphalattice.interface.local_application.native_bridge",
+        "alphalattice.interface.local_application.native_setup",
     )
 
     try:
@@ -1988,7 +2028,7 @@ def _exporters(args: argparse.Namespace, started: float) -> int:
             else args.workspace
         )
         answer = agent_exporters(project, connection, configure_claude=args.configure_claude)
-    except client.LocalResearchClientError as error:
+    except LocalResearchClientError as error:
         return _refused(error, started)
     except (NativeBridgeError, OSError, ValueError) as error:
         code = (
@@ -2020,6 +2060,11 @@ def _unbind(args: argparse.Namespace, started: float) -> int:
         session_project,
     )
     from alphalattice.interface.local_application.native_setup import unbind_session
+
+    note_loaded(
+        "alphalattice.interface.local_application.native_bridge",
+        "alphalattice.interface.local_application.native_setup",
+    )
 
     session = agent_session(cli_invocation.environment())
     host, session_id = (None, None) if session is None else session
@@ -2060,6 +2105,11 @@ def _problem(args: argparse.Namespace, started: float) -> int:
     from alphalattice.interface.local_application.native_bridge import NativeBridgeError
     from alphalattice.interface.local_application.native_setup import problem_report
 
+    note_loaded(
+        "alphalattice.interface.local_application.native_bridge",
+        "alphalattice.interface.local_application.native_setup",
+    )
+
     try:
         body = problem_report(
             args.workspace,
@@ -2087,17 +2137,24 @@ def _bind(args: argparse.Namespace, started: float) -> int:
     """Bind this agent session to the workspace named (`session bind`): the binding the
     bridge reads and every later command of the session, or of its own specialists,
     finds from any folder of its project."""
+    from alphalattice.interface.local_application import client  # lazy: bind through the Host
     from alphalattice.interface.local_application.native_bridge import (
         NativeBridgeError,
         session_project,
     )
     from alphalattice.interface.local_application.native_setup import files_unavailable
 
+    note_loaded(
+        client.__name__,
+        "alphalattice.interface.local_application.native_bridge",
+        "alphalattice.interface.local_application.native_setup",
+    )
+
     # This door now belongs to the served Host. Check its connection before
     # inspecting session/project declarations, like every other Host command.
     try:
         transport = client.attached(Path(args.workspace), timeout=args.request_timeout)
-    except client.LocalResearchClientError as error:
+    except LocalResearchClientError as error:
         return _refused(str(error), started, workspace=Path(args.workspace))
     session = agent_session(cli_invocation.environment())
     if session is None:
@@ -2108,7 +2165,7 @@ def _bind(args: argparse.Namespace, started: float) -> int:
         bound = transport.bind_native_session(project, usage=args.usage)
     except NativeBridgeError as error:
         return _refused(f"local_client.session_bind_refused:{error}", started)
-    except client.LocalResearchClientError as error:
+    except LocalResearchClientError as error:
         return _refused(str(error), started, workspace=Path(args.workspace))
     except OSError as error:
         bound = files_unavailable(
@@ -2177,10 +2234,6 @@ def _line_context(arguments: Sequence[str]) -> Literal["en", "zh"]:
     return "zh" if known.lang == "zh" else "en"
 
 
-VERB_ALIASES: Final[dict[tuple[str, str], tuple[str, str]]] = {
-    ("committee", "verdict"): ("committee", "submit")
-}
-"""Commands agents name for another's operations: the PM's verdict is a committee submit."""
 _FLOOR_NAME: Final = re.compile(r"[Mm]\d+")
 """A committee floor message's name: M and its number."""
 FLAG_ALIASES: Final[dict[tuple[str, str], tuple[str, ...]]] = {
@@ -2280,8 +2333,12 @@ def _command(
         return _problem(args, started)
     if getattr(args, "client_command", None) in {("model", "scaffold"), ("model", "check")}:
         return _model(args, started)
-    if getattr(args, "client_command", None) in OFFLINE_COMMANDS:
+    if (local := getattr(args, "local_registration", None)) and local.offline:
         return _offline(args, started)
+    from alphalattice.interface.local_application import client  # lazy: dispatch through the client
+
+    note_loaded(client.__name__)
+
     if hasattr(args, "client_command"):
         return client.run(
             argparse.Namespace(**common, format="json", **_client_fields(parser, args))
@@ -2314,10 +2371,12 @@ def _command(
         if answer.get("next_action") == "RECORD_THE_EXPERIENCE":
             from alphalattice.interface.local_application.native_setup import record_offer
 
+            note_loaded("alphalattice.interface.local_application.native_setup")
+
             record_offer(answer, Path(args.workspace))
 
     routed = args.routed_document
-    if isinstance(routed, client.LocalResearchClientError):
+    if isinstance(routed, LocalResearchClientError):
 
         def delayed() -> dict[str, Any]:
             raise args.routed_document
@@ -2375,12 +2434,13 @@ def _whole_request(
     Raises:
         LocalResearchClientError: `local_client.field_given_twice:<fields>` for a contradiction.
     """
+
     if not (isinstance(value, dict) and value.get("operation") == operation and field in value):
         return fields, value
     whole = {k: v for k, v in value.items() if k != "operation"}
     twice = sorted(k for k in set(whole) & set(fields) if str(whole[k]) != str(fields[k]))
     if twice:
-        raise client.LocalResearchClientError("local_client.field_given_twice:" + ",".join(twice))
+        raise LocalResearchClientError("local_client.field_given_twice:" + ",".join(twice))
     return {**whole, **fields}, whole[field]
 
 
@@ -2421,37 +2481,48 @@ def _line_document(parser: _Parser, args: argparse.Namespace) -> Callable[[], di
             and operation not in declaration_operations()
         ):
             # A shared command's execution readback is not its authored preview/catalog.
-            raise client.LocalResearchClientError(
+            raise LocalResearchClientError(
                 "local_client.operation_has_no_editable_declaration:" + operation
             )
         stdin = [args.from_answer, args.choices, getattr(args, "primary_file", None)]
         if sum(value == "-" or value == Path("-") for value in [*stdin, *given.values()]) > 1:
-            raise client.LocalResearchClientError("local_client.document_multiple_stdin_sources")
+            raise LocalResearchClientError("local_client.document_multiple_stdin_sources")
         fields = {name: _value(name, text) for name, text in given.items()}
         if documents and args.primary_file is not None:
+            from alphalattice.interface.local_application import client  # lazy: read document file
+
+            note_loaded(client.__name__)
+
             field, value = client.document_field(documents, args.primary_file)
             fields, value = _whole_request(operation, field, value, fields)
             fields[field] = value
         if args.choices is not None:
+            from alphalattice.interface.local_application import client  # lazy: read choices file
+
+            note_loaded(client.__name__)
+
             # The choices fill the offered request's open root fields; a field given twice, by
             # a flag, --file and --choices, is refused by name, never one silently kept.
             chosen = client._document(args.choices)
             twice = sorted(set(chosen) & set(fields))
             if twice:
-                raise client.LocalResearchClientError(
-                    "local_client.field_given_twice:" + ",".join(twice)
-                )
+                raise LocalResearchClientError("local_client.field_given_twice:" + ",".join(twice))
             fields = {**chosen, **fields}
-        line = (
-            {"operation": operation, **fields}
-            if args.from_answer is None
-            else client.continuation(operation, args.from_answer, fields, allowed)
-        )
+        if args.from_answer is None:
+            line = {"operation": operation, **fields}
+        else:
+            from alphalattice.interface.local_application import client  # lazy: saved answer
+
+            note_loaded(client.__name__)
+
+            line = client.continuation(operation, args.from_answer, fields, allowed)
         if said is None:
             return line
         from alphalattice.interface.local_application.portfolio_research import (  # lazy: consent
             decision_hash,
         )
+
+        note_loaded("alphalattice.interface.local_application.portfolio_research")
 
         return {
             **line,
@@ -2476,6 +2547,7 @@ def _relayed_asked(
     repeat: str | None,
 ) -> str | None:
     """The relay's question: a registered code's own words, never retyped; a paraphrase refused."""
+
     if (repeat or question_code or asked) and said is None:
         parser.error("--person-said and --asked go together: the person's words, your question")
     if said is not None and asked is None and question_code is None:
@@ -2486,11 +2558,13 @@ def _relayed_asked(
         relayed_question,
     )
 
+    note_loaded("alphalattice.interface.local_application.questions")
+
     try:
         return relayed_question(operation, question_code, asked)[0]
     except ValueError as error:  # relayed_question raises only its owner's codes
         code = str(error).removeprefix("person_confirmation.")
-        raise client.LocalResearchClientError(f"person_confirmation.{code}") from error
+        raise LocalResearchClientError(f"person_confirmation.{code}") from error
 
 
 _LOCATORS: Final = {
@@ -2524,6 +2598,10 @@ def _operation(parser: _Parser, args: argparse.Namespace) -> str:
     if len(selected) == 1:
         return selected[0]
     if args.from_answer is not None:
+        from alphalattice.interface.local_application import client  # lazy: read saved selector
+
+        note_loaded(client.__name__)
+
         answer = client._response_document(args.from_answer)
         offered = {str(request.get("operation")) for request in offered_requests(answer).values()}
         found = [op for op in operations if op in offered]
@@ -2621,6 +2699,10 @@ def _read_lead(
         return
     if after and (answer is None or answer.get("status") != "GOAL_TAKEN"):
         return
+    from alphalattice.interface.local_application import client  # lazy: contact the owning Host
+
+    note_loaded(client.__name__)
+
     try:
         named_goal = answer.get("goal_id") if after and answer is not None else goal
         if named_goal is None and operation == "GOAL_SUBMIT":

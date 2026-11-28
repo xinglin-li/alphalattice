@@ -2,6 +2,26 @@
   "schema": "alphalattice.playpen.registry.caches",
   "note": "Source-declared cache keys, bounds and rebuild conditions. Unbounded is literal; per-context limits are not aggregate quotas. Drop safety is conditional documentation, not deletion authority. Fixed successors name their own commits when this base predates them.",
   "entries": {
+    "src/alphalattice/interface/local_application/cli_profile.py::registered_commands::module-cli-profile": {
+      "owner": "alphalattice.interface.local_application",
+      "defined_by": [
+        "src/alphalattice/interface/local_application/cli_profile.py::registered_commands"
+      ],
+      "definition_line": 206,
+      "key": "Unit key for the installed CLI profile",
+      "dependency_coverage": "Installed operation projection, local capability registrations and aliases",
+      "invalidation_rule": "Process restart after the installed registrations change",
+      "size_bound": "1 entry",
+      "bound_scope": "1 entry",
+      "eviction": "Process end",
+      "safe_to_drop": "Yes. Recompose from the installed registrations.",
+      "location": {
+        "scope": "process",
+        "path_expression": "In-memory registered_commands in cli_profile"
+      },
+      "source_commit": "ebdb732511f9b459517beaa84a8d2bd31f293405",
+      "description": "Retains the composed command table for the lifetime of one installed CLI process."
+    },
     "src/devtools/evaluation/golden_workspaces.py::golden_run::invocation-golden-root": {
       "description": "Keeps the controller-provided golden location within one pytest invocation.",
       "owner": "devtools.evaluation",

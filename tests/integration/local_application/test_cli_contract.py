@@ -12,6 +12,7 @@ import json
 import os
 import re
 import shlex
+import subprocess
 import sys
 import tempfile
 from io import BytesIO, TextIOWrapper
@@ -626,16 +627,90 @@ def test_an_empty_document_file_is_refused_by_its_own_code(
     assert fake_host.sent == []
 
 
-def test_a_nouns_help_names_every_verbs_flags() -> None:
-    """Object and top-level help show registered actions, flags, person-only doors and order."""
+@pytest.mark.proves("local_application.cli_profile_loads_only_selected_modules")
+def test_a_nouns_help_names_every_verbs_flags(tmp_path: Path) -> None:
+    """Fresh console help loads its grammar and names registered options in order."""
+    check = r"""
+import contextlib
+import io
+import logging
+import os
+import sys
+from pathlib import Path
+from alphalattice.control.product_host.composition.entry import main
+from alphalattice.kernel.identity import identity_blake3, tagged_blake3
+
+profile = logging.getLogger("alphalattice.interface.local_application.cli_profile")
+receipts = []
+
+class Capture(logging.Handler):
+    def emit(self, record):
+        receipts.append(record.composition_receipt)
+
+profile.addHandler(Capture())
+profile.setLevel(logging.DEBUG)
+os.environ.pop("CLAUDE_CODE_SESSION_ID", None)
+os.environ.pop("CODEX_THREAD_ID", None)
+workspace = Path(sys.argv[1])
+stdout = io.StringIO()
+with contextlib.redirect_stdout(stdout):
+    assert main(["plugin", "run", "--help"]) == 0
+expected = {
+    "profile": "cli",
+    "command": "plugin run",
+    "modules": [
+        "alphalattice.interface.local_application.cli",
+        "alphalattice.interface.local_application.cli_profile",
+    ],
+}
+sealed = (
+    b"alphalattice.cli-composition\0\x01plugin run\0"
+    b"alphalattice.interface.local_application.cli\0"
+    b"alphalattice.interface.local_application.cli_profile"
+)
+assert receipts == [{**expected, "identity": tagged_blake3(identity_blake3(sealed))}]
+assert set(expected["modules"]) <= sys.modules.keys()
+assert "alphalattice.control.workspace_runtime.reader_threads" not in sys.modules
+assert "alphalattice.interface.local_application.capability_options" not in sys.modules
+assert "alphalattice.interface.local_application.client" not in sys.modules
+assert "alphalattice.control.product_host.composition.web_launcher" not in sys.modules
+
+with contextlib.redirect_stdout(stdout):
+    assert main(["--workspace", str(workspace), "serve", "--detach", "--stop-on-stdin"]) == 2
+assert "alphalattice.interface.local_application.client" not in sys.modules
+assert "alphalattice.control.workspace_runtime.reader_threads" not in sys.modules
+
+output = workspace / "report.json"
+with contextlib.redirect_stdout(stdout):
+    assert main([
+        "--workspace", str(workspace), "problem", "report",
+        "--expected-route", "UNREGISTERED_OPERATION", "--output", str(output),
+    ]) == 1
+receipt = receipts[-1]
+assert receipt["command"] == "problem report"
+assert "alphalattice.control.product_host.composition.web_launcher" not in receipt["modules"]
+assert {
+    "alphalattice.interface.local_application.native_bridge",
+    "alphalattice.interface.local_application.native_setup",
+} <= set(receipt["modules"])
+seal = b"alphalattice.cli-composition\0\x01" + "\0".join(
+    (receipt["command"], *receipt["modules"])
+).encode("utf-8")
+assert receipt["identity"] == tagged_blake3(identity_blake3(seal))
+assert '"failure_code": "local_web.detach_with_stop_on_stdin"' in stdout.getvalue()
+assert '"failure_code": "local_client.report_route_not_admitted"' in stdout.getvalue()
+raise SystemExit(main(["feature", "--help"]))
+"""
     result = spawn.run(
-        [sys.executable, str(SCRIPT), "feature", "--help"],
+        [sys.executable, "-c", check, str(tmp_path)],
         capture_output=True,
         text=True,
         encoding="utf-8",
-        timeout=120,
+        timeout=60,
         env={**os.environ, "COLUMNS": "240"},
+        creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0),
     )
+    assert result.returncode == 0, result.stderr
     text = " ".join(result.stdout.split())
     table = command_table()
     starts = {}
@@ -673,8 +748,30 @@ def test_a_nouns_help_names_every_verbs_flags() -> None:
         assert all(noun in words for noun, _purpose in nouns)
 
 
-def test_an_unknown_operation_is_answered_with_the_nearest_names(tmp_path: Path) -> None:
-    """Schema reads name unknown operations, declaration writers and typed answer sections."""
+@pytest.mark.proves("local_application.cli_profile_refuses_unregistered_and_duplicate_commands")
+@pytest.mark.parametrize("form", ["unknown-operation", "missing", "duplicate"])
+def test_an_unknown_operation_is_answered_with_the_nearest_names(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str], form: str
+) -> None:
+    """The CLI and its profile name an unknown operation, command or duplicate registration."""
+    if form == "duplicate":
+        from alphalattice.interface.local_application.cli_profile import LocalCommand, compose
+
+        with pytest.raises(ValueError, match=r"cli\.command_duplicate: plugin run"):
+            compose(
+                {"plugin run": ["PLUGIN_INVOKE"]},
+                (LocalCommand(("plugin", "run"), "Another owner"),),
+                {},
+            )
+        return
+    if form == "missing":
+        with pytest.raises(SystemExit) as stopped:
+            cli.command_parser(frozenset({"plugin"})).parse_args(["plugin", "unregistered"])
+        assert stopped.value.code == 1
+        answer = json.loads(capsys.readouterr().out)
+        assert answer["failure_code"] == "local_client.usage_invalid"
+        assert "unregistered" in answer["usage_error"]["observed"]
+        return
 
     code, answer, _stderr = _cli(tmp_path, "schema", "show", "EXPERIMENT_COMPAR")
     assert code == 1 and answer["failure_code"] == "local_client.operation_unknown"

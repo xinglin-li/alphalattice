@@ -50,6 +50,8 @@ class Command:
     collection: bool = False
     """Whether this read lists independent records, each with its own read or refusal (OP4).
     Numerical arrays and evidence inside one exact result remain that result's single read."""
+    alternate_for: str | None = None
+    """The operation that owns this command when the two are alternate selector branches."""
 
 
 GRAMMAR: Final[dict[str, Command]] = {
@@ -469,6 +471,7 @@ GRAMMAR: Final[dict[str, Command]] = {
         "show",
         "Shows a saved study verified against its sealed evidence, its standing first.",
         "task_id",
+        alternate_for="EXPERIMENT_PREVIEW_READBACK",
     ),
     "EXPERIMENT_REPLAY": Command(
         "study",
@@ -536,7 +539,10 @@ GRAMMAR: Final[dict[str, Command]] = {
         "Plans a feature change from its declaration and saves the plan; nothing is built.",
     ),
     "FEATURE_CATALOG_READBACK": Command(
-        "feature", "show", "Shows a saved feature plan: its changes, work and next requests."
+        "feature",
+        "show",
+        "Shows a saved feature plan: its changes, work and next requests.",
+        alternate_for="FEATURE_CATALOG_BUILD_READBACK",
     ),
     "FEATURE_DEACTIVATE": Command(
         "feature",
@@ -1235,11 +1241,19 @@ def cli_name(operation: str) -> tuple[str, str]:
     return command.noun, command.verb
 
 
-COMMANDS: Final[dict[tuple[str, str], tuple[str, ...]]] = {}
-for _operation in sorted(OPERATIONS):
-    COMMANDS.setdefault(cli_name(_operation), ())
-    COMMANDS[cli_name(_operation)] += (_operation,)
-"""``(noun, verb)`` to its operations: one, or two told apart by their required selectors."""
+def _registered_commands() -> dict[tuple[str, str], tuple[str, ...]]:
+    commands: dict[tuple[str, str], tuple[str, ...]] = {}
+    for operation in sorted(OPERATIONS):
+        words = cli_name(operation)
+        existing = commands.get(words, ())
+        if existing != ((alternate,) if (alternate := GRAMMAR[operation].alternate_for) else ()):
+            raise ValueError(f"cli.command_duplicate: {' '.join(words)}")
+        commands[words] = (*existing, operation)
+    return commands
+
+
+COMMANDS: Final = _registered_commands()
+"""A command owns its operation and any explicitly declared alternate selector branch."""
 
 
 def fields(operation: str) -> tuple[frozenset[str], frozenset[str]]:

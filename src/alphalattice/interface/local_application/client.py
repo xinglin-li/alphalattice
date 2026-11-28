@@ -17,7 +17,7 @@ from datetime import date
 from functools import partial
 from pathlib import Path
 from threading import Timer
-from typing import Any, Final, Literal, NamedTuple, Self
+from typing import Any, Final, Literal, Self
 from urllib.parse import parse_qs, urlencode, urlsplit, urlunsplit
 
 from alphalattice.capabilities.domain_contracts.waits import CEILING as WAIT_CEILING
@@ -67,6 +67,7 @@ from alphalattice.interface.local_application.cli_contract import (
     with_read_commands as _with_read_commands,
 )
 from alphalattice.interface.local_application.cli_invocation import cli_print as print
+from alphalattice.interface.local_application.cli_profile import AGENT_COMMANDS
 from alphalattice.interface.local_application.failure_codes import (
     LocalResearchClientError as LocalResearchClientError,
 )
@@ -2617,7 +2618,7 @@ def _chain(client: LocalResearchClient, args: argparse.Namespace, name: str) -> 
 
 def _rerun(args: argparse.Namespace, *, continuation: dict[str, Any] | None = None) -> list[str]:
     """Rerun the verb with its controls, a fresh output path and its admitted continuation."""
-    verb = AGENT_VERBS[args.command]
+    verb = AGENT_COMMANDS[args.command]
     line = list(verb.words)
     for flag, name in (*verb.fields, ("--max-wait", "max_wait"), ("--notify", "notify")):
         value = (continuation or {}).get(name, getattr(args, name, None))
@@ -3318,50 +3319,14 @@ def _committee_wait(client: LocalResearchClient, args: argparse.Namespace) -> di
     return body if answered(read) else {**body, "wait_status": "MAX_WAIT_REACHED"}
 
 
-class _Verb(NamedTuple):
-    """An agent verb: its words, its own arguments by flag and the steps it takes."""
-
-    words: tuple[str, str]
-    fields: tuple[tuple[str, str], ...]
-    steps: Callable[[LocalResearchClient, argparse.Namespace], dict[str, Any]]
-
-
-AGENT_VERBS: Final[dict[str, _Verb]] = {
-    "first-use": _Verb(
-        ("first-use", "prepare"),
-        (("--sentence", "objective"), ("--date", "target_date")),
-        _first_use_steps,
-    ),
-    "strategy-build": _Verb(("strategy", "build"), (), _build_steps),
-    "book-review": _Verb(
-        ("strategy-book", "review"),
-        (
-            ("--package", "strategy_package_id"),
-            ("--dir", "bundle_root"),
-            ("--update", "update_task_id"),
-            ("--as-of", "evidence_as_of"),
-            ("--preparation", "preparation_binding_hash"),
-        ),
-        _review_steps,
-    ),
-    "committee-wait": _Verb(
-        ("committee", "wait"),
-        (
-            ("--update", "update_task_id"),
-            ("--role", "committee_role"),
-            ("--key", "committee_key"),
-            ("--seen", "committee_seen"),
-        ),
-        lambda client, args: _committee_wait(client, args),
-    ),
-    "review-continue": _Verb(
-        ("review", "continue"),
-        (("--dir", "bundle_root"), ("--cro-dir", "cro_root"), ("--package", "strategy_package_id")),
-        _continue_steps,
-    ),
+AgentStep = Callable[[LocalResearchClient, argparse.Namespace], dict[str, Any]]
+AGENT_STEPS: Final[dict[str, AgentStep]] = {
+    "first-use": _first_use_steps,
+    "strategy-build": _build_steps,
+    "book-review": _review_steps,
+    "committee-wait": _committee_wait,
+    "review-continue": _continue_steps,
 }
-"""The client's agent verbs by the name the CLI gives each; its words, flags and re-run line
-come from here alone."""
 
 
 def reclaim_storage(
@@ -3547,8 +3512,8 @@ def run(
             body = _wait(client, args)
         elif args.command == "storage-reclaim":
             body = reclaim_storage(client, args.storage_reclaim_confirmation)
-        elif args.command in AGENT_VERBS:
-            body = AGENT_VERBS[args.command].steps(client, args)
+        elif args.command in AGENT_STEPS:
+            body = AGENT_STEPS[args.command](client, args)
         else:
             if document_override is None:
                 document = _next_request(args)

@@ -122,7 +122,6 @@ def test_every_product_text_naming_the_workspace_flag_is_a_kept_full_form() -> N
         ("evidence/alternative_evidence/runtime/policy.py", "<module>"): (
             "the source setup script's command template"
         ),
-        ("interface/local_application/cli.py", "<module>"): "`session bind`'s help",
         ("interface/local_application/cli.py", "_command"): "serve's arguments to its launcher",
         ("control/product_host/composition/web_launcher.py", "_detach"): (
             "a detached Host's arguments to its own launcher"
@@ -161,6 +160,7 @@ def test_every_product_text_naming_the_workspace_flag_is_a_kept_full_form() -> N
         ("interface/local_application/native_bridge.py", "declaration_setup"): (
             "a missing declaration's bind, the step after its configure"
         ),
+        ("interface/local_application/cli_profile.py", "<module>"): "`session bind`'s help",
         ("interface/local_application/native_setup.py", "main"): "the bridge setup's bind option",
         (
             "interface/local_application/portfolio_research.py",

@@ -35,12 +35,14 @@ def serve(arguments: list[str]) -> int:
     )
     from .web_launcher import main as start  # lazy: only serve starts a Host
 
+    _bound_module(start.__module__)
     if (
         selected.detach
         and (refusal := detached_refusal(selected.workspace, stop_on_stdin=selected.stop_on_stdin))
         is not None
     ):
         return refusal
+    _install_storage_driver()
     prepare_native_threads(selected.workspace)
     from alphalattice.capabilities.data.errors import DataError  # lazy: Host format refusal
     from alphalattice.foundation.data_layer.root import require_log_schema  # lazy: Host log
@@ -52,6 +54,12 @@ def serve(arguments: list[str]) -> int:
         read_research_workspace_manifest,
     )
 
+    _bound_module(
+        "alphalattice.capabilities.data.errors",
+        "alphalattice.foundation.data_layer.root",
+        "alphalattice.interface.local_application.cli_contract",
+        read_research_workspace_manifest.__module__,
+    )
     try:
         manifest = (
             read_research_workspace_manifest(selected.workspace)
@@ -79,6 +87,8 @@ def serve(arguments: list[str]) -> int:
     )
 
     from .first_use_road import serve_road
+
+    _bound_module(interpreter_path.__module__, serve_road.__module__)
 
     # Before anything starts: the project's completed first use in another workspace is its
     # daily road, unless the person said yes to separate new research.
@@ -155,8 +165,10 @@ def restore(
     root: Path | None,
 ) -> dict[str, object]:
     """Restore one backup generation from the backup root alone, with no Host."""
+    _install_storage_driver()
     from alphalattice.control.product_host.storage.backup import restore_from_root
 
+    _bound_module(restore_from_root.__module__)
     return restore_from_root(
         workspace, target, workspace_id=workspace_id, generation_hash=generation_hash, root=root
     )
@@ -167,8 +179,10 @@ def sandbox(workspace: Path, model_id: str, *, study: Path | None, keep: bool) -
 
     Its saved-object readback is shared with the checkout verification probe.
     """
+    _install_storage_driver()
     from .model_sandbox import run_sandbox  # lazy: a CLI call that sends no trial loads no store
 
+    _bound_module(run_sandbox.__module__)
     answer: dict[str, object] = run_sandbox(workspace, model_id, study=study, keep=keep)
     return answer
 
@@ -180,6 +194,7 @@ def plugin(workspace: Path, verb: str, name: str) -> dict[str, object]:
         verify_plugin,
     )
 
+    _bound_module(new_plugin.__module__)
     answer: dict[str, object] = (new_plugin if verb == "new" else verify_plugin)(workspace, name)
     return answer
 
@@ -208,6 +223,13 @@ def _install_storage_driver() -> None:
     from alphalattice.control.workspace_runtime import reader_threads  # lazy: past the thin path
 
     storage.install_driver(reader_threads.DRIVER)
+    _bound_module(reader_threads.__name__)
+
+
+def _bound_module(*names: str) -> None:
+    from alphalattice.interface.local_application.cli_profile import note_loaded  # lazy: full CLI
+
+    note_loaded(*names)
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -231,7 +253,6 @@ def _run(argv: list[str] | None) -> int:
                 )
 
                 return delivery_lost(arguments, error)
-        _install_storage_driver()
         from alphalattice.interface.local_application.cli import main as root  # lazy: CLI dispatch
 
         result = int(root(arguments, serve=serve, restore=restore, sandbox=sandbox, plugin=plugin))
