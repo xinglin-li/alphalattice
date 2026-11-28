@@ -1,0 +1,118 @@
+"""The plugin contract's four records: round trip, frozen, strict refusal by name, and the key."""
+
+from __future__ import annotations
+
+import json
+import operator
+from pathlib import Path
+from uuid import uuid1, uuid4
+
+import pytest
+from pydantic import BaseModel, ValidationError
+
+from alphalattice.protocols.plugin_contract import (
+    ActionInvocation,
+    ActionReceipt,
+    ActionSpec,
+    EffectMode,
+    ExecutionContext,
+    ExecutionMode,
+    Lease,
+    Priority,
+    ReceiptStatus,
+)
+
+TEST_SOURCE = "src/alphalattice/protocols/plugin_contract/contracts.py"
+
+ROLE = "blake3:" + "1" * 64
+INVOCATION = uuid4()
+LEASE = Lease(memory_bytes=1 << 30, threads=2, timeout_ms=60_000)
+SPEC = ActionSpec(
+    capability_id="factor.custom_momentum",
+    plugin_id="sample-factor",
+    code_role_hash=ROLE,
+    effect_mode=EffectMode.STAGING_WRITE,
+    execution_mode=ExecutionMode.SANDBOX_SUBPROCESS,
+    lease=LEASE,
+    input_schema={"type": "object", "properties": {"window": {"type": "integer"}}},
+    output_schema={"type": "object"},
+)
+PARAMS = {"window": 20, "universe": ["A", "B"], "options": {"lag": 1, "demean": True}}
+INVOKED = SPEC.invoke(PARAMS, "market:42", is_speculative=True)
+CONTEXT = ExecutionContext(
+    invocation_id=INVOCATION,
+    catalog_snapshot_id="market:42",
+    readonly_data_root=Path("data"),
+    staging_dir=Path("staging") / "run",
+    lease=LEASE,
+    is_speculative=True,
+    priority=Priority.BACKGROUND,
+)
+RECEIPT = ActionReceipt(
+    invocation_id=INVOCATION,
+    idempotency_key=INVOKED.idempotency_key,
+    status=ReceiptStatus.OK,
+    output={"rows": 3},
+    staging_manifest="manifest.json",
+    provenance_ids=("market:42",),
+    wall_ms=12,
+    peak_bytes=4096,
+)
+RECORDS: tuple[BaseModel, ...] = (LEASE, SPEC, INVOKED, CONTEXT, RECEIPT)
+
+REFUSALS = (
+    ("a number as text", Lease, {"memory_bytes": "1"}, "int_type"),
+    ("no threads", Lease, {"threads": 0}, "greater_than"),
+    ("an unknown effect", ActionSpec, {"effect_mode": "WRITE"}, "enum"),
+    ("an unknown field", ActionSpec, {"entry": "x:y"}, "extra_forbidden"),
+    ("a sha256 role hash", ActionSpec, {"code_role_hash": "sha256:" + "1" * 64}, "pattern"),
+    ("a non-finite parameter", ActionInvocation, {"params": {"window": 1e999}}, "not_finite"),
+    ("a malformed key", ActionInvocation, {"idempotency_key": "blake3:1"}, "pattern"),
+    (
+        "another run's key",
+        ActionInvocation,
+        {"idempotency_key": "blake3:" + "0" * 64},
+        "key_mismatch",
+    ),
+    ("a UUIDv1 invocation", ExecutionContext, {"invocation_id": str(uuid1())}, "UUIDv4"),
+    ("an unknown priority", ExecutionContext, {"priority": "LOW"}, "enum"),
+    ("negative wall time", ActionReceipt, {"wall_ms": -1}, "greater_than_equal"),
+)
+
+
+@pytest.mark.proves("plugin_contract.records_are_strict_and_keyed_by_their_four_inputs")
+def test_the_contract_round_trips_refuses_by_name_and_keys_each_run() -> None:
+    for record in RECORDS:
+        kind = type(record)
+        assert kind.model_validate_json(record.model_dump_json()) == record
+        assert kind.model_validate(record.model_dump()) == record
+        with pytest.raises(ValidationError, match="frozen_instance"):
+            record.__setattr__("schema_version", "1")
+
+    by_kind = {type(record): record for record in RECORDS}
+    for case, kind, change, name in REFUSALS:  # Refused in the wire form a plugin sends.
+        with pytest.raises(ValidationError) as refused:
+            kind.model_validate_json(
+                json.dumps(json.loads(by_kind[kind].model_dump_json()) | change)
+            )
+        assert name in str(refused.value), case
+
+    key = INVOKED.idempotency_key  # Carried on the wire, and derived again by its reader.
+    assert json.loads(INVOKED.model_dump_json())["idempotency_key"] == key
+    reordered = {"options": {"demean": True, "lag": 1}, "universe": ["A", "B"], "window": 20}
+    assert SPEC.invoke(reordered, " market:42 ").idempotency_key == key  # trimmed, not speculative
+    other_role = "blake3:" + "2" * 64
+    runs = (
+        SPEC.model_copy(update={"capability_id": "factor.other"}).invoke(PARAMS, "market:42"),
+        SPEC.model_copy(update={"code_role_hash": other_role}).invoke(PARAMS, "market:42"),
+        SPEC.invoke(PARAMS | {"window": 21}, "market:42"),
+        SPEC.invoke(PARAMS, "market:43"),
+    )
+    assert len({run.idempotency_key for run in runs} - {key}) == len(runs)
+
+    # Neither the payload nor what its key names can change after validation.
+    params = INVOKED.params
+    assert not hasattr(params["universe"], "append")
+    for frozen in (params, params["options"], SPEC.input_schema["properties"], RECEIPT.output):
+        with pytest.raises(TypeError):
+            operator.setitem(frozen, "window", 21)

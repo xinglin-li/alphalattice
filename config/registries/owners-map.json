@@ -241,6 +241,15 @@
       "retiring": [],
       "note": "the built-in agent's modules retired with AG2 (2026-09-27)"
     },
+    "the plugin contract": {
+      "description": "The plugin contract is what a capability declares, runs with, is asked and answers, so the Host can key, run and commit any capability the same way in either execution mode.",
+      "covers": "capability specs, run contexts, invocations, receipts and their idempotency keys",
+      "owner": "alphalattice.protocols.plugin_contract",
+      "defined_by": [
+        "alphalattice.protocols.plugin_contract.contracts"
+      ],
+      "folds_in": []
+    },
     "observation": {
       "description": "An observation is a ledger record that binds a runtime event to its source, scope, payload, and recording policy so later views can read what was recorded.",
       "covers": "what ran, recorded",

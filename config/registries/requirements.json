@@ -2802,6 +2802,12 @@
       "layer": "integration",
       "seconds": 60
     },
+    "plugin_contract.records_are_strict_and_keyed_by_their_four_inputs": {
+      "description": "The plugin contract's records round-trip, stay frozen and refuse a wrong type or field by name; the idempotency key ignores parameter order and changes with each of its four inputs.",
+      "owner": "alphalattice.protocols.plugin_contract",
+      "layer": "unit",
+      "seconds": 1
+    },
     "portfolio_strategy_lab.a_review_names_its_publication_apart_from_its_rendering": {
       "description": "If a re-render changed the name a review binds, every review of that publication would read as another, and a changed sealed field must name a new one.",
       "owner": "alphalattice.investment.portfolio_strategy_lab",

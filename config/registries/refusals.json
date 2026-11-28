@@ -709,6 +709,14 @@
 "owner": "actor_execution",
 "category": "INVALID_ARGUMENT"
 },
+"plugin_contract.invocation_key_mismatch": {
+"owner": "plugin_contract",
+"category": "INVALID_ARGUMENT"
+},
+"plugin_contract.json_value_not_finite": {
+"owner": "plugin_contract",
+"category": "INVALID_ARGUMENT"
+},
 "agent_bundle.analyst_task_required": {
 "owner": "agent_bundle",
 "category": "INVALID_ARGUMENT"

@@ -43,6 +43,19 @@
       "physical_namespace_target": "alphalattice.capabilities.knowledge"
     },
     {
+      "package_id": "plugin_contract",
+      "product_area": "protocols",
+      "capability_owner": "Plugin Contract Protocol",
+      "role": "CROSS_DOMAIN_PROTOCOL",
+      "dependency_level": 0,
+      "authority_kind": "PLUGIN_ACTION_CONTRACT",
+      "allowed_peer_dependencies": [
+        "domain_contracts"
+      ],
+      "artifact_writer": false,
+      "physical_namespace_target": "alphalattice.protocols.plugin_contract"
+    },
+    {
       "package_id": "portfolio_backtesting",
       "product_area": "capabilities",
       "capability_owner": "Portfolio Backtesting",

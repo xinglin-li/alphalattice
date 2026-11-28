@@ -237,6 +237,8 @@ src/alphalattice/control/product_host/research_authoring/feature_preprocessing.p
 src/alphalattice/control/product_host/data_preparation/feature_research.py
 src/alphalattice/protocols/actor_execution/answers.py
 src/alphalattice/protocols/actor_execution/bundles.py
+src/alphalattice/protocols/plugin_contract/__init__.py
+src/alphalattice/protocols/plugin_contract/contracts.py
 src/alphalattice/foundation/feature_engine/panels/development_input.py
 src/alphalattice/capabilities/quant/cross_section.py
 src/alphalattice/foundation/feature_engine/catalog/authoring_surface.py
