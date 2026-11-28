@@ -335,6 +335,7 @@ def test_the_golden_key_binds_the_interpreter_and_the_installed_distributions(
     assert _golden_key(catalog, kernels, SYMBOLS) != key
 
 
+@pytest.mark.proves("testing.a_golden_builds_only_where_declared")
 def test_cache_dependencies_follow_build_imports_resources_and_identity_members(
     tmp_path, monkeypatch
 ):
@@ -344,38 +345,74 @@ def test_cache_dependencies_follow_build_imports_resources_and_identity_members(
     from types import SimpleNamespace
 
     from tests import conftest as hooks
+    from tests.researcher_methodology_surface import external_factor_method as method
     from tests.researcher_methodology_surface import session_workspace as session
+    from tests.researcher_methodology_surface.golden_variants import F120_SYMBOLS, FACTOR_SCALE
 
-    # Collection warms the selected seven-listing variant, and preserves the default in mixed runs.
-    members = SYMBOLS[:7]
-    member = SimpleNamespace(
-        fixturenames=["stopped_change"], module=SimpleNamespace(MEMBERS=members)
+    # Collection warms each declared variant its items read (golden_variants.GOLDEN_VARIANTS), and
+    # the default for an item that reads none; an undeclared reader stops the session before any
+    # build, and a cached build no variant warms is refused before its key.
+
+    def item(*fixtures, params=None, path="tests/integration/x/test_case.py", name="test_case"):
+        return SimpleNamespace(
+            nodeid="case",
+            originalname=name,
+            fixturenames=list(fixtures),
+            callspec=SimpleNamespace(params=params or {}),
+            path=tmp_path / path,
+        )
+
+    here = "tests/integration/feature_engine/test_real_workspace.py"
+    alpha = "tests/integration/alpha_research/test_alpha_development_execution.py"
+    membership = item(
+        "stopped_change_seed",
+        path="tests/integration/product_host/test_membership_change_recovery.py",
     )
-    ordinary = SimpleNamespace(fixturenames=[], module=SimpleNamespace())
-    external = SimpleNamespace(fixturenames=["external_factor_workspace"], module=SimpleNamespace())
-    readiness = SimpleNamespace(fixturenames=["revision_seed"], module=SimpleNamespace())
     with monkeypatch.context() as patch:
         calls = []
         fake = SimpleNamespace(
             _golden_root=lambda: tmp_path / "warmup",
-            warm_real_risk_golden=lambda **kw: calls.append(kw),
-            READINESS_UNIVERSE=(members, 6),
+            warm_real_risk_golden=lambda *names: calls.append(names),
         )
         patch.setitem(sys.modules, "tests.researcher_methodology_surface.real_workspace", fake)
         patch.setattr(hooks.environment, "project_scope", lambda *_: nullcontext())
         config = SimpleNamespace(option=SimpleNamespace(collectonly=False))
         for items, expected in (
-            ([member], [{"symbols": members, "sector_size": 7}]),
-            ([member, member], [{"symbols": members, "sector_size": 7}]),
-            ([member, ordinary], [{"external": False}, {"symbols": members, "sector_size": 7}]),
-            ([member, external], [{"external": True}, {"symbols": members, "sector_size": 7}]),
-            ([ordinary], [{"external": False}]),
-            ([external], [{"external": True}]),
-            ([readiness], [{"external": False}, {"symbols": members, "sector_size": 6}]),
+            ([membership], ("membership",)),
+            ([membership, item("external_factor_workspace")], ("external", "membership")),
+            ([item("input_seed", params={"input_seed": "f120"}), item()], ("default", "f120")),
+            ([item("real_risk_workspace", path=alpha)], ("factor_scale",)),  # its own override
+            ([item("real_risk_workspace")], ("default",)),
+            (
+                [
+                    item(
+                        path=here,
+                        name="test_a_golden_that_disagrees_with_its_sidecar_is_refused_not_repaired",
+                    ),
+                    item(
+                        path=here,
+                        name="test_cache_environment_tracks_thread_settings_in_the_current_process",
+                    ),
+                ],
+                ("default", "development"),
+            ),
         ):
             calls.clear()
             hooks.pytest_collection_finish(SimpleNamespace(config=config, items=items))
-            assert calls == expected
+            assert calls == [expected]
+        undeclared = [item("input_seed", params={"input_seed": "f121"})]
+        with pytest.raises(pytest.UsageError, match=r"^golden\.variant_undeclared: case asks"):
+            hooks.pytest_collection_finish(SimpleNamespace(config=config, items=undeclared))
+        assert calls == [expected]
+    with pytest.raises(LookupError, match=r"^golden\.variant_undeclared: 9 symbols .* no declared"):
+        build_real_risk_workspace(tmp_path / "nine", symbols=SYMBOLS[:9])
+    with pytest.raises(LookupError, match=r"kernels are not the pair f120 warms"):
+        build_real_risk_workspace(
+            tmp_path / "kernels",
+            symbols=F120_SYMBOLS,
+            standard=FACTOR_SCALE,
+            feature_kernels=method.external_kernel_registry(),
+        )
 
     monkeypatch.delenv("PYTEST_XDIST_WORKER", raising=False)
     factory, attempts, value = SimpleNamespace(getbasetemp=lambda: tmp_path), [], ["original"]
@@ -823,10 +860,13 @@ def test_the_persistent_golden_root_follows_its_shared_setting(tmp_path, monkeyp
     assert persistent_golden_root(tmp_path / "own") == tmp_path / "shared"
     scopes = []
     monkeypatch.setattr(
-        builder, "warm_real_risk_golden", lambda: scopes.append(environment.PROJECT_ROOT.get())
+        builder,
+        "warm_real_risk_golden",
+        lambda *names: scopes.append((names, environment.PROJECT_ROOT.get())),
     )
     builder.warm_before_tests()
-    assert scopes == [(tmp_path / "shared").resolve()] and (tmp_path / "shared").is_dir()
+    assert scopes == [(("default",), (tmp_path / "shared").resolve())]
+    assert (tmp_path / "shared").is_dir()
     # The warm-up and a pytest session (src on its path) share that golden only with one key; a
     # separate installation of the same version is still another key.
     import importlib.metadata

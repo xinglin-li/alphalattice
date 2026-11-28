@@ -50,6 +50,10 @@ from tests.portfolio_strategy_lab.local_web_support import (
     admit_market_fixture,
 )
 from tests.pytest_environment import admitted
+from tests.researcher_methodology_surface.golden_variants import (
+    QUARANTINE_LISTINGS,
+    QUARANTINE_SYMBOLS,
+)
 from tests.researcher_methodology_surface.real_workspace import (
     HISTORY_START,
     SYMBOLS,
@@ -76,14 +80,6 @@ from tests.workspace_maintenance.local_data_provider import (
     recording_provider,
     unchanged_membership_source,
 )
-
-TEN_SECTOR_SYMBOLS = tuple(f"QD{index:03d}" for index in range(60))  # UI QA scenes
-QUARANTINE_LISTINGS = (
-    development_universe.LISTINGS[0],
-    *sufficient_universe.LISTINGS[len(development_universe.LISTINGS) :][:59],
-)
-"""59/60 clears Panel coverage. One audit fits the shipped 2% bound and two exceed it."""
-QUARANTINE_SYMBOLS = tuple(item.symbol for item in QUARANTINE_LISTINGS)
 
 
 @pytest.fixture(scope="module")

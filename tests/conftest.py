@@ -852,27 +852,19 @@ def pytest_sessionstart(session: pytest.Session) -> None:
 
 
 def pytest_collection_finish(session: pytest.Session) -> None:
-    """A collected module that may build the shared risk golden finds it published first."""
+    """Every golden variant the collected tests read is published before the first test runs
+    (golden_variants.GOLDEN_VARIANTS); a reader asking for an undeclared one stops the session."""
     builder = sys.modules.get("tests.researcher_methodology_surface.real_workspace")
     if builder is not None and not session.config.option.collectonly:
+        from tests.researcher_methodology_surface import golden_variants
+
+        try:
+            variants = golden_variants.variants_read(session.items)
+        except golden_variants.GoldenVariantUndeclared as error:
+            raise pytest.UsageError(str(error)) from None
         (root := builder._golden_root()).mkdir(parents=True, exist_ok=True)
         with environment.project_scope(root, root):  # confined like any test's build
-            external = any("external_factor_workspace" in i.fixturenames for i in session.items)
-            # This fixture builds a different, smaller universe than the default Risk workspace.
-            membership = [i for i in session.items if "stopped_change" in i.fixturenames]
-            if not membership or len(membership) != len(session.items) or external:
-                builder.warm_real_risk_golden(external=external)
-            for symbols in dict.fromkeys(tuple(i.module.MEMBERS) for i in membership):
-                builder.warm_real_risk_golden(symbols=symbols, sector_size=len(symbols))
-            if any(
-                hasattr(i, "callspec") and i.callspec.params.get("input_seed") == "development"
-                for i in session.items
-            ):
-                builder.warm_real_risk_golden(symbols=builder.DEVELOPMENT_SYMBOLS)
-            # `revision_seed` asks for `prepared` only when it builds: list both names.
-            if any({"prepared", "revision_seed"} & set(i.fixturenames) for i in session.items):
-                symbols, sector_size = builder.READINESS_UNIVERSE
-                builder.warm_real_risk_golden(symbols=symbols, sector_size=sector_size)
+            builder.warm_real_risk_golden(*variants)
         if any("fresh_workspace" in item.fixturenames for item in session.items):
             factory = session.config._tmp_path_factory
             base = factory.getbasetemp()

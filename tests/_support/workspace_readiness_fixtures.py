@@ -19,12 +19,14 @@ from alphalattice.foundation.data_layer.history import (
     data_root,
 )
 from tests.portfolio_strategy_lab.host_requests import _json
+from tests.researcher_methodology_surface.golden_variants import (
+    READINESS_STANDARD,
+    READINESS_UNIVERSE,
+)
 from tests.researcher_methodology_surface.real_workspace import (
     AS_OF,
     FACTOR_SCALE,
     OBSERVED_AT,
-    READINESS_STANDARD,
-    READINESS_UNIVERSE,
     SeededWalkProvider,
     _source_loader_for,
     build_real_risk_workspace,

@@ -107,6 +107,15 @@ from devtools.architecture.structural import (
 )
 from devtools.evaluation.golden_workspaces import remove_tree
 from tests._support import development_universe, sufficient_universe
+from tests.researcher_methodology_surface.golden_variants import (
+    DEVELOPMENT_SYMBOLS,
+    FACTOR_SCALE,
+    GOLDEN_VARIANTS,
+    SUFFICIENT_SYMBOLS,
+    SYMBOLS,
+    GoldenVariant,
+    undeclared_build,
+)
 
 # Compatibility imports for existing tests. New family helpers are used from their owners.
 from tests.researcher_methodology_surface.real_workspace_features import development_feature_catalog
@@ -134,21 +143,7 @@ def history_start(standard: ResearchWhitelistStandard) -> date:
 
 
 HISTORY_START = history_start(development_universe.STANDARD)
-FACTOR_SCALE = sufficient_universe.STANDARD
-"""The walk a Factor or Alpha study needs: seven calendar years of Factor observations (756
-training, three 252-session folds, a 252-session holdout) after the catalog's 252-session lookback,
-so eight years of history; at seven the walk cannot fill its folds. The sufficient set's standard,
-never the full ten years; its tests are large, nightly only."""
 OBSERVED_AT = development_universe.OBSERVED_AT
-
-# Two sectors of five, which is the smallest shape that satisfies the
-# five-member sector floor on both sides of the sector-balanced weighting.
-SYMBOLS = ("AAA", "BBB", "CCC", "DDD", "EEE", "FFF", "GGG", "HHH", "III", "JJJ")
-DEVELOPMENT_SYMBOLS = tuple(item.symbol for item in development_universe.LISTINGS)
-"""The development universe's listings (testing.md, the optimal development data set): passed as
-`symbols`, the build serves that universe's provider, source and two-year calendar instead of the
-seeded walk, and the golden key, which binds `symbols`, keeps its workspace apart."""
-SUFFICIENT_SYMBOLS = sufficient_universe.SYMBOLS
 SUFFICIENT_SCALE = sufficient_universe.STANDARD
 """The sufficient test data set (testing.md): passed as `symbols` with `standard=SUFFICIENT_SCALE`,
 the build serves its 108 listings over eight years; a test whose requirement is a product floor
@@ -470,6 +465,7 @@ def build_real_risk_workspace(
             standard,
             supplied=(provider, source_loader) if provider is not None else None,
         )
+    _declared_variant(installed_catalog, installed_kernels, symbols, sector_size, standard)
     key = _golden_key(installed_catalog, installed_kernels, symbols, sector_size, standard)
     golden = _golden_root() / key
     workspace = root / "workspace"
@@ -572,65 +568,98 @@ def copy_fresh_workspace(factory, target: Path, symbols=SYMBOLS) -> RealRiskWork
     )
 
 
-READINESS_UNIVERSE = (tuple(f"F{i:03d}" for i in range(120)), 6)
-"""The workspace-readiness tests' listings and sector size, a golden of its own."""
-READINESS_STANDARD = FACTOR_SCALE
-"""Its history: its fixture binds Factor inputs and runs a Factor study on them."""
+def warm_real_risk_golden(*variants: str) -> None:
+    """Publish each named golden variant (golden_variants.GOLDEN_VARIANTS) before any test's timer:
+    a timer cut a build short. With none named, the default Risk golden.
 
-
-def warm_real_risk_golden(
-    *,
-    external: bool = False,
-    symbols: Sequence[str] | None = None,
-    sector_size: int = 5,
-    standard: ResearchWhitelistStandard | None = None,
-) -> None:
-    """Publish each golden the session uses before any test's timer: a timer cut a build short.
-
-    With no `standard`, the universe's own: READINESS_STANDARD for the readiness universe, else
-    the development standard. A build opens this process's history at the session's data root (a
-    Host holds its root until it closes); the warm closes the root it opened, so a test that opens
-    its own root after collection is not refused (`data_layer.root_held`): a cold golden runs as a
-    warm one."""
+    A build opens this process's history at the session's data root (a Host holds its root until it
+    closes); the warm closes the root it opened, so a test that opens its own root after collection
+    is not refused (`data_layer.root_held`): a cold golden runs as a warm one. Each variant's line
+    says whether it was published already (HIT) or built here (BUILD), and in how long."""
     from tests.pytest_environment import require_named_roots
 
     require_named_roots("warm_real_risk_golden")
-    symbols = SYMBOLS if symbols is None else symbols
-    if standard is None:
-        readiness = (tuple(symbols), sector_size) == READINESS_UNIVERSE
-        standard = READINESS_STANDARD if readiness else development_universe.STANDARD
-    variants = [(FeatureCatalog.load(), default_extension_kernel_registry())]
-    if external:  # the outside method's variant, when a collected test asks for its workspace
-        from tests.researcher_methodology_surface import external_factor_method as method
-
-        variants.append((method.external_feature_catalog(), method.external_kernel_registry()))
     held_before = history.holding() is not None
     try:
-        for catalog, kernels in variants:
-            key = _golden_key(catalog, kernels, symbols, sector_size, standard)
+        for name in variants or ("default",):
+            variant = GOLDEN_VARIANTS[name]
+            catalog, kernels = _variant_catalog(variant)
+            key = _golden_key(
+                catalog, kernels, variant.symbols, variant.sector_size, variant.standard
+            )
+            started = time.perf_counter()
             with _golden_lease(golden := _golden_root() / key):
-                if not golden.exists():
+                built = not golden.exists()
+                if built:
                     _materialize_golden(
-                        golden, key, catalog, kernels, symbols, sector_size, standard
+                        golden,
+                        key,
+                        catalog,
+                        kernels,
+                        variant.symbols,
+                        variant.sector_size,
+                        variant.standard,
                     )
+            line = (
+                f"PLAYPEN_GOLDEN_WARM {'BUILD' if built else 'HIT'} {name} {key} "
+                f"{time.perf_counter() - started:.3f}s"
+            )
+            print(line, flush=True)
+            logging.getLogger("devtools.testing.session_footprint").info(line)
     finally:
         if not held_before and history.holding() is not None:
             history.close_history()
 
 
-def warm_before_tests() -> None:
-    """Publish the default Risk golden before a test session, confined as the session's own build.
+def _variant_catalog(variant: GoldenVariant) -> tuple[FeatureCatalog, FeatureKernelRegistry]:
+    """The catalog revision and kernels a variant is built with: the product's, or the outside
+    method's pair (external_factor_method)."""
+    if not variant.external:
+        return FeatureCatalog.load(), default_extension_kernel_registry()
+    from tests.researcher_methodology_surface import external_factor_method as method
 
-    A pipeline starts this beside the steps that come before its tests. Each worker would
-    otherwise build or wait for a cold golden at collection, before any test ran (about a
-    minute after a source change). The session still warms every variant it uses at
-    collection, and then finds this one published.
+    return method.external_feature_catalog(), method.external_kernel_registry()
+
+
+def _declared_variant(
+    catalog: FeatureCatalog,
+    kernels: FeatureKernelRegistry,
+    symbols: Sequence[str],
+    sector_size: int,
+    standard: ResearchWhitelistStandard,
+) -> str:
+    """The declared variant a cached build is: its inputs and the catalog and kernel hashes its key
+    binds (`_golden_key`) are the pair the variant warms. Anything else is refused by name."""
+    asked = (catalog.binding.catalog_hash, kernels.installed_capability_hash)
+    keyed = [
+        name
+        for name, variant in GOLDEN_VARIANTS.items()
+        if variant.keyed_by(symbols, sector_size, standard)
+    ]
+    for name in keyed:
+        warmed_catalog, warmed_kernels = _variant_catalog(GOLDEN_VARIANTS[name])
+        if (warmed_catalog.binding.catalog_hash, warmed_kernels.installed_capability_hash) == asked:
+            return name
+    why = (
+        "no declared variant has these inputs"
+        if not keyed
+        else (f"its catalog and kernels are not the pair {', '.join(keyed)} warms")
+    )
+    raise undeclared_build(symbols, sector_size, why)
+
+
+def warm_before_tests(variants: Sequence[str] = ("default",)) -> None:
+    """Publish the named golden variants before a test session, confined as the session's own build.
+
+    A pipeline starts this beside the steps that come before its tests, with the default Risk
+    golden. The session itself warms every variant its collected tests read at collection
+    (tests/conftest.py), and then finds these published.
     """
     from tests import pytest_environment as environment
 
     (root := _golden_root()).mkdir(parents=True, exist_ok=True)
     with environment.project_scope(root, root):
-        warm_real_risk_golden()
+        warm_real_risk_golden(*variants)
 
 
 def _golden_root() -> Path:

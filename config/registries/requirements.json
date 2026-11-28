@@ -3397,6 +3397,13 @@
       "layer": "integration",
       "seconds": 10
     },
+    "testing.a_golden_builds_only_where_declared": {
+      "description": "If a golden a session reads were built inside a test, its build would spend that test's bound, as f120's FACTOR_SCALE build killed its setup on a loaded night.",
+      "owner": "devtools.testing",
+      "layer": "integration",
+      "seconds": 10,
+      "lower_layer": "It drives tests/conftest.py's collection hook and the Risk workspace builder's refusal, and folds into the existing holder of that builder, which sits in the integration folder."
+    },
     "testing.a_hot_loop_costs_at_most_two_percent_more_with_kernel_owners": {
       "description": "If the kernel's owners plugged into a hot data loop cost more than 2%, the 0.2.9 kernel slows the data path it was meant to keep.",
       "owner": "devtools.testing",
