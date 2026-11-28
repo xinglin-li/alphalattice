@@ -114,6 +114,10 @@ CLIENT_COMMANDS: Final[dict[tuple[str, str], str]] = {
     ("model", "scaffold"): "Write a new Alpha model's adapter, declaration and contract test "
     "from its YAML declaration.",
     ("model", "check"): "Run a model's contract: each check passes or names what it found.",
+    ("plugin", "new"): "Write a factor plugin's manifest, entry module, sample slice and test "
+    "into the workspace's plugins folder; the author then writes only its logic.",
+    ("plugin", "verify"): "Run a workspace plugin in its guarded child on its sample slice: each "
+    "check passes, or the first fault names what is wrong and what to change.",
     ("model", "sandbox"): "Try a model on a copy of the workspace at rest: one Alpha study, "
     "every saved object of the copy read before and after it, recorded for a person's activation.",
     ("session", "bind"): "Ask the workspace Host to bind this agent session in its exact project: "
@@ -140,6 +144,8 @@ OFFLINE_COMMANDS: Final = frozenset(
         ("model", "scaffold"),
         ("model", "check"),
         ("model", "sandbox"),
+        ("plugin", "new"),
+        ("plugin", "verify"),
         ("session", "unbind"),
     }
 )
@@ -603,6 +609,12 @@ def _client_command(child: argparse.ArgumentParser, noun: str, verb: str) -> Non
         )
     elif (noun, verb) == ("model", "check"):
         child.add_argument("model_id", metavar="ID", help="The model, as its declaration names it.")
+    elif (noun, verb) in {("plugin", "new"), ("plugin", "verify")}:
+        child.add_argument(
+            "plugin_name",
+            metavar="NAME",
+            help="The plugin: its folder under the workspace's plugins/.",
+        )
     elif (noun, verb) == ("model", "sandbox"):
         child.add_argument("model_id", metavar="ID", help="The model, as its declaration names it.")
         child.add_argument(
@@ -1390,6 +1402,19 @@ def _model(args: argparse.Namespace, started: float) -> int:
             code += _declaration_fields(Path(str(args.declaration)))
         return _model_refused(args, operation, started, code)
     failed = next((row["code"] for row in answer.get("findings", ()) if row["code"]), None)
+    return _checked(args, operation, started, answer, failed)
+
+
+def _checked(
+    args: argparse.Namespace,
+    operation: str,
+    started: float,
+    answer: dict[str, Any],
+    failed: str | None,
+    detail: str | None = None,
+) -> int:
+    """Print a check's answer: OK, or refused by its first failing check's code, in the words
+    given or else the code's own."""
     found = client_refusal(failed) if failed else None
     outcome: Outcome = found.outcome if found else "OK"
     extra: dict[str, Any] = {"next_action": found.next_action} if found else {}
@@ -1401,13 +1426,32 @@ def _model(args: argparse.Namespace, started: float) -> int:
                 body=answer,
                 elapsed_seconds=time.perf_counter() - started,
                 failure_code=failed,
-                detail=found.detail if found else None,
+                detail=(detail or found.detail) if found else None,
                 **extra,
                 **_saved(args, answer),
             ),
         )
     )
     return EXIT_CODES[outcome]
+
+
+def _plugin(
+    args: argparse.Namespace, started: float, plugin: Callable[..., dict[str, Any]] | None
+) -> int:
+    """`plugin new` and `plugin verify`, with no Host: a workspace plugin's own folder. A verify
+    that fails is refused by its first fault's code, with what is wrong and what to change."""
+    operation = "PLUGIN_NEW" if args.client_command == ("plugin", "new") else "PLUGIN_VERIFY"
+    if plugin is None:
+        return _model_refused(args, operation, started, "local_client.plugin_unavailable")
+    try:
+        answer = plugin(Path(args.workspace), args.client_command[1], args.plugin_name)
+    except (ValueError, OSError) as error:
+        return _model_refused(args, operation, started, public_failure(error, "plugin_new.refused"))
+    failed = answer.get("failed") or {}
+    if not failed:
+        return _checked(args, operation, started, answer, None)
+    words = f"{failed['what']}; {failed['change']}"
+    return _checked(args, operation, started, answer, failed["code"], words)
 
 
 def _declaration_fields(path: Path) -> str:
@@ -1505,13 +1549,14 @@ def main(
     serve: Callable[[list[str]], int],
     restore: Callable[..., dict[str, Any]] | None = None,
     sandbox: Callable[..., dict[str, Any]] | None = None,
+    plugin: Callable[..., dict[str, Any]] | None = None,
 ) -> int:
     """Run one command line and print its envelope; the invocation is one span, ended at the
     Host its requests reached with its exit code (`_command_line` runs the line)."""
     scope = call_span.CALL.set(None)
     code = 1  # what Python exits with when the line raises
     try:
-        code = _command_line(argv, serve=serve, restore=restore, sandbox=sandbox)
+        code = _command_line(argv, serve=serve, restore=restore, sandbox=sandbox, plugin=plugin)
         return code
     except SystemExit as stopped:  # a refusal raised as the process's exit carries its code
         code = stopped.code if isinstance(stopped.code, int) else code
@@ -1527,6 +1572,7 @@ def _command_line(
     serve: Callable[[list[str]], int],
     restore: Callable[..., dict[str, Any]] | None,
     sandbox: Callable[..., dict[str, Any]] | None,
+    plugin: Callable[..., dict[str, Any]] | None,
 ) -> int:
     """Run one command line and print its envelope.
 
@@ -1537,6 +1583,8 @@ def _command_line(
             the entry point composes it.
         sandbox: Tries a model on a copy for ``model sandbox``, with no Host; the entry
             point composes it.
+        plugin: Writes or verifies a workspace plugin for ``plugin new`` and ``plugin
+            verify``, with no Host; the entry point composes it.
 
     Returns:
         The exit code of the answer's outcome.
@@ -1598,7 +1646,9 @@ def _command_line(
         args.bound_workspace = bound
         chosen_token = WORKSPACE_FROM.set(chosen_by)
         try:
-            return _command(parser, args, started, serve=serve, restore=restore, sandbox=sandbox)
+            return _command(
+                parser, args, started, serve=serve, restore=restore, sandbox=sandbox, plugin=plugin
+            )
         except client.LocalResearchClientError as error:
             return _refused(error, started, line=arguments)
         finally:
@@ -2191,6 +2241,7 @@ def _command(
     serve: Callable[[list[str]], int],
     restore: Callable[..., dict[str, Any]] | None,
     sandbox: Callable[..., dict[str, Any]] | None,
+    plugin: Callable[..., dict[str, Any]] | None = None,
 ) -> int:
     """Run one parsed command line and print its envelope (`main`'s body, in its language)."""
     if args.noun == "serve":
@@ -2219,6 +2270,8 @@ def _command(
         return _restore(args, started, restore)
     if getattr(args, "client_command", None) == ("model", "sandbox"):
         return _sandbox(args, started, sandbox)
+    if getattr(args, "client_command", None) in {("plugin", "new"), ("plugin", "verify")}:
+        return _plugin(args, started, plugin)
     if getattr(args, "client_command", None) == ("session", "bind"):
         return _bind(args, started)
     if getattr(args, "client_command", None) == ("session", "exporters"):

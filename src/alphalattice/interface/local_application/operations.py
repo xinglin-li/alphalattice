@@ -1365,7 +1365,11 @@ HELP_GROUPS: Final[tuple[tuple[str, tuple[tuple[str, str], ...]], ...]] = (
             ("trial", "A formula factor tried against a completed study."),
             ("candidate", "Alpha candidates compared from their stored evidence."),
             ("model", "Alpha models an agent scaffolds, checks and sandboxes."),
-            ("plugin", "Installed capabilities: list them, and run one with its parameters."),
+            (
+                "plugin",
+                "Plugins: list the installed capabilities and run one; write a workspace plugin "
+                "from a template and verify it.",
+            ),
             ("training", "A component's model-training inputs."),
         ),
     ),

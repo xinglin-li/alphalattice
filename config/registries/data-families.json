@@ -1169,6 +1169,21 @@
         "task_control.child"
       ]
     },
+    "workspace-plugins": {
+      "summary": "a workspace plugin's manifest, entry module, sample slice and test, written into the workspace's plugins folder",
+      "class": "authority-setting",
+      "tier": 4,
+      "home": "outside the data layer: plugins/<name>/ in the workspace folder, the person's own source files, enabled by name and hash in plugins.toml",
+      "location": "workspace-file",
+      "bytes": null,
+      "writers": [
+        "product_host.plugins.authoring:new_plugin"
+      ],
+      "readers": [
+        "product_host.plugins.authoring",
+        "product_host.plugins.registry"
+      ]
+    },
     "plugin-runs": {
       "summary": "a verified capability's Arrow transfer and a staging capability's files before the Host checks and commits them",
       "class": "cache-scratch",

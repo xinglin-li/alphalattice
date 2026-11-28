@@ -144,9 +144,11 @@ class _Registration:
 
         try:
             with full_content_proof():
-                manifest, manifest_digest = verified_bytes(_file(self.folder, self.manifest_path))
+                manifest, manifest_digest = verified_bytes(
+                    confined_file(self.folder, self.manifest_path)
+                )
                 sources = {
-                    path: verified_bytes(_file(self.folder, Path(path)))
+                    path: verified_bytes(confined_file(self.folder, Path(path)))
                     for path in self.manifest.files
                 }
         except (OSError, ValueError) as error:
@@ -495,6 +497,30 @@ class PluginRegistry:
             )
 
 
+def plugin_name_valid(name: str) -> bool:
+    """Whether `name` may name a workspace plugin: its folder under `plugins/` and its key in
+    plugins.toml."""
+    return bool(_NAME.fullmatch(name)) and not PureWindowsPath(name).is_reserved()
+
+
+def workspace_plugin(workspace: Path, name: str) -> VerifiedPlugin:
+    """A workspace plugin's verified closure, read by name as the Host would read it once
+    enabled, but with nothing enabled and no decision asked: what `plugin verify` runs in the
+    guarded child.
+
+    Raises:
+        PluginRefused: `plugin_registry.manifest_invalid` for a manifest that is no plugin's or
+            names a file outside its folder, as for an enabled plugin.
+    """
+    verified = _registration(
+        name, workspace.resolve(), Path("plugins") / name / "plugin.json"
+    ).verify()
+    sandboxed = verified.spec.model_copy(
+        update={"execution_mode": ExecutionMode.SANDBOX_SUBPROCESS}
+    )
+    return VerifiedPlugin(sandboxed, verified.entry, verified.sources)
+
+
 def _source_path(module: str) -> str:
     """Locate a declared module within the installed alphalattice package."""
     return module.removeprefix("alphalattice.").replace(".", "/") + ".py"
@@ -589,7 +615,13 @@ def _builtin_entries() -> metadata.EntryPoints:
     return installed.entry_points.select(group=_GROUP)
 
 
-def _file(root: Path, relative: Path) -> Path:
+def confined_file(root: Path, relative: Path) -> Path:
+    """`root / relative`, refused when a link on the way, or `..`, would leave `root`.
+
+    Raises:
+        ValueError: the path, named by `relative`, would resolve outside `root` or through a
+            link; `root` is itself resolved.
+    """
     path = root / relative
     if path.resolve() != path or not path.is_relative_to(root):
         raise ValueError(relative)
@@ -600,7 +632,7 @@ def _enabled(workspace: Path) -> dict[str, str]:
     """A missing config enables nothing; the plugins directory is never enumerated."""
     path = Path("plugins.toml")
     try:
-        content = _file(workspace, path).read_bytes()
+        content = confined_file(workspace, path).read_bytes()
     except FileNotFoundError:
         return {}
     except (OSError, ValueError) as error:
@@ -633,7 +665,7 @@ def _registration(
     try:
         if not _NAME.fullmatch(name) or PureWindowsPath(name).is_reserved():
             raise ValueError
-        body = _file(root, path).read_bytes()
+        body = confined_file(root, path).read_bytes()
         try:
             manifest = _Manifest.model_validate_json(body)
         except ValidationError as error:

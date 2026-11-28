@@ -116,6 +116,9 @@ def test_every_product_text_naming_the_workspace_flag_is_a_kept_full_form() -> N
         ("control/product_host/composition/web_launcher.py", "main"): (
             "the Local Web launcher script's own option"
         ),
+        ("control/product_host/plugins/authoring.py", "<module>"): (
+            "a scaffolded plugin's own test verifies it in the workspace it sits in"
+        ),
         ("evidence/alternative_evidence/runtime/policy.py", "<module>"): (
             "the source setup script's command template"
         ),

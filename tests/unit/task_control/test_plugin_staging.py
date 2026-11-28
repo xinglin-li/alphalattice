@@ -5,6 +5,7 @@ from __future__ import annotations
 import json
 import os
 import sys
+import threading
 from collections.abc import Callable, Collection
 from concurrent.futures import Future
 from importlib.machinery import ModuleSpec
@@ -13,8 +14,8 @@ from pathlib import Path
 import pytest
 
 from alphalattice.capabilities.domain_contracts.domain.errors import WorkspaceSecurityError
-from alphalattice.control.task_control.plugin_child import child_answer
-from alphalattice.control.task_control.plugin_guard import Guard, Refused, install
+from alphalattice.control.task_control.plugin_child import child_answer, signal_started
+from alphalattice.control.task_control.plugin_guard import STARTED, Guard, Refused, install
 from alphalattice.control.task_control.plugin_staging import (
     OUTPUT,
     PROVENANCE,
@@ -377,3 +378,24 @@ def test_the_host_accepts_only_a_clean_childs_one_bounded_answer(
     assert "plugin print" not in str(error.value)
     if code != UNANSWERED:
         assert error.value.refusals[0]["event"] == "socket.connect"
+
+
+@pytest.mark.proves("task_control.a_held_plugin_run_signals_started_only_from_its_childs_mark")
+@pytest.mark.parametrize(
+    "marked",
+    [
+        pytest.param(False, id="no-mark-as-in-a-launch-bootstrap"),
+        pytest.param(True, id="its-guarded-child-marked"),
+    ],
+)
+def test_a_held_run_signals_started_only_once_its_guarded_child_has_marked(
+    tmp_path: Path, marked: bool
+) -> None:
+    """A held run's started signal comes only from its guarded child's mark, never at launch."""
+    mark, signals = tmp_path / STARTED, list[bool]()
+    if marked:
+        mark.touch()
+
+    signal_started(mark, lambda: signals.append(mark.exists()), threading.Event(), 0.1)
+
+    assert signals == ([True] if marked else [])

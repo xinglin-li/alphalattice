@@ -23,7 +23,10 @@ and the plugin's own sources; the hook refuses any import once that finder is no
 Every other event passes: it stops a wrong plugin, not a hostile one. A refusal is recorded even
 when the plugin catches it, and the answer then names the first. The plugin starts only once the
 hook has heard the child's probe event, so a registration an earlier hook refused, loudly or
-silently, refuses the start.
+silently, refuses the start. In a run its parent will cancel (`hold`), the child makes `STARTED`
+in its home once its hook has heard that probe, so its parent's started signal comes from this
+guarded interpreter and never from a launch bootstrap; it then runs the plugin and holds, alive,
+until the cancel ends its tree or its lease's timeout passes.
 """
 
 from __future__ import annotations
@@ -49,6 +52,10 @@ from alphalattice.protocols.plugin_contract import ExecutionContext
 HOME = ".plugin-home"
 """The folder in the staging folder that the child's working directory and home point into; its
 parent removes it before the staged files are checked."""
+
+STARTED = "started"
+"""The file a held child makes in its home once its hook has heard its probe: its started
+signal."""
 
 REDIRECTED = ("HOME", "USERPROFILE", "TMP", "TEMP", "TMPDIR", "XDG_CACHE_HOME")
 
@@ -484,6 +491,9 @@ def serve(params: Mapping[str, Any]) -> dict[str, int]:
     sources.guard, guard.finder = guard, sources
     sys.meta_path.insert(0, sources)
     install(guard)
+    hold = bool(params.get("hold"))
+    if hold:
+        open(os.path.join(staging, HOME, STARTED), "x").close()  # a mark, no data
     started = time.perf_counter()
     try:
         context = ExecutionContext.model_validate_json(
@@ -499,6 +509,8 @@ def serve(params: Mapping[str, Any]) -> dict[str, int]:
             raise Refused(
                 "task_control.plugin_failed", f"{type(error).__name__}: {error}"
             ) from error
+    if hold:  # alive, its plugin run, until its parent's cancel ends the tree
+        threading.Event().wait(lease["timeout_ms"] / 1000)
     if guard.refusals:
         first = guard.refusals[0]
         raise Refused(first["code"], first["detail"], guard.refusals)

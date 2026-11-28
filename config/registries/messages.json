@@ -39,6 +39,26 @@
       "owner": "alphalattice.interface.local_application", "kind": "MESSAGE", "arguments": [],
       "words": {"en": "The Host's endpoint record is not a plain file in the data root's machine/host-endpoints folder, so it is not used.", "zh-CN": "Host 的端点记录不是数据根目录 machine/host-endpoints 文件夹中的普通文件，因此不予使用。"}
     },
+    "local_client.plugin_unavailable": {
+      "owner": "alphalattice.interface.local_application", "kind": "MESSAGE", "arguments": [],
+      "words": {"en": "Writing and verifying plugins is the entry's own: run `plugin new <name>` or `plugin verify <name>` through the installed command.", "zh-CN": "编写和验证插件属于入口自身：请通过已安装的命令运行 `plugin new <name>` 或 `plugin verify <name>`。"}
+    },
+    "plugin_new.exists": {
+      "owner": "alphalattice.interface.local_application", "kind": "MESSAGE", "arguments": [],
+      "words": {"en": "A plugin of this name is already in the workspace's plugins folder: give another name, or edit its files and run `plugin verify <name>`.", "zh-CN": "工作区的插件文件夹中已有同名插件：请换一个名称，或编辑它的文件后运行 `plugin verify <name>`。"}
+    },
+    "plugin_new.name_invalid": {
+      "owner": "alphalattice.interface.local_application", "kind": "MESSAGE", "arguments": [],
+      "words": {"en": "A plugin's name is lowercase letters, digits, '-', '_' and '.', starting with a letter.", "zh-CN": "插件名称由小写字母、数字、'-'、'_' 和 '.' 组成，并以字母开头。"}
+    },
+    "plugin_new.outside_workspace": {
+      "owner": "alphalattice.interface.local_application", "kind": "MESSAGE", "arguments": [],
+      "words": {"en": "The workspace's plugins folder, or the plugin's, is a link out of the workspace: make it a plain folder inside the workspace, then run `plugin new <name>` again.", "zh-CN": "工作区的插件文件夹或该插件的文件夹是指向工作区外的链接：请把它改为工作区内的普通文件夹，然后再次运行 `plugin new <name>`。"}
+    },
+    "plugin_verify.check_failed": {
+      "owner": "alphalattice.interface.local_application", "kind": "MESSAGE", "arguments": [],
+      "words": {"en": "The plugin failed a check: the answer names what is wrong and what to change; change it and run `plugin verify <name>` again.", "zh-CN": "插件未通过一项检查：回答指出了问题所在和应作的修改；修改后请再次运行 `plugin verify <name>`。"}
+    },
     "local_client.connection_owner_mismatch": {
       "owner": "alphalattice.interface.local_application", "kind": "MESSAGE", "arguments": [],
       "words": {"en": "This workspace's endpoint record names another workspace's Host: stop that Host, then start this workspace's Host, which replaces the record.", "zh-CN": "此工作区的端点记录指向另一个工作区的 Host：请先停止那个 Host，再启动此工作区的 Host，新 Host 会替换该记录。"}

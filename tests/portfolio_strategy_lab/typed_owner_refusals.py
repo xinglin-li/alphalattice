@@ -28,6 +28,10 @@ EXCLUDED_POSITIVE = {
     "alphalattice.control.product_host.composition.decision_advancement._Cancelled": (
         "decision_advancement.py:286; private cancellation control flow, with no code protocol"
     ),
+    "alphalattice.control.product_host.plugins.authoring._Fault": (
+        "authoring.py:230,329; private verify control flow, caught in verify_plugin and "
+        "answered as its FAILED check, never raised past it"
+    ),
     "alphalattice.control.product_host.composition.decision_advancement._Deferred": (
         "decision_advancement.py:290-293; internal WAIT carries StageExecutionResult, "
         "not a public failure"

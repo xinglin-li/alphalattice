@@ -3079,6 +3079,20 @@
       "layer": "integration",
       "seconds": 10
     },
+    "product_host.plugin_new_writes_what_verify_passes_in_its_guarded_child": {
+      "description": "If a new plugin failed verify in its real guarded child, or verify's fingerprint did not enable it, an author's first step would fail.",
+      "owner": "alphalattice.control.product_host",
+      "layer": "integration",
+      "seconds": 10,
+      "lower_layer": "The guarded child, its audit hook and its system's confinement are a child process's own state, which a test in the test process cannot install."
+    },
+    "product_host.plugin_verify_refuses_each_fault_by_name": {
+      "description": "If plugin verify passed one of its seven faults, or named it without the change that fixes it, an agent could not loop to a plugin the Host trusts.",
+      "owner": "alphalattice.control.product_host",
+      "layer": "integration",
+      "seconds": 3,
+      "lower_layer": "Verify is a product_host module, which the layer contract keeps out of unit tests; each fault runs the plugin's own code in this process, with no child."
+    },
     "product_host.pre_blake3_workspace_is_refused": {
       "description": "Opening an earlier workspace manifest refuses by name before registering or rewriting it.",
       "owner": "alphalattice.control.product_host",
@@ -3306,6 +3320,12 @@
       "layer": "integration",
       "seconds": 10,
       "lower_layer": "Its audit hook and its system's confinement (Low integrity and the Job, Landlock, rlimits) are a child process's own state, which a test in the test process cannot install without changing that process for good."
+    },
+    "task_control.a_held_plugin_run_signals_started_only_from_its_childs_mark": {
+      "description": "If a held plugin run signalled started before its guarded child marked itself running, verify could credit a cancel that only stopped a launch bootstrap.",
+      "owner": "alphalattice.control.task_control",
+      "layer": "unit",
+      "seconds": 1
     },
     "task_control.a_killed_import_resumes_with_nothing_lost": {
       "description": "If a kill between a 0.2.7 workspace's move onto the log and the retirement of its store lost or repeated a Task, its history would be wrong the next time it opened.",

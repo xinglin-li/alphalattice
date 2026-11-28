@@ -927,6 +927,47 @@ _CLIENT_REFUSALS: Final[tuple[tuple[str, ClientRefusal], ...]] = (
             "so name it with --workspace-id, as a directory name.",
         ),
     ),
+    # A workspace plugin's template and checks: each refusal says the way on (OP12).
+    (
+        "local_client.plugin_unavailable",
+        ClientRefusal(
+            "REFUSED",
+            "RUN_THE_INSTALLED_ENTRY",
+            "local_client.plugin_unavailable",
+        ),
+    ),
+    (
+        "plugin_new.exists:",
+        ClientRefusal(
+            "INVALID_INPUT",
+            "NAME_ANOTHER_PLUGIN_OR_EDIT_ITS_FILES",
+            "plugin_new.exists",
+        ),
+    ),
+    (
+        "plugin_new.name_invalid:",
+        ClientRefusal(
+            "INVALID_INPUT",
+            "NAME_THE_PLUGIN_AGAIN",
+            "plugin_new.name_invalid",
+        ),
+    ),
+    (
+        "plugin_new.outside_workspace:",
+        ClientRefusal(
+            "REFUSED",
+            "REPLACE_THE_LINKED_PLUGINS_FOLDER",
+            "plugin_new.outside_workspace",
+        ),
+    ),
+    (
+        "plugin_verify.",
+        ClientRefusal(
+            "REFUSED",
+            "CHANGE_THE_PLUGIN_THEN_VERIFY_AGAIN",
+            "plugin_verify.check_failed",
+        ),
+    ),
     # A model's scaffold and contract (EX): each refusal says the way on (OP12).
     (
         "local_client.sandbox_unavailable",

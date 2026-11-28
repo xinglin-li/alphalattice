@@ -2750,7 +2750,7 @@
     ],
     [
      "plugin",
-     "Installed capabilities: list them, and run one with its parameters."
+     "Plugins: list the installed capabilities and run one; write a workspace plugin from a template and verify it."
     ],
     [
      "training",

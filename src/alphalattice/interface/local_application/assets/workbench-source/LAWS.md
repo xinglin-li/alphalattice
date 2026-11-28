@@ -847,7 +847,7 @@ elbows, retaining `→ @name`.
 *Why:* Conversation observation cannot prove liveness, quality or resolution.
 
 Only owner records count in recorded time order, with no likes, views, ranks or runtime
-states. `n new` reaches the newest; Display filters/density never reorder. Consecutive hooks
+states. `n` new reaches the newest; Display filters/density never reorder. Consecutive hooks
 and observations fold with their real span; long replies keep first/last around `Show n more`.
 Exchanges open their record in place. Recorded PM replies sit beneath their question in a
 neutral `PM` inset, never resolving an objection by display.

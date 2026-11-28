@@ -173,6 +173,17 @@ def sandbox(workspace: Path, model_id: str, *, study: Path | None, keep: bool) -
     return answer
 
 
+def plugin(workspace: Path, verb: str, name: str) -> dict[str, object]:
+    """Write (`new`) or verify (`verify`) a workspace plugin, with no Host and no confirmation."""
+    from alphalattice.control.product_host.plugins.authoring import (  # lazy: a plugin call only
+        new_plugin,
+        verify_plugin,
+    )
+
+    answer: dict[str, object] = (new_plugin if verb == "new" else verify_plugin)(workspace, name)
+    return answer
+
+
 def _closed_output_pipe(error: OSError) -> bool:
     """Windows may report EINVAL when flushing a pipe whose reader has closed."""
     if isinstance(error, BrokenPipeError):
@@ -223,7 +234,7 @@ def _run(argv: list[str] | None) -> int:
         _install_storage_driver()
         from alphalattice.interface.local_application.cli import main as root  # lazy: CLI dispatch
 
-        result = int(root(arguments, serve=serve, restore=restore, sandbox=sandbox))
+        result = int(root(arguments, serve=serve, restore=restore, sandbox=sandbox, plugin=plugin))
         sys.stdout.flush()  # noqa: TID251  # detect a closed CLI output pipe
         return result
     except OSError as error:

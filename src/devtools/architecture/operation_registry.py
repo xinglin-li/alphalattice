@@ -1265,6 +1265,15 @@ _OFFLINE_CASES: Final[dict[tuple[str, str], list[tuple[str, list[str], int, str]
         ("no sandbox composed", ["absent_model"], 2, "REFUSED"),
         ("a missing field", [], 1, "INVALID_INPUT"),
     ],
+    # A plugin's writing and checks are the entry's, as the sandbox is: the walk composes none.
+    ("plugin", "new"): [
+        ("no plugin composed", ["absent-plugin"], 2, "REFUSED"),
+        ("a missing field", [], 1, "INVALID_INPUT"),
+    ],
+    ("plugin", "verify"): [
+        ("no plugin composed", ["absent-plugin"], 2, "REFUSED"),
+        ("a missing field", [], 1, "INVALID_INPUT"),
+    ],
     # The walk runs as a shell outside any agent session (`walk`): there is no session to bind,
     # so the client refuses by name and writes nothing.
     ("session", "bind"): [
