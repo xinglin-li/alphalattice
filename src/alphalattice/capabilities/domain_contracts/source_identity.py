@@ -538,7 +538,8 @@ def _dumped(tree: ast.Module) -> str:
         if isinstance(body, list) and body and isinstance(body[0], ast.stmt):
             kept = [statement for statement in body if not _bare_string(statement)]
             node.body = kept or [ast.Pass()]  # type: ignore[attr-defined]
-    return ast.dump(tree, include_attributes=False)
+    # Python 3.13 drops empty fields by default; the identity keeps them, as 3.12 wrote it.
+    return ast.dump(tree, include_attributes=False, show_empty=True)
 
 
 def _bare_string(statement: ast.stmt) -> bool:
@@ -1197,6 +1198,11 @@ def _top_level_names(tree: ast.Module) -> frozenset[str]:
     return frozenset(names)
 
 
+_FIELDS_SINCE_312 = frozenset({"default_value"})
+"""Syntax fields Python added after 3.12 (PEP 696's type parameter defaults), written only when
+present."""
+
+
 class _Template:
     """Write a module's tree as text in one pass, each resolvable imported name a placeholder.
 
@@ -1247,6 +1253,8 @@ class _Template:
         self.text.append(kind.__name__ + "(")
         for field in kind._fields:
             value = getattr(node, field, None)
+            if value is None and field in _FIELDS_SINCE_312:
+                continue  # an absent newer field writes nothing: one identity on every Python
             if type(value) is list:
                 self.listed(value)
             elif isinstance(value, ast.AST):

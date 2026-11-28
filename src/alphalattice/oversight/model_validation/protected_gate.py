@@ -234,8 +234,8 @@ def validation_upgrade_family(workspace_id: Callable[[Path], str | None]) -> Fam
         workspace: Path,
     ) -> tuple[ProtectedValidationStore, list[PortfolioValidationReceipt], list[PermitClaimRecord]]:
         store = ProtectedValidationStore(workspace / "runtime" / "artifacts")
-        results = []
-        for kind in (_RECEIPTS, _CLAIMS):
+
+        def records[ContractT: BaseModel](kind: CommittedKind[ContractT]) -> list[ContractT]:
             folder = store.root / "index" / kind.index
             try:
                 paths = sorted(path for path in folder.iterdir() if path.suffix == ".json")
@@ -254,12 +254,9 @@ def validation_upgrade_family(workspace_id: Callable[[Path], str | None]) -> Fam
                         "protected_validation.upgrade_record_missing"
                     )
                 values.append(value)
-            results.append(values)
-        return (
-            store,
-            cast(list[PortfolioValidationReceipt], results[0]),
-            cast(list[PermitClaimRecord], results[1]),
-        )
+            return values
+
+        return store, records(_RECEIPTS), records(_CLAIMS)
 
     def step(runner: UpgradeRunner) -> None:
         receipts: dict[str, PortfolioValidationReceipt] = {}

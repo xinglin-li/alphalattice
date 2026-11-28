@@ -73,6 +73,17 @@ _LIBRARIES = tuple(os.path.normcase(str(root)) + os.sep for root in _INSTALLED)
 """Where an installed library's modules are compiled from, as a module's file name starts."""
 
 
+def _steps(code: CodeType) -> Iterator[tuple[str, str]]:
+    """Each instruction's operation and name, a fused fast-local pair read as its two halves."""
+    for instruction in dis.get_instructions(code):
+        halves = _FUSED_FAST.get(instruction.opname)
+        if halves is None:
+            yield instruction.opname, str(instruction.argval)
+        else:
+            names = instruction.argval if len(halves) > 1 else (instruction.argval,)
+            yield from zip(halves, map(str, names), strict=True)
+
+
 class _LibraryImportClock:
     """A meta path finder timing an installed library's first import while a unit test runs: the
     library's own execution, outermost only and paid by the measured phase's own thread, so the
@@ -120,6 +131,14 @@ class _LibraryImportClock:
 
 
 _PROCESS_STATE = (MutableMapping, MutableSequence, MutableSet)
+# Python 3.13 and 3.14 fuse fast-local loads and stores into one instruction; each half is a step.
+_FUSED_FAST = {
+    "LOAD_FAST_BORROW": ("LOAD_FAST",),
+    "LOAD_FAST_LOAD_FAST": ("LOAD_FAST", "LOAD_FAST"),
+    "LOAD_FAST_BORROW_LOAD_FAST_BORROW": ("LOAD_FAST", "LOAD_FAST"),
+    "STORE_FAST_LOAD_FAST": ("STORE_FAST", "LOAD_FAST"),
+    "STORE_FAST_STORE_FAST": ("STORE_FAST", "STORE_FAST"),
+}
 """A module global of these kinds holds what the process put there (a cache earlier tests
 filled), not code: the walk never reads its contents, so a unit test's verdict never depends on
 which tests ran before it in its worker. Its members are judged when they run."""
@@ -243,8 +262,7 @@ class LayerContract:
         """Follow explicit import aliases without reading source or guessing from word pairs."""
         aliases: dict[str, str] = {}
         owner = reference = ""
-        for instruction in dis.get_instructions(code):
-            op, name = instruction.opname, str(instruction.argval)
+        for op, name in _steps(code):
             if op == "IMPORT_NAME":
                 owner = reference = name
             elif op == "IMPORT_FROM":

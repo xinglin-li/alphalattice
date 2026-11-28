@@ -191,7 +191,7 @@ def _size_contents(
     image.decorator_list = [
         d for d in node.decorator_list if not PROVES_LINE.fullmatch(lines[d.lineno - 1])
     ]
-    return ast.dump(image, include_attributes=False)
+    return ast.dump(image, include_attributes=False, show_empty=True)
 
 
 def file_holders(relative: str, text: str, *, size_scope: bool = False) -> list[Holder]:

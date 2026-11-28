@@ -3,7 +3,7 @@
 English | [简体中文](README.zh-CN.md)
 
 [![License](https://img.shields.io/badge/License-Apache_2.0-blue.svg)](LICENSE)
-[![Python](https://img.shields.io/badge/Python-3.12-3776AB.svg)](docs/public-source/getting-started.md)
+[![Python](https://img.shields.io/badge/Python-3.14-3776AB.svg)](docs/public-source/getting-started.md)
 [![uv](https://img.shields.io/badge/uv-locked-261230.svg)](docs/public-source/getting-started.md)
 [![Mentioned in Awesome](https://awesome.re/mentioned-badge.svg)](https://github.com/wilsonfreitas/awesome-quant)
 
@@ -104,7 +104,7 @@ research intent.
 
 ## Before you start
 
-- **Environment:** Windows is the supported platform. Setup uses Python 3.12, uv
+- **Environment:** Windows is the supported platform. Setup uses Python 3.14, uv
   and locked dependencies, with Claude Code or Codex. On Linux and macOS, CI checks
   installation and an offline first use; other use there is not guaranteed. On
   macOS, install the OpenMP runtime:

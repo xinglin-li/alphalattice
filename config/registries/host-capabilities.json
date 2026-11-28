@@ -4,12 +4,12 @@
     "codex.doctor.python": {
       "host": "codex",
       "capability": "doctor.python",
-      "description": "Checks that the recorded interpreter is Python 3.12 so the Host can identify whether the locked research environment uses its required Python version.",
+      "description": "Checks that the recorded interpreter is Python 3.14 so the Host can identify whether the locked research environment uses its required Python version.",
       "owner": "alphalattice.interface.local_application",
       "defined_by": "src/alphalattice/interface/local_application/native_setup.py::HOST_DEPENDENCIES",
       "definition_line": 125,
       "conditions": [
-        "Checks that the recorded Python major/minor is 3.12."
+        "Checks that the recorded Python major/minor is 3.14."
       ],
       "limitations": [
         "The registry does not assert that an interpreter is available on another machine."
@@ -95,12 +95,12 @@
     "claude-code.doctor.python": {
       "host": "claude-code",
       "capability": "doctor.python",
-      "description": "Checks that the recorded interpreter is Python 3.12 so the Host can identify whether the locked research environment uses its required Python version.",
+      "description": "Checks that the recorded interpreter is Python 3.14 so the Host can identify whether the locked research environment uses its required Python version.",
       "owner": "alphalattice.interface.local_application",
       "defined_by": "src/alphalattice/interface/local_application/native_setup.py::HOST_DEPENDENCIES",
       "definition_line": 125,
       "conditions": [
-        "Checks that the recorded Python major/minor is 3.12."
+        "Checks that the recorded Python major/minor is 3.14."
       ],
       "limitations": [
         "The registry does not assert that an interpreter is available on another machine."

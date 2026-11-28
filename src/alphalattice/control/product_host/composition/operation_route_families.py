@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 
 from alphalattice.interface.local_application.operations import OPERATIONS
 from alphalattice.kernel.door import CLI_OPERATION, Door, DoorRefusal, FamilyRoute
@@ -288,7 +288,11 @@ _ROUTES = (
 )
 
 
-def host_door() -> Door[WorkspaceOperationCall[object] | ForwardedCli, dict[str, object]]:
+type HostCall = WorkspaceOperationCall[Any] | ForwardedCli
+"""What the Host's door dispatches: any family owner's operations call, or a forwarded CLI."""
+
+
+def host_door() -> Door[HostCall, dict[str, object]]:
     """Bind the existing operation vocabulary to composition's lazy family registrations."""
     families = (
         FamilyRoute(route.operations, f"{__package__}.{route.module}", route.handler)
@@ -297,9 +301,7 @@ def host_door() -> Door[WorkspaceOperationCall[object] | ForwardedCli, dict[str,
     invocation = FamilyRoute(
         (CLI_OPERATION,), "alphalattice.interface.local_application.cli", "execute_forwarded"
     )
-    door: Door[WorkspaceOperationCall[object] | ForwardedCli, dict[str, object]] = Door(
-        (*families, invocation)
-    )
+    door: Door[HostCall, dict[str, object]] = Door((*families, invocation))
     public = {*OPERATIONS, CLI_OPERATION}
     if missing := public - door.operations:
         raise DoorRefusal("door.operation_unregistered", min(missing))

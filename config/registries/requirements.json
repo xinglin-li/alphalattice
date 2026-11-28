@@ -1546,6 +1546,12 @@
       "layer": "unit",
       "seconds": 1
     },
+    "domain_contracts.source_identity_reads_alike_on_every_python": {
+      "description": "A module's identity text is the one Python 3.12 wrote on every supported interpreter: empty fields stay written and a type parameter's absent default writes nothing, so moving the interpreter moves no identity.",
+      "owner": "alphalattice.capabilities.domain_contracts",
+      "layer": "unit",
+      "seconds": 1
+    },
     "domain_contracts.source_identity_survives_relocation": {
       "description": "Relocating a module while keeping its body and semantic binding preserves its source closure identities.",
       "owner": "alphalattice.capabilities.domain_contracts",

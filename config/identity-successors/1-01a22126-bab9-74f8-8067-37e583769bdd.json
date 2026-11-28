@@ -1,0 +1,27 @@
+{
+ "schema": "identity-successors",
+ "version": 1,
+ "moves": [
+  {
+   "role": "product_host.conditional_decision_advancement",
+   "predecessor": "blake3:fdca2b2fbab90c8f2164c1229162e89291a117fa8a1aaf8f0b0f907a2ab84955",
+   "successor": "blake3:f4aecf397253c92b37c2ed7a7633eb565fd28fd683a4593dc5eb17823796a7a3",
+   "change": "AlphaLattice now runs on Python 3.14",
+   "reason": "The product moves to CPython 3.14; three Host roles that name the content store's proof code record their successors, every other identity reads the same on both interpreters, and every result value is unchanged (ALL EQUAL over 48,884 records and 11 listings)"
+  },
+  {
+   "role": "product_host.portfolio_updates",
+   "predecessor": "blake3:5d4589f72c503bc32bf128935c615f584859d55531a10faeb3bbf26b93ebcf91",
+   "successor": "blake3:6e41435707aeb20a9cfcaba4e92276b452f8f95f9e7f28323415a963c52f1e6c",
+   "change": "AlphaLattice now runs on Python 3.14",
+   "reason": "The product moves to CPython 3.14; three Host roles that name the content store's proof code record their successors, every other identity reads the same on both interpreters, and every result value is unchanged (ALL EQUAL over 48,884 records and 11 listings)"
+  },
+  {
+   "role": "product_host.strategy_calibration",
+   "predecessor": "blake3:9b981e5feb703ea47b1b9d90cc72d443d9708c112e1c00156bca9eb03d626d9e",
+   "successor": "blake3:e354b702a4c60280071b81d30416ef760995ee964a13ff68faf3b24703eeb850",
+   "change": "AlphaLattice now runs on Python 3.14",
+   "reason": "The product moves to CPython 3.14; three Host roles that name the content store's proof code record their successors, every other identity reads the same on both interpreters, and every result value is unchanged (ALL EQUAL over 48,884 records and 11 listings)"
+  }
+ ]
+}

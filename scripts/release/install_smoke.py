@@ -416,7 +416,7 @@ def verify(wheel: Path, output: Path, claude: str) -> dict[str, object]:
                         "tool",
                         "install",
                         "--python",
-                        "3.12",
+                        "3.14",
                         wheel.as_uri(),
                         "--with-requirements",
                         (assets / "alphalattice-runtime-requirements.txt").as_uri(),

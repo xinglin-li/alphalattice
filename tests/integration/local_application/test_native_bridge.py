@@ -808,7 +808,7 @@ def test_host_readiness_checks_dependencies_against_bound_host(tmp_path, monkeyp
     monkeypatch.setattr(
         setup,
         "recorded_environment",
-        lambda: {"python": "3.11.0" if missing == "python" else "3.12.0"},
+        lambda: {"python": "3.12.0" if missing == "python" else "3.14.0"},
     )
     monkeypatch.setattr(os, "cpu_count", lambda: 0 if missing == "cpu" else 4)
     monkeypatch.setattr(workbench_assets, "workbench_current", lambda: missing != "workbench_build")

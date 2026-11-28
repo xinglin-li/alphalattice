@@ -1277,3 +1277,24 @@ def test_preparation_identity_tracks_the_data_rule_and_not_grant_mechanics(tmp_p
     rule = tmp_path / "src/alphalattice/control/data_platform/data_decision_rule.py"
     rule.write_text("VALUE = 2\n", encoding="utf-8")
     assert application._implementation() != before
+
+
+@pytest.mark.proves("domain_contracts.source_identity_reads_alike_on_every_python")
+def test_a_module_reads_the_same_syntax_on_every_supported_python() -> None:
+    """A module's identity text is the one Python 3.12 wrote, so moving the interpreter moves no
+    identity: newer interpreters' empty fields stay written, and a type parameter's absent default
+    (PEP 696) writes nothing."""
+    from alphalattice.capabilities.domain_contracts import source_identity
+
+    text = "def f[T](x: T) -> T:\n    return x\n"
+    assert source_identity._dumped(ast.parse(text)) == (
+        "Module(body=[FunctionDef(name='f', args=arguments(posonlyargs=[], args=[arg(arg='x', "
+        "annotation=Name(id='T', ctx=Load()))], kwonlyargs=[], kw_defaults=[], defaults=[]), "
+        "body=[Return(value=Name(id='x', ctx=Load()))], decorator_list=[], "
+        "returns=Name(id='T', ctx=Load()), type_params=[TypeVar(name='T')])], type_ignores=[])"
+    )
+    template = source_identity._canonical_tree(ast.parse(text), ("module", "alphalattice")).template
+    assert template == (
+        "Module([FunctionDef('f',arguments([],[arg('x',Name('T',Load),None,),],None,[],[],None,[],),"
+        "[Return(Name('x',Load),),],[],Name('T',Load),None,[TypeVar('T',None,),],),],[],)",
+    )

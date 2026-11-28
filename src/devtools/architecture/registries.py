@@ -947,7 +947,8 @@ def _catalog_factory(tree: ast.Module, names: frozenset[str], spec: Any, histori
     if (
         (not historical and not wrapped)
         or factory.name != spec.get("name")
-        or ast.dump(ast.Module(body=body, type_ignores=[])) != spec.get("canonical_body")
+        or ast.dump(ast.Module(body=body, type_ignores=[]), show_empty=True)
+        != spec.get("canonical_body")
     ):
         raise ValueError(
             "legacy factory changed its canonical form; use config/registries/messages.json"

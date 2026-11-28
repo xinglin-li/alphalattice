@@ -18,7 +18,8 @@ authors = [{ name = "Xinglin Li", email = "xinglin789@outlook.com" }]
 readme = "README.md"
 license = "Apache-2.0"
 license-files = ["LICENSE", "NOTICE"]
-requires-python = ">=3.12,<3.13"
+requires-python = ">=3.14,<3.15"
+classifiers = ["Programming Language :: Python :: 3", "Programming Language :: Python :: 3.14", "Programming Language :: Python :: 3 :: Only"]
 dependencies = [
     # The 0.2.8 data layer: content identity, the event log's spans and the index's vectors.
     "blake3>=1.0.11,<2",
@@ -264,7 +265,7 @@ ignore_names = [
 ]
 
 [tool.mypy]
-python_version = "3.12"
+python_version = "3.14"
 strict = true
 pretty = true
 show_error_codes = true

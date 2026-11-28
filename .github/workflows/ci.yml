@@ -92,7 +92,7 @@ jobs:
           $requirements = "${{ runner.temp }}/alphalattice-runtime-requirements.txt"
           $overrides = "${{ runner.temp }}/alphalattice-runtime-overrides.txt"
           uv run --locked python -m scripts.release.install_smoke --wheel $wheel --out "${{ runner.temp }}" --assets-only
-          uv tool install --python 3.12 $wheel --with-requirements $requirements --constraints $requirements --overrides $overrides
+          uv tool install --python 3.14 $wheel --with-requirements $requirements --constraints $requirements --overrides $overrides
           "ALPHALATTICE_TEST_WHEEL=$wheel" >> $env:GITHUB_ENV
       - name: Smoke the installed command in fresh PowerShell and Git Bash
         shell: bash
@@ -202,7 +202,7 @@ jobs:
           requirements="$RUNNER_TEMP/alphalattice-runtime-requirements.txt"
           overrides="$RUNNER_TEMP/alphalattice-runtime-overrides.txt"
           uv run --locked python -m scripts.release.install_smoke --wheel "$wheel" --out "$RUNNER_TEMP" --assets-only
-          uv tool install --python 3.12 "$wheel" --with-requirements "$requirements" --constraints "$requirements" --overrides "$overrides"
+          uv tool install --python 3.14 "$wheel" --with-requirements "$requirements" --constraints "$requirements" --overrides "$overrides"
           uv run python scripts/release/wheel_smoke.py --command "$UV_TOOL_BIN_DIR/alphalattice" --output "$RUNNER_TEMP/smoke-bash.json" --fresh-shell bash
 
   public-tests-plan:

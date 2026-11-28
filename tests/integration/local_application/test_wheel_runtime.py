@@ -592,14 +592,28 @@ def test_both_guides_start_with_the_editable_leg_and_name_the_installed_leg() ->
     assert guide.index("uv sync --locked") < guide.index("wheel")
     assert "function alphalattice" not in guide
     assert all(line in guide for line in native_bridge.TOOL_INSTALL)  # a first use offers it
-    version = tomllib.loads((ROOT / "pyproject.toml").read_text("utf-8"))["project"]["version"]
-    assert all(line.format(version=version) in guide for line in native_bridge.WHEEL_INSTALL)
+    # The guides install a wheel built from this tree or a 3.14 release, named by placeholder;
+    # the Host fills its own installed version in at run time.
+    assert all(line.format(version="<version>") in guide for line in native_bridge.WHEEL_INSTALL)
     for name in (
         ".claude/skills/alphalattice-research/references/operating.md",
         "docs/public-source/upgrading.md",
     ):
         text = (ROOT / name).read_text(encoding="utf-8")
-        assert text.count(f"alphalattice-{version}-py3-none-any.whl") == 2
+        assert text.count("alphalattice-<version>-py3-none-any.whl") == 2
+    # No install text pairs the published release's wheel with the Python this tree requires.
+    version = tomllib.loads((ROOT / "pyproject.toml").read_text("utf-8"))["project"]["version"]
+    released = f"alphalattice-{version}-py3-none-any.whl"
+    for name in (
+        owner,
+        ".claude/skills/alphalattice-research/references/operating.md",
+        "README.md",
+        "README.zh-CN.md",
+        "docs/public-source/install.md",
+        "docs/public-source/upgrading.md",
+    ):
+        lines = (ROOT / name).read_text(encoding="utf-8").splitlines()
+        assert not [line for line in lines if released in line and "--python 3.14" in line], name
     assert "absolute prefix" in guide and "no shell update" in guide
     assert all(value in guide for value in ("uv tool dir", "fresh shell", "continue_here"))
     assert "Activate.ps1" not in guide and "$ws" not in guide

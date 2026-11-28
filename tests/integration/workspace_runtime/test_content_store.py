@@ -433,6 +433,7 @@ def test_a_changed_or_missing_lane_is_refused_by_name(tmp_path: Path, monkeypatc
     original_digest = owner.columns_digest
 
     def new_producer(columns):
+        """A captured producer that records each call."""
         calls.append(True)
         return original_digest(columns)
 
@@ -451,6 +452,17 @@ def test_a_changed_or_missing_lane_is_refused_by_name(tmp_path: Path, monkeypatc
         )
         assert owner._column_fact_kind((new_producer.__code__,), ()) == owner._column_fact_kind(
             (doc_changed,), ()
+        )
+
+        def returns_a():
+            return "A"
+
+        returns_b = returns_a.__code__.replace(
+            co_consts=tuple("B" if item == "A" else item for item in returns_a.__code__.co_consts)
+        )
+        # A returned string is a constant, not a docstring, however the interpreter lays it out.
+        assert owner._column_fact_kind((returns_a.__code__,), ()) != owner._column_fact_kind(
+            (returns_b,), ()
         )
         original_kind = owner._column_kind(store)
 

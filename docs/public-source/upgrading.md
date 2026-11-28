@@ -73,12 +73,15 @@ Run the doctor again after repairs or configuration.
 Download the new release's wheel to a separate installation directory. Extract
 the locked requirements and resolver overrides from that same wheel, as in the
 [operating reference](../../.agents/skills/alphalattice-research/references/operating.md#setup-and-launch).
-Replace the example filename in both commands with the new wheel you downloaded.
-It must contain both runtime files:
+These commands install a release that declares Python 3.14, or a wheel built from
+this checkout (`uv build --wheel`): put its version in place of
+`<version>` in both commands. The published 0.2.9 wheel declares
+Python 3.12, so install it with `--python 3.12`, as the README's command does.
+The wheel must contain both runtime files:
 
 ```powershell
-python -c "from zipfile import ZipFile; from pathlib import Path; wheel = ZipFile('alphalattice-0.2.9-py3-none-any.whl'); Path('alphalattice-runtime-requirements.txt').write_bytes(wheel.read('alphalattice/_runtime/config/release/runtime-requirements.txt')); Path('alphalattice-runtime-overrides.txt').write_bytes(wheel.read('alphalattice/_runtime/config/release/runtime-overrides.txt'))"
-uv tool install --force --compile-bytecode --python 3.12 ./alphalattice-0.2.9-py3-none-any.whl --with-requirements alphalattice-runtime-requirements.txt --constraints alphalattice-runtime-requirements.txt --overrides alphalattice-runtime-overrides.txt
+python -c "from zipfile import ZipFile; from pathlib import Path; wheel = ZipFile('alphalattice-<version>-py3-none-any.whl'); Path('alphalattice-runtime-requirements.txt').write_bytes(wheel.read('alphalattice/_runtime/config/release/runtime-requirements.txt')); Path('alphalattice-runtime-overrides.txt').write_bytes(wheel.read('alphalattice/_runtime/config/release/runtime-overrides.txt'))"
+uv tool install --force --compile-bytecode --python 3.14 ./alphalattice-<version>-py3-none-any.whl --with-requirements alphalattice-runtime-requirements.txt --constraints alphalattice-runtime-requirements.txt --overrides alphalattice-runtime-overrides.txt
 ```
 
 `--force` replaces the previous tool installation. To switch between the wheel

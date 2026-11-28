@@ -173,7 +173,7 @@ HOST_DEPENDENCIES = {
         str(worded("doctor.model_store_scope.recovery")),
         "AGENT",
     ),
-    "python": ("Run locked Python", "Use Python 3.12 and uv sync --locked; disclose it.", "AGENT"),
+    "python": ("Run locked Python", "Use Python 3.14 and uv sync --locked; disclose it.", "AGENT"),
     "uv": (
         "Install the lock's dependencies",
         "Ask once to install uv, then the agent installs it; without it the locked "
@@ -569,7 +569,7 @@ def host_readiness(
         *_environment_specs(project, default_store_root()),
         (
             "python",
-            python_version.split(".")[:2] == ["3", "12"],
+            python_version.split(".")[:2] == ["3", "14"],
             {"version": python_version, "interpreter": sys.executable},
         ),
         (

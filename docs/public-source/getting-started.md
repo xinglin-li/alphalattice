@@ -7,12 +7,12 @@ For the versioned wheel command and Claude Code plugin, see
 Give your agent the repository link and one research intent. It installs
 AlphaLattice and continues in the same session. The
 [setup procedure](../../.agents/skills/alphalattice-research/references/operating.md)
-covers locked Python 3.12 and uv dependencies, the editable checkout or installed
+covers locked Python 3.14 and uv dependencies, the editable checkout or installed
 wheel, and Local Web. The [README](../../README.md) states the scope of platform checks.
 
 ## Prerequisites by system
 
-Every system needs Python 3.12, uv and a browser; the lock brings the Node that builds the Workbench.
+Every system needs Python 3.14, uv and a browser; the lock brings the Node that builds the Workbench.
 
 - **Windows:** nothing more.
 - **macOS:** libomp, which LightGBM loads to train and score models: `brew install libomp`.
@@ -49,7 +49,7 @@ holds the installation and launch procedure.
    uv run python scripts/build_local_web_ui.py --product
    uv export --locked --all-extras --no-dev --no-emit-project --no-hashes --output-file .venv/alphalattice-runtime-requirements.txt
    uv run python -c "from pathlib import Path; from scripts.release.wheel_build import runtime_overrides; Path('.venv/alphalattice-runtime-overrides.txt').write_bytes(runtime_overrides().encode())"
-   uv tool install --compile-bytecode --python 3.12 --editable . --with-requirements .venv/alphalattice-runtime-requirements.txt --constraints .venv/alphalattice-runtime-requirements.txt --overrides .venv/alphalattice-runtime-overrides.txt
+   uv tool install --compile-bytecode --python 3.14 --editable . --with-requirements .venv/alphalattice-runtime-requirements.txt --constraints .venv/alphalattice-runtime-requirements.txt --overrides .venv/alphalattice-runtime-overrides.txt
    ```
 
    Run the retrieval runtime's offline fill exactly as the doctor prints it.

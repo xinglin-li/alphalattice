@@ -17,6 +17,7 @@ from __future__ import annotations
 import base64
 import copy
 import functools
+import inspect
 import json
 import marshal
 import os
@@ -774,7 +775,7 @@ def _column_fact_kind(codes: tuple[CodeType, ...], toolchain: tuple[object, ...]
         constants = tuple(
             normalized(value) if isinstance(value, CodeType) else value for value in code.co_consts
         )
-        if constants and isinstance(constants[0], str) and not code.co_name.startswith("<"):
+        if code.co_flags & inspect.CO_HAS_DOCSTRING:
             constants = (None, *constants[1:])  # docstrings do not decide a proof
         return code.replace(co_consts=constants, co_filename="", co_firstlineno=1, co_linetable=b"")
 

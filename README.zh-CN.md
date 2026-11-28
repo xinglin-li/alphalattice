@@ -3,7 +3,7 @@
 [English](README.md) | 简体中文
 
 [![许可证](https://img.shields.io/badge/License-Apache_2.0-blue.svg)](LICENSE)
-[![Python](https://img.shields.io/badge/Python-3.12-3776AB.svg)](docs/public-source/getting-started.md)
+[![Python](https://img.shields.io/badge/Python-3.14-3776AB.svg)](docs/public-source/getting-started.md)
 [![uv](https://img.shields.io/badge/uv-locked-261230.svg)](docs/public-source/getting-started.md)
 [![Mentioned in Awesome](https://awesome.re/mentioned-badge.svg)](https://github.com/wilsonfreitas/awesome-quant)
 
@@ -82,7 +82,7 @@ if (-not (Get-Command uvx -ErrorAction SilentlyContinue)) { throw 'Install uv / 
 
 ## 开始之前
 
-- **环境：** Windows 是受支持的平台。安装使用 Python 3.12、uv 和锁定的依赖，配合 Claude Code 或 Codex。在 Linux 和 macOS 上，CI 检查安装和离线首次使用；其他使用场景尚无保证。在 macOS 上，请安装 OpenMP 运行库：
+- **环境：** Windows 是受支持的平台。安装使用 Python 3.14、uv 和锁定的依赖，配合 Claude Code 或 Codex。在 Linux 和 macOS 上，CI 检查安装和离线首次使用；其他使用场景尚无保证。在 macOS 上，请安装 OpenMP 运行库：
 
   ```bash
   brew install libomp
