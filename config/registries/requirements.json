@@ -3229,6 +3229,12 @@
       "layer": "integration",
       "seconds": 5
     },
+    "task_control.a_plugin_run_commits_only_what_its_staging_proves": {
+      "description": "If a plugin's staged output committed without the Host's checks, foreign code, a wrong answer or a stale input would enter the workspace; one run per key commits atomically or is refused by name.",
+      "owner": "alphalattice.control.task_control",
+      "layer": "unit",
+      "seconds": 1
+    },
     "task_control.a_recovery_execution_carries_nothing_from_the_interrupted_one": {
       "description": "If a recovery execution took what the interrupted execution of its Task had carried in the process, its stages would skip verifying stored work that only the interrupted execution checked.",
       "owner": "alphalattice.control.task_control",

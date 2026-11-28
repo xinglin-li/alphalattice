@@ -1359,7 +1359,12 @@ def test_a_legacy_batch_is_known_from_its_lag_rule_and_the_new_columns_round_tri
                     changed = {k for k in watched if versions[-1][k] != versions[-2][k]}
                     moved.append((changed, {table} & set(watched)))
         unversioned = []
-        for tables, at in ((("no_such_table",), None), (watched, 10**9)):  # undefined, unreached
+        unread: tuple[tuple[tuple[str, ...], int | str | None], ...] = (
+            (("no_such_table",), None),  # undefined
+            (watched, 10**9),  # unreached
+            (watched, "market:42"),  # an id the catalog never named
+        )
+        for tables, at in unread:
             with pytest.raises(DataError) as error:
                 port.catalog_read(tables, at)
             unversioned.append(error.value.failure.code)
@@ -1475,7 +1480,7 @@ def test_a_legacy_batch_is_known_from_its_lag_rule_and_the_new_columns_round_tri
         # An earlier kept snapshot reads its own versions; a collection, which commits deletes
         # and no admission, moves the results table's.
         first = snapshot(reads[1])
-        again = port.catalog_read(watched, first)
+        again = port.catalog_read(watched, reads[1].snapshot_id)  # by the id that read named
         held = port.catalog_read(watched)
         bare = port.catalog_read(())  # a capability that declares no input
         log.queue_deletion("results/art-1", "rows", "collected")
@@ -1512,7 +1517,7 @@ def test_a_legacy_batch_is_known_from_its_lag_rule_and_the_new_columns_round_tri
     assert rewritten.input_versions == deleted.input_versions
     assert snapshot(rewritten) > snapshot(deleted)  # the rewrite committed a snapshot
     assert lost.input_versions == dict.fromkeys(watched, snapshot(lost))
-    assert unversioned == ["data_layer.input_unversioned"] * 2
+    assert unversioned == ["data_layer.input_unversioned"] * 3
     schemas = dict(tables)
     kept = ("superseded", "rewritten")  # the versions' own records, keyed by no fact
     assert sorted(WORLD_KEYS) == [table for table in schemas["world"] if table not in kept]

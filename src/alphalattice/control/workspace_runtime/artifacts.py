@@ -4,6 +4,8 @@ from __future__ import annotations
 
 import json
 import os
+import shutil
+import stat
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
 from pathlib import Path
@@ -16,7 +18,14 @@ from alphalattice.capabilities.domain_contracts.bounded_memo import stage_digest
 from alphalattice.capabilities.domain_contracts.identity import canonical_hash
 from alphalattice.capabilities.domain_contracts.identity_successors import latest
 from alphalattice.capabilities.domain_contracts.sealing import scoped_payload_digest
-from alphalattice.control.workspace_runtime.verified_facts import verified_file_digest
+from alphalattice.control.workspace_runtime.paths import (
+    resolve_confined,
+    resolve_workspace_root,
+)
+from alphalattice.control.workspace_runtime.verified_facts import (
+    record_sealed_file,
+    verified_file_digest,
+)
 from alphalattice.kernel.identity import (
     blake3_filename,
     blake3_from_filename,
@@ -61,6 +70,26 @@ ADJUSTED_RETURN_CHAIN = "adjusted-return-chain"
 its readers hash the same deltas once per stage."""
 
 
+def _files(folder: Path, prefix: str = "") -> list[str]:
+    """Every regular file under `folder`, relative to it, in name order. The folder itself is
+    proved first, a real directory and no link or reparse point; an unreadable folder raises,
+    never skipped; a link-like or hard-linked entry, or one neither a regular file nor a
+    folder, is refused through the workspace's path confinement."""
+    if not prefix:
+        resolve_workspace_root(folder)
+    found: list[str] = []
+    for name in sorted(entry.name for entry in (folder / prefix).iterdir()):
+        relative = f"{prefix}{name}"
+        mode = resolve_confined(folder, relative).lstat().st_mode
+        if stat.S_ISDIR(mode):
+            found.extend(_files(folder, f"{relative}/"))
+        elif stat.S_ISREG(mode):
+            found.append(relative)
+        else:
+            raise ValueError(f"a published entry is not a regular file: {relative}")
+    return found
+
+
 @dataclass(frozen=True)
 class ArtifactDescriptor:
     """A path-free artifact identity which may cross a task boundary."""
@@ -89,6 +118,7 @@ class ArtifactResolver:
     _FEATURE_PANEL_LIFECYCLE = "snapshot-lifecycle.json"
     _DATA_OPERATIONS_ROOT = "data-operations"
     _ADJUSTED_RETURN_REVISION_POINTER = "adjusted-return-semantic-revision-current.json"
+    _PLUGIN_RESULT_KIND = "plugin-result"
 
     def __init__(self, root: Path) -> None:
         """Bind trusted artifact resolution to one resolved store root.
@@ -234,6 +264,46 @@ class ArtifactResolver:
             metadata_hash=_metadata_hash(target),
             uri=self.feature_input_uri(content_hash),
         )
+
+    def _plugin_result_path(self, idempotency_key: str) -> Path:
+        return self._root / self._PLUGIN_RESULT_KIND / blake3_filename(idempotency_key)
+
+    def publish_plugin_result(self, staged_dir: Path, idempotency_key: str) -> ArtifactDescriptor:
+        """Atomically publish a plugin run's checked staging folder under its run's key.
+
+        Every staged file is checked and hashed before the key is exposed, so a failure leaves
+        it unpublished; each file placed is then sealed in the trust record, and a target whose
+        sealing fails is cleared again. A key already published keeps its first result, which
+        the same inputs derive, and the staged folder is left to its owner. The descriptor's
+        metadata hash names every published file's relative path and digest.
+        """
+        self._require_hash(idempotency_key)
+        target = self._plugin_result_path(idempotency_key)
+        target.parent.mkdir(parents=True, exist_ok=True)
+        source = target if target.exists() else staged_dir
+        files = {relative: verified_file_digest(source / relative) for relative in _files(source)}
+        if source is staged_dir:
+            os.replace(staged_dir, target)
+            try:
+                for relative, digest in files.items():
+                    record_sealed_file(target / relative, digest)
+            except BaseException:
+                shutil.rmtree(target)
+                raise
+        return ArtifactDescriptor(
+            kind=self._PLUGIN_RESULT_KIND,
+            content_hash=idempotency_key,
+            metadata_hash=_metadata_hash(
+                {relative.encode(): digest.encode() for relative, digest in files.items()}
+            ),
+            uri=f"playpen://{self._PLUGIN_RESULT_KIND}/{idempotency_key}",
+        )
+
+    def resolve_plugin_result(self, descriptor: ArtifactDescriptor) -> Path:
+        """Return a published plugin result's folder only to trusted Host code."""
+        if descriptor.kind != self._PLUGIN_RESULT_KIND:
+            raise ValueError("unsupported artifact kind")
+        return self._plugin_result_path(descriptor.content_hash)
 
     def resolve_feature_input(self, descriptor: ArtifactDescriptor) -> Path:
         """Return a physical path only to trusted Data Operations code."""

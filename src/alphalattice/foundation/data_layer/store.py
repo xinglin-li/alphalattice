@@ -546,9 +546,12 @@ class StorePort:
             else:
                 self._block.published.append(publish)
 
-    def catalog_read(self, tables: Collection[str], snapshot: int | None = None) -> CatalogRead:
+    def catalog_read(
+        self, tables: Collection[str], snapshot: int | str | None = None
+    ) -> CatalogRead:
         """The catalog snapshot a run reads at, the latest when `snapshot` is None, with each of
-        these tables' version at it, in one read of the catalog's own change record.
+        these tables' version at it, in one read of the catalog's own change record. `snapshot`
+        is the snapshot's number or the id an earlier read named it by (`CatalogRead.snapshot_id`).
 
         A table's version is the last snapshot at or before the read one that changed its data
         or schema: its creation, an insert, a delete (a collection's too) or an alteration. A
@@ -570,6 +573,14 @@ class StorePort:
                 f"the catalog defines no table {', '.join(unknown)}; declare the tables read",
                 code="data_layer.input_unversioned",
             )
+        if isinstance(snapshot, str):
+            number = snapshot.removeprefix("lake:")
+            if number == snapshot or not number.isdigit():
+                raise DataError(
+                    f"the catalog names no snapshot {snapshot!r}; read at an id it returned",
+                    code="data_layer.input_unversioned",
+                )
+            snapshot = int(number)
         wanted = json.dumps(sorted([schemas[table], table] for table in set(tables)))
         found = self.lake.execute(
             f"WITH bound AS (SELECT snapshot_id AS v FROM {_CATALOG_METADATA}.ducklake_snapshot"

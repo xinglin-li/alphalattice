@@ -1169,6 +1169,24 @@
         "task_control.child"
       ]
     },
+    "plugin-runs": {
+      "summary": "one staging capability run's staged answer and files before the Host checks and commits them",
+      "class": "cache-scratch",
+      "tier": 4,
+      "home": "staging/plugin-runs/<invocation-id>",
+      "location": "workspace-runtime",
+      "bytes": null,
+      "retire": "removed when its run commits, by the atomic replace into the artifact store, or is refused",
+      "authority_owners": [
+        "task_control.plugin_staging.PluginStaging"
+      ],
+      "writers": [
+        "task_control.plugin_staging:PluginStaging"
+      ],
+      "readers": [
+        "task_control.plugin_staging"
+      ]
+    },
     "task-heartbeats": {
       "summary": "a running Task's lease and deadline on the held log; old sidecars are verified and set aside",
       "class": "cache-scratch",

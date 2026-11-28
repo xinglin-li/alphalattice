@@ -44,6 +44,10 @@ dependencies = [
     # reached by deterministic Factor and Evidence contracts.
     "tiktoken>=0.13,<1",
     "xxhash>=4,<5",
+    # Already locked; the Host checks a plugin's staged output against its declared schema.
+    "jsonschema>=4.25,<5",
+    # Already locked with jsonschema; an empty registry keeps a schema's references local.
+    "referencing>=0.37,<1",
 ]
 
 [project.scripts]
