@@ -1708,6 +1708,13 @@
       "seconds": 5,
       "lower_layer": "The native leg's driver and the upgrade entry import process facilities that the unit layer cannot load."
     },
+    "evaluation.one_run_fills_a_golden_once_for_its_workers": {
+      "description": "If a run's workers did not share one fill, or shared its cached bytes instead of each getting a private copy, a run would build a golden twice or one worker's writes would reach another's.",
+      "owner": "devtools.evaluation",
+      "layer": "integration",
+      "seconds": 10,
+      "lower_layer": "Its claim is two separate worker processes contending for one run's golden under its controller, which only child processes can show."
+    },
     "evaluation.persistent_golden_root_follows_its_setting": {
       "description": "The persistent golden cache root is the operator's shared setting when present and the checkout's own folder when absent.",
       "owner": "devtools.evaluation",
