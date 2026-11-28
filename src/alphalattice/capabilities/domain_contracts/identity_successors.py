@@ -19,7 +19,7 @@ from __future__ import annotations
 
 import json
 from dataclasses import dataclass
-from functools import cache
+from functools import cache, lru_cache
 from pathlib import Path
 
 from alphalattice.capabilities.domain_contracts.project_layout import resolve_playpen_root
@@ -31,11 +31,14 @@ _SCHEMA = "identity-successors"
 _VERSION = 1
 
 
-def _audit_digest(value: str) -> bool:
-    """Recognize tagged identities and the SHA-256 values retained in signed history."""
-    return is_blake3(value) or (
-        len(value) == 64 and all(character in "0123456789abcdef" for character in value)
-    )
+@lru_cache(maxsize=4096)
+def _audit_digest(value: str) -> str | None:
+    """Classify a digest when its first raw spelling enters the successor owner."""
+    if is_blake3(value):
+        return "blake3"
+    if len(value) == 64 and all(character in "0123456789abcdef" for character in value):
+        return "historical"
+    return None
 
 
 class IdentitySuccessorError(ValueError):
@@ -57,7 +60,7 @@ class IdentityMove:
     reason: str
 
 
-def _read_set(path: Path) -> list[IdentityMove]:
+def _read_set(path: Path) -> list[tuple[IdentityMove, bool]]:
     """Decode one committed set or name the file the reader refused."""
     try:
         document = json.loads(path.read_text(encoding="utf-8"))
@@ -88,17 +91,26 @@ def _read_set(path: Path) -> list[IdentityMove]:
             raise IdentitySuccessorError(
                 "shared_kernel.identity_successor_invalid", path
             ) from error
-        if move.predecessor == move.successor or not all(
-            _audit_digest(value) for value in (move.predecessor, move.successor)
-        ):
+        predecessor_kind = _audit_digest(move.predecessor)
+        successor_kind = _audit_digest(move.successor)
+        if move.predecessor == move.successor or predecessor_kind is None or successor_kind is None:
             raise IdentitySuccessorError("shared_kernel.identity_successor_invalid", path)
-        moves.append(move)
+        moves.append((move, predecessor_kind == successor_kind == "blake3"))
     return moves
 
 
+@dataclass(frozen=True, slots=True)
+class _SuccessorLedger:
+    recorded: tuple[IdentityMove, ...]
+    effective: tuple[IdentityMove, ...]
+    forward: dict[tuple[str, str], str]
+    back: dict[tuple[str, str], list[str]]
+    origins: dict[tuple[str, str], str]
+
+
 @cache
-def recorded_moves(root: Path | None = None) -> tuple[IdentityMove, ...]:
-    """Read the frozen ledger first, then sets in filename and row order.
+def _ledger(root: Path | None) -> _SuccessorLedger:
+    """Read and index the frozen ledger first, then sets in filename and row order.
 
     A role's value can move back to one it held before; its recorded moves then lead from that
     value around to itself. A later move from such a revisited value starts a new link: it
@@ -128,9 +140,11 @@ def recorded_moves(root: Path | None = None) -> tuple[IdentityMove, ...]:
     else:
         paths.insert(0, frozen)
     moves: list[IdentityMove] = []
-    current: dict[tuple[str, str], str] = {}  # each (role, value) -> its latest recorded successor
+    current: dict[tuple[str, str], str] = {}  # includes historical audit moves
+    effective: dict[tuple[str, str], IdentityMove] = {}
+    origins: dict[tuple[str, str], str] = {}
     for path in paths:
-        for move in _read_set(path):
+        for move, current_format in _read_set(path):
             key = (move.role, move.predecessor)
             if key in current and not _returns(current, move.role, current[key], move.predecessor):
                 raise IdentitySuccessorError(
@@ -139,7 +153,26 @@ def recorded_moves(root: Path | None = None) -> tuple[IdentityMove, ...]:
                 )
             current[key] = move.successor
             moves.append(move)
-    return tuple(moves)
+            if current_format:
+                # Reinsert in recorded order when a later move supersedes this one.
+                effective.pop(key, None)
+                effective[key] = move
+                origins.setdefault((move.role, move.successor), move.predecessor)
+    back: dict[tuple[str, str], list[str]] = {}
+    for move in effective.values():
+        back.setdefault((move.role, move.successor), []).append(move.predecessor)
+    return _SuccessorLedger(
+        recorded=tuple(moves),
+        effective=tuple(effective.values()),
+        forward={key: move.successor for key, move in effective.items()},
+        back=back,
+        origins=origins,
+    )
+
+
+def recorded_moves(root: Path | None = None) -> tuple[IdentityMove, ...]:
+    """The admitted moves in recorded order, including historic audit identities."""
+    return _ledger(root).recorded
 
 
 def _returns(current: dict[tuple[str, str], str], role: str, start: str, target: str) -> bool:
@@ -153,25 +186,19 @@ def _returns(current: dict[tuple[str, str], str], role: str, start: str, target:
     return True
 
 
-def _blake3_moves(root: Path | None) -> tuple[IdentityMove, ...]:
-    """Read only the moves that can identify installed data."""
-    return tuple(
-        move
-        for move in recorded_moves(root)
-        if is_blake3(move.predecessor) and is_blake3(move.successor)
-    )
-
-
 def effective_moves(root: Path | None = None) -> tuple[IdentityMove, ...]:
-    """The moves in force, in recorded order: of the moves from one value, the last recorded.
+    """The BLAKE3 moves in force, in the order of their last admitted records."""
+    return _ledger(root).effective
 
-    A later move from a revisited value supersedes the earlier move from it; `latest`,
-    `is_current` and `predecessors` read these, so forward and backward agree. It is derived
-    from `recorded_moves` at each call, so it follows that cache.
-    """
-    moves = _blake3_moves(root)
-    last = {(move.role, move.predecessor): index for index, move in enumerate(moves)}
-    return tuple(m for i, m in enumerate(moves) if last[(m.role, m.predecessor)] == i)
+
+def _last(links: dict[tuple[str, str], str], role: str, value: str) -> str:
+    seen = {value}
+    while (next_value := links.get((role, value))) is not None:
+        value = next_value
+        if value in seen:
+            break
+        seen.add(value)
+    return value
 
 
 def latest(role: str, value: str, *, root: Path | None = None) -> str:
@@ -181,14 +208,7 @@ def latest(role: str, value: str, *, root: Path | None = None) -> str:
     because nothing succeeds the installed value; an index keyed by a recorded value uses it
     so that a recorded move keeps its entries found.
     """
-    successors = {m.predecessor: m.successor for m in effective_moves(root) if m.role == role}
-    seen = {value}
-    while value in successors:
-        value = successors[value]
-        if value in seen:
-            break
-        seen.add(value)
-    return value
+    return _last(_ledger(root).forward, role, value)
 
 
 def predecessors(role: str, value: str, *, root: Path | None = None) -> tuple[str, ...]:
@@ -197,13 +217,10 @@ def predecessors(role: str, value: str, *, root: Path | None = None) -> tuple[st
     A store keyed by a recorded value finds, through these, the entries sealed before a
     recorded move: each is current exactly when ``value`` is the installed one.
     """
-    back: dict[str, list[str]] = {}
-    for move in effective_moves(root):
-        if move.role == role:
-            back.setdefault(move.successor, []).append(move.predecessor)
+    back = _ledger(root).back
     found = [value]
     for current in found:
-        found.extend(v for v in back.get(current, ()) if v not in found)
+        found.extend(v for v in back.get((role, current), ()) if v not in found)
     return tuple(found)
 
 
@@ -225,30 +242,23 @@ def recorded_origin(role: str, value: str, *, root: Path | None = None) -> str:
     Returns:
         The origin of ``value``.
     """
-    back: dict[str, str] = {}
-    for move in _blake3_moves(root):  # include the origins bound before a revisit
-        if move.role == role:
-            back.setdefault(move.successor, move.predecessor)
-    seen = {value}
-    while value in back:
-        value = back[value]
-        if value in seen:
-            break
-        seen.add(value)
-    return value
+    return _last(_ledger(root).origins, role, value)
 
 
 def is_current(role: str, recorded: str, installed: str, *, root: Path | None = None) -> bool:
     """Whether a recorded value names the installed authority for ``role``."""
-    if not (is_blake3(recorded) and is_blake3(installed)):
+    if not isinstance(recorded, str) or not isinstance(installed, str):
+        return False
+    if _audit_digest(recorded) != "blake3" or _audit_digest(installed) != "blake3":
         return False
     if recorded == installed:
         return True
-    successors = {m.predecessor: m.successor for m in effective_moves(root) if m.role == role}
+    # The admitted links and comparison values need no format scan here.
+    successors = _ledger(root).forward
     seen = {recorded}
     value = recorded
-    while value in successors:
-        value = successors[value]
+    while (next_value := successors.get((role, value))) is not None:
+        value = next_value
         if value == installed:
             return True
         if value in seen:

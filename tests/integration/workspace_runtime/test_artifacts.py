@@ -10,7 +10,6 @@ import pytest
 
 from alphalattice.capabilities.domain_contracts import identity_successors
 from alphalattice.capabilities.domain_contracts.identity import canonical_hash
-from alphalattice.capabilities.domain_contracts.identity_successors import IdentityMove
 from alphalattice.control.workspace_runtime.artifacts import ArtifactDescriptor, ArtifactResolver
 from alphalattice.kernel.identity import blake3_filename
 from tests._support.identity_fixtures import fixture_digest
@@ -111,7 +110,7 @@ def _preprocessing_marker(resolver, revision, policy="e", receipt="c"):
     ],
 )
 def test_a_sealed_panel_method_follows_only_its_recorded_successors(
-    tmp_path, monkeypatch, before, after, policy, refusal, fault
+    tmp_path, monkeypatch, request, before, after, policy, refusal, fault
 ):
     resolver = ArtifactResolver(tmp_path)
     markers = {key: _preprocessing_marker(resolver, key) for key in "234"}
@@ -120,11 +119,25 @@ def test_a_sealed_panel_method_follows_only_its_recorded_successors(
         "implementation_binding_hash": "feature_engine.preprocessing_implementation.robust",
     }
     moves = tuple(
-        IdentityMove(role, markers[old][field], markers[new][field], "fixture", "same method")
+        {
+            "role": role,
+            "predecessor": markers[old][field],
+            "successor": markers[new][field],
+            "change": "fixture",
+            "reason": "same method",
+        }
         for field, role in roles.items()
         for old, new in (("2", "3"), ("3", "4"))
     )
-    monkeypatch.setattr(identity_successors, "recorded_moves", lambda root=None: moves)
+    ledger = tmp_path / identity_successors.FROZEN_SUCCESSORS_PATH
+    ledger.parent.mkdir()
+    ledger.write_text(
+        json.dumps({"schema": "identity-successors", "version": 1, "moves": moves}),
+        encoding="utf-8",
+    )
+    monkeypatch.setattr(identity_successors, "resolve_playpen_root", lambda _: tmp_path)
+    identity_successors._ledger.cache_clear()
+    request.addfinalizer(identity_successors._ledger.cache_clear)
     publish = resolver.publish_panel_preprocessing_marker
     original = _preprocessing_marker(resolver, before)
     first = publish(payload=original, panel_content_hash=HASH)

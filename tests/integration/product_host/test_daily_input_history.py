@@ -1,6 +1,9 @@
 """A new Task reuses only a freshly proved, immutable workspace prefix."""
 
+import json
+from dataclasses import asdict
 from datetime import date, timedelta
+from functools import partial
 from types import SimpleNamespace
 
 import numpy as np
@@ -355,7 +358,7 @@ def test_a_kept_history_is_refused_for_more_columns_or_another_implementation(da
 
 @pytest.mark.parametrize("selection", ("installed", "predecessor", "unrecorded"))
 def test_a_renewing_component_keeps_its_training_columns_on_a_day_it_does_not_renew(
-    monkeypatch, selection
+    monkeypatch, selection, tmp_path
 ):
     """regression (the person's D2, 2026-10-15): a kept history held only that day's columns, so
     the renewal day rebuilt ten years cold; every capture now keeps the training columns."""
@@ -384,7 +387,15 @@ def test_a_renewing_component_keeps_its_training_columns_on_a_day_it_does_not_re
     move = identity_successors.IdentityMove(
         scoring.IMPLEMENTATION_ROLE, previous, installed, "Read reuse", "Equal captured values"
     )
-    monkeypatch.setattr(identity_successors, "effective_moves", lambda root: (move,))
+    ledger = tmp_path / identity_successors.FROZEN_SUCCESSORS_PATH
+    ledger.parent.mkdir()
+    ledger.write_text(
+        json.dumps({"schema": "identity-successors", "version": 1, "moves": [asdict(move)]}),
+        encoding="utf-8",
+    )
+    monkeypatch.setattr(
+        scoring, "predecessors", partial(identity_successors.predecessors, root=tmp_path)
+    )
     binding = SimpleNamespace(
         strategy_package_id="p",
         component_id="c",

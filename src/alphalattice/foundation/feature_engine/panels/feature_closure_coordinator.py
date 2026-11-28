@@ -886,9 +886,11 @@ def feature_row_identities(
     # floats (NaN kept), any other column's cells are its own objects.
     columns = [rows[factor_id].tolist() for factor_id in factor_ids]
     identities: list[FeatureRowIdentity] = []
-    for index, raw_session in enumerate(rows["session_date"].tolist()):
+    for raw_session, listing_id, raw_cutoff, *values in zip(
+        rows["session_date"].tolist(), listing_ids, cutoff_strings, *columns, strict=True
+    ):
         session = _session(raw_session)
-        cutoff_string = str(cutoff_strings[index])
+        cutoff_string = str(raw_cutoff)
         key = (factor_ids, cutoff_string)
         derived = cutoff_sets.get(key)
         if derived is None:
@@ -900,12 +902,12 @@ def feature_row_identities(
                 canonical_cutoffs=canonical_cutoffs,
                 cutoff_set_hash=cutoff_set,
                 row_hash=feature_row_content_hash_from_canonical(
-                    listing_id=str(listing_ids[index]),
+                    listing_id=str(listing_id),
                     session_date=session,
                     catalog_hash=catalog_hash,
                     canonical_cutoffs=canonical_cutoffs,
                     factor_ids=factor_ids,
-                    values=tuple(column[index] for column in columns),
+                    values=values,
                 ),
             )
         )

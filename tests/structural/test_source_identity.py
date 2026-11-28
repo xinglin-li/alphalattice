@@ -11,6 +11,7 @@ from typing import Any
 
 import pytest
 
+from alphalattice.capabilities.domain_contracts import identity_successors
 from alphalattice.capabilities.domain_contracts.identity_successors import (
     IdentitySuccessorError,
     is_current,
@@ -89,10 +90,12 @@ def successor_chain(tmp_path: Path) -> Path:
 
 def test_a_recorded_move_names_the_installed_authority_for_its_role_only(
     successor_chain: Path,
+    monkeypatch,
 ) -> None:
     """Control: Recorded move names installed authority for its role only."""
     root = successor_chain
-
+    recorded_moves(root)
+    monkeypatch.setattr(identity_successors, "is_blake3", lambda _: pytest.fail("digest rechecked"))
     assert is_current("role", _C, _C, root=root)
     assert is_current("role", _A, _C, root=root), "two recorded moves lead to the installed value"
     assert not is_current("role", _C, _A, root=root), "a move is one way"
@@ -203,7 +206,7 @@ def test_a_keyed_store_finds_what_was_sealed_before_a_recorded_move(tmp_path: Pa
             id="self-successor",
         ),
         pytest.param(
-            [_move("role", _A, "not-a-hash")],
+            [_move("role", _A, "blake3:" + "F" * 64)],
             1,
             "shared_kernel.identity_successor_invalid",
             id="invalid-hash",
@@ -239,8 +242,9 @@ def test_moves_this_build_cannot_read_are_refused_not_ignored(
 ) -> None:
     root = _successors(tmp_path, moves, version=version)
 
-    with pytest.raises(IdentitySuccessorError, match=code):
+    with pytest.raises(IdentitySuccessorError, match=code) as refusal:
         is_current("role", _A, _B, root=root)
+    assert "identity-successors" in str(refusal.value)
 
 
 def test_the_committed_moves_read_and_each_predecessor_moves_once_per_role(

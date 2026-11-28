@@ -662,12 +662,32 @@
       "source_commit": "4e29de787036643360b3448d9cddba114f06d739",
       "description": "Caches the configured Windows process-module enumeration API until process restart."
     },
+    "src/alphalattice/capabilities/domain_contracts/identity_successors.py::_audit_digest::identity-successor-digest-formats": {
+      "owner": "alphalattice.capabilities.domain_contracts",
+      "defined_by": [
+        "src/alphalattice/capabilities/domain_contracts/identity_successors.py::_audit_digest"
+      ],
+      "definition_line": 35,
+      "key": "exact digest spelling",
+      "dependency_coverage": "Complete for the installed digest format rules",
+      "invalidation_rule": "Process restart when digest format rules change",
+      "size_bound": "4096 entries",
+      "bound_scope": "4096 entries",
+      "eviction": "LRU",
+      "safe_to_drop": "Yes: classifies the same spelling again",
+      "location": {
+        "scope": "process",
+        "path_expression": "In-memory _audit_digest in identity_successors"
+      },
+      "source_commit": "be7d47451c55d9aac97e07ce09e0701d74448b9b",
+      "description": "Remembers the format of a raw digest as it enters the identity successor reader."
+    },
     "src/alphalattice/capabilities/domain_contracts/identity_successors.py::recorded_moves::module-recorded-moves": {
       "owner": "alphalattice.capabilities.domain_contracts",
       "defined_by": [
-        "src/alphalattice/capabilities/domain_contracts/identity_successors.py::recorded_moves"
+        "src/alphalattice/capabilities/domain_contracts/identity_successors.py::_ledger"
       ],
-      "definition_line": 48,
+      "definition_line": 112,
       "key": "root",
       "dependency_coverage": "No external resource digest in key; fixed-install/process assumption",
       "invalidation_rule": "none; restart or explicit cache_clear (no production cache_clear caller found)",
@@ -677,10 +697,10 @@
       "safe_to_drop": "Yes: recompute from identical retained inputs; close users before clearing",
       "location": {
         "scope": "process",
-        "path_expression": "In-memory recorded_moves in its module, instance, or call namespace"
+        "path_expression": "In-memory _ledger in identity_successors"
       },
       "source_commit": "4e29de787036643360b3448d9cddba114f06d739",
-      "description": "Caches recorded identity moves for each checkout root until process restart."
+      "description": "Keeps the admitted moves and their lookup indexes per checkout root until process restart."
     },
     "src/alphalattice/capabilities/domain_contracts/source_identity.py::<module>._ROLE_CLOSURES::source-role-closures": {
       "owner": "alphalattice.capabilities.domain_contracts",

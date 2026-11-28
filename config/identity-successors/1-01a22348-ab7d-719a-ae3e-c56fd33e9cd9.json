@@ -1,0 +1,48 @@
+{
+ "schema": "identity-successors",
+ "version": 1,
+ "moves": [
+  {
+   "role": "product_host.conditional_decision_advancement",
+   "predecessor": "blake3:4a85f94d239b4efb06bb118d3b0129197ad59bf13f24816149eeaafb19c6420c",
+   "successor": "blake3:f27f6e3f4fc041c548fb78aaa1e3ceeb859c7b25b41e4c94944f4cff2c84e618",
+   "change": "Feature preparation and strategy builds avoid repeated digest work",
+   "reason": "First use is about 53 s faster on pc1: each feature row is hashed once in its listing's worker and a digest's format is checked once where it enters; results unchanged: the development replay matches all 6,526 feature rows, 502 cutoff sets and 13 receipts with the same row bytes; the six roles move only because their source moved; the later changes are configuration and one test"
+  },
+  {
+   "role": "product_host.research_feature_materialization",
+   "predecessor": "blake3:a356fd873e613cc3e19a14989d9ac307cd99edbb48a8a1338569fe5d95d94493",
+   "successor": "blake3:767b2dbb8230408123c5372dda48a12142b1479e9ed2f62e47a51a2b95e48048",
+   "change": "Feature preparation and strategy builds avoid repeated digest work",
+   "reason": "First use is about 53 s faster on pc1: each feature row is hashed once in its listing's worker and a digest's format is checked once where it enters; results unchanged: the development replay matches all 6,526 feature rows, 502 cutoff sets and 13 receipts with the same row bytes; the six roles move only because their source moved; the later changes are configuration and one test"
+  },
+  {
+   "role": "product_host.research_feature_materialization.prepared",
+   "predecessor": "blake3:0050745ff199c6c7d861cee589065b5f50da88af8f4c4e557c660cf824dd65e8",
+   "successor": "blake3:b8fc5f1b0370f04a148eaad5ad363f501a35a8eb67d6e35d488603cc589028d0",
+   "change": "Feature preparation and strategy builds avoid repeated digest work",
+   "reason": "First use is about 53 s faster on pc1: each feature row is hashed once in its listing's worker and a digest's format is checked once where it enters; results unchanged: the development replay matches all 6,526 feature rows, 502 cutoff sets and 13 receipts with the same row bytes; the six roles move only because their source moved; the later changes are configuration and one test"
+  },
+  {
+   "role": "product_host.research_feature_source_projection",
+   "predecessor": "blake3:32ba0a890c7d7faefb9f77bf6b0f624363abf3c246920b396058e3cace8d090b",
+   "successor": "blake3:d2d50ed09de56449f6ccf4c2a93f733006c64a0a05b2c4b382fc1ba7062cecdc",
+   "change": "Feature preparation and strategy builds avoid repeated digest work",
+   "reason": "First use is about 53 s faster on pc1: each feature row is hashed once in its listing's worker and a digest's format is checked once where it enters; results unchanged: the development replay matches all 6,526 feature rows, 502 cutoff sets and 13 receipts with the same row bytes; the six roles move only because their source moved; the later changes are configuration and one test"
+  },
+  {
+   "role": "product_host.strategy_scoring",
+   "predecessor": "blake3:70eb163fd357d927ffe29e545bc5c0f822740c7a97effeb97505f4d6424b66b9",
+   "successor": "blake3:40bff4b93d87be1881ade23748d7635d3a4b2b82910148d09faa7d5b52d9fb7c",
+   "change": "Feature preparation and strategy builds avoid repeated digest work",
+   "reason": "First use is about 53 s faster on pc1: each feature row is hashed once in its listing's worker and a digest's format is checked once where it enters; results unchanged: the development replay matches all 6,526 feature rows, 502 cutoff sets and 13 receipts with the same row bytes; the six roles move only because their source moved; the later changes are configuration and one test"
+  },
+  {
+   "role": "product_host.workspace_preparation",
+   "predecessor": "blake3:2a56a61e8178da7b0a1633bfb88cd52803bb30d4fa8c69a19a1d1f3023bf3382",
+   "successor": "blake3:c6fe852269a482808cfd6e9b2e4206a1de3113164ae26706bd950e5916507561",
+   "change": "Feature preparation and strategy builds avoid repeated digest work",
+   "reason": "First use is about 53 s faster on pc1: each feature row is hashed once in its listing's worker and a digest's format is checked once where it enters; results unchanged: the development replay matches all 6,526 feature rows, 502 cutoff sets and 13 receipts with the same row bytes; the six roles move only because their source moved; the later changes are configuration and one test"
+  }
+ ]
+}

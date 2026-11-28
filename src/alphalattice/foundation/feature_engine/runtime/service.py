@@ -217,6 +217,32 @@ def feature_source_frame(
     return frame
 
 
+def _preserve_unaffected_feature_values(
+    rows: pd.DataFrame,
+    target_factors: dict[date, tuple[str, ...]],
+    existing_by_session: dict[str, dict[str, object]],
+    catalog: FeatureCatalog,
+) -> None:
+    """Merge the stored factor values and cutoffs the writer read for this listing."""
+    for row_index in rows.index:
+        session = rows.at[row_index, "session_date"]
+        existing = existing_by_session.get(str(session))
+        if existing is None:
+            continue
+        selected = set(target_factors[session])
+        for factor_id in catalog.factor_ids:
+            if factor_id not in selected:
+                rows.at[row_index, factor_id] = existing[factor_id]
+        current_cutoffs = json.loads(str(rows.at[row_index, "input_cutoffs_json"]))
+        prior_cutoffs = json.loads(str(existing["input_cutoffs_json"]))
+        for factor_id in catalog.factor_ids:
+            if factor_id not in selected:
+                current_cutoffs[factor_id] = prior_cutoffs[factor_id]
+        rows.at[row_index, "input_cutoffs_json"] = json.dumps(
+            current_cutoffs, sort_keys=True, separators=(",", ":")
+        )
+
+
 def materialize_listing_rows(
     *,
     catalog: FeatureCatalog,
@@ -228,20 +254,16 @@ def materialize_listing_rows(
     source_sessions: tuple[date, ...] | None,
     market_bars: pd.DataFrame,
     sessions: tuple[date, ...],
-    identity_axis: tuple[str, tuple[str, ...]] | None,
+    preserved_rows: tuple[dict[date, tuple[str, ...]], dict[str, dict[str, object]]] | None,
     cancelled: Callable[[], bool],
     kernel_source_proofs: SourceSyntaxProofs | None = None,
-) -> tuple[pd.DataFrame, pd.DataFrame, tuple[FeatureRowIdentity, ...] | None, str]:
+) -> tuple[pd.DataFrame, pd.DataFrame, tuple[FeatureRowIdentity, ...], str]:
     """One listing's Feature rows for `sessions` and its ineligibility facts, in a Host worker.
 
-        The listing's computation, moved off the build's writer, which only reads, writes and
-        seals (W10): its input frame is projected here from the stored inputs the writer read
-    , and the frame's values hash is answered for the write's source window. Given an
-        `identity_axis` -- the catalog hash and factor axis, when the rows are written as computed
-        -- the rows' identities are derived here as well, by the derivation the closure
-        coordinator runs. The kernels are the shipped ones, rebuilt here and held to the
-        capability the build installed, unless the build sends its own. The build sends the
-        capability's payload with its hash: the rebuilt kernels match it exactly, unhashed.
+    The writer reads the listing inputs, including any stored factors that remain
+    unchanged. This call assembles the final rows and computes their identities
+    once. The shipped kernels are rebuilt in the worker and checked against the
+    capability the build installed unless the build sends its own registry.
     """
     projected_bars = feature_source_frame(source, sessions=source_sessions)
     with span("hash", "listing_inputs"):
@@ -263,14 +285,14 @@ def materialize_listing_rows(
             sessions=sessions,
         )
     rows = block.values
-    if identity_axis is None:
-        return rows, block.ineligibility, None, stock_input_hash
-    catalog_hash, factor_ids = identity_axis
+    if preserved_rows is not None:
+        target_factors, existing_by_session = preserved_rows
+        _preserve_unaffected_feature_values(rows, target_factors, existing_by_session, catalog)
     with span("hash", "row_identities"):
         identities = feature_row_identities(
             rows,
-            catalog_hash=catalog_hash,
-            factor_ids=factor_ids,
+            catalog_hash=catalog.binding.catalog_hash,
+            factor_ids=tuple(catalog.factor_ids),
             cutoff_sets=_WORKER_CUTOFF_SETS,
         )
     return rows, block.ineligibility, identities, stock_input_hash
@@ -932,6 +954,23 @@ class FeatureFoundationService:
                                     action_hash=source.action_hash,
                                 )
                             )
+                            preserved_rows = None
+                            if held.rows.get(
+                                part.binding.catalog_hash
+                            ) and not self._preserves_nothing(target_factors, part):
+                                with span("read", "preserve_unaffected"):
+                                    existing = self.feature_state.feature_rows(
+                                        listing_ids=(listing.listing_id,),
+                                        catalog_hash=part.binding.catalog_hash,
+                                        start=selected_sessions[0],
+                                        end=selected_sessions[-1],
+                                        _connection=base_connection,
+                                    )
+                                assert isinstance(existing, list)
+                                preserved_rows = (
+                                    target_factors,
+                                    {str(row["session_date"]): row for row in existing},
+                                )
                             calls.make(
                                 {
                                     "kernel_registry": shipped_kernels,
@@ -943,14 +982,7 @@ class FeatureFoundationService:
                                         calendar, narrowed_start
                                     ),
                                     "sessions": selected_sessions,
-                                    # The rows are written as computed unless an unaffected
-                                    # factor keeps its stored value; only then are their
-                                    # identities the worker's to derive.
-                                    "identity_axis": (
-                                        (part.binding.catalog_hash, tuple(part.factor_ids))
-                                        if self._preserves_nothing(target_factors, part)
-                                        else None
-                                    ),
+                                    "preserved_rows": preserved_rows,
                                 },
                                 # The same for every listing: each worker receives them once.
                                 shared={
@@ -1005,26 +1037,15 @@ class FeatureFoundationService:
                             stock_input_hash=stock_input_hash,
                             market_input_hash=market_input_hashes[request.as_of_session],
                         )
-                        with span("read", "preserve_unaffected"):
-                            selected_rows = self._preserve_unaffected_feature_values(
-                                rows,
-                                part_work.target_factors,
-                                catalog=part_work.catalog,
-                                _connection=base_connection,
-                            )
-                        identity_by_session = (
-                            None
-                            if identities is None
-                            else {identity.session_date: identity for identity in identities}
-                        )
+                        identity_by_session = {
+                            identity.session_date: identity for identity in identities
+                        }
                         for scoped_factors, range_sessions in self._panel_work_groups(
                             work.calendar, part_work.target_factors
                         ):
                             first_session = range_sessions[0]
                             last_session = range_sessions[-1]
-                            range_rows = selected_rows.loc[
-                                selected_rows["session_date"].isin(range_sessions)
-                            ].copy()
+                            range_rows = rows.loc[rows["session_date"].isin(range_sessions)].copy()
                             range_session_set = set(range_sessions)
                             range_ineligibility = ineligibility.loc[
                                 ineligibility["session_date"].isin(range_session_set)
@@ -1054,13 +1075,9 @@ class FeatureFoundationService:
                                     ),
                                     revision_reason="factor_session_delta",
                                     observed_at=now,
-                                    row_identities=(
-                                        None
-                                        if identity_by_session is None
-                                        else tuple(
-                                            identity_by_session[session]
-                                            for session in range_rows["session_date"]
-                                        )
+                                    row_identities=tuple(
+                                        identity_by_session[session]
+                                        for session in range_rows["session_date"]
                                     ),
                                 )
                             )
@@ -2735,48 +2752,6 @@ class FeatureFoundationService:
             if scoped or not invalidations:
                 planned[part_hash] = tuple(scoped)
         return planned
-
-    def _preserve_unaffected_feature_values(
-        self,
-        rows: pd.DataFrame,
-        target_factors: dict[date, tuple[str, ...]],
-        *,
-        catalog: FeatureCatalog,
-        _connection=None,
-    ) -> pd.DataFrame:
-        if rows.empty or self._preserves_nothing(target_factors, catalog):
-            return rows
-        listing_id = str(rows.iloc[0]["listing_id"])
-        start = min(rows["session_date"])
-        end = max(rows["session_date"])
-        existing_by_session = {
-            str(item["session_date"]): item
-            for item in self.feature_state.feature_rows(
-                listing_ids=(listing_id,),
-                catalog_hash=catalog.binding.catalog_hash,
-                start=start,
-                end=end,
-                _connection=_connection,
-            )
-        }
-        for row_index in rows.index:
-            session = rows.at[row_index, "session_date"]
-            existing = existing_by_session.get(str(session))
-            if existing is None:
-                continue
-            selected = set(target_factors[session])
-            for factor_id in catalog.factor_ids:
-                if factor_id not in selected:
-                    rows.at[row_index, factor_id] = existing[factor_id]
-            current_cutoffs = json.loads(str(rows.at[row_index, "input_cutoffs_json"]))
-            prior_cutoffs = json.loads(str(existing["input_cutoffs_json"]))
-            for factor_id in catalog.factor_ids:
-                if factor_id not in selected:
-                    current_cutoffs[factor_id] = prior_cutoffs[factor_id]
-            rows.at[row_index, "input_cutoffs_json"] = json.dumps(
-                current_cutoffs, sort_keys=True, separators=(",", ":")
-            )
-        return rows
 
     @staticmethod
     def _bounded_input_start(

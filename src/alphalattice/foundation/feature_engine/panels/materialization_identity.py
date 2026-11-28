@@ -6,6 +6,7 @@ import json
 import math
 from collections.abc import Mapping, Sequence
 from datetime import date
+from json.encoder import encode_basestring, encode_basestring_ascii
 from typing import TYPE_CHECKING
 
 import numpy as np
@@ -173,10 +174,10 @@ def feature_row_content_hash_from_canonical(
         )
     payload = (
         "{"
-        f'"catalog_hash":{json.dumps(catalog_hash, ensure_ascii=False)},'
+        f'"catalog_hash":{encode_basestring(catalog_hash)},'
         f'"input_cutoffs":{canonical_cutoffs},'
-        f'"listing_id":{json.dumps(listing_id, ensure_ascii=False)},'
-        f'"session_date":{json.dumps(session_date.isoformat())},'
+        f'"listing_id":{encode_basestring(listing_id)},'
+        f'"session_date":{encode_basestring_ascii(session_date.isoformat())},'
         f'"values":{_ROW_VALUES_ENCODER.encode(dict(zip(factor_ids, values, strict=True)))}'
         "}"
     )

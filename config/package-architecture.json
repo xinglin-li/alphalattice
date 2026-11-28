@@ -1536,10 +1536,6 @@
       "count": 1,
       "reason": "an identity recorded in its own JSON encoding, not proved equal to canonical_json; a move would move recorded identities"
     },
-    "src/alphalattice/foundation/feature_engine/panels/materialization_identity.py::feature_row_content_hash_from_canonical::canonical-json": {
-      "count": 1,
-      "reason": "an identity recorded in its own JSON encoding, not proved equal to canonical_json; a move would move recorded identities"
-    },
     "src/alphalattice/foundation/feature_engine/panels/rematerialization.py::_metadata_hash::canonical-json": {
       "count": 1,
       "reason": "an identity recorded in its own JSON encoding, not proved equal to canonical_json; a move would move recorded identities"
