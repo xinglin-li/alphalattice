@@ -295,16 +295,16 @@ class WorkspaceApplicationSession:
 
         store = CpuBudgetStore(self.workspace / "runtime")
         budget = store.read()
-        # A fixed budget needs affinity, while automatic sizing also samples load.
-        machine = machine_load(sample_busy=budget.cpu_budget == "auto")
+        places, _why = running_places(read_queue_setting(self.workspace / "runtime"))
+        shares = places > 1 and self.task_control_registry.overlapping(task)
+        machine = machine_load(sample_busy=shares and budget.cpu_budget == "auto")
         cores, reason = budget_cores(budget, machine)
         ceiling = (
             machine.processors
             if budget.cpu_budget == "auto"
             else min(budget.cpu_budget, machine.processors)
         )
-        places, _why = running_places(read_queue_setting(self.workspace / "runtime"))
-        if places > 1 and self.task_control_registry.overlapping(task):
+        if shares:
             cores = max(1, min(cores, ceiling // places))
             reason += f"; its share of {places} running places"
         with (

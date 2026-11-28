@@ -900,9 +900,8 @@ def main() -> int:
         type=int,
         default=None,
         help=(
-            "lower the budget below floor(cpu_count/2). It can only lower: a value "
-            "above that ceiling, or above a narrower allowance this process already "
-            "has, is refused rather than applied."
+            "lower the logical processor limit inherited from the operating system. "
+            "A value above that allowance is refused."
         ),
     )
     args = parser.parse_args()

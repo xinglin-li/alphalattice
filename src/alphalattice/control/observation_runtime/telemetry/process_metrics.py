@@ -501,10 +501,6 @@ class ProcessResourceMonitor:
         return self._usage
 
 
-LOGICAL_PROCESSOR_BUDGET_DIVISOR = 2
-"""Half the machine, which is the ceiling these runs are held to."""
-
-
 class ProcessCapacityError(RuntimeError):
     """Operational refusal: a declared capacity bound could not be enforced."""
 
@@ -911,11 +907,7 @@ def resolve_runtime_capacity_plan(
         declared_memory if request.capacity.maximum_memory_gib is not None else fraction_budget
     )
     allowed_count = len(machine.allowed_logical_processor_ids)
-    half_machine_budget = max(1, machine.detected_logical_processors // 2)
-    usable_processors = min(
-        half_machine_budget,
-        max(0, allowed_count - request.capacity.reserved_logical_processors),
-    )
+    usable_processors = max(0, allowed_count - request.capacity.reserved_logical_processors)
     profile_memory_bytes = (
         declared_memory
         if request.capacity.maximum_memory_gib is not None
@@ -1018,12 +1010,6 @@ def resolve_runtime_capacity_plan(
     )
 
 
-def default_logical_processor_budget() -> int:
-    """Half of this machine's logical processors, and never fewer than one."""
-    detected = logical_cpu_count() or 1
-    return max(1, detected // LOGICAL_PROCESSOR_BUDGET_DIVISOR)
-
-
 def _windows_kernel32() -> Any:
     loader: Any = getattr(ctypes, "WinDLL", None)
     if loader is None:
@@ -1088,16 +1074,11 @@ def bind_process_logical_processors(
 ) -> dict[str, object]:
     """Hold this process to at most ``limit`` logical processors, or refuse.
 
-    Returns the receipt a run should record: what the machine has, what this
-    process was already permitted, the half-machine budget, the ceiling those two
-    produce, what was configured, and what the operating system confirmed on
-    read-back. The read-back is the point -- a bound that was requested and
-    silently ignored is worse than no bound, because the run would report a
-    ceiling it is not under.
+    Record the machine's size, this process's existing allowance, the configured
+    limit, and the bound read back from the operating system.
 
-    ``limit`` lowers and never raises. The effective ceiling is the smaller of
-    half the machine and whatever this process was already allowed, so a
-    container or job object that narrowed it further keeps that narrowing.
+    ``limit`` can lower the processor allowance inherited from a container, a
+    job object or an operator.
 
     Process affinity is the mechanism because it is the only one that reaches
     everything. ``OMP_NUM_THREADS`` and its siblings bind the linear-algebra
@@ -1116,14 +1097,7 @@ def bind_process_logical_processors(
     if not allowed:
         raise ProcessCapacityError("process_capacity.logical_processor_bound_unenforceable")
 
-    # The ceiling, and it is a ceiling rather than a default. Half the machine is
-    # the budget this work is held to; an existing narrower allowance is outside
-    # authority and wins over it. ``limit`` may only lower what comes out of
-    # this, never raise it -- the predecessor validated ``limit`` against the
-    # machine's total instead, so on a 32-processor host ``--logical-processors
-    # 32`` was accepted and delivered the whole machine while the help text said
-    # otherwise.
-    ceiling = min(default_logical_processor_budget(), len(allowed))
+    ceiling = len(allowed)
     configured = ceiling if limit is None else int(limit)
     if configured < 1 or configured > ceiling:
         raise ProcessCapacityError("process_capacity.logical_processor_budget_invalid")
@@ -1165,7 +1139,6 @@ def bind_process_logical_processors(
         "kind": "ProcessCapacityBound",
         "logical_processors_detected": detected,
         "logical_processors_already_allowed": len(allowed),
-        "half_machine_budget": default_logical_processor_budget(),
         "effective_ceiling": ceiling,
         "configured_logical_processors": configured,
         "configured_share_of_machine": round(configured / detected, 4),
@@ -1259,7 +1232,6 @@ def process_cpu_seconds() -> float:
 
 
 __all__ = [
-    "LOGICAL_PROCESSOR_BUDGET_DIVISOR",
     "ProcessCapacityError",
     "ProcessResourceMonitor",
     "ProcessResourceUsage",
@@ -1273,7 +1245,6 @@ __all__ = [
     "busy_logical_processors",
     "current_allowed_logical_processors",
     "current_rss_bytes",
-    "default_logical_processor_budget",
     "peak_rss_bytes",
     "process_cpu_seconds",
     "resolve_runtime_capacity_plan",

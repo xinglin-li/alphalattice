@@ -41,7 +41,6 @@ from alphalattice.control.observation_runtime.telemetry.process_metrics import (
     RuntimeMachineCapacity,
     bind_process_logical_processors,
     current_allowed_logical_processors,
-    default_logical_processor_budget,
     resolve_runtime_capacity_plan,
 )
 from alphalattice.control.workspace_runtime import reader_threads
@@ -824,9 +823,6 @@ def test_the_runner_is_capacity_bounded_before_any_stage(
     spec.loader.exec_module(driver)
 
     detected = os.cpu_count() or 1
-    assert default_logical_processor_budget() == max(1, detected // 2)
-    assert default_logical_processor_budget() <= detected
-
     # This case narrows the affinity of the pytest process itself and the bound
     # is one-way by design, so it cannot be undone through the public API. Saved
     # here and restored in the `finally` below through the raw OS call, which is
@@ -848,7 +844,7 @@ def test_the_runner_is_capacity_bounded_before_any_stage(
             detected,
             monkeypatch,
             runner=path,
-            half=min(default_logical_processor_budget(), len(restore_processors)),
+            allowed=len(restore_processors),
         )
     finally:
         if os.name == "nt":
@@ -1177,13 +1173,13 @@ def test_process_resource_monitor_reports_a_time_aligned_live_child_tree(
 
 
 def _assert_capacity_ceiling_holds(
-    detected: int, monkeypatch: pytest.MonkeyPatch, *, runner: Path, half: int
+    detected: int, monkeypatch: pytest.MonkeyPatch, *, runner: Path, allowed: int
 ) -> None:
     """The ceiling body, split out so the caller can restore process state."""
 
     receipt = bind_process_logical_processors()
     assert receipt["enforcement"] == "PROCESS_AFFINITY"
-    assert receipt["configured_logical_processors"] == half
+    assert receipt["configured_logical_processors"] == allowed
     # Read back from the operating system, not echoed from the request: a bound
     # that was asked for and silently ignored is worse than no bound, because
     # the run would then report a ceiling it is not under.
@@ -1193,29 +1189,22 @@ def _assert_capacity_ceiling_holds(
             receipt["configured_logical_processors"]
         )
     )
-    assert float(receipt["configured_share_of_machine"]) <= 0.5  # type: ignore[arg-type]
+    assert receipt["configured_share_of_machine"] == round(allowed / detected, 4)
     for name in ("OMP_NUM_THREADS", "OPENBLAS_NUM_THREADS", "MKL_NUM_THREADS"):
         assert os.environ[name] == str(receipt["configured_logical_processors"])
 
-    # The hole the review found: `limit` was validated against the machine total
-    # rather than against the ceiling, so on a 32-processor host
-    # `--logical-processors 32` was accepted and returned the whole machine while
-    # the help text promised it could not. Every value above the half-machine
-    # budget is refused now, including ones comfortably below `cpu_count`.
-    for refused in (detected + 1, detected, half + 1, 0, -1):
+    for refused in (detected + 1, allowed + 1, 0, -1):
         with pytest.raises(ProcessCapacityError, match="logical_processor_budget_invalid"):
             bind_process_logical_processors(refused)
 
-    # Lower is allowed, and lowering is one-way: once this process is narrowed to
-    # four, the ceiling is four, and asking for the half-machine budget back is
-    # refused rather than quietly widening a limit somebody else imposed.
-    narrowed = bind_process_logical_processors(min(4, half))
-    assert narrowed["configured_logical_processors"] == min(4, half)
-    assert narrowed["logical_processors_already_allowed"] == half
-    assert len(current_allowed_logical_processors()) == min(4, half)
-    if half > 4:
+    # A subsequent request cannot widen an allowance inherited from the OS.
+    narrowed = bind_process_logical_processors(min(4, allowed))
+    assert narrowed["configured_logical_processors"] == min(4, allowed)
+    assert narrowed["logical_processors_already_allowed"] == allowed
+    assert len(current_allowed_logical_processors()) == min(4, allowed)
+    if allowed > 4:
         with pytest.raises(ProcessCapacityError, match="logical_processor_budget_invalid"):
-            bind_process_logical_processors(half)
+            bind_process_logical_processors(allowed)
 
     # A read-back that disagrees with what was asked for is a refusal, not a
     # shrug: a ceiling that was requested and silently ignored would otherwise be

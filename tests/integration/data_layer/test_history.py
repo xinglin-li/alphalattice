@@ -401,7 +401,7 @@ def test_a_host_records_its_workspace_and_a_second_host_is_refused_by_name(
                 chosen_at=datetime(2026, 10, 9, tzinfo=UTC),
                 field="tasks_running",
             )
-            busy = iter((0.0, 3.0))
+            busy = iter((0.0, 3.0, 3.0))
             capacity = SimpleNamespace(
                 allowed_logical_processor_ids=(0, 1, 2, 3),
                 total_memory_bytes=4 * 1024**3,
@@ -429,6 +429,9 @@ def test_a_host_records_its_workspace_and_a_second_host_is_refused_by_name(
                     assert port.lake.execute(settings).fetchone() == (4, 4)
             finally:
                 context.run(wide.close)
+            session.task_control_registry.overlapping = lambda _task: False
+            with session.task_resources(wider, clock):
+                assert execution.TASK_LEASES.current() == 4
         port.lake.execute("BEGIN TRANSACTION").complete()
         try:
             port.lake.execute(
