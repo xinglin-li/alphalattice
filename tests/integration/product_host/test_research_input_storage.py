@@ -854,7 +854,7 @@ def test_storage_readback_breaks_managed_bytes_down_by_root(
     assert roots["AUTHORITY"] == {"physical_bytes": 1024, "logical_bytes": 1024, "files": 1}
     with WorkspaceApplicationSession.acquire(tmp_path) as session:
         _check_storage_status_categories(tmp_path / "footprint", ResearchInputStorage(session))
-    _check_task_scratch(tmp_path / "scratch-workspace")
+    _check_task_scratch(tmp_path / "scratch-workspace", monkeypatch)
     _check_reclaim_command(tmp_path, monkeypatch)
 
 
@@ -921,7 +921,10 @@ def _check_storage_status_categories(root: Path, storage: ResearchInputStorage) 
     assert answer["storage"]["reclaimable_bytes"] == storage.plan()["reclaimable_bytes"]
 
 
-def _check_task_scratch(workspace: Path) -> None:
+def _check_task_scratch(workspace: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    from contextlib import ExitStack
+    from contextvars import Context
+
     import psutil
 
     from alphalattice.control.task_control.scratch import (
@@ -937,26 +940,28 @@ def _check_task_scratch(workspace: Path) -> None:
     outside.mkdir(parents=True)
     (outside / "retained").write_text("keep", encoding="utf-8")
 
-    def scratch(epoch: str | None, pid: int) -> Path:
+    def scratch(epoch: str | None, pid: int, **fields: object) -> Path:
         path = root / str(uuid7())
         path.mkdir(parents=True)
         (path / "payload").write_bytes(b"tmp")
         if epoch is not None:
             identity = path.stat()
-            (path / "owner.json").write_text(
-                json.dumps(
-                    dict(
-                        task_id=path.name,
-                        host_epoch=epoch,
-                        pid=pid,
-                        created=live.create_time(),
-                        device=identity.st_dev,
-                        inode=identity.st_ino,
-                    )
-                ),
-                encoding="utf-8",
+            record = dict(
+                task_id=path.name,
+                host_epoch=epoch,
+                pid=pid,
+                created=live.create_time(),
+                device=identity.st_dev,
+                inode=identity.st_ino,
             )
+            (path / "owner.json").write_text(json.dumps(record | fields), encoding="utf-8")
         return path
+
+    def redirect(link: Path) -> None:
+        if sys.platform == "win32":
+            _winapi.CreateJunction(str(outside), str(link))
+        else:
+            link.symlink_to(outside, target_is_directory=True)
 
     dead_pid = 2**31 - 1
     paths = {
@@ -968,11 +973,7 @@ def _check_task_scratch(workspace: Path) -> None:
             ("outside-link", previous, live.pid),
         )
     }
-    link = paths["outside-link"] / "alias"
-    if sys.platform == "win32":
-        _winapi.CreateJunction(str(outside), str(link))
-    else:
-        link.symlink_to(outside, target_is_directory=True)
+    redirect(paths["outside-link"] / "alias")
     with WorkspaceApplicationSession.acquire(workspace) as session:
         for case in ("killed", "previous", "outside-link"):
             assert not paths[case].exists(), case
@@ -980,6 +981,14 @@ def _check_task_scratch(workspace: Path) -> None:
         assert (outside / "retained").read_text(encoding="utf-8") == "keep"
         assert str(paths["unproved"].name) in session.scratch_cleanup["unproved"]
         current = session.scratch_epoch
+
+        def refuse(target: Path, task_id: UUID, reason: str) -> None:
+            with (
+                pytest.raises(ValueError, match=rf"^task_scratch\.{reason}: "),
+                own_task_scratch(target, task_id, current),
+            ):
+                pass
+
         missing_process = scratch(current, dead_pid)
         with own_task_scratch(workspace, uuid7(), current):
             running = task_scratch_directory()
@@ -988,6 +997,60 @@ def _check_task_scratch(workspace: Path) -> None:
             assert read["removed"] == [missing_process.name]
             assert not missing_process.exists()
             assert running.is_dir()
+
+        task = uuid7()
+        rerun = root / str(task)
+        payload = rerun / "payload"
+        unlink = Path.unlink
+
+        def fail_payload_unlink(path: Path, missing_ok: bool = False) -> None:
+            if path == payload:
+                raise PermissionError("simulated busy scratch on scope exit")
+            unlink(path, missing_ok=missing_ok)
+
+        with monkeypatch.context() as patch:
+            patch.setattr(Path, "unlink", fail_payload_unlink)
+            with own_task_scratch(workspace, task, current):
+                payload.write_bytes(b"leftover")
+        assert payload.read_bytes() == b"leftover"
+        with ExitStack() as reopened:
+            try:
+                reopened.enter_context(own_task_scratch(workspace, task, current))
+            except FileExistsError as error:
+                pytest.fail(f"same-Host scratch rerun refused its ended scope: {error}")
+            assert task_scratch_directory() == rerun
+            assert not payload.exists()
+            payload.write_bytes(b"active")
+
+            Context().run(refuse, workspace, task, "scope_open")
+            assert payload.read_bytes() == b"active"
+        assert not rerun.exists()
+
+        parent = psutil.Process(os.getppid())
+        malformed = scratch(current, live.pid)
+        (malformed / "owner.json").write_bytes(b"{")
+        for folder, reason in (
+            (scratch(current, parent.pid, created=parent.create_time()), "owner_mismatch"),
+            (scratch(previous, live.pid), "owner_mismatch"),
+            (scratch(current, live.pid, task_id=str(uuid7())), "owner_unproved"),
+            (scratch(current, live.pid, inode=-1), "owner_unproved"),
+            (scratch(None, live.pid), "owner_unproved"),
+            (malformed, "owner_unproved"),
+        ):
+            refuse(workspace, UUID(folder.name), reason)
+            assert (folder / "payload").read_bytes() == b"tmp"
+
+        linked = uuid7()
+        redirect(root / str(linked))
+        refuse(workspace, linked, "owner_unproved")
+        alias_workspace = workspace / "alias-workspace"
+        alias_workspace.mkdir()
+        redirect(alias_workspace / "staging")
+        refuse(alias_workspace, linked, "path_redirected")
+        assert (root / str(linked)).exists()
+        assert (alias_workspace / "staging").exists()
+        assert list(outside.iterdir()) == [outside / "retained"]
+        assert (outside / "retained").read_text(encoding="utf-8") == "keep"
 
 
 def _check_reclaim_command(workspace: Path, monkeypatch: pytest.MonkeyPatch) -> None:

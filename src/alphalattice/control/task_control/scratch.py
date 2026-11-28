@@ -9,10 +9,13 @@ from collections.abc import Callable, Iterator
 from contextlib import contextmanager, suppress
 from contextvars import ContextVar
 from pathlib import Path
+from threading import Lock
 from uuid import UUID
 
 _CURRENT: ContextVar[Path | None] = ContextVar("task_scratch", default=None)
 _OWNER = "owner.json"
+_OPEN_SCOPES: set[Path] = set()
+_SCOPE_LOCK = Lock()
 
 
 def task_scratch_directory() -> Path | None:
@@ -40,7 +43,7 @@ def _root(workspace: Path) -> Path:
 
 def _require_real(path: Path) -> None:
     if path.is_symlink() or path.is_junction() or path.resolve(strict=True) != path:
-        raise ValueError("Task scratch path is redirected.")
+        raise ValueError(f"task_scratch.path_redirected: {path}")
 
 
 def _remove_member(path: Path, root: Path) -> None:
@@ -72,6 +75,29 @@ def _remove_owned(path: Path) -> None:
 
 
 @contextmanager
+def _open_scope(folder: Path) -> Iterator[None]:
+    with _SCOPE_LOCK:
+        if folder in _OPEN_SCOPES:
+            raise ValueError(f"task_scratch.scope_open: {folder}")
+        _OPEN_SCOPES.add(folder)
+    try:
+        yield
+    finally:
+        with _SCOPE_LOCK:
+            _OPEN_SCOPES.remove(folder)
+
+
+def _reclaim_for_rerun(folder: Path, lease: tuple[str, int, float]) -> None:
+    try:
+        recorded = _proved_lease(folder)
+    except (OSError, ValueError, OverflowError) as error:
+        raise ValueError(f"task_scratch.owner_unproved: {folder}") from error
+    if recorded != lease:
+        raise ValueError(f"task_scratch.owner_mismatch: {folder}")
+    _remove_owned(folder)
+
+
+@contextmanager
 def own_task_scratch(workspace: Path, task_id: UUID, epoch: str) -> Iterator[None]:
     """Bind child scratch only after publishing the writer epoch and exact directory identity."""
     import psutil  # lazy: a Task records its current process before using scratch
@@ -82,32 +108,38 @@ def own_task_scratch(workspace: Path, task_id: UUID, epoch: str) -> Iterator[Non
     root.mkdir(exist_ok=True)
     _require_real(root)
     folder = root / str(task_id)
-    folder.mkdir()
-    _require_real(folder)
-    info = folder.stat()
-    process = psutil.Process()
-    with (folder / _OWNER).open("x", encoding="utf-8") as stream:
-        json.dump(
-            {
-                "task_id": folder.name,
-                "host_epoch": epoch,
-                "pid": process.pid,
-                "created": process.create_time(),
-                "device": info.st_dev,
-                "inode": info.st_ino,
-            },
-            stream,
-        )
-        stream.flush()
-        os.fsync(stream.fileno())
-    held = _CURRENT.set(folder)
-    try:
-        yield
-    finally:
-        _CURRENT.reset(held)
-        with suppress(OSError, ValueError, OverflowError):
-            if _proved_lease(folder)[0] == epoch:
-                _remove_owned(folder)
+    with _open_scope(folder):
+        process = psutil.Process()
+        created = process.create_time()
+        try:
+            folder.mkdir()
+        except FileExistsError:
+            _reclaim_for_rerun(folder, (epoch, process.pid, created))
+            folder.mkdir()
+        _require_real(folder)
+        info = folder.stat()
+        with (folder / _OWNER).open("x", encoding="utf-8") as stream:
+            json.dump(
+                {
+                    "task_id": folder.name,
+                    "host_epoch": epoch,
+                    "pid": process.pid,
+                    "created": created,
+                    "device": info.st_dev,
+                    "inode": info.st_ino,
+                },
+                stream,
+            )
+            stream.flush()
+            os.fsync(stream.fileno())
+        held = _CURRENT.set(folder)
+        try:
+            yield
+        finally:
+            _CURRENT.reset(held)
+            with suppress(OSError, ValueError, OverflowError):
+                if _proved_lease(folder)[0] == epoch:
+                    _remove_owned(folder)
 
 
 def _proved_lease(path: Path) -> tuple[str, int, float]:
