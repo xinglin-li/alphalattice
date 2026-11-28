@@ -62,6 +62,7 @@ def test_portfolio_promotion_keeps_its_upstream_stop_and_exact_recovery(
             "/api/experiments/promote",
             method="POST",
             payload={"task_id": portfolio_id},
+            timeout=180,  # 25.4 s alone on pc1 (1128-T1-3), past 30 s under the nightly's workers
         )
         assert admitted["status"] == "UPSTREAM_PROMOTION_ADMITTED", admitted
         alpha_id = admitted["alpha_promotion"]["task_id"]
