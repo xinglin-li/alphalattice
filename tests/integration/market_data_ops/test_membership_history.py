@@ -29,6 +29,8 @@ from alphalattice.foundation.market_data_ops.sources.membership import (
     resolve_membership_schedule,
 )
 from alphalattice.foundation.market_data_ops.storage.duckdb import MarketDataRepository
+from alphalattice.kernel.clock import utc_now
+from tests._support.stepped_clocks import stepped_walls, writer_wall
 
 NOW = datetime(2026, 1, 8, 22, tzinfo=UTC)
 SESSIONS = tuple(
@@ -277,6 +279,14 @@ def test_unchanged_source_checks_record_the_gap_without_membership_copies(tmp_pa
         market.universe_source_observations(first.market_profile_id)
     with pytest.raises(ValueError, match="observation_conflict"):
         market.record_universe_source_observation(second)
+    for name, readings in stepped_walls(NOW).items():  # two checks in one tick or a step back
+        with writer_wall(tmp_path / name, readings):
+            fresh = dict(market_profile_id=name, observation_hash="")
+            checked = replace(first, observed_at=utc_now(), **fresh)
+            later = replace(checked, observed_at=utc_now(), source_identity_hash="c" * 64, **fresh)
+        for observation in (checked, later):
+            market.record_universe_source_observation(observation)
+        assert market.universe_source_observations(name) == (later, checked)
 
 
 def test_historical_listing_coverage_does_not_expand_the_current_manifest(tmp_path: Path) -> None:

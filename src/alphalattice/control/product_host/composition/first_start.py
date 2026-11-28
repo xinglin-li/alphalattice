@@ -20,6 +20,7 @@ import shutil
 from collections.abc import Callable, Mapping
 from contextlib import ExitStack
 from dataclasses import dataclass, replace
+from datetime import datetime
 from fnmatch import fnmatchcase
 from functools import cached_property, partial
 from importlib import import_module, resources
@@ -59,6 +60,7 @@ from alphalattice.foundation.data_layer.upgrade import (
     workspace_files,
     workspace_plan_prefix,
 )
+from alphalattice.kernel.clock import utc_now
 from alphalattice.kernel.identity import FileDigestTrust, Stamp
 
 UNHELD: Final = ("data_layer.outcome_missing",)
@@ -631,13 +633,20 @@ class FirstStart:
         began = perf_counter()
         try:
             with ExitStack() as leases:
+                clocks: dict[Path, Callable[[], datetime]] = {}
                 for workspace in self.plan.workspaces:
-                    leases.callback(WorkspaceWriterLease.acquire(workspace).close)
+                    lease = WorkspaceWriterLease.acquire(workspace)
+                    leases.callback(lease.close)
+                    assert lease.clock is not None
+                    clocks[workspace] = lease.clock
                 families = tuple(
                     family for family in self.families if family.name in self.plan.families
                 )
                 runner = self._runner(
-                    self.plan.subject, self.plan.workspaces, self._backups(), families=families
+                    self.plan.subject,
+                    self.plan.workspaces,
+                    self._backups(clocks),
+                    families=families,
                 )
                 runner.run(began=began)
         except Exception as error:
@@ -645,9 +654,11 @@ class FirstStart:
             raise
         self.state = "COMPLETED"
 
-    def _backups(self) -> Callable[..., dict[str, Any]]:
-        """Each named backup, written when the plan has none yet; the machine's last, so the
-        generation holds the head the run starts from."""
+    def _backups(
+        self, clocks: Mapping[Path, Callable[[], datetime]]
+    ) -> Callable[..., dict[str, Any]]:
+        """Each named backup, written when the plan has none yet and stamped by its own workspace's
+        clock; the machine's last, so the generation holds the head the run starts from."""
         assert self.plan is not None
         kept: list[WorkspaceBackups] = []
         machine: dict[str, Any] = {}
@@ -660,6 +671,7 @@ class FirstStart:
                 workspace,
                 workspace_id=str(named_workspace_id(workspace)),
                 root=Path(row["repository"]),
+                clock=clocks.get(workspace, utc_now),
             )
             if row["generation"] is None:
                 backups.create(reason="REQUEST")

@@ -3672,6 +3672,12 @@
       "layer": "unit",
       "seconds": 1
     },
+    "workspace_runtime.a_writers_times_never_tie_or_run_back": {
+      "description": "If two writes of one data root took the same time, or a clock stepped back before a restart inverted them, its latest-row reads would return a stale row.",
+      "owner": "alphalattice.control.workspace_runtime",
+      "layer": "unit",
+      "seconds": 1
+    },
     "workspace_runtime.an_interrupt_ends_a_source_check_wait": {
       "description": "If waiting on parallel source checks swallowed an interrupt, Ctrl-C could not stop a verification.",
       "owner": "alphalattice.control.workspace_runtime",

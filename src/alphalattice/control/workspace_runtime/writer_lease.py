@@ -3,7 +3,9 @@
 from __future__ import annotations
 
 import os
+from collections.abc import Callable
 from dataclasses import dataclass
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from typing import BinaryIO
 
@@ -11,6 +13,35 @@ from alphalattice.control.workspace_runtime.verified_facts import (
     keep_file_facts,
     release_file_facts,
 )
+from alphalattice.kernel.clock import IncreasingClock, hold_writer_clock
+
+_EPOCH = datetime(1970, 1, 1, tzinfo=UTC)
+
+
+def _seed(handle: BinaryIO, workspace: Path) -> datetime | None:
+    """The bound the root's last writer kept after its lock byte, in microseconds since the epoch;
+    for a root from before the kept bound, the latest time its store's rows hold, read once."""
+    handle.seek(1)
+    kept = handle.read(8)
+    if len(kept) != 8:
+        if not (workspace / "market-data.duckdb").is_file():
+            return None  # a new root: no earlier times
+        import alphalattice.control.workspace_runtime.database as store  # lazy: a legacy store
+
+        return store.WorkspaceDatabase(workspace).latest_stored_time()
+    try:
+        return _EPOCH + timedelta(microseconds=int.from_bytes(kept, "little"))
+    except OverflowError:
+        return None  # not a bound this lease wrote; the first kept bound replaces it
+
+
+def _keeper(handle: BinaryIO) -> Callable[[datetime], None]:
+    def keep(bound: datetime) -> None:
+        handle.seek(1)
+        handle.write(((bound - _EPOCH) // timedelta(microseconds=1)).to_bytes(8, "little"))
+        handle.flush()
+
+    return keep
 
 
 @dataclass
@@ -23,6 +54,11 @@ class WorkspaceWriterLease:
 
     _handle: BinaryIO | None
     _workspace: Path | None = None
+    clock: IncreasingClock | None = None
+    """This root's own increasing clock while the lease is held, for the writes that go to it."""
+    _clock: Callable[[], None] = lambda: None
+    """The end of the root's increasing clock (`hold_writer_clock`), seeded and kept in the lock
+    file after its lock byte: a restart after the clock stepped back still hands out later times."""
 
     @property
     def held(self) -> bool:
@@ -50,7 +86,8 @@ class WorkspaceWriterLease:
         """
         workspace.mkdir(parents=True, exist_ok=True)
         path = workspace / ".alphalattice-writer.lock"
-        handle = path.open("a+b")
+        path.touch()  # read and written in place: the kept bound follows the lock byte
+        handle = path.open("r+b", buffering=0)  # each seek moves the descriptor the lock reads
         try:
             handle.seek(0)
             if handle.read(1) == b"":
@@ -69,15 +106,24 @@ class WorkspaceWriterLease:
         except OSError as exc:
             handle.close()
             raise RuntimeError("workspace_runtime.writer_already_owned") from exc
+        lease = cls(_handle=handle)
+        try:
+            seed = _seed(handle, workspace)
+        except BaseException:
+            lease.close()  # an unreadable store leaves the root unheld
+            raise
         if keep_facts:
             keep_file_facts(workspace)
-        return cls(_handle=handle, _workspace=workspace if keep_facts else None)
+            lease._workspace = workspace
+        lease.clock, lease._clock = hold_writer_clock(seed, _keeper(handle))
+        return lease
 
     def close(self) -> None:
         """Release the advisory writer lock and close its handle; absence is a no-op."""
         handle = self._handle
         if handle is None:
             return
+        self._clock()
         if self._workspace is not None:
             release_file_facts(self._workspace)
         handle.seek(0)

@@ -45,8 +45,10 @@ from alphalattice.foundation.market_data_ops.storage.duckdb import MarketDataRep
 from alphalattice.foundation.research_foundation.storage.repository import (
     ResearchFoundationStateRepository,
 )
+from alphalattice.kernel.clock import utc_now
 from alphalattice.kernel.identity import blake3_digest
 from tests._support.identity_fixtures import fixture_digest
+from tests._support.stepped_clocks import stepped_walls, writer_wall
 from tests.workspace_maintenance.local_data_provider import flat_adjusted_close_history
 
 _SIMPLE_NAMESPACE = SimpleNamespace
@@ -363,6 +365,15 @@ def test_readiness_gates_initialization_and_activates_only_completed_transitions
     assert feature_rebuild.lifecycle == "REQUIRED"
     assert feature_rebuild.prior_manifest_revision == old_manifest.revision_sha256
     assert feature_rebuild.next_manifest_revision == new_ready.manifest.revision_sha256
+    for name, readings in stepped_walls(changed_at).items():  # "z" wins a tie on its id DESC
+        with writer_wall(tmp_path / name, readings), foundation_state._connect() as connection:
+            for at, transition in ((utc_now(), "z"), (utc_now(), "a")):
+                ids = dict(transition_id=name + transition, next_manifest_revision=name)
+                foundation_state.require_rebuild(
+                    connection, **ids, prior_manifest_revision=None, at=at
+                )
+        latest = foundation_state.feature_universe_rebuild_for_manifest(name)
+        assert latest is not None and latest.transition_id == name + "a"
     running = foundation_state.start_feature_universe_rebuild(
         pending.proposal.transition_id, observed_at=changed_at
     )

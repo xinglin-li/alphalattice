@@ -4,8 +4,10 @@ from __future__ import annotations
 
 import json
 import math
+import os
 from concurrent.futures import ALL_COMPLETED
 from concurrent.futures import wait as futures_wait
+from contextlib import closing
 from dataclasses import replace
 from datetime import UTC, date, datetime, timedelta
 from pathlib import Path
@@ -55,6 +57,7 @@ from alphalattice.control.product_host.maintenance import (
 from alphalattice.control.task_control.contracts import TaskLifecycle
 from alphalattice.control.workspace_runtime.database import open_workspace_database
 from alphalattice.control.workspace_runtime.mutation_gate import WorkspaceMutationGate
+from alphalattice.control.workspace_runtime.writer_lease import WorkspaceWriterLease
 from alphalattice.foundation.feature_engine.catalog.contracts import (
     FeatureCatalog,
     desktop_core_feature_bundle,
@@ -112,8 +115,10 @@ from alphalattice.foundation.market_data_ops.storage.duckdb import (
     MarketDataRepository,
     ProviderAdjustedSeriesRevision,
 )
+from alphalattice.kernel.clock import utc_now
 from alphalattice.kernel.execution import EVENTS, EventDeadline, Events, Timers
 from tests._support.identity_fixtures import fixture_digest
+from tests._support.stepped_clocks import stepped_walls, writer_wall
 from tests.workspace_maintenance.acquisition_manifest import NOW, acquisition_manifest
 from tests.workspace_maintenance.audit_workspace import (
     audit_one,
@@ -128,9 +133,11 @@ from tests.workspace_maintenance.data_update_support import (
 PLAYPEN_ROOT = Path(__file__).resolve().parents[3]
 
 
-def _request(*, cutoff: datetime = NOW) -> WorkspaceMaintenanceRequest:
+def _request(
+    *, cutoff: datetime = NOW, profile: str = "us-current-index-research"
+) -> WorkspaceMaintenanceRequest:
     return WorkspaceMaintenanceRequest.create(
-        market_profile_id="us-current-index-research",
+        market_profile_id=profile,
         target_market_session=date(2026, 7, 31),
         knowledge_cutoff_at=cutoff,
         trigger=MaintenanceTrigger.STARTUP,
@@ -397,6 +404,20 @@ def test_registry_is_idempotent_and_persists_transport_degradation(tmp_path: Pat
     )
     assert updated.transport_workers == 2
     assert registry.latest_cycle(request.market_profile_id) == updated
+    for name, readings in stepped_walls(NOW).items():  # two cycles in one tick or a step back
+        with writer_wall(tmp_path / name, readings):
+            registry.admit(_request(profile=name), observed_at=utc_now())
+            later = _request(profile=name, cutoff=NOW - timedelta(days=1))
+            latest = registry.admit(later, observed_at=utc_now())
+        assert registry.latest_cycle(name) == latest
+    ahead = utc_now() + timedelta(hours=2)  # a cycle committed before the clock stepped back
+    registry.admit(_request(profile="earlier-release"), observed_at=ahead)
+    store = tmp_path / "market-data.duckdb"  # a checkpoint after the step left it older
+    os.utime(store, (store.stat().st_atime, ahead.timestamp() - 3 * 3600))
+    with closing(WorkspaceWriterLease.acquire(tmp_path, keep_facts=False)):  # no kept bound yet
+        later = _request(profile="earlier-release", cutoff=NOW - timedelta(days=1))
+        latest = registry.admit(later, observed_at=utc_now())
+    assert registry.latest_cycle("earlier-release") == latest
 
 
 def test_registry_records_the_maintenance_scope_a_cycle_admitted_once(tmp_path: Path) -> None:

@@ -427,9 +427,9 @@ def test_a_served_detached_host_expires_only_after_its_held_work_finishes(
     from tests.portfolio_strategy_lab.host_requests import _json
 
     origin = live.dispatcher._last_needed
-    monkeypatch.setattr(IDLE_TIME, "ticks", 0.0)
+    start = IDLE_TIME.ticks  # the shared replay clock never runs back: a case counts from here
     monkeypatch.setattr(IDLE_TIME, "wall", datetime.now(UTC) + timedelta(days=30))
-    monkeypatch.setattr(dispatcher, "monotonic", lambda: origin + IDLE_TIME.ticks)
+    monkeypatch.setattr(dispatcher, "monotonic", lambda: origin + IDLE_TIME.ticks - start)
     owner, ran = live.operations.automation, []
     if held:
         owner.hold(live.clock() + timedelta(hours=7), lambda: ran.append(1))

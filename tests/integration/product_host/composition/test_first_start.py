@@ -8,12 +8,20 @@ import shutil
 import sqlite3
 from collections.abc import Callable
 from contextlib import closing
+from datetime import date, timedelta
 from pathlib import Path
 from types import SimpleNamespace
 from typing import Any
 
 import pytest
 
+from alphalattice.control.data_platform.maintenance.contracts import (
+    MaintenanceTrigger,
+    WorkspaceMaintenanceRequest,
+)
+from alphalattice.control.data_platform.maintenance.registry import (
+    DuckDbWorkspaceMaintenanceRegistry,
+)
 from alphalattice.control.product_host.composition import first_start
 from alphalattice.control.product_host.composition.local_web_session import (
     LocalPortfolioWebSession,
@@ -25,10 +33,12 @@ from alphalattice.control.product_host.composition.research_workspace import (
     read_research_workspace_manifest,
 )
 from alphalattice.control.product_host.storage.backup import WorkspaceBackups
+from alphalattice.control.workspace_runtime.mutation_gate import WorkspaceMutationGate
 from alphalattice.foundation.data_layer import history, history_execution_outcomes, history_startup
 from alphalattice.foundation.data_layer.upgrade import PROGRESS, Family, UpgradeRunner
 from alphalattice.interface.local_application import cli
 from alphalattice.interface.local_application.client import LocalResearchConnection
+from alphalattice.kernel.clock import utc_now
 from alphalattice.kernel.identity import blake3_filename
 from tests._support.identity_fixtures import fixture_digest
 from tests.portfolio_strategy_lab.host_requests import _json, _request
@@ -127,6 +137,23 @@ def _upgrades_on_one_plan(
     first, second, later = project / "first", project / "second", project / "later"
     _old(first, "first")
     _old(second, "second")
+    # Second is from before the kept bound, its store holding a row stamped after the wall reads.
+    ahead = utc_now() + timedelta(hours=2)
+    DuckDbWorkspaceMaintenanceRegistry(
+        second / "market-data.duckdb", gate=WorkspaceMutationGate()
+    ).admit(
+        WorkspaceMaintenanceRequest.create(
+            market_profile_id="earlier-release",
+            target_market_session=date(2026, 7, 31),
+            knowledge_cutoff_at=ahead,
+            trigger=MaintenanceTrigger.STARTUP,
+            membership_revision=fixture_digest("membership"),
+            data_policy_hash=fixture_digest("data-policy"),
+            feature_policy_hash=fixture_digest("feature-policy"),
+        ),
+        observed_at=ahead,
+    )
+    (second / ".alphalattice-writer.lock").write_bytes(b"0")  # the lock byte alone
 
     # The first start shows its plan and serves nothing else; nothing moves before acknowledgement.
     host = _started(first)
@@ -187,6 +214,13 @@ def _upgrades_on_one_plan(
     assert not LocalResearchConnection.path(first).exists()  # withdrawn with the restricted Host
     started = [e for e in _progress("0.2.8") if e["kind"] == "started"]
     assert len(started) == 1 and len(started[0]["backups"]["workspaces"]) == 2
+    # Second's backup is stamped by its own clock, seeded past its store's latest row.
+    kept = WorkspaceBackups(
+        second,
+        workspace_id=str(named_workspace_id(second)),
+        root=Path(plan["backups"][2]["repository"]),
+    )
+    assert [generation.created_at > ahead for generation in kept.generations()] == [True]
 
     # The next start resumes the recorded plan with no new acknowledgement, then serves in full.
     host = _started(first)

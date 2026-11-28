@@ -37,6 +37,7 @@ import threading
 from collections.abc import Callable, Iterable, Iterator, Mapping
 from contextlib import AbstractContextManager, contextmanager, suppress
 from dataclasses import dataclass, field
+from datetime import UTC, datetime
 from pathlib import Path
 from time import monotonic
 from typing import Any, Final, NamedTuple, cast
@@ -1741,6 +1742,26 @@ def checkpoint_workspace_database(connection: duckdb.DuckDBPyConnection) -> bool
     return True
 
 
+_STORED_TIMES: Final = (
+    ("data_remediation_failure_receipt", "observed_at"),
+    ("workspace_maintenance_cycle", "updated_at"),
+    ("sector_reference_receipt", "observed_at"),
+    ("feature_panel_snapshot_manifest", "created_at"),
+    ("feature_input_admission", "created_at"),
+    ("feature_input_agent_case", "created_at"),
+    ("feature_universe_rebuild_requirement", "created_at"),
+    ("universe_source_observation", "observed_at"),
+    ("current_universe_onboarding", "updated_at"),
+    ("current_universe_hydration_deferred", "created_at"),
+    ("provider_adjusted_series_revision", "observed_at"),
+    ("provider_attempt", "observed_at"),
+    ("action_audit_receipt", "observed_at"),
+    ("bar_revision", "observed_at"),
+    ("corporate_action_revision", "observed_at"),
+)
+"""The stored times the workspace's latest-row reads order by, each a naive UTC TIMESTAMP."""
+
+
 class WorkspaceDatabase:
     """Own one database path and explicit read/write connection modes."""
 
@@ -1794,6 +1815,34 @@ class WorkspaceDatabase:
     def seal_epoch(self) -> str:
         """The epoch whose seals this store's contents vouch for (`seal_epoch`)."""
         return seal_epoch(self.path)
+
+    def latest_stored_time(self) -> datetime | None:
+        """The latest stored time the workspace's latest-row reads order by, over the tables this
+        store holds, read from its committed rows; None for a store with none, and for a file no
+        DuckDB reader opens, whose rows no latest-row read returns either (its owner refuses it)."""
+        if not self.path.is_file():
+            return None
+        try:
+            connection = open_workspace_database(self.path, read_only=True)
+        except duckdb.IOException:
+            return None
+        try:
+            listed = connection.execute(
+                "SELECT list(table_name) FROM duckdb_tables() WHERE schema_name = 'main'"
+            ).fetchone()
+            held = set(listed[0] or ()) if listed is not None else set()
+            reads = [
+                f"SELECT max({column}) AS stamp FROM {table}"
+                for table, column in _STORED_TIMES
+                if table in held
+            ]
+            if not reads:
+                return None
+            union = " UNION ALL ".join(reads)
+            latest = connection.execute(f"SELECT max(stamp) FROM ({union}) AS stored").fetchone()
+        finally:
+            connection.close()
+        return None if latest is None or latest[0] is None else latest[0].replace(tzinfo=UTC)
 
     @contextmanager
     def transaction(self) -> Iterator[duckdb.DuckDBPyConnection]:
